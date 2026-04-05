@@ -68,6 +68,41 @@ if [ ${#MISSING_SOURCE[@]} -gt 0 ]; then
     done
 fi
 
+# 自动安装 baoyu-url-to-markdown 的 Node 依赖
+BAOYU_DIR="$SKILLS_DIR/baoyu-url-to-markdown/scripts"
+if [ -d "$BAOYU_DIR" ] && [ -f "$BAOYU_DIR/package.json" ]; then
+    if [ ! -d "$BAOYU_DIR/node_modules" ]; then
+        info "安装 baoyu-url-to-markdown 的 Node 依赖..."
+        if command -v bun &> /dev/null; then
+            (cd "$BAOYU_DIR" && bun install) || { warn "bun install 失败，跳过（可手动粘贴文本作为替代）"; }
+            [ -d "$BAOYU_DIR/node_modules" ] && ok "bun install 完成"
+        elif command -v npm &> /dev/null; then
+            (cd "$BAOYU_DIR" && npm install) || { warn "npm install 失败，跳过（可手动粘贴文本作为替代）"; }
+            [ -d "$BAOYU_DIR/node_modules" ] && ok "npm install 完成"
+        else
+            warn "未找到 bun 或 npm，无法安装 Node 依赖"
+            echo "  推荐安装 bun：curl -fsSL https://bun.sh/install | bash"
+            echo "  安装后重新运行本脚本即可"
+        fi
+    else
+        ok "baoyu-url-to-markdown 的 Node 依赖已存在"
+    fi
+fi
+
+echo ""
+echo "================================"
+echo "  环境检查"
+echo "================================"
+echo ""
+
+# Chrome 检查（仅提示，不阻塞）
+if pgrep -x "Google Chrome" > /dev/null 2>&1; then
+    ok "Chrome 正在运行"
+else
+    info "Chrome 当前未运行。baoyu-url-to-markdown 会在需要时尝试自动启动 Chrome"
+    echo "  如果提取失败，手动启动 Chrome 后重试即可"
+fi
+
 echo ""
 echo "提示：即使部分依赖缺失，llm-wiki 仍可使用："
 echo "  - 缺少 baoyu-url-to-markdown → 无法自动提取网页/公众号"

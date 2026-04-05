@@ -33,13 +33,13 @@
 
 ## 安装
 
-```bash
-# 1. 克隆 skill
-git clone https://github.com/sdyckjq-lab/llm-wiki-skill.git ~/.claude/skills/llm-wiki
+**一键安装**（克隆 + 安装依赖，一条命令搞定）：
 
-# 2. 安装依赖 skill（可选，不装也能用，只是无法自动提取 URL）
-bash ~/.claude/skills/llm-wiki/setup.sh
+```bash
+git clone https://github.com/sdyckjq-lab/llm-wiki-skill.git ~/.claude/skills/llm-wiki && bash ~/.claude/skills/llm-wiki/setup.sh
 ```
+
+> 依赖安装是可选的。不装也能用，只是无法自动提取 URL（可以手动粘贴文本）。
 
 ## 使用
 

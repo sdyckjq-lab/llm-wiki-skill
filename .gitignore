@@ -4,3 +4,5 @@ node_modules/
 *.pyc
 __pycache__/
 deps/baoyu-url-to-markdown/scripts/bun.lock
+.claude/
+.context/
