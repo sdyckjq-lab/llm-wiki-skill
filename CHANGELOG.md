@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.0 (2026-04-05)
+
+### 新增
+
+- 多平台原生入口：同时支持 Claude Code、Codex、OpenClaw
+- 统一安装器 `install.sh`：按平台一键安装主 skill 和打包依赖
+- 平台适配文档：新增 `platforms/claude/CLAUDE.md`、`platforms/codex/AGENTS.md`、`platforms/openclaw/README.md`
+- 安装回归用例：覆盖 Claude dry-run、多平台歧义检测、OpenClaw 安装与自定义路径
+- 需求与实施文档：新增多平台需求说明、实施计划和后续 TODO
+
+### 改进
+
+- `README.md`：改成多平台总入口，明确 agent-first 安装方式
+- `CLAUDE.md`、`AGENTS.md`：收敛成各平台入口文件，不再把仓库写死为单平台项目
+- `SKILL.md`、`init-wiki.sh`、schema 模板：去掉平台专属话术，改成通用 agent 表达
+- `setup.sh`：保留旧入口，但改为统一安装器的兼容包装，避免双份逻辑长期分叉
+
 ## v0.3.0 (2026-04-05)
 
 ### 新增

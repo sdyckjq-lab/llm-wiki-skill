@@ -36,6 +36,12 @@ assert_text_contains() {
     fi
 }
 
+assert_path_exists() {
+    local path="$1"
+
+    [ -e "$path" ] || fail "Expected path to exist: $path"
+}
+
 make_stub() {
     local path="$1"
     local body="$2"
@@ -73,6 +79,63 @@ exit 1'
     assert_text_contains "$output" "未找到 uv"
 }
 
+test_install_dry_run_for_claude() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/home/.claude/skills"
+
+    output="$(
+        HOME="$tmp_dir/home" \
+        bash "$REPO_ROOT/install.sh" --platform claude --dry-run 2>&1
+    )" || fail "install.sh dry-run for Claude should succeed"
+
+    assert_text_contains "$output" "平台：claude"
+    assert_text_contains "$output" "$tmp_dir/home/.claude/skills/llm-wiki"
+}
+
+test_install_auto_refuses_ambiguous_platforms() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/home/.claude/skills" "$tmp_dir/home/.codex/skills"
+
+    if output="$(
+        HOME="$tmp_dir/home" \
+        bash "$REPO_ROOT/install.sh" --platform auto 2>&1
+    )"; then
+        fail "install.sh auto should fail when multiple platform homes are present"
+    fi
+
+    assert_text_contains "$output" "检测到多个可用平台"
+    assert_text_contains "$output" "--platform"
+}
+
+test_install_openclaw_copies_bundle() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/home/.openclaw/skills" "$tmp_dir/bin"
+
+    make_stub "$tmp_dir/bin/bun" '#!/bin/sh
+mkdir -p node_modules
+exit 0'
+
+    make_stub "$tmp_dir/bin/lsof" '#!/bin/sh
+exit 1'
+
+    HOME="$tmp_dir/home" \
+    PATH="$tmp_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "$REPO_ROOT/install.sh" --platform openclaw > /dev/null 2>&1 || fail "install.sh should install for OpenClaw"
+
+    assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/SKILL.md"
+    assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/install.sh"
+    assert_path_exists "$tmp_dir/home/.openclaw/skills/baoyu-url-to-markdown"
+}
+
 test_init_fills_language_placeholder() {
     local tmp_dir wiki_root
     tmp_dir="$(mktemp -d)"
@@ -88,6 +151,9 @@ test_init_fills_language_placeholder() {
 test_readme_sections() {
     assert_file_contains "$REPO_ROOT/README.md" "## 前置条件"
     assert_file_contains "$REPO_ROOT/README.md" "## 常见问题"
+    assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform claude"
+    assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform codex"
+    assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform openclaw"
     assert_file_contains "$REPO_ROOT/README.md" "baoyu-danger-x-to-markdown"
 }
 
@@ -107,6 +173,9 @@ test_batch_ingest_has_step_two() {
 }
 
 test_setup_runs_on_bash_3_2
+test_install_dry_run_for_claude
+test_install_auto_refuses_ambiguous_platforms
+test_install_openclaw_copies_bundle
 test_init_fills_language_placeholder
 test_readme_sections
 test_templates_have_no_empty_links

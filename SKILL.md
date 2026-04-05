@@ -92,17 +92,17 @@ bash ${SKILL_DIR}/setup.sh
 
 ### 步骤
 
-1. **询问知识库主题**（用 AskUserQuestion）：
+1. **询问知识库主题**（先向用户提问）：
    - "你的知识库要围绕什么主题？比如'AI 学习笔记'、'产品竞品分析'、'读书笔记'"
    - 如果用户没想法，默认用"我的知识库"
 
-2. **询问知识库语言**（用 AskUserQuestion）：
+2. **询问知识库语言**（先向用户提问）：
    - "知识库内容用什么语言？中文 / English（默认中文）"
    - 选项：`zh`（中文）或 `en`（English）
    - 如果用户没有明确说，默认 `zh`
    - 将选择记录为 `WIKI_LANG`（`zh` 或 `en`）
 
-3. **询问保存位置**（用 AskUserQuestion）：
+3. **询问保存位置**（先向用户提问）：
    - 默认：`~/Documents/我的知识库/`（zh）或 `~/Documents/my-wiki/`（en）
    - 用户可以自定义路径
 
@@ -112,9 +112,9 @@ bash ${SKILL_DIR}/setup.sh
    ```
 
 5. **写入语言配置并本地化种子文件**：
-   - 用 Edit tool 将 `.wiki-schema.md` 中的 `语言：{{LANGUAGE}}` 替换为：
+   - 将 `.wiki-schema.md` 中的 `语言：{{LANGUAGE}}` 替换为：
      - `zh` → `语言：中文`（种子文件保持中文，无需额外处理）
-     - `en` → `语言：English`，**同时**用 Write tool 覆写以下种子文件为英文版：
+     - `en` → `语言：English`，**同时**覆写以下种子文件为英文版：
 
    **`index.md`（en）**：
    ```markdown
@@ -302,19 +302,19 @@ bash ${SKILL_DIR}/setup.sh
 >   **继续执行**，不要等待用户确认——extractor 会自己处理 Chrome 启动。
 > - 如果 Chrome **已运行** → 正常继续，无需提示。
 
-- `x.com` / `twitter.com` → 使用 Skill tool 调用 `x-article-extractor`
-- `mp.weixin.qq.com` → 使用 Skill tool 调用 `baoyu-url-to-markdown`
-- `youtube.com` / `youtu.be` → 使用 Skill tool 调用 `youtube-transcript`
+- `x.com` / `twitter.com` → 调用 `x-article-extractor`
+- `mp.weixin.qq.com` → 调用 `baoyu-url-to-markdown`
+- `youtube.com` / `youtu.be` → 调用 `youtube-transcript`
 - `xiaohongshu.com` / `xhslink.com` → **无法自动提取**，提示用户：
   ```
   小红书暂不支持自动提取。请打开小红书 App/网页，复制内容粘贴给我。
   ```
-- `zhihu.com` → 尝试使用 Skill tool 调用 `baoyu-url-to-markdown`；如果失败，提示用户手动粘贴
-- 其他 URL → 使用 Skill tool 调用 `baoyu-url-to-markdown`
+- `zhihu.com` → 尝试使用 `baoyu-url-to-markdown`；如果失败，提示用户手动粘贴
+- 其他 URL → 使用 `baoyu-url-to-markdown`
 
 **本地文件**（按扩展名判断）：
-- `.pdf` → 使用 Read tool 直接读取
-- `.md` / `.txt` / `.html` → 使用 Read tool 直接读取
+- `.pdf` → 直接读取
+- `.md` / `.txt` / `.html` → 直接读取
 
 **纯文本粘贴** → 直接使用用户提供的文本
 

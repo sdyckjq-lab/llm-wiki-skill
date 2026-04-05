@@ -1,12 +1,59 @@
-# llm-wiki — 个人知识库构建 Skill
+# llm-wiki - 多平台知识库构建 Skill
 
-> 基于 [Karpathy 的 llm-wiki 方法论](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)，为 Claude Code 打造的个人知识库构建系统。
+> 基于 [Karpathy 的 llm-wiki 方法论](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)，为 Claude Code、Codex、OpenClaw 这类 agent 提供统一的个人知识库构建系统。
 
 ## 它做什么
 
-把碎片化的信息变成持续积累、互相链接的知识库。你只需要提供素材（网页、推文、公众号、小红书、知乎、YouTube、PDF、本地文件），AI 做所有的整理工作。
+把碎片化的信息变成持续积累、互相链接的知识库。你只需要提供素材，agent 会把链接、文件和文本整理成 wiki 页面。
 
 核心区别：知识被**编译一次，持续维护**，而不是每次查询都从原始文档重新推导。
+
+## 你怎么用
+
+最省事的方式是把这个仓库链接直接扔给你正在用的 agent，让它自己完成安装。
+
+你也可以先看对应平台的入口说明：
+
+- [Claude Code 入口](platforms/claude/CLAUDE.md)
+- [Codex 入口](platforms/codex/AGENTS.md)
+- [OpenClaw 入口](platforms/openclaw/README.md)
+
+## 前置条件
+
+- 你的 agent 能执行 shell 命令
+- 如果你要自动提取网页或公众号，Chrome 需要以调试模式启动
+- 如果你要自动提取 YouTube 字幕，机器上需要有 `uv`
+- `bun` 或 `npm` 二选一即可，安装网页提取依赖时会自动择一使用
+
+## 安装方式
+
+推荐顺序：
+
+1. 把仓库链接交给 agent，让它自己安装。
+2. 如果你要手动查看或本地调试，再克隆仓库到任意目录。
+
+如果你要给 agent 一个明确动作，可以让它进入仓库根目录后执行：
+
+```bash
+# Claude Code
+bash install.sh --platform claude
+
+# Codex
+bash install.sh --platform codex
+
+# OpenClaw
+bash install.sh --platform openclaw
+```
+
+默认安装位置：
+
+- Claude Code: `~/.claude/skills/llm-wiki`
+- Codex: `~/.codex/skills/llm-wiki`（如果你旧环境还在用 `~/.Codex/skills`，安装器也会兼容）
+- OpenClaw: `~/.openclaw/skills/llm-wiki`
+
+如果 OpenClaw 不是这一路径，也可以显式传入 `--target-dir <你的技能目录>`。
+
+旧的 Claude 安装方式仍然保留给现有用户：`bash setup.sh`。它现在只是统一安装器的兼容入口。
 
 ## 支持的素材来源
 
@@ -31,97 +78,33 @@
 - **知识库健康检查**：自动检测孤立页面、断链、矛盾信息
 - **Obsidian 兼容**：所有内容都是本地 markdown，直接用 Obsidian 打开查看
 
-## 安装
-
-**一键安装**（克隆 + 安装依赖，一条命令搞定）：
-
-```bash
-git clone https://github.com/sdyckjq-lab/llm-wiki-skill.git ~/.claude/skills/llm-wiki && bash ~/.claude/skills/llm-wiki/setup.sh
-```
-
-> 依赖安装是可选的。不装也能用，只是无法自动提取 URL（可以手动粘贴文本）。
-
-## 前置条件
-
-开始前请先确认你已经有这些环境：
-
-- `Claude Code`：这个 skill 是给 Claude Code 用的
-- `git`：用于克隆仓库
-- `Google Chrome`：网页和公众号提取依赖 Chrome 调试模式
-- `bun` 或 `npm`：安装 `baoyu-url-to-markdown` 的 Node 依赖
-- `uv`：`youtube-transcript` 提取字幕时需要
-
-Chrome 需要用调试模式启动：
-
-```bash
-open -na "Google Chrome" --args --remote-debugging-port=9222
-```
-
-## 使用
-
-在 Claude Code 中直接说：
-
-```
-帮我初始化一个知识库
-```
-
-然后开始喂素材：
-
-```
-帮我消化这篇：https://example.com/article
-```
-
-批量消化：
-
-```
-帮我把 ~/Downloads/文章/ 里的所有文件都消化了
-```
-
-查询知识库：
-
-```
-知识库里关于 Transformer 的内容有哪些？
-```
-
-深度综合（跨素材生成深度报告）：
-
-```
-给我讲讲 Transformer，综合所有已消化的素材
-```
-
-生成知识图谱：
-
-```
-画个知识图谱，看看知识库里各主题的关联
-```
-
 ## 常见问题
 
-### 看到 `declare: -A: invalid option` 怎么办？
+### 我应该先看哪个文件？
 
-这是旧版本 `setup.sh` 在 macOS 默认 bash 上的兼容性问题。先更新到最新版本，再重新运行：
+看你现在用的 agent：
 
-```bash
-cd ~/.claude/skills/llm-wiki && git pull && bash setup.sh
-```
+- Claude Code: [platforms/claude/CLAUDE.md](platforms/claude/CLAUDE.md)
+- Codex: [platforms/codex/AGENTS.md](platforms/codex/AGENTS.md)
+- OpenClaw: [platforms/openclaw/README.md](platforms/openclaw/README.md)
 
-### Chrome 调试模式怎么开？
+### 这个仓库还是只给 Claude 用吗？
 
-网页、公众号和部分 URL 提取依赖 Chrome 的 9222 调试端口。先关闭已经打开的普通 Chrome 窗口，再执行：
+不是。Claude 只是其中一个入口。这个仓库现在的目标是让同一个链接能被多个 agent 原生安装和使用。
 
-```bash
-open -na "Google Chrome" --args --remote-debugging-port=9222
-```
+### agent 自动安装时应该跑哪条命令？
 
-如果你想确认端口已经开好，可以运行：
+让当前 agent 按自己所在平台执行：
 
-```bash
-lsof -i :9222 -sTCP:LISTEN
-```
+- Claude Code: `bash install.sh --platform claude`
+- Codex: `bash install.sh --platform codex`
+- OpenClaw: `bash install.sh --platform openclaw`
+
+只有在环境里明确只存在一个平台目录时，才建议用 `--platform auto`。
 
 ### 为什么 X / Twitter 提取还是失败？
 
-`x-article-extractor` 还依赖额外的 `baoyu-danger-x-to-markdown`。这个依赖没有打包在本仓库里，需要你自己额外安装；如果暂时不装，也可以直接把 X 内容复制粘贴给 Claude 处理。
+`x-article-extractor` 还依赖额外的 `baoyu-danger-x-to-markdown`。这个依赖没有打包在本仓库里，需要你自己额外安装；如果暂时不装，也可以直接把 X 内容复制粘贴给 agent 处理。
 
 ## 目录结构
 
@@ -151,16 +134,16 @@ lsof -i :9222 -sTCP:LISTEN
 
 本项目复用和集成了以下开源项目，感谢它们的作者：
 
-- **[baoyu-url-to-markdown](https://github.com/JimLiu/baoyu-skills#baoyu-url-to-markdown)** — by [JimLiu](https://github.com/JimLiu)
+- **[baoyu-url-to-markdown](https://github.com/JimLiu/baoyu-skills#baoyu-url-to-markdown)** - by [JimLiu](https://github.com/JimLiu)
   网页和公众号文章提取，通过 Chrome CDP 渲染并转换为 markdown
 
-- **youtube-transcript** — YouTube 视频字幕/逐字稿提取
+- **youtube-transcript** - YouTube 视频字幕/逐字稿提取
 
-- **x-article-extractor** — X (Twitter) 内容提取（长文章、推文串、单条推文）
+- **x-article-extractor** - X (Twitter) 内容提取（长文章、推文串、单条推文）
 
 核心方法论来自：
 
-- **[Andrej Karpathy](https://karpathy.ai/)** — [llm-wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+- **[Andrej Karpathy](https://karpathy.ai/)** - [llm-wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 
 ## License
 

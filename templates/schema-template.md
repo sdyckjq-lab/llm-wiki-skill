@@ -36,13 +36,13 @@
 ## 页面命名规范
 
 - 实体页：`wiki/entities/{名称}.md`
-  - 例：`wiki/entities/Claude-Code.md`、`wiki/entities/Transformer.md`
+  - 例：`wiki/entities/知识构建.md`、`wiki/entities/Transformer.md`
 - 主题页：`wiki/topics/{主题名}.md`
   - 例：`wiki/topics/AI编程工具.md`、`wiki/topics/大语言模型.md`
 - 素材摘要：`wiki/sources/{日期}-{短标题}.md`
   - 例：`wiki/sources/2026-04-05-karpathy-llm-wiki.md`
 - 对比分析：`wiki/comparisons/{对比主题}.md`
-  - 例：`wiki/comparisons/Claude-vs-GPT.md`
+  - 例：`wiki/comparisons/工具选型.md`
 - 综合分析：`wiki/synthesis/{分析主题}.md`
   - 例：`wiki/synthesis/AI工具选型建议.md`
 
@@ -110,8 +110,8 @@ sources: [关联素材列表]
 | YouTube | `raw/articles/` | youtube-transcript skill |
 | 小红书 | `raw/xiaohongshu/` | 用户手动粘贴内容 |
 | 知乎 | `raw/zhihu/` | 用户手动粘贴内容 或 baoyu-url-to-markdown skill |
-| PDF | `raw/pdfs/` | Read tool 直接读取 |
-| Markdown/文本 | `raw/notes/` | Read tool 直接读取 |
+| PDF | `raw/pdfs/` | 直接读取 |
+| Markdown/文本 | `raw/notes/` | 直接读取 |
 | 纯文本粘贴 | `raw/notes/` | 直接使用 |
 
 ## Query（查询）规则
