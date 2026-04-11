@@ -132,7 +132,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 如果不包含 → 回退到读取 `~/.llm-wiki-path`
 2. 如果两者都没有：
    - `ingest` / `batch-ingest` → 先运行 `init`
-   - `query` / `lint` / `status` / `digest` / `graph` → 提示用户先初始化知识库
+   - `query` / `lint` / `status` / `digest` / `graph` / `delete` → 提示用户先初始化知识库
 3. 读取知识库根目录下的 `.wiki-schema.md`
 4. 从 `.wiki-schema.md` 的"语言"字段判断 `WIKI_LANG`
    - `语言：中文` → `WIKI_LANG=zh`
@@ -507,7 +507,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 标注信息来源（引用 wiki 页面，用 `[[页面名]]` 格式）
    - 如果多个素材有不同观点，分别列出并标注来源
 5. **判断是否值得持久化**：
-   - 如果回答引用了 3 个以上来源的综合分析，提示用户："是否保存此回答到知识库？"
+   - 如果回答引用了 3 个及以上来源的综合分析，提示用户："是否保存此回答到知识库？"
    - 少于 3 个来源时，默认只做即时回答，不主动建议持久化
 
 6. **重复检测**：

@@ -198,6 +198,7 @@ cache_update() {
 
   python3 - "$cache_file" "$relative_path_value" "$current_hash" "$timestamp" "$normalized_source" <<'PY'
 import json
+import os
 import sys
 
 cache_file, relative_path, file_hash_value, timestamp, source_page = sys.argv[1:6]
@@ -212,9 +213,11 @@ entries[relative_path] = {
     "source_page": source_page,
 }
 
-with open(cache_file, "w", encoding="utf-8") as fh:
+tmp_file = cache_file + ".tmp"
+with open(tmp_file, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=False, indent=2)
     fh.write("\n")
+os.replace(tmp_file, cache_file)
 PY
 
   printf 'UPDATED\n'
@@ -241,6 +244,7 @@ cache_invalidate() {
 
   python3 - "$cache_file" "$relative_path_value" <<'PY'
 import json
+import os
 import sys
 
 cache_file, relative_path = sys.argv[1:3]
@@ -250,9 +254,11 @@ with open(cache_file, "r", encoding="utf-8") as fh:
 
 data.setdefault("entries", {}).pop(relative_path, None)
 
-with open(cache_file, "w", encoding="utf-8") as fh:
+tmp_file = cache_file + ".tmp"
+with open(tmp_file, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=False, indent=2)
     fh.write("\n")
+os.replace(tmp_file, cache_file)
 PY
 
   printf 'INVALIDATED\n'

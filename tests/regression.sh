@@ -354,7 +354,7 @@ test_skill_md_phase3_query_mentions_persistence_and_duplicate_handling() {
 
     assert_text_contains "$section" "wiki/queries/{date}-{short-hash}.md"
     assert_text_contains "$section" "derived: true"
-    assert_text_contains "$section" "引用了 3 个以上来源"
+    assert_text_contains "$section" "引用了 3 个及以上来源"
     assert_text_contains "$section" "通过 frontmatter tags 和 title 匹配"
     assert_text_contains "$section" "superseded-by"
     assert_text_contains "$section" "不作为主要知识来源"
