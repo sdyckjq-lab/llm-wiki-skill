@@ -1,6 +1,6 @@
 # Phase C 路线图
 
-状态：PLANNED（未实现）
+状态：DONE（C1–C4 全部实现，v2.2.0）
 记录日期：2026-04-13
 前置：Phase A（ingest 验证 + 置信度规则）和 Phase B（crystallize 工作流）完成后再做
 
