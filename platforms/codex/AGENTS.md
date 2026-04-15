@@ -12,6 +12,12 @@
 bash install.sh --platform codex
 ```
 
+如果你还需要网页 / X / 微信公众号 / YouTube / 知乎自动提取，再执行：
+
+```bash
+bash install.sh --platform codex --with-optional-adapters
+```
+
 默认安装位置：`~/.codex/skills/llm-wiki`
 
 如果用户环境仍然在用旧的 `~/.Codex/skills`，安装器会自动兼容。

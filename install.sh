@@ -13,6 +13,7 @@ TARGET_DIR=""
 INSTALL_HOOKS=0
 UNINSTALL_HOOKS=0
 UPGRADE=0
+WITH_OPTIONAL_ADAPTERS=0
 
 # 这些项目都在运行时会被读取或链接：
 # - 入口与说明文件：README / CLAUDE / AGENTS / CHANGELOG
@@ -37,6 +38,7 @@ DEP_SKILLS=()
 
 # 微信工具 URL 从共享配置读取，与 adapter-state.sh 保持一致
 source "$SCRIPT_DIR/scripts/shared-config.sh"
+source "$SCRIPT_DIR/scripts/runtime-context.sh"
 
 info()  { printf '\033[36m[信息]\033[0m %s\n' "$1"; }
 ok()    { printf '\033[32m[完成]\033[0m %s\n' "$1"; }
@@ -51,11 +53,13 @@ usage() {
   bash install.sh --install-hooks
   bash install.sh --uninstall-hooks
   bash install.sh --upgrade [--platform <claude|codex|openclaw|auto>]
+  bash install.sh --platform codex --with-optional-adapters
 
 选项：
   --platform         目标平台。默认 auto；只有检测到唯一平台时才会自动安装。
   --dry-run          只打印安装计划，不写入文件。
-  --target-dir       指定技能目标目录（主要给兼容入口内部调用）。
+  --target-dir       指定技能目标目录（直接传最终的 llm-wiki 目录）。
+  --with-optional-adapters  显式启用网页 / X / YouTube / 公众号等可选提取器安装。
   --install-hooks    注册 Claude Code 的 SessionStart hook。
   --uninstall-hooks  移除 Claude Code 的 SessionStart hook。
   --upgrade          拉取最新代码并更新已安装的 llm-wiki（保留 hook 配置）。
@@ -225,28 +229,6 @@ detect_available_platforms() {
   printf '%s\n' "${found[@]}"
 }
 
-resolve_skill_root() {
-  case "$1" in
-    claude)
-      printf '%s\n' "$HOME/.claude/skills"
-      ;;
-    codex)
-      if [ -d "$HOME/.codex/skills" ] || [ ! -d "$HOME/.Codex/skills" ]; then
-        printf '%s\n' "$HOME/.codex/skills"
-      else
-        printf '%s\n' "$HOME/.Codex/skills"
-      fi
-      ;;
-    openclaw)
-      printf '%s\n' "$HOME/.openclaw/skills"
-      ;;
-    *)
-      err "不支持的平台：$1"
-      exit 1
-      ;;
-  esac
-}
-
 install_dependency_skills() {
   local skill_root="$1"
   local dep dep_target dep_source
@@ -352,6 +334,19 @@ install_uv_tools() {
   fi
 }
 
+bootstrap_optional_adapters() {
+  local skill_root="$1"
+
+  if [ "$WITH_OPTIONAL_ADAPTERS" -ne 1 ]; then
+    return 0
+  fi
+
+  load_dependency_skills
+  install_dependency_skills "$skill_root"
+  install_node_deps "$skill_root"
+  install_uv_tools
+}
+
 check_environment() {
   echo ""
   echo "================================"
@@ -411,7 +406,7 @@ print_adapter_states() {
   echo ""
 
   output="$(
-    bash "$ADAPTER_STATE_SCRIPT" --skill-root "$SKILL_ROOT" summary-human 2>&1
+    bash "$ADAPTER_STATE_SCRIPT" --skill-root "$SKILL_ROOT" --layout-mode installed_skill summary-human 2>&1
   )" || {
     warn "无法生成外挂状态摘要"
     printf '%s\n' "$output"
@@ -419,6 +414,25 @@ print_adapter_states() {
   }
 
   printf '%s\n' "$output"
+}
+
+print_optional_adapter_hint() {
+  local command
+
+  command="bash install.sh"
+  if [ "$UPGRADE" -eq 1 ]; then
+    command="$command --upgrade"
+  fi
+  command="$command --platform ${PLATFORM}"
+  if [ -n "$TARGET_DIR" ]; then
+    command="$command --target-dir ${TARGET_DIR}"
+  fi
+  command="$command --with-optional-adapters"
+
+  echo ""
+  echo "提示：当前只准备了知识库核心主线。"
+  echo "如需网页 / X / 微信公众号 / YouTube / 知乎自动提取，再运行："
+  echo "  $command"
 }
 
 while [ $# -gt 0 ]; do
@@ -437,6 +451,10 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { err "--target-dir 需要一个值"; usage; exit 1; }
       TARGET_DIR="$2"
       shift 2
+      ;;
+    --with-optional-adapters)
+      WITH_OPTIONAL_ADAPTERS=1
+      shift
       ;;
     --install-hooks)
       INSTALL_HOOKS=1
@@ -468,10 +486,15 @@ if [ "$INSTALL_HOOKS" -eq 1 ] && [ "$UNINSTALL_HOOKS" -eq 1 ]; then
 fi
 
 if [ "$UPGRADE" -eq 1 ]; then
+  if [ -n "$TARGET_DIR" ] && [ "$PLATFORM" = "auto" ]; then
+    err "自定义目标目录升级时请显式传入 --platform"
+    exit 1
+  fi
+
   if [ "$PLATFORM" = "auto" ]; then
     detected_platforms=()
     for p in claude codex openclaw; do
-      skill_root_candidate="$(resolve_skill_root "$p")"
+      skill_root_candidate="$(resolve_platform_skill_root "$p")"
       [ -d "$skill_root_candidate/$SKILL_NAME" ] && detected_platforms+=("$p")
     done
 
@@ -481,12 +504,11 @@ if [ "$UPGRADE" -eq 1 ]; then
     fi
 
     if [ "${#detected_platforms[@]}" -gt 1 ]; then
-      if [ "$PLATFORM_EXPLICIT" -eq 0 ]; then
-        err "检测到多个已安装平台：${detected_platforms[*]}。请显式传入 --platform"
-        exit 1
-      fi
+      err "检测到多个已安装平台：${detected_platforms[*]}。升级时请显式传入 --platform"
+      exit 1
     fi
 
+    PLATFORM="${detected_platforms[0]}"
     UPGRADE_PLATFORMS=("${detected_platforms[@]}")
   else
     UPGRADE_PLATFORMS=("$PLATFORM")
@@ -513,11 +535,16 @@ if [ "$UPGRADE" -eq 1 ]; then
     warn "当前目录不是 git 仓库，跳过 git pull"
   fi
 
-  load_dependency_skills
+  upgrade_failures=0
 
   for upgrade_platform in "${UPGRADE_PLATFORMS[@]}"; do
-    upgrade_root="$(resolve_skill_root "$upgrade_platform")"
-    upgrade_target="$upgrade_root/$SKILL_NAME"
+    upgrade_root="$(resolve_platform_skill_root "$upgrade_platform")"
+    if [ -n "$TARGET_DIR" ]; then
+      upgrade_target="$TARGET_DIR"
+      upgrade_root="$(dirname "$upgrade_target")"
+    else
+      upgrade_target="$upgrade_root/$SKILL_NAME"
+    fi
 
     echo ""
     info "更新 $upgrade_platform 的 llm-wiki..."
@@ -525,19 +552,28 @@ if [ "$UPGRADE" -eq 1 ]; then
 
     if [ ! -d "$upgrade_target" ]; then
       err "$upgrade_platform 尚未安装 llm-wiki：$upgrade_target"
+      upgrade_failures=$((upgrade_failures + 1))
       continue
     fi
 
     run_cmd mkdir -p "$upgrade_target"
     install_bundle "$upgrade_target"
-    install_dependency_skills "$upgrade_root"
-    install_node_deps "$upgrade_root"
-    install_uv_tools
+    bootstrap_optional_adapters "$upgrade_root"
     ok "$upgrade_platform 的 llm-wiki 已更新"
   done
 
+  if [ "$upgrade_failures" -gt 0 ]; then
+    echo ""
+    err "llm-wiki 升级失败，请先确认目标目录存在且已完成安装"
+    exit 1
+  fi
+
   print_source_boundary
-  check_environment
+  if [ "$WITH_OPTIONAL_ADAPTERS" -eq 1 ]; then
+    check_environment
+  else
+    print_optional_adapter_hint
+  fi
 
   echo ""
   ok "llm-wiki 升级完成"
@@ -564,7 +600,7 @@ if [ "$PLATFORM" = "auto" ]; then
   fi
 fi
 
-SKILL_ROOT="$(resolve_skill_root "$PLATFORM")"
+SKILL_ROOT="$(resolve_platform_skill_root "$PLATFORM")"
 
 if { [ "$INSTALL_HOOKS" -eq 1 ] || [ "$UNINSTALL_HOOKS" -eq 1 ]; } && [ "$PLATFORM" != "claude" ]; then
   err "只有 Claude Code 支持 SessionStart hook"
@@ -592,8 +628,6 @@ if [ "$INSTALL_HOOKS" -eq 1 ] && [ "$PLATFORM_EXPLICIT" -eq 0 ] && [ -z "$TARGET
   exit 0
 fi
 
-load_dependency_skills
-
 echo ""
 echo "================================"
 echo "  llm-wiki 安装"
@@ -607,12 +641,14 @@ run_cmd mkdir -p "$SKILL_ROOT"
 run_cmd mkdir -p "$TARGET_SKILL_DIR"
 
 install_bundle "$TARGET_SKILL_DIR"
-install_dependency_skills "$SKILL_ROOT"
-install_node_deps "$SKILL_ROOT"
-install_uv_tools
+bootstrap_optional_adapters "$SKILL_ROOT"
 print_source_boundary
-check_environment
-print_adapter_states
+if [ "$WITH_OPTIONAL_ADAPTERS" -eq 1 ]; then
+  check_environment
+  print_adapter_states
+else
+  print_optional_adapter_hint
+fi
 
 if [ "$INSTALL_HOOKS" -eq 1 ]; then
   register_claude_session_hook "$TARGET_SKILL_DIR"

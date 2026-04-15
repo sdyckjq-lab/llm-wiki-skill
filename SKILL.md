@@ -46,18 +46,22 @@ Scripts located in `scripts/` subdirectory.
 
 ## 依赖检查
 
-首次使用时，检查以下依赖是否已安装。如果缺失，提示用户运行安装：
+核心主线（本地文件、纯文本、已有知识库操作）默认不需要这些提取依赖。
+
+只有当用户给的是 URL 类来源，并且明确要自动提取网页 / X / 微信公众号 / YouTube / 知乎内容时，才检查以下可选依赖。
+
+如果缺失，提示用户运行：
 
 ```bash
-bash ${SKILL_DIR}/setup.sh
+bash ${SKILL_DIR}/install.sh --platform <当前平台> --with-optional-adapters
 ```
 
-依赖 skill / 工具：
+可选依赖 skill / 工具：
 - `baoyu-url-to-markdown` — 普通网页、X/Twitter、部分知乎提取
 - `wechat-article-to-markdown` — 微信公众号提取
 - `youtube-transcript` — YouTube 字幕提取
 
-即使部分依赖缺失，skill 仍可工作（用户可以手动粘贴文本内容）。
+即使这些依赖缺失，skill 仍可工作（用户可以直接提供本地文件、粘贴文本，或改走手动入口）。
 
 ## 外挂状态模型
 

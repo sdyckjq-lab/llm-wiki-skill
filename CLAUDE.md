@@ -16,6 +16,12 @@ bash install.sh --platform claude
 
 > `setup.sh` 是 `install.sh --platform claude` 的兼容包装，老用户可以继续用。
 
+默认只准备知识库核心主线。如果这次要自动提取网页 / X / 微信公众号 / YouTube / 知乎，再执行：
+
+```bash
+bash install.sh --platform claude --with-optional-adapters
+```
+
 ## 推送前测试规则
 
 每次 `git push` 前必须验证，按改动范围选深度：

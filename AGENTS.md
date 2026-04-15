@@ -18,11 +18,17 @@ bash install.sh --platform codex
 
 默认安装到 `~/.codex/skills/llm-wiki`。如果用户机器上还是旧的 `~/.Codex/skills`，安装器也会自动兼容。
 
+默认只准备知识库核心主线。如果这次要自动提取网页 / X / 微信公众号 / YouTube / 知乎，再执行：
+
+```bash
+bash install.sh --platform codex --with-optional-adapters
+```
+
 ## 重要提醒
 
 - 不要把这个仓库当成 Codex 专属仓库；Claude Code 和 OpenClaw 也共用同一套核心内容
 - 安装完成后，再按 [SKILL.md](SKILL.md) 的工作流继续做事
-- 如果 OpenClaw 使用的是自定义技能目录，可以改用 `--target-dir`
+- 如果 OpenClaw 使用的是自定义技能目录，可以改用 `--target-dir <你的技能目录>/llm-wiki`
 
 ## 使用顺序
 

@@ -36,6 +36,15 @@ assert_text_contains() {
     fi
 }
 
+assert_text_not_contains() {
+    local text="$1"
+    local unexpected="$2"
+
+    if printf '%s' "$text" | grep -F -- "$unexpected" > /dev/null; then
+        fail "Expected output to not contain: $unexpected"
+    fi
+}
+
 assert_path_exists() {
     local path="$1"
 
@@ -108,6 +117,40 @@ test_setup_runs_on_bash_3_2() {
 
     mkdir -p "$tmp_dir/home/.claude/skills" "$tmp_dir/bin"
 
+    make_stub "$tmp_dir/bin/bun" "#!/bin/sh
+printf '%s\n' bun >> \"$tmp_dir/tool.log\"
+mkdir -p node_modules
+exit 0"
+
+    make_stub "$tmp_dir/bin/lsof" '#!/bin/sh
+exit 1'
+
+    make_stub "$tmp_dir/bin/uv" "#!/bin/sh
+printf '%s\n' uv >> \"$tmp_dir/tool.log\"
+exit 0"
+
+    output="$(
+        HOME="$tmp_dir/home" \
+        PATH="$tmp_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+        bash "$REPO_ROOT/setup.sh" 2>&1
+    )" || fail "setup.sh should run successfully under bash 3.2"
+
+    assert_path_exists "$tmp_dir/home/.claude/skills/llm-wiki/SKILL.md"
+    assert_path_exists "$tmp_dir/home/.claude/skills/llm-wiki/deps/baoyu-url-to-markdown"
+    [ ! -d "$tmp_dir/home/.claude/skills/baoyu-url-to-markdown" ] || fail "Did not expect optional adapters to be enabled by default"
+    [ ! -f "$tmp_dir/tool.log" ] || fail "Did not expect bun or uv to run for core-only setup"
+
+    assert_text_contains "$output" "当前只准备了知识库核心主线"
+    assert_text_contains "$output" "--with-optional-adapters"
+}
+
+test_install_with_optional_adapters_bootstraps_dependencies() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/home/.claude/skills" "$tmp_dir/bin"
+
     make_stub "$tmp_dir/bin/bun" '#!/bin/sh
 mkdir -p node_modules
 exit 0'
@@ -124,17 +167,14 @@ exit 0"
     output="$(
         HOME="$tmp_dir/home" \
         PATH="$tmp_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-        bash "$REPO_ROOT/setup.sh" 2>&1
-    )" || fail "setup.sh should run successfully under bash 3.2"
+        bash "$REPO_ROOT/install.sh" --platform claude --with-optional-adapters 2>&1
+    )" || fail "install.sh should support explicit optional adapter bootstrap"
 
-    [ -d "$tmp_dir/home/.claude/skills/baoyu-url-to-markdown" ] || fail "Expected baoyu-url-to-markdown to be installed"
-    [ -d "$tmp_dir/home/.claude/skills/youtube-transcript" ] || fail "Expected youtube-transcript to be installed"
-    [ ! -d "$tmp_dir/home/.claude/skills/x-article-extractor" ] || fail "Did not expect x-article-extractor to be installed"
+    [ -d "$tmp_dir/home/.claude/skills/baoyu-url-to-markdown" ] || fail "Expected baoyu-url-to-markdown to be installed when explicitly enabled"
+    [ -d "$tmp_dir/home/.claude/skills/youtube-transcript" ] || fail "Expected youtube-transcript to be installed when explicitly enabled"
     assert_path_exists "$tmp_dir/bin/wechat-article-to-markdown"
     assert_file_contains "$tmp_dir/uv.log" "tool install git+https://github.com/jackwener/wechat-article-to-markdown.git"
-
     assert_text_contains "$output" "Chrome 调试端口 9222 未监听"
-    assert_text_contains "$output" "open -na \"Google Chrome\" --args --remote-debugging-port=9222"
     assert_text_contains "$output" "wechat-article-to-markdown 安装完成"
 }
 
@@ -152,6 +192,9 @@ test_install_dry_run_for_claude() {
 
     assert_text_contains "$output" "平台：claude"
     assert_text_contains "$output" "$tmp_dir/home/.claude/skills/llm-wiki"
+    assert_text_contains "$output" "--with-optional-adapters"
+    assert_text_not_contains "$output" "uv tool install"
+    assert_text_not_contains "$output" "bun install"
 }
 
 test_install_auto_refuses_ambiguous_platforms() {
@@ -193,7 +236,8 @@ exit 1'
     assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/SKILL.md"
     assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/install.sh"
     assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/scripts/source-registry.sh"
-    assert_path_exists "$tmp_dir/home/.openclaw/skills/baoyu-url-to-markdown"
+    assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/deps/baoyu-url-to-markdown"
+    [ ! -d "$tmp_dir/home/.openclaw/skills/baoyu-url-to-markdown" ] || fail "Did not expect optional adapters to be enabled by default"
 }
 
 test_init_fills_language_placeholder() {
@@ -444,6 +488,15 @@ exit 0'
 test_platform_entries_mention_hook_and_wiki_context() {
     assert_file_contains "$REPO_ROOT/platforms/claude/CLAUDE.md" "--install-hooks"
     assert_file_contains "$REPO_ROOT/platforms/codex/AGENTS.md" "优先查阅 wiki/index.md"
+    assert_file_contains "$REPO_ROOT/platforms/openclaw/README.md" "--upgrade --platform openclaw --target-dir <你的技能目录>/llm-wiki"
+}
+
+test_root_entries_explain_core_only_optional_and_target_dir() {
+    assert_file_contains "$REPO_ROOT/AGENTS.md" "--with-optional-adapters"
+    assert_file_contains "$REPO_ROOT/AGENTS.md" "默认只准备知识库核心主线"
+    assert_file_contains "$REPO_ROOT/AGENTS.md" "--target-dir <你的技能目录>/llm-wiki"
+    assert_file_contains "$REPO_ROOT/CLAUDE.md" "--with-optional-adapters"
+    assert_file_contains "$REPO_ROOT/CLAUDE.md" "默认只准备知识库核心主线"
 }
 
 test_skill_md_phase5_lint_mentions_confidence_audit() {
@@ -459,6 +512,8 @@ test_changelog_mentions_wiki_core_upgrades() {
     assert_file_contains "$REPO_ROOT/CHANGELOG.md" "purpose.md"
     assert_file_contains "$REPO_ROOT/CHANGELOG.md" "SessionStart hook"
     assert_file_contains "$REPO_ROOT/CHANGELOG.md" "delete 工作流"
+    assert_file_contains "$REPO_ROOT/CHANGELOG.md" "--with-optional-adapters"
+    assert_file_contains "$REPO_ROOT/CHANGELOG.md" "核心主线"
 }
 
 test_readme_sections() {
@@ -467,7 +522,11 @@ test_readme_sections() {
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform claude"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform codex"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform openclaw"
+    assert_file_contains "$REPO_ROOT/README.md" "--with-optional-adapters"
+    assert_file_contains "$REPO_ROOT/README.md" "--target-dir <你的技能目录>/llm-wiki"
+    assert_file_contains "$REPO_ROOT/README.md" "--upgrade --platform openclaw --target-dir <你的技能目录>/llm-wiki"
     assert_file_contains "$REPO_ROOT/README.md" "wechat-article-to-markdown"
+    assert_file_not_contains "$REPO_ROOT/README.md" "bash setup.sh"
     assert_file_not_contains "$REPO_ROOT/README.md" "x-article-extractor"
     assert_file_not_contains "$REPO_ROOT/README.md" "baoyu-danger-x-to-markdown"
 }
@@ -492,12 +551,70 @@ exit 1'
     output="$(
         HOME="$tmp_dir/home" \
         PATH="$tmp_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-        bash "$REPO_ROOT/install.sh" --platform claude 2>&1
-    )" || fail "install.sh should keep going when uv tool install fails"
+        bash "$REPO_ROOT/install.sh" --platform claude --with-optional-adapters 2>&1
+    )" || fail "install.sh should keep going when optional adapter bootstrap fails"
 
     assert_text_contains "$output" "wechat-article-to-markdown 安装失败"
     assert_text_contains "$output" "llm-wiki 已准备完成"
     assert_path_exists "$tmp_dir/home/.claude/skills/llm-wiki/SKILL.md"
+}
+
+test_upgrade_auto_refuses_ambiguous_installed_platforms() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/home/.claude/skills/llm-wiki" "$tmp_dir/home/.codex/skills/llm-wiki"
+
+    if output="$(
+        HOME="$tmp_dir/home" \
+        bash "$REPO_ROOT/install.sh" --upgrade --platform auto 2>&1
+    )"; then
+        fail "install.sh --upgrade --platform auto should fail when multiple installs exist"
+    fi
+
+    assert_text_contains "$output" "检测到多个已安装平台"
+    assert_text_contains "$output" "--platform"
+}
+
+test_upgrade_uses_explicit_target_dir() {
+    local tmp_dir output custom_target
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    custom_target="$tmp_dir/custom/llm-wiki"
+    mkdir -p "$tmp_dir/home/.openclaw/skills" "$custom_target"
+    printf 'stale\n' > "$custom_target/README.md"
+
+    output="$(
+        HOME="$tmp_dir/home" \
+        bash "$REPO_ROOT/install.sh" --upgrade --platform openclaw --target-dir "$custom_target" 2>&1
+    )" || fail "install.sh --upgrade should support explicit target directories"
+
+    assert_text_contains "$output" "目标目录：$custom_target"
+    assert_text_contains "$output" "llm-wiki 升级完成"
+    assert_path_exists "$custom_target/install.sh"
+    assert_file_contains "$custom_target/README.md" "llm-wiki - 多平台知识库构建 Skill"
+    [ ! -d "$tmp_dir/home/.openclaw/skills/llm-wiki" ] || fail "Did not expect upgrade to write into the default OpenClaw skill path"
+}
+
+test_upgrade_fails_when_explicit_target_dir_is_missing() {
+    local tmp_dir output custom_target
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    custom_target="$tmp_dir/custom/llm-wiki"
+    mkdir -p "$tmp_dir/home/.openclaw/skills"
+
+    if output="$(
+        HOME="$tmp_dir/home" \
+        bash "$REPO_ROOT/install.sh" --upgrade --platform openclaw --target-dir "$custom_target" 2>&1
+    )"; then
+        fail "install.sh --upgrade should fail when the explicit target directory is missing"
+    fi
+
+    assert_text_contains "$output" "尚未安装 llm-wiki"
+    assert_text_contains "$output" "升级失败"
 }
 
 test_skill_md_routes_wechat_to_new_tool() {
@@ -753,6 +870,7 @@ test_install_prints_source_boundary_from_registry() {
     assert_registry_labels_present_in_text "$output" "core_builtin"
     assert_registry_labels_present_in_text "$output" "optional_adapter"
     assert_registry_labels_present_in_text "$output" "manual_only"
+    assert_text_contains "$output" "--with-optional-adapters"
 }
 
 test_install_warns_when_managed_source_is_missing() {
@@ -852,8 +970,12 @@ test_init_creates_synthesis_sessions_subdir() {
 }
 
 test_setup_runs_on_bash_3_2
+test_install_with_optional_adapters_bootstraps_dependencies
 test_install_dry_run_for_claude
 test_install_auto_refuses_ambiguous_platforms
+test_upgrade_auto_refuses_ambiguous_installed_platforms
+test_upgrade_uses_explicit_target_dir
+test_upgrade_fails_when_explicit_target_dir_is_missing
 test_install_openclaw_copies_bundle
 test_init_fills_language_placeholder
 test_phase1_templates_exist
@@ -870,6 +992,7 @@ test_hook_session_start_outputs_context_when_wiki_exists
 test_hook_session_start_returns_empty_json_without_wiki
 test_install_registers_and_uninstalls_session_start_hook
 test_platform_entries_mention_hook_and_wiki_context
+test_root_entries_explain_core_only_optional_and_target_dir
 test_skill_md_phase5_lint_mentions_confidence_audit
 test_changelog_mentions_wiki_core_upgrades
 test_readme_sections

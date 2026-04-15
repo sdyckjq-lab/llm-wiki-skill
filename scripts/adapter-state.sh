@@ -9,36 +9,33 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_REGISTRY_SCRIPT="$SCRIPT_DIR/source-registry.sh"
 # 微信工具 URL 从共享配置读取，与 install.sh 保持一致
 source "$SCRIPT_DIR/shared-config.sh"
+source "$SCRIPT_DIR/runtime-context.sh"
 SKILL_ROOT_OVERRIDE=""
+LAYOUT_MODE_OVERRIDE=""
 
 usage() {
   cat <<'EOF'
 用法：
-  bash scripts/adapter-state.sh [--skill-root <path>] check <source_id>
-  bash scripts/adapter-state.sh [--skill-root <path>] summary
-  bash scripts/adapter-state.sh [--skill-root <path>] summary-human
-  bash scripts/adapter-state.sh [--skill-root <path>] classify-run <source_id> <exit_code> <output_path>
+  bash scripts/adapter-state.sh [--skill-root <path>] [--layout-mode <source_checkout|installed_skill|upgrade_target>] check <source_id>
+  bash scripts/adapter-state.sh [--skill-root <path>] [--layout-mode <source_checkout|installed_skill|upgrade_target>] summary
+  bash scripts/adapter-state.sh [--skill-root <path>] [--layout-mode <source_checkout|installed_skill|upgrade_target>] summary-human
+  bash scripts/adapter-state.sh [--skill-root <path>] [--layout-mode <source_checkout|installed_skill|upgrade_target>] classify-run <source_id> <exit_code> <output_path>
 EOF
 }
 
-resolve_skill_root() {
-  if [ -n "$SKILL_ROOT_OVERRIDE" ]; then
-    printf '%s\n' "$SKILL_ROOT_OVERRIDE"
-    return 0
-  fi
-
-  printf '%s\n' "$(dirname "$PROJECT_ROOT")"
+resolve_optional_root() {
+  resolve_optional_adapter_root "$PROJECT_ROOT" "$SKILL_ROOT_OVERRIDE" "$LAYOUT_MODE_OVERRIDE"
 }
 
 dependency_installed() {
   local dependency_name="$1"
   local dependency_type="$2"
-  local skill_root
+  local optional_root
 
   case "$dependency_type" in
     bundled)
-      skill_root="$(resolve_skill_root)"
-      if [ -d "$skill_root/$dependency_name" ]; then
+      optional_root="$(resolve_optional_root)"
+      if [ -d "$optional_root/$dependency_name" ]; then
         return 0
       fi
       return 1
@@ -112,13 +109,13 @@ default_install_hint() {
 
   case "$source_id" in
     web_article|x_twitter|zhihu_article)
-      printf '%s\n' "重新运行当前平台的 llm-wiki 安装命令，确认 ${adapter_name} 已准备到技能目录"
+      printf '%s\n' "重新运行当前平台的 llm-wiki 安装命令，并追加 --with-optional-adapters，确认 ${adapter_name} 已准备到技能目录"
       ;;
     wechat_article)
       printf '%s\n' "先安装 uv，再执行：uv tool install ${WECHAT_TOOL_URL}"
       ;;
     youtube_video)
-      printf '%s\n' "重新运行当前平台的 llm-wiki 安装命令，确认 ${adapter_name} 已准备到技能目录"
+      printf '%s\n' "重新运行当前平台的 llm-wiki 安装命令，并追加 --with-optional-adapters，确认 ${adapter_name} 已准备到技能目录"
       ;;
     *)
       printf '%s\n' "-"
@@ -381,6 +378,11 @@ while [ $# -gt 0 ]; do
     --skill-root)
       [ $# -ge 2 ] || { usage; exit 1; }
       SKILL_ROOT_OVERRIDE="$2"
+      shift 2
+      ;;
+    --layout-mode)
+      [ $# -ge 2 ] || { usage; exit 1; }
+      LAYOUT_MODE_OVERRIDE="$2"
       shift 2
       ;;
     *)

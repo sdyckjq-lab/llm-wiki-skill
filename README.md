@@ -20,10 +20,10 @@
 
 ## 前置条件
 
-- 你的 agent 能执行 shell 命令
-- 如果你要自动提取网页或公众号，Chrome 需要以调试模式启动
+- 核心主线前提：你的 agent 能执行 shell 命令，并能读写本地文件
+- 如果你要自动提取网页、X/Twitter 或知乎，Chrome 需要以调试模式启动
 - 如果你要自动提取微信公众号或 YouTube 字幕，机器上需要有 `uv`
-- `bun` 或 `npm` 二选一即可，安装网页提取依赖时会自动择一使用
+- 如果你要启用网页提取依赖，`bun` 或 `npm` 二选一即可
 
 ## 安装方式
 
@@ -51,9 +51,7 @@ bash install.sh --platform openclaw
 - Codex: `~/.codex/skills/llm-wiki`（如果你旧环境还在用 `~/.Codex/skills`，安装器也会兼容）
 - OpenClaw: `~/.openclaw/skills/llm-wiki`
 
-如果 OpenClaw 不是这一路径，也可以显式传入 `--target-dir <你的技能目录>`。
-
-旧的 Claude 安装方式仍然保留给现有用户：`bash setup.sh`。它现在只是统一安装器的兼容入口。
+如果 OpenClaw 不是这一路径，也可以显式传入 `--target-dir <你的技能目录>/llm-wiki`。
 
 ### 更新
 
@@ -66,10 +64,22 @@ bash install.sh --upgrade
 会自动完成：
 1. `git pull` 拉取最新代码
 2. 检测你已安装的平台（Claude / Codex / OpenClaw）
-3. 重新复制文件并安装依赖
+3. 重新复制核心文件
 4. 已有的 hook 配置不受影响
 
 如果装了多个平台，需要显式指定：`bash install.sh --upgrade --platform claude`。
+
+如果你是装在自定义目录里，升级时也把最终的技能目录一并传进来：
+
+```bash
+bash install.sh --upgrade --platform openclaw --target-dir <你的技能目录>/llm-wiki
+```
+
+如果你还需要刷新网页 / X / 微信公众号 / YouTube / 知乎的自动提取能力，再显式追加：
+
+```bash
+bash install.sh --upgrade --platform <你的平台> --with-optional-adapters
+```
 
 ## 来源边界
 
@@ -97,6 +107,7 @@ bash install.sh --upgrade
 - **对话结晶化**：把有价值的对话内容直接沉淀为知识库页面
 - **智能去重**：SHA256 缓存跳过未变化的素材，批量处理时不浪费 token
 - **智能素材路由**：根据 URL 域名自动选择最佳提取方式
+- **核心优先安装**：默认只准备知识库主线，网页 / X / 公众号 / YouTube / 知乎提取按需显式开启
 - **素材删除**：级联删除素材时自动清理关联页面、断链和缓存
 - **查询结果持久化**：有价值的综合回答可保存回知识库，越用越完整
 - **自动上下文注入**：SessionStart hook 让 agent 每次会话自动感知知识库（Claude Code）
@@ -132,13 +143,23 @@ bash install.sh --upgrade
 
 只有在环境里明确只存在一个平台目录时，才建议用 `--platform auto`。
 
+### 如果我想启用网页 / X / 微信公众号 / YouTube 自动提取怎么办？
+
+默认安装只准备知识库核心主线。
+
+需要自动提取 URL 类来源时，再按当前平台执行：
+
+- Claude Code: `bash install.sh --platform claude --with-optional-adapters`
+- Codex: `bash install.sh --platform codex --with-optional-adapters`
+- OpenClaw: `bash install.sh --platform openclaw --with-optional-adapters`
+
 ### 为什么 X / Twitter 提取还是失败？
 
-X / Twitter 现在走 `baoyu-url-to-markdown`。如果提取失败，通常是因为 Chrome 没有启动调试模式，或者当前 Chrome 会话没有登录 X。你也可以直接把内容复制粘贴给 agent 处理。
+X / Twitter 现在走 `baoyu-url-to-markdown`。如果还没启用可选提取器，先按当前平台重新运行安装命令，并追加 `--with-optional-adapters`。如果已经启用但仍然失败，通常是因为 Chrome 没有启动调试模式，或者当前 Chrome 会话没有登录 X。你也可以直接把内容复制粘贴给 agent 处理。
 
 ### 为什么公众号提取还是失败？
 
-公众号现在使用 `wechat-article-to-markdown`。如果机器上还没有 `uv`，安装器会提示并跳过这一项；补装 `uv` 后重新运行 `bash install.sh --platform <你的平台>` 即可。
+公众号现在使用 `wechat-article-to-markdown`。如果机器上还没有 `uv`，安装器会提示并跳过这一项；补装 `uv` 后重新运行 `bash install.sh --platform <你的平台> --with-optional-adapters` 即可。
 
 ## 目录结构
 
