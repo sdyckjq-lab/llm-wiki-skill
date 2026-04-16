@@ -24,6 +24,21 @@ bash install.sh --platform claude --with-optional-adapters
 
 安装完成后，还会一并带上 `/llm-wiki-upgrade`。以后要更新核心主线，可以直接让 Claude 执行这个命令。
 
+## 分支管理规则
+
+改动代码（非纯文档/注释）时，按以下流程操作：
+
+1. 开新分支：从 main 创建，命名用 feat/ 或 fix/ 前缀（如 fix/cache-reliability-write-through）
+2. 分步 commit：每完成一个逻辑单元就提交（脚本实现 → 测试 → 文档更新，分开 commit）
+3. 推送并创建 PR：推到远端后用 `gh pr create` 创建 PR
+4. 合并：确认测试通过后在 GitHub 上合并
+
+不需要开分支的情况：
+- 只改了 CLAUDE.md、文档、注释
+- 只是探索性阅读代码
+
+设计文档或 plan 写完准备动手改代码时，也先开分支再开始实现。
+
 ## 推送前测试规则
 
 每次 `git push` 前必须验证，按改动范围选深度：
