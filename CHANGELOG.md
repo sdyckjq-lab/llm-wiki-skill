@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.5.0 (2026-04-16)
+
+### 新增
+
+- `scripts/create-source-page.sh`：source 页面写入和缓存更新绑定为原子操作，写入后自动更新 `.wiki-cache.json`，失败时自动回滚
+- `scripts/cache.sh check`：MISS 原因细分（`no_entry` / `hash_changed` / `no_source`），AI 可根据原因给出不同提示
+- `scripts/cache.sh check`：自愈缓存检查，无 cache entry 但 source 页面存在时通过 filename stem 精确匹配自动修复（返回 `HIT(repaired)`）
+
+### 改进
+
+- `SKILL.md` ingest 工作流：source 页面写入改用 `create-source-page.sh`，Step 12 不再单独调用 `cache.sh update`
+
 ## v2.4.0 (2026-04-15)
 
 ### 新增
