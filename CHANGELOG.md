@@ -1,11 +1,21 @@
 # Changelog
 
-## Unreleased
+## v2.6.0 (2026-04-17)
+
+### 新增
+
+- **交互式知识图谱 HTML**：双击 `wiki/knowledge-graph.html` 即可在浏览器中查看交互式知识图谱（搜索、过滤、社区聚类、节点详情抽屉、键盘快捷键）
+- `scripts/build-graph-data.sh`：扫描 wiki 目录生成 `graph-data.json`（节点/边/社区聚类/U2 top-30 算法/2MB 降级保护）
+- `scripts/build-graph-html.sh`：拼接 header + graph-data.json + footer 生成自包含 HTML，复制 vendor 资产
+- `templates/graph-template-header.html`：品牌栏 + 工具条 + 三栏骨架 + CSS 变量 + ARIA
+- `templates/graph-template-footer.html`：vis.js 初始化 + 11 个交互状态 + 键盘快捷键
+- `templates/vis-network.min.js` + `marked.min.js` + `purify.min.js`：vendor 三件套及对应许可证
+- `SKILL.md` 工作流 8 新增 Step 2b（生成 graph-data.json）和 Step 2c（生成 HTML）
+- 14 个回归测试覆盖 build-graph-data.sh 和 build-graph-html.sh 的 13 条代码路径
 
 ### 修复
 
-- `adapter-state.sh`：不再把 Chrome `9222` 调试端口当成网页类提取器可用性的硬前置；未开启端口时仍标记为可用，并明确说明会自动拉起临时浏览器
-- `install.sh`、`README.md`、`SKILL.md`：统一 `9222` 的文案语义，改为"复用已登录会话"的可选增强，而不是默认必需条件
+- `build-graph-data.sh`：bash 3.2 全角字符后 `$OUTPUT` 变量名误解析，改用 `${OUTPUT}` 显式定界
 
 ## v2.5.0 (2026-04-16)
 
