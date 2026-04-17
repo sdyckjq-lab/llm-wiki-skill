@@ -92,7 +92,7 @@ if [ ! -s "$NODES_TSV" ]; then
       nodes: [],
       edges: []
     }' > "$OUTPUT"
-  echo "空图谱已写入：$OUTPUT（wiki/ 下无可纳入节点）"
+  echo "空图谱已写入：${OUTPUT}（wiki/ 下无可纳入节点）"
   exit 0
 fi
 
