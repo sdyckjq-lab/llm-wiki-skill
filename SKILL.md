@@ -878,7 +878,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
 ---
 
-## 工作流 8：graph（Mermaid 知识图谱）
+## 工作流 8：graph（知识图谱 · Mermaid + 交互式 HTML）
 
 ### 触发关键词
 
@@ -930,6 +930,29 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    用户如果明确要求 AI 给某几条边打标，可以单独说"把 A 和 B 之间的关系标成'实现'"，
    AI 再手动修改 `wiki/knowledge-graph.md` 对应的那一行。
 
+2b. **生成交互式图谱数据**（`wiki/graph-data.json`）：
+
+   ```bash
+   bash scripts/build-graph-data.sh "$WIKI_ROOT"
+   ```
+
+   脚本会扫描 `wiki/{entities,topics,sources,comparisons,synthesis,queries}/*.md`，
+   解析同行 `[[双向链接]]` 与 `<!-- confidence: EXTRACTED|INFERRED|AMBIGUOUS -->` 注释，
+   做主题社区聚类，并写入 `wiki/graph-data.json`（>2MB 自动降级，单节点只留 500 行）。
+   依赖 `jq`（`brew install jq`）。
+
+2c. **生成交互式图谱 HTML**（`wiki/knowledge-graph.html`）：
+
+   ```bash
+   bash scripts/build-graph-html.sh "$WIKI_ROOT"
+   ```
+
+   脚本把 `templates/graph-template-header.html` + `graph-data.json`（已做
+   `</script>` 转义）+ `templates/graph-template-footer.html` 拼成单文件 HTML，
+   并把 `vis-network.min.js` / `marked.min.js` / `purify.min.js` 三件套 + LICENSE
+   复制到 `wiki/`。首帧只渲染 top-30 节点（按社区代表 + 度数补齐），
+   搜索框、关系类型筛选、双击抽屉、键盘导航都在前端即时生效。
+
 3. **向用户展示结果**（按 `WIKI_LANG` 切换语言）：
 
    **zh**：
@@ -937,13 +960,14 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    知识图谱已生成！
 
    共 {N} 个节点，{M} 条关联
-   文件：wiki/knowledge-graph.md
 
    查看方式：
-   - Obsidian：直接打开即可渲染
-   - VS Code：安装 Markdown Preview Enhanced 插件
-   - GitHub：上传后自动渲染
-   - Typora：直接打开
+   - 交互式（推荐）：双击 wiki/knowledge-graph.html
+     （建议 Chrome / Firefox；Safari 若提示"已阻止脚本"，
+      可在 wiki/ 下跑 `python3 -m http.server 8000` 再访问
+      http://localhost:8000/knowledge-graph.html）
+   - Mermaid 静态图：wiki/knowledge-graph.md
+     （Obsidian / VS Code Markdown Preview Enhanced / GitHub / Typora 均可渲染）
 
    孤立页面（未纳入图谱）：
    - [[某页面]]（建议添加到相关实体页或主题页）
