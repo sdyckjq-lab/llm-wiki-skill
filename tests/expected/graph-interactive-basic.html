@@ -1,0 +1,1389 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="generator" content="llm-wiki-skill">
+<title>知识图谱 · HTML测试知识库</title>
+<style>
+:root {
+  --font-brand: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-text:  -apple-system, BlinkMacSystemFont, "PingFang SC",
+                "Noto Sans CJK SC", sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  --brand: #1f4d3a;
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #6b6b6b;
+  --text-faint: #999999;
+  --border: #e5e5e5;
+  --code-bg: #f5f5f5;
+  --warn-bg: #fff8e1;
+  --warn-border: #e6c75a;
+  --error-bg: #fee;
+  --error-border: #d26464;
+
+  --edge-extracted: #2d7a3e;
+  --edge-inferred:  #7a5c2d;
+  --edge-ambiguous: #7a2d2d;
+
+  --node-c1: #4a6fa5; --node-c2: #9a6b47; --node-c3: #5f7a4d;
+  --node-c4: #9c6b9c; --node-c5: #3d6f7a; --node-c6: #a67c3a;
+  --node-c7: #6b5c9c; --node-c8: #7a5a5a; --node-c-other: #9a9a9a;
+
+  --drawer-w: 420px;
+  --brand-h: 48px;
+  --tools-h: 40px;
+  --footer-h: 24px;
+  --radius: 4px;
+  --grid: 4px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { opacity: 0.8; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button:hover { background: var(--code-bg); }
+button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* ─── layout grid ────────────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 0;
+  grid-template-rows: var(--brand-h) var(--tools-h) 1fr var(--footer-h);
+  grid-template-areas:
+    "brand  brand"
+    "tools  tools"
+    "canvas drawer"
+    "footer footer";
+  height: 100vh;
+  transition: grid-template-columns 240ms ease-out;
+}
+.layout.drawer-open {
+  grid-template-columns: 1fr var(--drawer-w);
+}
+
+/* ─── brand bar ──────────────────────────────────────────────── */
+.brand {
+  grid-area: brand;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand__mark {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-family: var(--font-brand);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--brand);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  line-height: 1;
+}
+.brand__underline {
+  width: 20px;
+  height: 2px;
+  background: var(--brand);
+  margin-top: 4px;
+}
+.brand__title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.brand__meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* ─── toolbar ────────────────────────────────────────────────── */
+.toolbar {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: var(--brand-h);
+  z-index: 9;
+}
+.search {
+  position: relative;
+  flex: 0 0 280px;
+  max-width: 40%;
+}
+.search__input {
+  width: 100%;
+  height: 28px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.search__input:focus {
+  outline: none;
+  border-color: var(--brand);
+  background: var(--surface);
+}
+.search__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  display: none;
+  z-index: 20;
+}
+.search__dropdown[data-open="1"] { display: block; }
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 14px;
+}
+.filter-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 2px;
+  cursor: pointer;
+  user-select: none;
+}
+.filter-chk input { margin: 0; cursor: pointer; }
+.filter-chk__label { color: var(--text); }
+.filter-chk__sample {
+  display: inline-block;
+  width: 28px;
+  height: 8px;
+  vertical-align: middle;
+}
+
+/* ─── main canvas ────────────────────────────────────────────── */
+.canvas-wrap {
+  grid-area: canvas;
+  position: relative;
+  background: var(--bg);
+  overflow: hidden;
+}
+#canvas {
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+#canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--brand);
+}
+.canvas-pill {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--code-bg);
+  border-radius: 12px;
+  pointer-events: none;
+  display: none;
+}
+.canvas-pill[data-show="1"] { display: block; }
+
+.canvas-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  opacity: 0;
+  transition: opacity 200ms;
+  pointer-events: none;
+  z-index: 15;
+}
+.canvas-toast[data-show="1"] { opacity: 1; }
+
+.canvas-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.canvas-placeholder[hidden] { display: none; }
+.canvas-placeholder code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius);
+}
+.progress {
+  width: 160px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 1.5px;
+  overflow: hidden;
+  position: relative;
+}
+.progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: var(--brand);
+  animation: progress 1.2s linear infinite;
+}
+@keyframes progress {
+  to { left: 100%; }
+}
+
+/* ─── drawer ─────────────────────────────────────────────────── */
+.drawer {
+  grid-area: drawer;
+  overflow: hidden;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.drawer-inner {
+  width: var(--drawer-w);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  flex: 1;
+  word-break: break-word;
+}
+.drawer-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  background: var(--code-bg);
+  border-radius: 10px;
+  margin-top: 6px;
+}
+.drawer-close {
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-dim);
+  border: none;
+  padding: 4px 8px;
+}
+.drawer-close:hover { color: var(--text); }
+
+.drawer-banner {
+  display: none;
+  padding: 8px 24px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-border);
+}
+.drawer-banner[data-show="1"] { display: block; }
+.drawer-banner button {
+  font-size: 13px;
+  padding: 2px 8px;
+  border-color: var(--warn-border);
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 32px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.drawer-body h1 { font-size: 22px; font-weight: 600; margin: 24px 0 12px; }
+.drawer-body h2 { font-size: 17px; font-weight: 600; margin: 20px 0 8px; }
+.drawer-body h3 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; }
+.drawer-body p { margin: 8px 0; }
+.drawer-body code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.drawer-body pre {
+  background: var(--code-bg);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.drawer-body pre code { background: transparent; padding: 0; }
+.drawer-body a { color: var(--brand); }
+.drawer-body a.wikilink { color: var(--brand); text-decoration: underline dotted; }
+.drawer-body a.wikilink--dead {
+  color: var(--text-faint);
+  text-decoration: line-through;
+  cursor: help;
+}
+.drawer-body blockquote {
+  margin: 10px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--text-dim);
+}
+.drawer-body ul, .drawer-body ol { padding-left: 24px; }
+.drawer-body table {
+  border-collapse: collapse;
+  font-size: 14px;
+  margin: 8px 0;
+}
+.drawer-body th, .drawer-body td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+}
+
+/* ─── footer ─────────────────────────────────────────────────── */
+.footer {
+  grid-area: footer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.footer__left, .footer__right {
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.footer a { color: var(--text-faint); }
+
+/* ─── top-level banners (error / mobile / file://) ───────────── */
+.banner {
+  display: none;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  border: 1px solid transparent;
+  z-index: 50;
+}
+.banner[data-show="1"] { display: block; }
+.banner--error {
+  grid-column: 1 / -1;
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--text);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(250, 250, 247, 0.96);
+  z-index: 100;
+}
+.overlay[data-show="1"] { display: flex; }
+.overlay__card {
+  max-width: 520px;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  text-align: left;
+}
+.overlay__card h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-brand);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--brand);
+}
+.overlay__card code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.overlay__actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* ─── responsive ────────────────────────────────────────────── */
+@media (max-width: 1023px) {
+  :root { --drawer-w: min(420px, 50%); }
+  .brand__title { display: none; }
+}
+
+/* screen-reader only */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+</style>
+</head>
+<body>
+
+<div class="layout" id="layout">
+
+  <header class="brand" role="banner">
+    <a class="brand__mark" href="https://github.com/sdyckjq-lab/llm-wiki-skill"
+       target="_blank" rel="noopener">
+      <span>llm-wiki</span>
+      <span class="brand__underline" aria-hidden="true"></span>
+    </a>
+    <div class="brand__title" id="brand-title">HTML测试知识库</div>
+    <div class="brand__meta" aria-label="图谱规模与更新时间">
+      <span id="brand-nodes">3</span> 概念 ·
+      <span id="brand-edges">2</span> 关联 ·
+      更新 <span id="brand-date">2026-01-01</span>
+    </div>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="图谱过滤与搜索">
+    <div class="search">
+      <label for="search" class="sr-only">搜索节点（按斜杠键聚焦）</label>
+      <input type="search" id="search" class="search__input"
+             placeholder="搜索节点（按 / 聚焦）"
+             autocomplete="off" spellcheck="false">
+      <div class="search__dropdown" id="search-dropdown"
+           role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="filters" role="group" aria-label="按关系类型过滤">
+      <label class="filter-chk">
+        <input type="checkbox" id="flt-extracted" checked>
+        <svg class="filter-chk__sample" width="28" height="8" aria-hidden="true">
+          <line x1="1" y1="4" x2="27" y2="4"
+                stroke="var(--edge-extracted)" stroke-width="2"/>
+        </svg>
+        <span class="filter-chk__label">EXTRACTED</span>
+      </label>
+      <label class="filter-chk">
+        <input type="checkbox" id="flt-inferred" checked>
+        <svg class="filter-chk__sample" width="28" height="8" aria-hidden="true">
+          <line x1="1" y1="4" x2="27" y2="4"
+                stroke="var(--edge-inferred)" stroke-width="2"
+                stroke-dasharray="4,4"/>
+        </svg>
+        <span class="filter-chk__label">INFERRED</span>
+      </label>
+      <label class="filter-chk">
+        <input type="checkbox" id="flt-ambiguous">
+        <svg class="filter-chk__sample" width="28" height="8" aria-hidden="true">
+          <line x1="1" y1="4" x2="27" y2="4"
+                stroke="var(--edge-ambiguous)" stroke-width="2"
+                stroke-dasharray="1,3"/>
+        </svg>
+        <span class="filter-chk__label">AMBIGUOUS</span>
+      </label>
+    </div>
+  </div>
+
+  <main class="canvas-wrap" role="region" aria-label="知识图谱画布">
+    <div id="canvas" tabindex="0" aria-label="可缩放可平移的知识图谱画布"></div>
+
+    <div class="canvas-pill" id="partial-pill" data-show="0">
+      显示 <span id="pill-shown">0</span>/<span id="pill-total">0</span> · 搜索可查全部
+    </div>
+
+    <div class="canvas-toast" id="canvas-toast"
+         role="status" aria-live="polite" data-show="0"></div>
+
+    <div class="canvas-placeholder" id="state-loading" hidden>
+      <div>正在布局 <span id="loading-count">0</span> 节点...</div>
+      <div class="progress" aria-hidden="true"></div>
+    </div>
+
+    <div class="canvas-placeholder" id="state-empty" hidden>
+      <div>知识库节点不足。</div>
+      <div>先跑 <code>/llm-wiki ingest</code> 添加几篇再回来看。</div>
+    </div>
+  </main>
+
+  <aside class="drawer" id="drawer"
+         role="dialog" aria-modal="false"
+         aria-labelledby="drawer-title" aria-hidden="true">
+    <div class="drawer-inner">
+      <div class="drawer-header">
+        <div style="min-width:0; flex:1;">
+          <h1 class="drawer-title" id="drawer-title">—</h1>
+          <span class="drawer-badge" id="drawer-badge" hidden>社区 —</span>
+        </div>
+        <button class="drawer-close" id="drawer-close"
+                aria-label="关闭详情" title="关闭（Esc）">×</button>
+      </div>
+      <div class="drawer-banner" id="drawer-banner" data-show="0">
+        <span id="drawer-banner-text">已截断显示前 500 行</span>
+        <button id="drawer-open-full">打开完整文件</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+  </aside>
+
+  <footer class="footer" role="contentinfo">
+    <div class="footer__left" id="footer-status">
+      <span id="foot-shown">0</span>/<span id="foot-total">0</span> 显示 ·
+      <span id="foot-isolated">0</span> 孤立 ·
+      <span id="foot-communities">0</span> 社区 ·
+      filter: <span id="foot-filter">EXTRACTED+INFERRED</span>
+    </div>
+    <div class="footer__right">
+      generated by llm-wiki ·
+      <a href="https://github.com/sdyckjq-lab/llm-wiki-skill"
+         target="_blank" rel="noopener">github.com/sdyckjq-lab/llm-wiki-skill</a>
+    </div>
+  </footer>
+
+</div>
+
+<!-- 全屏覆盖层：file:// 受限、Mobile opt-out、致命错误 -->
+<div class="overlay" id="overlay-file" data-show="0" role="alertdialog"
+     aria-labelledby="overlay-file-title">
+  <div class="overlay__card">
+    <h2 id="overlay-file-title">浏览器禁止本地脚本</h2>
+    <p>你的浏览器拒绝在 <code>file://</code> 下加载本图谱所需的 JS 资源。</p>
+    <p>请改用 <strong>Chrome 或 Firefox</strong> 打开本文件，或在
+      <code>wiki/</code> 目录下跑：</p>
+    <pre><code>python3 -m http.server 8000</code></pre>
+    <p>再访问 <code>http://localhost:8000/knowledge-graph.html</code>。</p>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-mobile" data-show="0" role="alertdialog"
+     aria-labelledby="overlay-mobile-title">
+  <div class="overlay__card">
+    <h2 id="overlay-mobile-title">建议桌面浏览器打开</h2>
+    <p>图谱在桌面浏览器效果最佳。当前屏幕过窄（&lt; 768px），交互将受限。</p>
+    <div class="overlay__actions">
+      <button id="overlay-mobile-continue">仍要继续</button>
+    </div>
+  </div>
+</div>
+
+<div class="banner banner--error" id="banner-json" data-show="0" role="alert">
+  图谱数据损坏：<span id="banner-json-msg">—</span>。
+  重跑 <code>/llm-wiki graph</code>。
+</div>
+
+<!-- build-graph-html.sh 在此之后按顺序拼接：
+     1) graph-data.json 内容（JSON 内嵌前先做 </script> → <\/script> 转义）
+     2) templates/graph-template-footer.html（含 </script> 闭标签、
+        vis-network/marked/purify 加载、以及交互初始化脚本）。 -->
+<script id="graph-data" type="application/json">
+
+{
+  "meta": {
+    "build_date": "2026-01-01T00:00:00Z",
+    "wiki_title": "HTML测试知识库",
+    "total_nodes": 3,
+    "total_edges": 2,
+    "initial_view": ["A", "B", "C"],
+    "degraded": false
+  },
+  "nodes": [
+    {
+      "id": "A",
+      "label": "节点A",
+      "type": "entity",
+      "community": "t1",
+      "content": "# 节点A\n\n这是节点A的内容。\n",
+      "source_path": "/fake/wiki/entities/A.md"
+    },
+    {
+      "id": "B",
+      "label": "节点B",
+      "type": "entity",
+      "community": "t1",
+      "content": "# 节点B\n\n这是节点B的内容。\n",
+      "source_path": "/fake/wiki/entities/B.md"
+    },
+    {
+      "id": "C",
+      "label": "节点C",
+      "type": "entity",
+      "community": null,
+      "content": "# 节点C\n\n包含 <\/script> 标签测试。\n",
+      "source_path": "/fake/wiki/entities/C.md"
+    }
+  ],
+  "edges": [
+    {"id": "e1", "from": "A", "to": "B", "type": "EXTRACTED"},
+    {"id": "e2", "from": "B", "to": "C", "type": "INFERRED"}
+  ]
+}
+</script>
+
+<script src="vis-network.min.js" defer onerror="__libLoadFailed('vis-network')"></script>
+<script src="marked.min.js"     defer onerror="__libLoadFailed('marked')"></script>
+<script src="purify.min.js"     defer onerror="__libLoadFailed('purify')"></script>
+
+<script>
+// graph-template-footer.html
+// 交互式知识图谱运行时脚本。依赖：vis-network、marked、DOMPurify。
+// 设计文档（Addenda）锁定的 11 个交互状态在下方一一实现。
+
+(function () {
+  "use strict";
+
+  // ─── 0. DOM 速查 ─────────────────────────────────────────────
+  var $ = function (id) { return document.getElementById(id); };
+  var dom = {
+    layout:          $("layout"),
+    canvas:          $("canvas"),
+    drawer:          $("drawer"),
+    drawerTitle:     $("drawer-title"),
+    drawerBadge:     $("drawer-badge"),
+    drawerBody:      $("drawer-body"),
+    drawerClose:     $("drawer-close"),
+    drawerBanner:    $("drawer-banner"),
+    drawerBannerTxt: $("drawer-banner-text"),
+    drawerOpenFull:  $("drawer-open-full"),
+    search:          $("search"),
+    searchDropdown:  $("search-dropdown"),
+    fltExtracted:    $("flt-extracted"),
+    fltInferred:     $("flt-inferred"),
+    fltAmbiguous:    $("flt-ambiguous"),
+    partialPill:     $("partial-pill"),
+    pillShown:       $("pill-shown"),
+    pillTotal:       $("pill-total"),
+    toast:           $("canvas-toast"),
+    stateLoading:    $("state-loading"),
+    loadingCount:    $("loading-count"),
+    stateEmpty:      $("state-empty"),
+    bannerJson:      $("banner-json"),
+    bannerJsonMsg:   $("banner-json-msg"),
+    overlayFile:     $("overlay-file"),
+    overlayMobile:   $("overlay-mobile"),
+    overlayMobileContinue: $("overlay-mobile-continue"),
+    brandNodes:      $("brand-nodes"),
+    brandEdges:      $("brand-edges"),
+    footShown:       $("foot-shown"),
+    footTotal:       $("foot-total"),
+    footIsolated:    $("foot-isolated"),
+    footCommunities: $("foot-communities"),
+    footFilter:      $("foot-filter")
+  };
+
+  // ─── 1. 全局状态 ─────────────────────────────────────────────
+  var state = {
+    data: null,        // 原始 graph-data.json
+    nodes: null,       // vis.DataSet（当前渲染的）
+    edges: null,       // vis.DataSet（当前渲染的）
+    network: null,
+    initialVisible: null, // Set<nodeId>（meta.initial_view）
+    visible: null,     // Set<nodeId>（当前已加入画布的节点）
+    filters: { EXTRACTED: true, INFERRED: true, AMBIGUOUS: false },
+    isolatedCount: 0,
+    searchTimer: null,
+    toastTimer: null,
+    mobileAccepted: false
+  };
+
+  // 颜色从 CSS 变量读，避免 JS / CSS 双源维护
+  var css = getComputedStyle(document.documentElement);
+  function cssVar(name, fallback) {
+    var v = css.getPropertyValue(name).trim();
+    return v || fallback;
+  }
+  var palette = {
+    edge: {
+      EXTRACTED: cssVar("--edge-extracted", "#2d7a3e"),
+      INFERRED:  cssVar("--edge-inferred",  "#7a5c2d"),
+      AMBIGUOUS: cssVar("--edge-ambiguous", "#7a2d2d")
+    },
+    node: [
+      cssVar("--node-c1"), cssVar("--node-c2"), cssVar("--node-c3"),
+      cssVar("--node-c4"), cssVar("--node-c5"), cssVar("--node-c6"),
+      cssVar("--node-c7"), cssVar("--node-c8")
+    ],
+    nodeOther: cssVar("--node-c-other", "#9a9a9a"),
+    text:     cssVar("--text",     "#1a1a1a"),
+    textDim:  cssVar("--text-dim", "#6b6b6b"),
+    surface:  cssVar("--surface",  "#ffffff")
+  };
+
+  // ─── 2. 启动入口 ─────────────────────────────────────────────
+  // DOMContentLoaded 时主 JSON 已内联；vendor JS 因为 `defer` 会在本脚本
+  // 之后、DOMContentLoaded 之前执行完——但 ERROR-FILE 状态下它们可能根本
+  // 没加载。我们用两道检查：lib 加载错误立即弹 overlay；正常时 delay 3s
+  // 后检查 window.vis 是否存在。
+  document.addEventListener("DOMContentLoaded", function () {
+    if (detectMobile()) return; // 提示后视用户选择
+    if (!parseData()) return;
+    if (!checkVendorsReady()) return;
+    boot();
+  });
+
+  function __libLoadFailed(/* name */) {
+    // script onerror —— file:// 下 Safari 常见
+    showOverlayFile();
+  }
+  // 把 __libLoadFailed 暴露到 window（onerror 属性会查全局）
+  window.__libLoadFailed = __libLoadFailed;
+
+  function detectMobile() {
+    if (window.innerWidth >= 768 || state.mobileAccepted) return false;
+    dom.overlayMobile.setAttribute("data-show", "1");
+    dom.overlayMobileContinue.addEventListener("click", function () {
+      state.mobileAccepted = true;
+      dom.overlayMobile.setAttribute("data-show", "0");
+      document.addEventListener("DOMContentLoaded", function () {
+        if (!parseData()) return;
+        if (!checkVendorsReady()) return;
+        boot();
+      });
+      // DOMContentLoaded 已触发，直接重入
+      if (!parseData()) return;
+      if (!checkVendorsReady()) return;
+      boot();
+    }, { once: true });
+    return true;
+  }
+
+  // ─── 3. 数据解析（ERROR-JSON / EMPTY）──────────────────────────
+  function parseData() {
+    var raw;
+    try {
+      var tag = $("graph-data");
+      if (!tag) throw new Error("缺少 graph-data 标签");
+      raw = JSON.parse(tag.textContent || "{}");
+    } catch (e) {
+      showJsonError(e.message || String(e));
+      return false;
+    }
+    if (!raw || !Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) {
+      showJsonError("nodes / edges 字段缺失或非数组");
+      return false;
+    }
+    state.data = raw;
+    if (raw.nodes.length < 3) {
+      dom.stateEmpty.hidden = false;
+      syncBrandAndFooter();
+      return false;
+    }
+    return true;
+  }
+
+  function showJsonError(msg) {
+    dom.bannerJsonMsg.textContent = msg;
+    dom.bannerJson.setAttribute("data-show", "1");
+  }
+
+  // ─── 4. Vendor 检查（ERROR-FILE）─────────────────────────────
+  function checkVendorsReady() {
+    var ready = (typeof vis !== "undefined")
+             && (typeof marked !== "undefined")
+             && (typeof DOMPurify !== "undefined");
+    if (!ready) {
+      // 3 秒后再查一次；仍不行则弹 overlay
+      setTimeout(function () {
+        if (typeof vis === "undefined"
+            || typeof marked === "undefined"
+            || typeof DOMPurify === "undefined") {
+          showOverlayFile();
+        } else {
+          boot();
+        }
+      }, 3000);
+      dom.stateLoading.hidden = false;
+      dom.loadingCount.textContent = state.data.nodes.length;
+      return false;
+    }
+    return true;
+  }
+
+  function showOverlayFile() {
+    dom.overlayFile.setAttribute("data-show", "1");
+  }
+
+  // ─── 5. 构建初始 top-30（U2 算法）────────────────────────────
+  function buildInitialSet() {
+    var meta = state.data.meta || {};
+    if (Array.isArray(meta.initial_view) && meta.initial_view.length) {
+      return new Set(meta.initial_view);
+    }
+    // 兜底：build-graph-data.sh 没给时，JS 端再算一次（按社区代表 + 度补齐）
+    var nodes = state.data.nodes;
+    var degree = {};
+    state.data.edges.forEach(function (e) {
+      degree[e.from] = (degree[e.from] || 0) + 1;
+      degree[e.to]   = (degree[e.to]   || 0) + 1;
+    });
+    var byCommunity = {};
+    nodes.forEach(function (n) {
+      var c = n.community == null ? "_" : String(n.community);
+      if (!byCommunity[c]) byCommunity[c] = [];
+      byCommunity[c].push(n);
+    });
+    var picked = new Set();
+    Object.keys(byCommunity).forEach(function (c) {
+      var group = byCommunity[c].slice().sort(function (a, b) {
+        return (degree[b.id] || 0) - (degree[a.id] || 0);
+      });
+      if (group[0]) picked.add(group[0].id);
+    });
+    if (picked.size >= 30 || picked.size >= nodes.length) return picked;
+    var rest = nodes.slice().filter(function (n) { return !picked.has(n.id); })
+                    .sort(function (a, b) {
+                      return (degree[b.id] || 0) - (degree[a.id] || 0);
+                    });
+    for (var i = 0; i < rest.length && picked.size < 30; i++) {
+      picked.add(rest[i].id);
+    }
+    return picked;
+  }
+
+  // ─── 6. 构建 vis DataSet ─────────────────────────────────────
+  function edgeStyle(type) {
+    var color = palette.edge[type] || palette.edge.EXTRACTED;
+    var base = { color: { color: color, highlight: color, hover: color },
+                 width: 0.8, selectionWidth: 2, hoverWidth: 1.5 };
+    if (type === "INFERRED")  base.dashes = [4, 4];
+    if (type === "AMBIGUOUS") base.dashes = [1, 3];
+    return base;
+  }
+
+  function nodeStyle(n) {
+    var c = n.community == null ? 0
+          : (typeof n.community === "number" ? n.community
+             : (n.community.charCodeAt ? n.community.charCodeAt(0) : 0));
+    var idx = ((c % palette.node.length) + palette.node.length) % palette.node.length;
+    var color = palette.node[idx] || palette.nodeOther;
+    return {
+      color: { background: palette.surface, border: color, highlight: { border: color, background: palette.surface } },
+      borderWidth: 1.5, borderWidthSelected: 3,
+      size: 8,
+      font: { size: 12, color: palette.text, face: "-apple-system, sans-serif" }
+    };
+  }
+
+  function buildDataSets() {
+    state.initialVisible = buildInitialSet();
+    state.visible = new Set(state.initialVisible);
+
+    var visibleEdges = state.data.edges.filter(function (e) {
+      if (!state.filters[e.type || "EXTRACTED"]) return false;
+      return state.visible.has(e.from) && state.visible.has(e.to);
+    });
+
+    var nodeItems = state.data.nodes
+      .filter(function (n) { return state.visible.has(n.id); })
+      .map(function (n) {
+        return Object.assign({ id: n.id, label: n.label || n.id }, nodeStyle(n));
+      });
+
+    var edgeItems = visibleEdges.map(function (e, i) {
+      return Object.assign(
+        { id: e.id || "e" + i, from: e.from, to: e.to, type: e.type || "EXTRACTED" },
+        edgeStyle(e.type || "EXTRACTED")
+      );
+    });
+
+    state.nodes = new vis.DataSet(nodeItems);
+    state.edges = new vis.DataSet(edgeItems);
+
+    // 孤立节点 = 全图中没有任何边连接的节点
+    var touched = {};
+    state.data.edges.forEach(function (e) { touched[e.from] = 1; touched[e.to] = 1; });
+    state.isolatedCount = state.data.nodes.filter(function (n) {
+      return !touched[n.id];
+    }).length;
+  }
+
+  // ─── 7. 启动 network ─────────────────────────────────────────
+  function boot() {
+    dom.stateLoading.hidden = false;
+    dom.loadingCount.textContent = state.data.nodes.length;
+
+    buildDataSets();
+
+    var options = {
+      physics: {
+        stabilization: { iterations: 200, updateInterval: 25, fit: true },
+        barnesHut: { gravitationalConstant: -6000, springLength: 140, springConstant: 0.02 }
+      },
+      interaction: {
+        hover: true,
+        tooltipDelay: 200,
+        navigationButtons: false,
+        zoomView: true,
+        keyboard: { enabled: false } // 我们自己接管键盘
+      },
+      nodes: { shape: "dot", scaling: { min: 8, max: 14 } },
+      edges: {
+        smooth: { type: "continuous" },
+        arrows: { to: { enabled: false } }
+      }
+    };
+
+    state.network = new vis.Network(
+      dom.canvas,
+      { nodes: state.nodes, edges: state.edges },
+      options
+    );
+
+    state.network.once("stabilizationIterationsDone", function () {
+      dom.stateLoading.hidden = true;
+      state.network.fit({ animation: { duration: 400, easingFunction: "easeOutCubic" } });
+    });
+
+    state.network.on("selectNode", function (params) {
+      if (params.nodes && params.nodes[0]) openDrawer(params.nodes[0]);
+    });
+    state.network.on("click", function (params) {
+      if (!params.nodes || !params.nodes.length) closeDrawer();
+    });
+
+    syncBrandAndFooter();
+    updatePartialPill();
+    wireFilters();
+    wireSearch();
+    wireDrawer();
+    wireKeyboard();
+    wireResize();
+  }
+
+  // ─── 8. 品牌栏 / footer 数字同步 ─────────────────────────────
+  function syncBrandAndFooter() {
+    var total = (state.data && state.data.nodes) ? state.data.nodes.length : 0;
+    var edgesTotal = (state.data && state.data.edges) ? state.data.edges.length : 0;
+    dom.brandNodes.textContent = total;
+    dom.brandEdges.textContent = edgesTotal;
+    dom.footTotal.textContent = total;
+    dom.footShown.textContent = state.visible ? state.visible.size : 0;
+    dom.footIsolated.textContent = state.isolatedCount;
+    var comms = {};
+    if (state.data && state.data.nodes) {
+      state.data.nodes.forEach(function (n) {
+        if (n.community != null) comms[n.community] = 1;
+      });
+    }
+    dom.footCommunities.textContent = Object.keys(comms).length;
+    dom.footFilter.textContent = activeFilterLabel();
+  }
+
+  function activeFilterLabel() {
+    var on = Object.keys(state.filters).filter(function (k) {
+      return state.filters[k];
+    });
+    return on.length ? on.join("+") : "none";
+  }
+
+  function updatePartialPill() {
+    var total = state.data.nodes.length;
+    var shown = state.visible ? state.visible.size : 0;
+    if (shown < total) {
+      dom.pillShown.textContent = shown;
+      dom.pillTotal.textContent = total;
+      dom.partialPill.setAttribute("data-show", "1");
+    } else {
+      dom.partialPill.setAttribute("data-show", "0");
+    }
+  }
+
+  // ─── 9. 过滤 ─────────────────────────────────────────────────
+  function wireFilters() {
+    [["fltExtracted", "EXTRACTED"],
+     ["fltInferred",  "INFERRED"],
+     ["fltAmbiguous", "AMBIGUOUS"]].forEach(function (pair) {
+      var el = dom[pair[0]];
+      state.filters[pair[1]] = !!el.checked;
+      el.addEventListener("change", function () {
+        state.filters[pair[1]] = !!el.checked;
+        applyFilters();
+        syncBrandAndFooter();
+      });
+    });
+  }
+
+  function applyFilters() {
+    if (!state.edges) return;
+    var current = state.edges.getIds();
+    state.edges.remove(current);
+    var items = state.data.edges
+      .filter(function (e) { return state.filters[e.type || "EXTRACTED"]; })
+      .filter(function (e) { return state.visible.has(e.from) && state.visible.has(e.to); })
+      .map(function (e, i) {
+        return Object.assign(
+          { id: e.id || "e" + i, from: e.from, to: e.to, type: e.type || "EXTRACTED" },
+          edgeStyle(e.type || "EXTRACTED")
+        );
+      });
+    state.edges.add(items);
+  }
+
+  // ─── 10. 搜索 + SEARCH-HIDDEN-HIT 三件套 ─────────────────────
+  function wireSearch() {
+    dom.search.addEventListener("input", function () {
+      clearTimeout(state.searchTimer);
+      state.searchTimer = setTimeout(doSearch, 120);
+    });
+    dom.search.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        doSearch(true);
+      } else if (e.key === "Escape") {
+        if (dom.search.value) {
+          dom.search.value = "";
+          doSearch();
+        }
+      }
+    });
+  }
+
+  function doSearch(commit) {
+    var q = (dom.search.value || "").trim().toLowerCase();
+    if (!q) {
+      dom.searchDropdown.setAttribute("data-open", "0");
+      return;
+    }
+    var matches = state.data.nodes.filter(function (n) {
+      var label = (n.label || n.id || "").toString().toLowerCase();
+      return label.indexOf(q) !== -1;
+    });
+    if (!matches.length) {
+      showNoMatch();
+      return;
+    }
+    dom.searchDropdown.setAttribute("data-open", "0");
+    var target = matches[0];
+    if (commit || matches.length === 1) {
+      focusNode(target.id, { pulse: true, openDrawer: true });
+    }
+  }
+
+  function showNoMatch() {
+    var top3 = state.data.nodes.slice(0, 3).map(function (n) {
+      return n.label || n.id;
+    });
+    dom.searchDropdown.innerHTML =
+      "无匹配。试试：" + top3.map(function (s) {
+        return "<code>" + escapeHtml(s) + "</code>";
+      }).join(" · ");
+    dom.searchDropdown.setAttribute("data-open", "1");
+  }
+
+  // 聚焦某节点；若不在 top-30 则先加入（SEARCH-HIDDEN-HIT 三件套）
+  function focusNode(id, opts) {
+    opts = opts || {};
+    var wasHidden = !state.visible.has(id);
+    if (wasHidden) ensureVisible(id);
+
+    if (!state.nodes.get(id)) return;
+
+    // ① canvas pan 到目标
+    state.network.focus(id, {
+      scale: 1.2,
+      animation: { duration: 250, easingFunction: "easeOutCubic" }
+    });
+
+    // ② pulse 一次：半径 8→14→8，400ms
+    pulseNode(id);
+
+    // ③ toast 通知（仅 hidden hit 时）
+    if (wasHidden) {
+      var n = state.data.nodes.filter(function (x) { return x.id === id; })[0];
+      showToast("已从隐藏节点加入 " + (n ? (n.label || n.id) : id));
+    }
+
+    if (opts.openDrawer) openDrawer(id);
+  }
+
+  function ensureVisible(id) {
+    var n = state.data.nodes.filter(function (x) { return x.id === id; })[0];
+    if (!n) return;
+    state.visible.add(id);
+    state.nodes.add(Object.assign({ id: id, label: n.label || id }, nodeStyle(n)));
+    var newEdges = state.data.edges.filter(function (e) {
+      if (!state.filters[e.type || "EXTRACTED"]) return false;
+      return (e.from === id && state.visible.has(e.to))
+          || (e.to   === id && state.visible.has(e.from));
+    }).map(function (e, i) {
+      return Object.assign(
+        { id: e.id || "e" + id + "-" + i, from: e.from, to: e.to, type: e.type || "EXTRACTED" },
+        edgeStyle(e.type || "EXTRACTED")
+      );
+    });
+    try { state.edges.add(newEdges); } catch (e) { /* 重复 id，跳过 */ }
+    updatePartialPill();
+    syncBrandAndFooter();
+  }
+
+  function pulseNode(id) {
+    var steps = [{ size: 14, t: 200 }, { size: 8, t: 200 }];
+    var base = state.nodes.get(id);
+    if (!base) return;
+    var delay = 0;
+    steps.forEach(function (s) {
+      delay += s.t;
+      setTimeout(function () {
+        try { state.nodes.update({ id: id, size: s.size }); } catch (_) {}
+      }, delay);
+    });
+  }
+
+  function showToast(text) {
+    dom.toast.textContent = text;
+    dom.toast.setAttribute("data-show", "1");
+    clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(function () {
+      dom.toast.setAttribute("data-show", "0");
+    }, 2000);
+  }
+
+  // ─── 11. 抽屉 ────────────────────────────────────────────────
+  function wireDrawer() {
+    dom.drawerClose.addEventListener("click", closeDrawer);
+    dom.drawerOpenFull.addEventListener("click", function () {
+      var id = dom.drawer.getAttribute("data-node-id");
+      var n = state.data.nodes.filter(function (x) { return x.id === id; })[0];
+      if (!n || !n.source_path) return;
+      try { window.open("file://" + n.source_path, "_blank"); }
+      catch (_) { /* 某些浏览器禁止 file:// open，忽略 */ }
+    });
+    // 抽屉内 wikilink 代理
+    dom.drawerBody.addEventListener("click", function (e) {
+      var a = e.target.closest("a.wikilink");
+      if (!a) return;
+      e.preventDefault();
+      if (a.classList.contains("wikilink--dead")) return;
+      var targetId = a.getAttribute("data-target");
+      if (targetId) focusNode(targetId, { pulse: true, openDrawer: true });
+    });
+  }
+
+  function openDrawer(nodeId) {
+    var n = state.data.nodes.filter(function (x) { return x.id === nodeId; })[0];
+    if (!n) return;
+
+    dom.drawer.setAttribute("data-node-id", nodeId);
+    dom.drawerTitle.textContent = n.label || n.id;
+
+    if (n.community != null) {
+      dom.drawerBadge.textContent = "社区 " + n.community;
+      dom.drawerBadge.hidden = false;
+    } else {
+      dom.drawerBadge.hidden = true;
+    }
+
+    // DEGRADED：> 500 行截断
+    var content = n.content || "";
+    var lines = content.split("\n");
+    if (lines.length > 500) {
+      content = lines.slice(0, 500).join("\n") + "\n\n…（已截断）";
+      dom.drawerBannerTxt.textContent = "已截断显示前 500 行 · 完整内容 " + lines.length + " 行";
+      dom.drawerBanner.setAttribute("data-show", "1");
+      dom.drawerOpenFull.style.display = n.source_path ? "" : "none";
+    } else {
+      dom.drawerBanner.setAttribute("data-show", "0");
+    }
+
+    renderDrawerBody(content);
+
+    dom.layout.classList.add("drawer-open");
+    dom.drawer.setAttribute("aria-hidden", "false");
+  }
+
+  function closeDrawer() {
+    dom.layout.classList.remove("drawer-open");
+    dom.drawer.setAttribute("aria-hidden", "true");
+    try { state.network && state.network.unselectAll(); } catch (_) {}
+  }
+
+  function renderDrawerBody(md) {
+    // 1) 先让 marked 做 wikilink 预处理：[[Name]] / [[id|label]]
+    var withLinks = md.replace(/\[\[([^\]]+)\]\]/g, function (_, inner) {
+      var parts = inner.split("|");
+      var target = parts[0].trim();
+      var label = (parts[1] || parts[0]).trim();
+      var exists = state.data.nodes.some(function (x) {
+        return x.id === target || (x.label && x.label === target);
+      });
+      var cls = exists ? "wikilink" : "wikilink wikilink--dead";
+      var ti = exists ? "" : ' tabindex="0" title="节点 \'' + escapeAttr(target) + "' 未找到\"";
+      var resolved = exists ? target : target;
+      return '<a href="#" class="' + cls + '" data-target="'
+           + escapeAttr(resolved) + '"' + ti + ">" + escapeHtml(label) + "</a>";
+    });
+
+    // 2) marked 渲染 + DOMPurify 清洗
+    var html = marked.parse(withLinks, { breaks: false, gfm: true });
+    var safe = DOMPurify.sanitize(html, {
+      ADD_ATTR: ["target", "data-target", "tabindex"]
+    });
+    dom.drawerBody.innerHTML = safe;
+    dom.drawerBody.scrollTop = 0;
+  }
+
+  // ─── 12. 键盘快捷键 ──────────────────────────────────────────
+  function wireKeyboard() {
+    document.addEventListener("keydown", function (e) {
+      // Esc：清搜索 → 关抽屉
+      if (e.key === "Escape") {
+        if (dom.search.value) {
+          dom.search.value = "";
+          dom.searchDropdown.setAttribute("data-open", "0");
+        } else if (dom.layout.classList.contains("drawer-open")) {
+          closeDrawer();
+        }
+        return;
+      }
+      // `/`：聚焦搜索（除非正在输入）
+      if (e.key === "/" && document.activeElement !== dom.search) {
+        var tag = (document.activeElement && document.activeElement.tagName) || "";
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          e.preventDefault();
+          dom.search.focus();
+          dom.search.select();
+        }
+      }
+      // canvas 聚焦时的方向 / zoom / Enter
+      if (document.activeElement === dom.canvas) {
+        var step = 40;
+        var moves = { ArrowLeft: [step, 0], ArrowRight: [-step, 0],
+                      ArrowUp:   [0, step], ArrowDown:  [0, -step] };
+        if (moves[e.key]) {
+          e.preventDefault();
+          state.network.moveTo({
+            offset: { x: moves[e.key][0], y: moves[e.key][1] },
+            animation: { duration: 150, easingFunction: "easeOutCubic" }
+          });
+        } else if (e.key === "+" || e.key === "=") {
+          e.preventDefault();
+          state.network.moveTo({ scale: state.network.getScale() * 1.2 });
+        } else if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          state.network.moveTo({ scale: state.network.getScale() / 1.2 });
+        } else if (e.key === "Enter") {
+          var sel = state.network.getSelectedNodes();
+          if (sel && sel[0]) openDrawer(sel[0]);
+        }
+      }
+    });
+  }
+
+  // ─── 13. resize ──────────────────────────────────────────────
+  function wireResize() {
+    window.addEventListener("resize", function () {
+      if (state.network) state.network.redraw();
+      if (window.innerWidth < 768 && !state.mobileAccepted) {
+        dom.overlayMobile.setAttribute("data-show", "1");
+      }
+    });
+  }
+
+  // ─── 14. 小工具 ──────────────────────────────────────────────
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+})();
+</script>
+
+</body>
+</html>

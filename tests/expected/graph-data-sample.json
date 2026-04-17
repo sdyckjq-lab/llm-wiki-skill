@@ -1,0 +1,157 @@
+{
+  "meta": {
+    "build_date": "2026-01-01T00:00:00Z",
+    "wiki_title": "测试知识库",
+    "total_nodes": 8,
+    "total_edges": 13,
+    "initial_view": [
+      "paper",
+      "Transformer",
+      "GPT",
+      "Attention",
+      "arch",
+      "Decoder",
+      "Encoder",
+      "finetune"
+    ],
+    "degraded": false
+  },
+  "nodes": [
+    {
+      "id": "Attention",
+      "label": "Attention",
+      "type": "entity",
+      "community": "arch",
+      "content": "# Attention\n\n注意力机制是 Transformer 的核心。参见 [[Transformer]]。"
+    },
+    {
+      "id": "Decoder",
+      "label": "Decoder",
+      "type": "entity",
+      "community": "arch",
+      "content": "# Decoder\n\n解码器组件。与 [[Transformer]] <!-- confidence: INFERRED --> 的解码端对应。"
+    },
+    {
+      "id": "Encoder",
+      "label": "Encoder",
+      "type": "entity",
+      "community": "arch",
+      "content": "# Encoder\n\n编码器组件。属于 [[Transformer]] 架构的一部分。"
+    },
+    {
+      "id": "GPT",
+      "label": "GPT",
+      "type": "entity",
+      "community": "finetune",
+      "content": "# GPT\n\nGPT 系列基于 [[Transformer]] <!-- confidence: AMBIGUOUS --> 的解码器架构。"
+    },
+    {
+      "id": "Transformer",
+      "label": "Transformer",
+      "type": "entity",
+      "community": "arch",
+      "content": "# Transformer\n\nTransformer 是一种基于自注意力机制的序列到序列模型架构。\n\n## 核心组件\n\n- [[Attention]] — 自注意力机制\n- [[Encoder]] — 编码器\n- [[Decoder]] — 解码器"
+    },
+    {
+      "id": "arch",
+      "label": "深度学习架构",
+      "type": "topic",
+      "community": "arch",
+      "content": "# 深度学习架构\n\n本主题涵盖深度学习的核心架构组件。\n\n- [[Transformer]]\n- [[Attention]]\n- [[Encoder]]\n- [[Decoder]]"
+    },
+    {
+      "id": "finetune",
+      "label": "微调技术",
+      "type": "topic",
+      "community": "finetune",
+      "content": "# 微调技术\n\n本主题涵盖模型微调相关技术。\n\n- [[GPT]]"
+    },
+    {
+      "id": "paper",
+      "label": "Attention Is All You Need",
+      "type": "source",
+      "community": null,
+      "content": "# Attention Is All You Need\n\n原始论文提出了自注意力机制。\n\n- [[Attention]] <!-- confidence: EXTRACTED -->"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "Attention",
+      "to": "Transformer",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e2",
+      "from": "Decoder",
+      "to": "Transformer",
+      "type": "INFERRED"
+    },
+    {
+      "id": "e3",
+      "from": "Encoder",
+      "to": "Transformer",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e4",
+      "from": "GPT",
+      "to": "Transformer",
+      "type": "AMBIGUOUS"
+    },
+    {
+      "id": "e5",
+      "from": "Transformer",
+      "to": "Attention",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e6",
+      "from": "Transformer",
+      "to": "Decoder",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e7",
+      "from": "Transformer",
+      "to": "Encoder",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e8",
+      "from": "arch",
+      "to": "Attention",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e9",
+      "from": "arch",
+      "to": "Decoder",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e10",
+      "from": "arch",
+      "to": "Encoder",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e11",
+      "from": "arch",
+      "to": "Transformer",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e12",
+      "from": "finetune",
+      "to": "GPT",
+      "type": "EXTRACTED"
+    },
+    {
+      "id": "e13",
+      "from": "paper",
+      "to": "Attention",
+      "type": "EXTRACTED"
+    }
+  ]
+}

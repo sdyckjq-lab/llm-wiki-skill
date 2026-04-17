@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "build_date": "2026-01-01T00:00:00Z",
+    "wiki_title": "graph-data-empty-wiki",
+    "total_nodes": 0,
+    "total_edges": 0,
+    "initial_view": []
+  },
+  "nodes": [],
+  "edges": []
+}
