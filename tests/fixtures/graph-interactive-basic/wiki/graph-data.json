@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "build_date": "2026-01-01T00:00:00Z",
+    "wiki_title": "HTML测试知识库",
+    "total_nodes": 3,
+    "total_edges": 2,
+    "initial_view": ["A", "B", "C"],
+    "degraded": false
+  },
+  "nodes": [
+    {
+      "id": "A",
+      "label": "节点A",
+      "type": "entity",
+      "community": "t1",
+      "content": "# 节点A\n\n这是节点A的内容。\n",
+      "source_path": "/fake/wiki/entities/A.md"
+    },
+    {
+      "id": "B",
+      "label": "节点B",
+      "type": "entity",
+      "community": "t1",
+      "content": "# 节点B\n\n这是节点B的内容。\n",
+      "source_path": "/fake/wiki/entities/B.md"
+    },
+    {
+      "id": "C",
+      "label": "节点C",
+      "type": "entity",
+      "community": null,
+      "content": "# 节点C\n\n包含 </script> 标签测试。\n",
+      "source_path": "/fake/wiki/entities/C.md"
+    }
+  ],
+  "edges": [
+    {"id": "e1", "from": "A", "to": "B", "type": "EXTRACTED"},
+    {"id": "e2", "from": "B", "to": "C", "type": "INFERRED"}
+  ]
+}

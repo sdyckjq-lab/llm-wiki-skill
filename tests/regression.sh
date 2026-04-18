@@ -1227,6 +1227,278 @@ test_cache_check_miss_hash_changed_when_content_differs
 test_skill_md_ingest_uses_create_source_page
 test_skill_md_step12_does_not_call_cache_update
 
+# ─── 交互式图谱测试 ────────────────────────────────────────────
+
+GRAPH_DATA_SAMPLE="tests/fixtures/graph-data-sample-wiki"
+GRAPH_DATA_EMPTY="tests/fixtures/graph-data-empty-wiki"
+GRAPH_HTML_BASIC="tests/fixtures/graph-interactive-basic"
+
+test_graph_data_sample_wiki_matches_expected() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_SAMPLE" \
+        "$tmp_dir/graph-data.json" > /dev/null 2>&1 \
+        || fail "build-graph-data.sh should succeed on sample wiki"
+
+    jq 'del(.nodes[].source_path)' "$tmp_dir/graph-data.json" > "$tmp_dir/normalized.json"
+    diff "$tmp_dir/normalized.json" "$REPO_ROOT/tests/expected/graph-data-sample.json" \
+        || fail "sample wiki graph-data output differs from expected"
+}
+
+test_graph_data_empty_wiki_matches_expected() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_EMPTY" \
+        "$tmp_dir/graph-data.json" > /dev/null 2>&1 \
+        || fail "build-graph-data.sh should succeed on empty wiki"
+
+    diff "$tmp_dir/graph-data.json" "$REPO_ROOT/tests/expected/graph-data-empty.json" \
+        || fail "empty wiki graph-data output differs from expected"
+}
+
+test_graph_data_test_mode_is_stable() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_SAMPLE" \
+        "$tmp_dir/run1.json" > /dev/null 2>&1
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_SAMPLE" \
+        "$tmp_dir/run2.json" > /dev/null 2>&1
+
+    diff "$tmp_dir/run1.json" "$tmp_dir/run2.json" \
+        || fail "TEST_MODE output should be identical across runs"
+}
+
+test_graph_data_has_three_confidence_types() {
+    local tmp_dir edges
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_SAMPLE" \
+        "$tmp_dir/graph-data.json" > /dev/null 2>&1
+
+    edges=$(jq -r '.edges[].type' "$tmp_dir/graph-data.json" | sort -u)
+    assert_text_contains "$edges" "EXTRACTED"
+    assert_text_contains "$edges" "INFERRED"
+    assert_text_contains "$edges" "AMBIGUOUS"
+}
+
+test_graph_data_community_clustering() {
+    local tmp_dir communities
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_SAMPLE" \
+        "$tmp_dir/graph-data.json" > /dev/null 2>&1
+
+    # Transformer/Attention/Encoder/Decoder 属于 arch 社区
+    local arch_nodes
+    arch_nodes=$(jq -r '.nodes[] | select(.community == "arch") | .id' "$tmp_dir/graph-data.json" | sort | tr '\n' ' ')
+    assert_text_contains "$arch_nodes" "Attention"
+    assert_text_contains "$arch_nodes" "Decoder"
+    assert_text_contains "$arch_nodes" "Encoder"
+    assert_text_contains "$arch_nodes" "Transformer"
+
+    # GPT 属于 finetune 社区
+    local finetune_nodes
+    finetune_nodes=$(jq -r '.nodes[] | select(.community == "finetune") | .id' "$tmp_dir/graph-data.json")
+    assert_text_contains "$finetune_nodes" "GPT"
+
+    # paper 没有社区（null）
+    local paper_comm
+    paper_comm=$(jq -r '.nodes[] | select(.id == "paper") | .community' "$tmp_dir/graph-data.json")
+    [ "$paper_comm" = "null" ] || fail "Expected paper community to be null, got: $paper_comm"
+}
+
+test_graph_data_empty_wiki_has_zero_nodes_and_edges() {
+    local tmp_dir nodes_count edges_count
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" \
+        "$REPO_ROOT/$GRAPH_DATA_EMPTY" \
+        "$tmp_dir/graph-data.json" > /dev/null 2>&1
+
+    nodes_count=$(jq '.meta.total_nodes' "$tmp_dir/graph-data.json")
+    edges_count=$(jq '.meta.total_edges' "$tmp_dir/graph-data.json")
+    [ "$nodes_count" = "0" ] || fail "Expected 0 nodes in empty wiki, got: $nodes_count"
+    [ "$edges_count" = "0" ] || fail "Expected 0 edges in empty wiki, got: $edges_count"
+}
+
+test_graph_html_basic_assembly() {
+    local tmp_dir output_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    output_dir="$tmp_dir/wiki"
+    mkdir -p "$output_dir"
+    cp "$REPO_ROOT/$GRAPH_HTML_BASIC/wiki/graph-data.json" "$output_dir/graph-data.json"
+
+    bash "$REPO_ROOT/scripts/build-graph-html.sh" \
+        "$tmp_dir" \
+        "$output_dir/knowledge-graph.html" > /dev/null 2>&1 \
+        || fail "build-graph-html.sh should succeed on basic fixture"
+
+    # HTML 文件存在
+    assert_path_exists "$output_dir/knowledge-graph.html"
+
+    # 包含品牌栏占位符替换结果
+    assert_file_contains "$output_dir/knowledge-graph.html" "HTML测试知识库"
+    assert_file_contains "$output_dir/knowledge-graph.html" "3"
+    assert_file_contains "$output_dir/knowledge-graph.html" "2"
+
+    # vendor 资产已复制
+    assert_path_exists "$output_dir/vis-network.min.js"
+    assert_path_exists "$output_dir/marked.min.js"
+    assert_path_exists "$output_dir/purify.min.js"
+    assert_path_exists "$output_dir/LICENSE-vis-network.txt"
+    assert_path_exists "$output_dir/LICENSE-marked.txt"
+    assert_path_exists "$output_dir/LICENSE-purify.txt"
+}
+
+test_graph_html_escapes_script_tag_in_content() {
+    local tmp_dir output_dir html
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    output_dir="$tmp_dir/wiki"
+    mkdir -p "$output_dir"
+    cp "$REPO_ROOT/$GRAPH_HTML_BASIC/wiki/graph-data.json" "$output_dir/graph-data.json"
+
+    bash "$REPO_ROOT/scripts/build-graph-html.sh" \
+        "$tmp_dir" \
+        "$output_dir/knowledge-graph.html" > /dev/null 2>&1
+
+    # </script> 必须被转义为 <\/script>
+    html=$(cat "$output_dir/knowledge-graph.html")
+    assert_text_not_contains "$html" '</script> 标签'
+    assert_text_contains "$html" '<\/script> 标签'
+}
+
+test_graph_html_missing_data_exits_with_error() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki"
+
+    if bash "$REPO_ROOT/scripts/build-graph-html.sh" "$tmp_dir" > /dev/null 2>&1; then
+        fail "build-graph-html.sh should fail when graph-data.json is missing"
+    fi
+}
+
+test_graph_html_missing_template_exits_with_error() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki/scripts" "$tmp_dir/wiki"
+    printf '{}' > "$tmp_dir/wiki/graph-data.json"
+
+    # 把脚本复制到临时目录，让它找不到 templates/
+    cp "$REPO_ROOT/scripts/build-graph-html.sh" "$tmp_dir/wiki/scripts/"
+    chmod +x "$tmp_dir/wiki/scripts/build-graph-html.sh"
+
+    if bash "$tmp_dir/wiki/scripts/build-graph-html.sh" "$tmp_dir/wiki" > /dev/null 2>&1; then
+        fail "build-graph-html.sh should fail when templates are missing"
+    fi
+}
+
+test_graph_data_dead_links_are_ignored() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki/entities"
+
+    printf '# Alpha\n\n链接到 [[NonExistent]] 实体。\n' > "$tmp_dir/wiki/entities/Alpha.md"
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" "$tmp_dir" "$tmp_dir/wiki/graph-data.json" > /dev/null 2>&1
+
+    # 应该只有 Alpha 一个节点，0 条边（NonExistent 不存在）
+    local node_count edge_count
+    node_count=$(jq '.meta.total_nodes' "$tmp_dir/wiki/graph-data.json")
+    edge_count=$(jq '.meta.total_edges' "$tmp_dir/wiki/graph-data.json")
+    [ "$node_count" = "1" ] || fail "Expected 1 node, got: $node_count"
+    [ "$edge_count" = "0" ] || fail "Expected 0 edges (dead link ignored), got: $edge_count"
+}
+
+test_graph_data_self_links_are_ignored() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki/entities"
+
+    printf '# Self\n\n自引用 [[Self]]。\n' > "$tmp_dir/wiki/entities/Self.md"
+
+    LLM_WIKI_TEST_MODE=1 \
+        bash "$REPO_ROOT/scripts/build-graph-data.sh" "$tmp_dir" "$tmp_dir/wiki/graph-data.json" > /dev/null 2>&1
+
+    local edge_count
+    edge_count=$(jq '.meta.total_edges' "$tmp_dir/wiki/graph-data.json")
+    [ "$edge_count" = "0" ] || fail "Expected 0 edges (self-link ignored), got: $edge_count"
+}
+
+test_graph_data_exits_without_jq() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki/entities"
+
+    # 用 PATH 只含 /bin（无 jq）来测试依赖缺失
+    if output="$(PATH=/bin bash "$REPO_ROOT/scripts/build-graph-data.sh" "$tmp_dir" 2>&1)"; then
+        fail "build-graph-data.sh should fail when jq is not available"
+    fi
+    assert_text_contains "$output" "jq"
+}
+
+test_graph_data_wiki_dir_missing_exits() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    if bash "$REPO_ROOT/scripts/build-graph-data.sh" "$tmp_dir" 2>/dev/null; then
+        fail "build-graph-data.sh should fail when wiki/ directory is missing"
+    fi
+}
+
+test_graph_data_sample_wiki_matches_expected
+test_graph_data_empty_wiki_matches_expected
+test_graph_data_test_mode_is_stable
+test_graph_data_has_three_confidence_types
+test_graph_data_community_clustering
+test_graph_data_empty_wiki_has_zero_nodes_and_edges
+test_graph_html_basic_assembly
+test_graph_html_escapes_script_tag_in_content
+test_graph_html_missing_data_exits_with_error
+test_graph_html_missing_template_exits_with_error
+test_graph_data_dead_links_are_ignored
+test_graph_data_self_links_are_ignored
+test_graph_data_exits_without_jq
+test_graph_data_wiki_dir_missing_exits
+
 bash "$REPO_ROOT/tests/adapter-state.sh" || fail "adapter-state.sh 测试失败"
 
 echo "All regression checks passed."

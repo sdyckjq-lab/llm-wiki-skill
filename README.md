@@ -123,6 +123,7 @@ bash install.sh --upgrade --platform <你的平台> --with-optional-adapters
 - **digest 多格式**：支持深度报告、对比表、时间线三种综合分析格式
 - **ingest 隐私自查**：首次消化素材时提醒检查手机号、API key 等敏感信息
 - **图谱关系词汇表**：可选的手动标注词汇，让 Mermaid 图谱表达更精确
+- **交互式知识图谱**：生成自包含 HTML，浏览器双击即可查看——搜索、过滤、点击展开、社区聚类，不依赖服务器
 - **Obsidian 兼容**：所有内容都是本地 markdown，直接用 Obsidian 打开查看
 
 ## 常见问题
