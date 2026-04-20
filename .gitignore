@@ -6,3 +6,5 @@ __pycache__/
 deps/baoyu-url-to-markdown/scripts/bun.lock
 .claude/
 .context/
+.gstack/
+.playwright-cli/
