@@ -21,12 +21,10 @@ Turn scattered information into a growing, interconnected knowledge base
 ## Preview
 
 <div align="center">
-<img src="docs/assets/graph-preview.png" width="100%" alt="Knowledge Graph Preview">
+<img src="docs/assets/graph-demo.gif" width="100%" alt="Knowledge Graph Demo">
 </div>
 
 Watercolor card-style interactive knowledge graph — double-click the HTML file to explore in your browser. Search, filter, expand nodes, community clustering — all offline, no server needed.
-
-> **TODO**: Replace with an interactive GIF — `docs/assets/graph-demo.gif`
 
 ---
 

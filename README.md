@@ -21,12 +21,10 @@
 ## 效果预览
 
 <div align="center">
-<img src="docs/assets/graph-preview.png" width="100%" alt="知识图谱预览">
+<img src="docs/assets/graph-demo.gif" width="100%" alt="知识图谱演示">
 </div>
 
 水彩卡片风交互式知识图谱 — 双击 HTML 文件即可在浏览器中探索。搜索、过滤、节点展开、社区聚类，全部离线运行，不依赖服务器。
-
-> **TODO**: 录制交互 GIF 替换静态截图 — `docs/assets/graph-demo.gif`
 
 ---
 
