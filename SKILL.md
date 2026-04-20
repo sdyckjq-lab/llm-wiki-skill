@@ -941,38 +941,16 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    做主题社区聚类，并写入 `wiki/graph-data.json`（>2MB 自动降级，单节点只留 500 行）。
    依赖 `jq`（`brew install jq`）。
 
-2c. **生成交互式图谱 HTML**（默认同时输出 3 份） ：
+2c. **生成交互式图谱 HTML**（wash 水彩卡片风）：
 
    ```bash
    bash scripts/build-graph-html.sh "$WIKI_ROOT"
    ```
 
-   默认会一次生成三种风格：
-   - `wiki/knowledge-graph.html`（`classic`）
-   - `wiki/knowledge-graph-paper.html`（`paper`）
-   - `wiki/knowledge-graph-wash.html`（`wash`）
-
-   如需只生成某一种，可显式传：
-
-   ```bash
-   bash scripts/build-graph-html.sh --style classic "$WIKI_ROOT"
-   bash scripts/build-graph-html.sh --style paper "$WIKI_ROOT"
-   bash scripts/build-graph-html.sh --style wash "$WIKI_ROOT"
-   ```
-
-   脚本会按风格选择对应模板，把 `graph-data.json`（已做 `</script>` 转义）内嵌进
-   `<script id="graph-data" type="application/json">`，并复制本地 vendor 资产到 `wiki/`。
-   `classic` 使用 `vis-network`，保留 top-30 首帧降级、搜索框、关系类型筛选、双击抽屉、
-   键盘导航等完整交互；`paper` / `wash` 使用本地 `d3` + `roughjs` + `marked` + `purify`，
-   可离线双击打开。
-
-   **风格选择**：
-   - `classic`：规整商务，功能最全，大图优先推荐
-   - `paper`：手绘笔记本，蓝墨水纸面风，节点少于 300 时效果最佳
-   - `wash`：水彩卡片，柔和晕染，视觉最柔和
-
-   如果节点很多或更看重性能，优先推荐 `classic`；如果想挑视觉效果，不要先问用户选哪种，
-   直接默认生成三份让用户双击对比即可。
+   生成 `wiki/knowledge-graph.html`。脚本把 `graph-data.json`（已做 `</script>` 转义）
+   内嵌进 `<script id="graph-data" type="application/json">`，使用本地 `d3` + `roughjs` +
+   `marked` + `purify`，离线双击即可打开。包含搜索框、关系类型筛选、节点抽屉、
+   社区聚类等交互功能。
 
 3. **向用户展示结果**（按 `WIKI_LANG` 切换语言）：
 
@@ -983,16 +961,11 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    共 {N} 个节点，{M} 条关联
 
    查看方式：
-   - 交互式（推荐）：双击以下三个文件，对比自己更喜欢的风格
-     - wiki/knowledge-graph.html（classic，规整商务）
-     - wiki/knowledge-graph-paper.html（paper，手绘笔记本）
-     - wiki/knowledge-graph-wash.html（wash，水彩卡片）
+   - 交互式（推荐）：双击 wiki/knowledge-graph.html
      （建议 Chrome / Firefox；Safari 若提示"已阻止脚本"，
-      可在 wiki/ 下跑 `python3 -m http.server 8000` 再访问对应 HTML）
+      可在 wiki/ 下跑 `python3 -m http.server 8000` 再访问）
    - Mermaid 静态图：wiki/knowledge-graph.md
      （Obsidian / VS Code Markdown Preview Enhanced / GitHub / Typora 均可渲染）
-
-   节点很多时优先推荐 classic；paper / wash 更适合目视浏览和风格挑选。
 
    孤立页面（未纳入图谱）：
    - [[某页面]]（建议添加到相关实体页或主题页）
