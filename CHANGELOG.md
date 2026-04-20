@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.0.0 (2026-04-20)
+
+### 新增
+
+- **三种交互式知识图谱风格**：`build-graph-html.sh` 默认一次生成 classic / paper / wash 三份 HTML，用户可直接双击对比选择
+- `templates/graph-styles/paper/`、`templates/graph-styles/wash/`：新增两套离线可用的手绘风图谱模板
+- `tests/graph-html-styles.regression-1.sh`：新增三风格生成回归测试，覆盖本地 vendor、模板注入和离线资产复制
+
+### 改进
+
+- `scripts/build-graph-html.sh`：新增 `--style classic|paper|wash|all`，保留旧二参数 classic 输出兼容，同时默认生成全部风格
+- 手绘风图谱运行时：改为读取内嵌 `graph-data` JSON，并对 markdown 详情面板做 DOMPurify 清洗
+- 图谱构建产物：手绘风依赖改为项目内本地 vendor，离线双击即可打开，不再依赖 CDN
+
 ## v2.6.0 (2026-04-17)
 
 ### 新增
