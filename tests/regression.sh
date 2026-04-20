@@ -1354,8 +1354,7 @@ test_graph_html_basic_assembly() {
     cp "$REPO_ROOT/$GRAPH_HTML_BASIC/wiki/graph-data.json" "$output_dir/graph-data.json"
 
     bash "$REPO_ROOT/scripts/build-graph-html.sh" \
-        "$tmp_dir" \
-        "$output_dir/knowledge-graph.html" > /dev/null 2>&1 \
+        "$tmp_dir" > /dev/null 2>&1 \
         || fail "build-graph-html.sh should succeed on basic fixture"
 
     # HTML 文件存在
@@ -1366,11 +1365,14 @@ test_graph_html_basic_assembly() {
     assert_file_contains "$output_dir/knowledge-graph.html" "3"
     assert_file_contains "$output_dir/knowledge-graph.html" "2"
 
-    # vendor 资产已复制
-    assert_path_exists "$output_dir/vis-network.min.js"
+    # wash vendor 资产已复制
+    assert_path_exists "$output_dir/d3.min.js"
+    assert_path_exists "$output_dir/rough.min.js"
     assert_path_exists "$output_dir/marked.min.js"
     assert_path_exists "$output_dir/purify.min.js"
-    assert_path_exists "$output_dir/LICENSE-vis-network.txt"
+    assert_path_exists "$output_dir/graph-wash.js"
+    assert_path_exists "$output_dir/LICENSE-d3.txt"
+    assert_path_exists "$output_dir/LICENSE-roughjs.txt"
     assert_path_exists "$output_dir/LICENSE-marked.txt"
     assert_path_exists "$output_dir/LICENSE-purify.txt"
 }
@@ -1385,8 +1387,7 @@ test_graph_html_escapes_script_tag_in_content() {
     cp "$REPO_ROOT/$GRAPH_HTML_BASIC/wiki/graph-data.json" "$output_dir/graph-data.json"
 
     bash "$REPO_ROOT/scripts/build-graph-html.sh" \
-        "$tmp_dir" \
-        "$output_dir/knowledge-graph.html" > /dev/null 2>&1
+        "$tmp_dir" > /dev/null 2>&1
 
     # </script> 必须被转义为 <\/script>
     html=$(cat "$output_dir/knowledge-graph.html")

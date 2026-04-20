@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regression: three graph HTML styles must build locally and stay offline-friendly
+# Regression: wash-style graph HTML must build locally and stay offline-friendly
 
 set -euo pipefail
 
@@ -47,7 +47,7 @@ build_graph_html_fixture() {
         || fail "build-graph-html.sh should succeed on basic fixture"
 }
 
-test_graph_html_all_style_outputs_exist() {
+test_graph_html_wash_output_exists() {
     local tmp_dir output_dir
     tmp_dir="$(mktemp -d)"
     output_dir="$tmp_dir/wiki"
@@ -55,16 +55,11 @@ test_graph_html_all_style_outputs_exist() {
     build_graph_html_fixture "$tmp_dir"
 
     assert_file_exists "$output_dir/knowledge-graph.html"
-    assert_file_exists "$output_dir/knowledge-graph-paper.html"
-    assert_file_exists "$output_dir/knowledge-graph-wash.html"
-    assert_file_exists "$output_dir/vis-network.min.js"
     assert_file_exists "$output_dir/d3.min.js"
     assert_file_exists "$output_dir/rough.min.js"
     assert_file_exists "$output_dir/marked.min.js"
     assert_file_exists "$output_dir/purify.min.js"
-    assert_file_exists "$output_dir/graph-paper.js"
     assert_file_exists "$output_dir/graph-wash.js"
-    assert_file_exists "$output_dir/LICENSE-vis-network.txt"
     assert_file_exists "$output_dir/LICENSE-d3.txt"
     assert_file_exists "$output_dir/LICENSE-roughjs.txt"
     assert_file_exists "$output_dir/LICENSE-marked.txt"
@@ -73,46 +68,33 @@ test_graph_html_all_style_outputs_exist() {
     rm -rf "$tmp_dir"
 }
 
-test_graph_html_hand_drawn_outputs_use_local_assets() {
-    local tmp_dir output_dir paper_html wash_html
+test_graph_html_wash_uses_local_assets() {
+    local tmp_dir output_dir html
     tmp_dir="$(mktemp -d)"
     output_dir="$tmp_dir/wiki"
 
     build_graph_html_fixture "$tmp_dir"
-    paper_html="$output_dir/knowledge-graph-paper.html"
-    wash_html="$output_dir/knowledge-graph-wash.html"
+    html="$output_dir/knowledge-graph.html"
 
-    assert_file_contains "$paper_html" '<script id="graph-data" type="application/json">'
-    assert_file_contains "$paper_html" 'src="d3.min.js"'
-    assert_file_contains "$paper_html" 'src="rough.min.js"'
-    assert_file_contains "$paper_html" 'src="marked.min.js"'
-    assert_file_contains "$paper_html" 'src="purify.min.js"'
-    assert_file_contains "$paper_html" 'src="graph-paper.js"'
-    assert_file_not_contains "$paper_html" 'cdn.jsdelivr.net'
-    assert_file_not_contains "$paper_html" 'sample-data.js'
-
-    assert_file_contains "$wash_html" '<script id="graph-data" type="application/json">'
-    assert_file_contains "$wash_html" 'src="d3.min.js"'
-    assert_file_contains "$wash_html" 'src="rough.min.js"'
-    assert_file_contains "$wash_html" 'src="marked.min.js"'
-    assert_file_contains "$wash_html" 'src="purify.min.js"'
-    assert_file_contains "$wash_html" 'src="graph-wash.js"'
-    assert_file_not_contains "$wash_html" 'cdn.jsdelivr.net'
-    assert_file_not_contains "$wash_html" 'sample-data.js'
+    assert_file_contains "$html" '<script id="graph-data" type="application/json">'
+    assert_file_contains "$html" 'src="d3.min.js"'
+    assert_file_contains "$html" 'src="rough.min.js"'
+    assert_file_contains "$html" 'src="marked.min.js"'
+    assert_file_contains "$html" 'src="purify.min.js"'
+    assert_file_contains "$html" 'src="graph-wash.js"'
+    assert_file_not_contains "$html" 'cdn.jsdelivr.net'
+    assert_file_not_contains "$html" 'sample-data.js'
+    assert_file_not_contains "$html" 'vis-network.min.js'
 
     rm -rf "$tmp_dir"
 }
 
-test_graph_html_hand_drawn_runtime_reads_injected_data_and_sanitizes_html() {
+test_graph_html_wash_runtime_reads_injected_data_and_sanitizes_html() {
     local tmp_dir output_dir
     tmp_dir="$(mktemp -d)"
     output_dir="$tmp_dir/wiki"
 
     build_graph_html_fixture "$tmp_dir"
-
-    assert_file_contains "$output_dir/graph-paper.js" 'const dataEl = document.getElementById("graph-data");'
-    assert_file_contains "$output_dir/graph-paper.js" 'const DATA = dataEl ? JSON.parse(dataEl.textContent) : window.SAMPLE_GRAPH;'
-    assert_file_contains "$output_dir/graph-paper.js" 'DOMPurify.sanitize(html, { ADD_ATTR: ["target", "data-target", "tabindex"] });'
 
     assert_file_contains "$output_dir/graph-wash.js" 'const dataEl = document.getElementById("graph-data");'
     assert_file_contains "$output_dir/graph-wash.js" 'const DATA = dataEl ? JSON.parse(dataEl.textContent) : window.SAMPLE_GRAPH;'
@@ -121,24 +103,11 @@ test_graph_html_hand_drawn_runtime_reads_injected_data_and_sanitizes_html() {
     rm -rf "$tmp_dir"
 }
 
-test_graph_html_classic_output_keeps_vis_network() {
-    local tmp_dir html
-    tmp_dir="$(mktemp -d)"
-
-    build_graph_html_fixture "$tmp_dir"
-    html="$tmp_dir/wiki/knowledge-graph.html"
-
-    assert_file_contains "$html" 'src="vis-network.min.js"'
-
-    rm -rf "$tmp_dir"
-}
-
 main() {
-    test_graph_html_all_style_outputs_exist
-    test_graph_html_hand_drawn_outputs_use_local_assets
-    test_graph_html_hand_drawn_runtime_reads_injected_data_and_sanitizes_html
-    test_graph_html_classic_output_keeps_vis_network
-    echo "PASS: graph HTML styles regression coverage"
+    test_graph_html_wash_output_exists
+    test_graph_html_wash_uses_local_assets
+    test_graph_html_wash_runtime_reads_injected_data_and_sanitizes_html
+    echo "PASS: graph HTML wash-only regression coverage"
 }
 
 main "$@"
