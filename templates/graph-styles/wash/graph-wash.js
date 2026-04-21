@@ -11,6 +11,8 @@
   const mmSvg = d3.select("#minimap-svg");
   const minimapEl = document.getElementById("minimap");
   const minimapToggle = document.getElementById("minimap-toggle");
+  const drawerNeighbors = document.getElementById("dr-neighbors");
+  const drawerNeighborsHeading = drawerNeighbors.querySelector("h4");
 
   // ---------- state ----------
   const state = {
@@ -1079,7 +1081,13 @@
     minimapToggle.setAttribute("aria-label", collapsed ? "展开小地图" : "折叠小地图");
   }
 
+  function applyNeighborsCollapsed(collapsed) {
+    drawerNeighbors.setAttribute("data-collapsed", collapsed ? "1" : "0");
+    drawerNeighborsHeading.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+
   applyMinimapCollapsed(safeLocalStorage.get("wiki-minimap-collapsed") === "1");
+  applyNeighborsCollapsed(safeLocalStorage.get("wiki-neighbors-collapsed") === "1");
 
   minimapToggle.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1087,6 +1095,20 @@
     applyMinimapCollapsed(next);
     safeLocalStorage.set("wiki-minimap-collapsed", next ? "1" : "0");
     if (!next) renderMinimap();
+  });
+
+  function toggleNeighbors() {
+    const next = drawerNeighbors.getAttribute("data-collapsed") !== "1";
+    applyNeighborsCollapsed(next);
+    safeLocalStorage.set("wiki-neighbors-collapsed", next ? "1" : "0");
+  }
+
+  drawerNeighborsHeading.addEventListener("click", toggleNeighbors);
+  drawerNeighborsHeading.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleNeighbors();
+    }
   });
 
   // ---------- Minimap navigation ----------

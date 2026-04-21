@@ -719,8 +719,9 @@ html, body {
 .drawer-close:hover { color: var(--paper-ink); border-color: var(--paper-ink); }
 
 .drawer-body {
-  flex: 1;
+  flex: 1 1 0;
   overflow-y: auto;
+  min-height: 0;
   padding: 20px 28px 40px 48px;
   font-family: var(--font-text);
   font-size: 15px;
@@ -785,9 +786,16 @@ html, body {
 
 /* neighbors list at the bottom of the drawer */
 .drawer-neighbors {
+  flex-shrink: 0;
+  max-height: 35vh;
+  overflow-y: auto;
   padding: 0 28px 24px 48px;
   border-top: 1px dashed var(--paper-ink-faint);
   margin-top: 8px;
+}
+.drawer-neighbors[data-collapsed="1"] {
+  max-height: 40px;
+  overflow: hidden;
 }
 .drawer-neighbors h4 {
   font-family: var(--font-hand);
@@ -795,6 +803,19 @@ html, body {
   color: var(--paper-ink-dim);
   margin: 16px 0 10px;
   font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.drawer-neighbors h4::after {
+  content: "⌃";
+  font-family: var(--font-hand);
+  transition: transform 180ms;
+}
+.drawer-neighbors[data-collapsed="1"] h4::after {
+  transform: rotate(180deg);
 }
 .nb-list {
   display: flex;
@@ -1191,8 +1212,8 @@ body[data-variant="wash"] {
 
       <div class="drawer-body" id="dr-body"></div>
 
-      <div class="drawer-neighbors" id="dr-neighbors">
-        <h4>相邻节点</h4>
+      <div class="drawer-neighbors" id="dr-neighbors" data-collapsed="0">
+        <h4 tabindex="0" role="button" aria-expanded="true">相邻节点</h4>
         <div class="nb-list" id="nb-list"></div>
       </div>
     </div>
