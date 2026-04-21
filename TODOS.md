@@ -38,3 +38,19 @@
 - **Cons**：AI 推断每次 graph 要读全部实体页，100+ 节点时 token 消耗明显；深色模式要双份 CSS；演化指标要引入历史数据目录和对比逻辑。
 - **Context**：Phase 1（2026-04-17 设计文档 approved，含 Eng Review Addenda + Design Review Addenda）只复用 ingest 已有的 confidence 数据，不重新调 AI。
 - **Depends on / blocked by**：Phase 1（交互式图谱 MVP）落地并有至少一位真实用户反馈。
+
+## Graph 2.0 deferred follow-ups
+
+- **What**：给 graph 工作流加第二阶段 deep-analysis，读取候选边后做 LLM 语义分析，并把结果稳定写入 `insights.llm_surprises`。
+- **Why**：当前阶段只能靠公式和规则看图，做不到“看起来没直接关系但语义上很值得挖”的洞察。
+- **Pros**：真正把 agent skill 的优势打出来，形成和竞品最不一样的能力。
+- **Cons**：需要 prompt 设计、失败路径、结果 merge 和成本控制，不能混进当前主实现。
+- **Context**：本次 `/plan-eng-review` 已明确把 deep-analysis 从图谱 2.0 第一段交付拿掉，防止把最不稳定的模型编排绑进主实现；完成来源契约、权重、Louvain、Insights 主线后再进入第二阶段更稳。
+- **Depends on / blocked by**：先完成本轮的来源契约、权重、Louvain、Insights 主线，并验证 `graph-data.json` 的新结构稳定。
+
+- **What**：在 lint / status 一类工作流里增加“缺 `sources` 的页面提示”，明确哪些旧页面当前没有参与 source signal 计算。
+- **Why**：本次评审已决定缺来源时该信号不计入总分，如果没有提示，用户只会看到某些边不像预期那么强，却不知道是数据不全。
+- **Pros**：让图谱结果更可解释，也给后续补齐来源留一个清晰入口。
+- **Cons**：会多一条工作流输出，解释文案要写清楚，避免变成噪音。
+- **Context**：本轮图谱 2.0 方案把兼容层限制为“无 `sources` 视为空数组，不猜正文来源”，因此提示机制是最温和的补救。
+- **Depends on / blocked by**：依赖本轮 sources 契约、`graph-data.json` 新字段和 lint/status 输出设计。

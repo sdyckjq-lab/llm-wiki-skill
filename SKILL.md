@@ -394,6 +394,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
 8. **生成素材摘要页**（`wiki/sources/{日期}-{短标题}.md`）：
    - 参考 `templates/source-template.md` 的格式
+   - frontmatter 里保留 `sources: []` 字段；如果这次 ingest 有明确来源，按实际 raw/source 引用填入
    - 包含：基本信息、核心观点、关键概念、与其他素材的关联、原文精彩摘录
    - 对 Step 1 中标记为 `INFERRED` 或 `AMBIGUOUS` 的关系，用 HTML 注释保留置信度：
      ```markdown
@@ -459,6 +460,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 仍然先运行 `bash ${SKILL_DIR}/scripts/cache.sh check "<raw 文件路径>"`
    - 如果缓存命中（`HIT` 或 `HIT(repaired)`），直接复用已有结果
 3. **生成简化摘要页**（`wiki/sources/`）：
+   - frontmatter 里写入 `sources: []`
    - 只包含基本信息和核心观点
    - 不写"原文精彩摘录"部分
    - **写入 source 页面时同样使用 `create-source-page.sh`**（自动更新缓存）
@@ -938,10 +940,16 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
    脚本会扫描 `wiki/{entities,topics,sources,comparisons,synthesis,queries}/*.md`，
    解析同行 `[[双向链接]]` 与 `<!-- confidence: EXTRACTED|INFERRED|AMBIGUOUS -->` 注释，
-   做主题社区聚类，并写入 `wiki/graph-data.json`（>2MB 自动降级，单节点只留 500 行）。
-   依赖 `jq`（`brew install jq`）。
+   调用本地 Node helper 计算 3 信号边权重（共引强度 / 来源重叠 / 类型亲和度）、Louvain 社区和规则 insights，
+   并写入 `wiki/graph-data.json`（内容 >2MB 自动降级，单节点只留 500 行；图规模超预算时 insights 自动降级）。
+   依赖 `jq` + `node`（如缺失可运行 `brew install jq node`）。
 
-2c. **生成交互式图谱 HTML**（wash 水彩卡片风）：
+2c. **图谱运行时说明**：
+   - 图谱基础构建现在依赖 `jq` + `node`
+   - 不需要额外 `npm install`
+   - `node` 只用于运行随仓库分发的本地预构建 helper
+
+2d. **生成交互式图谱 HTML**（wash 水彩卡片风）：
 
    ```bash
    bash scripts/build-graph-html.sh "$WIKI_ROOT"
@@ -949,16 +957,27 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
    生成 `wiki/knowledge-graph.html`。脚本把 `graph-data.json`（已做 `</script>` 转义）
    内嵌进 `<script id="graph-data" type="application/json">`，使用本地 `d3` + `roughjs` +
-   `marked` + `purify`，离线双击即可打开。包含搜索框、关系类型筛选、节点抽屉、
-   社区聚类等交互功能。
+   `marked` + `purify`，离线双击即可打开。包含搜索框、关系类型筛选、边权重可视化、
+   邻居强度指示、Insights 面板、节点抽屉和社区聚类等交互功能。
 
-3. **向用户展示结果**（按 `WIKI_LANG` 切换语言）：
+3. **读取 insights 并向用户展示结果**（按 `WIKI_LANG` 切换语言）：
+
+   先读取 insights：
+   ```bash
+   jq '.insights' "$WIKI_ROOT/wiki/graph-data.json"
+   ```
 
    **zh**：
    ```
    知识图谱已生成！
 
    共 {N} 个节点，{M} 条关联
+
+   图谱洞察：
+   - 惊人连接：{from} ↔ {to}（跨社区，权重 {weight}）{如有}
+   - 桥节点：{node}（连接 {count} 个社区）{如有}
+   - 知识缺口：{node}（度数 {degree}，建议补充素材）{如有}
+   - 稀疏社区：{community}（密度 {density}）{如有}
 
    查看方式：
    - 交互式（推荐）：双击 wiki/knowledge-graph.html
@@ -970,7 +989,8 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    孤立页面（未纳入图谱）：
    - [[某页面]]（建议添加到相关实体页或主题页）
    ```
-   （英文版按「输出语言规则」生成，结构相同。）
+
+   （英文版按「输出语言规则」生成，结构相同。各洞察类别为空时省略该行。）
 
 ---
 
@@ -1054,6 +1074,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 关键决策和原因
    - 值得记录的结论
 3. 生成 `wiki/synthesis/sessions/{主题}-{日期}.md`，格式参考 `templates/synthesis-template.md`
+   - 本轮不要求 crystallize 页面补 `sources`，默认不参与 graph source overlap
 4. 更新 `log.md`（记录本次结晶化操作）
 
 > MVP 版本不自动创建 entity 页面，不自动更新 index.md。

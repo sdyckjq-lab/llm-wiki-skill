@@ -10,7 +10,7 @@
 
 把碎片化的信息变成持续积累、互相链接的知识库
 
-[![version](https://img.shields.io/badge/v3.0.2-卡片式图谱-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.0.3-图谱分析引擎-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw-多平台-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -24,7 +24,7 @@
 <img src="docs/assets/graph-demo.gif" width="100%" alt="知识图谱演示">
 </div>
 
-水彩卡片风交互式知识图谱 — 双击 HTML 文件即可在浏览器中探索。搜索、过滤、节点展开、社区聚类，全部离线运行，不依赖服务器。
+水彩卡片风交互式知识图谱 — 双击 HTML 文件即可在浏览器中探索。搜索、过滤、节点展开、边权重、Insights 面板、社区聚类，全部离线运行，不依赖服务器。
 
 ---
 
@@ -56,7 +56,7 @@ bash install.sh --platform openclaw
 
 | | 功能 | 说明 |
 |---|---|---|
-| 🗺️ | **水彩卡片风知识图谱** | 自包含 HTML，双击即可浏览；搜索、过滤、社区聚类，离线运行 |
+| 🗺️ | **水彩卡片风知识图谱** | 自包含 HTML，双击即可浏览；搜索、过滤、边权重、Insights、社区聚类，离线运行 |
 | ✨ | **图谱阅读体验打磨** | 顶栏 GitHub 入口、长标签安全截断、小地图/相邻节点可折叠，宽屏按钮直接显示文字 |
 | 📦 | **零配置初始化** | 一句话创建完整知识库，自动生成目录结构、模板和研究方向页 |
 | 🔗 | **结构化 Wiki** | 自动生成实体页、主题页、素材摘要，用 `[[双向链接]]` 互相关联 |
@@ -144,7 +144,7 @@ bash install.sh --upgrade --platform openclaw --target-dir <你的技能目录>/
 
 ### 前置条件
 
-- 核心：agent 能执行 shell 命令、读写本地文件即可
+- 核心：agent 能执行 shell 命令、读写本地文件即可；图谱构建额外需要 `jq` + `node`
 - 可选：微信公众号提取需要 `uv`；网页提取需要 `bun` 或 `npm`；需要登录态的内容可开启 Chrome 调试端口 9222
 
 </details>

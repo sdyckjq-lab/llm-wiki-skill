@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.0.3 (2026-04-21)
+
+### 新增
+
+- 图谱 2.0 第一段：`build-graph-data.sh` 现在会生成边权重、来源信号可用性、Louvain 社区和规则 insights，输出稳定写入 `wiki/graph-data.json`
+- wash 图谱前端新增强弱边视觉分层、邻居强度指示和 Insights 面板，离线 HTML 可以直接查看惊人连接 / 知识缺口 / 桥节点
+- 新增 `scripts/graph-analysis.js` 和 3 组 graph 回归，覆盖 helper 算法、Node/helper 失败路径、Insights 面板接线
+
+### 改进
+
+- `templates/source-template.md` 补齐 `sources: []` 契约，图谱权重可用来源重叠信号，不再靠旧的平面连线
+- 图谱搜索改为预计算索引，避免每次输入都重新扫描全文内容
+- 图谱基础构建运行时要求现在显式为 `jq` + `node`
+
 ## v3.0.2 (2026-04-21)
 
 ### 修复

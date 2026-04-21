@@ -265,6 +265,6 @@ problem_type: strategy
 每个阶段完成后：
 
 1. **回归测试**：`bash tests/regression.sh` 确保不破坏现有功能
-2. **图谱验证**：用 `~/Desktop/llm-wiki-cowork-test/raw-input/` 的 3 篇文章测试图谱生成
+2. **图谱验证**：用 `raw-input/` 目录下的 3 篇文章测试图谱生成
 3. **推送前检查**：按 CLAUDE.md 中的三层测试规则执行
 4. **竞品对照**：对同一组素材，比较双方图谱的洞察质量
