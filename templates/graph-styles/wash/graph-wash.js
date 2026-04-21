@@ -12,7 +12,7 @@
   const minimapEl = document.getElementById("minimap");
   const minimapToggle = document.getElementById("minimap-toggle");
   const drawerNeighbors = document.getElementById("dr-neighbors");
-  const drawerNeighborsHeading = drawerNeighbors.querySelector("h4");
+  const drawerNeighborsHeading = drawerNeighbors ? drawerNeighbors.querySelector("h4") : null;
 
   // ---------- state ----------
   const state = {
@@ -174,15 +174,8 @@
   // Card dimensions (w, h) for the "card" node style
   function cardDims(n) {
     const label = n.label || n.id;
-    // approximate width by char count (mix of CJK + Latin)
-    let w = 0;
-    for (const ch of label) {
-      // CJK ~ 15px, latin ~ 8.5px
-      if (/[\u4e00-\u9fff]/.test(ch)) w += 15;
-      else w += 8.5;
-    }
-    const pad = 22;
-    let width = Math.max(72, Math.min(180, w + pad));
+    const widthByLabel = measureLabelWidth(splitLabelGraphemes(label));
+    let width = Math.max(LABEL_MIN_WIDTH, Math.min(LABEL_MAX_WIDTH, widthByLabel + LABEL_PADDING));
     let height = 36;
     if (n.type === "topic") { height = 40; width += 6; }
     if (n.type === "source") { height = 32; }
@@ -190,6 +183,27 @@
   }
 
   const labelSegmenter = new Intl.Segmenter("zh", { granularity: "grapheme" });
+  const LABEL_CJK_WIDTH = 15;
+  const LABEL_LATIN_WIDTH = 8.5;
+  const LABEL_PADDING = 22;
+  const LABEL_MIN_WIDTH = 72;
+  const LABEL_MAX_WIDTH = 180;
+  const LABEL_ELLIPSIS = "…";
+  const LABEL_ELLIPSIS_WIDTH = 8;
+
+  function splitLabelGraphemes(label) {
+    return Array.from(labelSegmenter.segment(label), ({ segment }) => segment);
+  }
+
+  function labelCharWidth(grapheme) {
+    return /[一-鿿]/.test(grapheme) ? LABEL_CJK_WIDTH : LABEL_LATIN_WIDTH;
+  }
+
+  function measureLabelWidth(graphemes) {
+    let width = 0;
+    for (const grapheme of graphemes) width += labelCharWidth(grapheme);
+    return width;
+  }
 
   function truncateLabel(label, maxWidth) {
     if (!label || typeof label !== "string") {
@@ -197,25 +211,19 @@
       return { text: "", truncated: false };
     }
 
-    const charWidth = (g) => /[一-鿿]/.test(g) ? 15 : 8.5;
-    const pad = 22;
-    const ellipsis = "…";
-    const ellipsisW = 8;
-    const graphemes = Array.from(labelSegmenter.segment(label), s => s.segment);
-
-    let totalW = 0;
-    for (const g of graphemes) totalW += charWidth(g);
-    if (totalW + pad <= maxWidth) return { text: label, truncated: false };
+    const graphemes = splitLabelGraphemes(label);
+    const totalWidth = measureLabelWidth(graphemes);
+    if (totalWidth + LABEL_PADDING <= maxWidth) return { text: label, truncated: false };
 
     let out = "";
-    let w = 0;
-    for (const g of graphemes) {
-      const cw = charWidth(g);
-      if (w + cw + ellipsisW + pad > maxWidth) break;
-      out += g;
-      w += cw;
+    let width = 0;
+    for (const grapheme of graphemes) {
+      const graphemeWidth = labelCharWidth(grapheme);
+      if (width + graphemeWidth + LABEL_ELLIPSIS_WIDTH + LABEL_PADDING > maxWidth) break;
+      out += grapheme;
+      width += graphemeWidth;
     }
-    return { text: out + ellipsis, truncated: true };
+    return { text: out + LABEL_ELLIPSIS, truncated: true };
   }
 
   // Jittered rounded rectangle path (slight imperfection for hand feel)
@@ -714,7 +722,7 @@
 
   // ---------- Minimap ----------
   function renderMinimap() {
-    if (!state.nodes.length || minimapEl.getAttribute("data-collapsed") === "1") return;
+    if (!minimapEl || !state.nodes.length || minimapEl.getAttribute("data-collapsed") === "1") return;
     const w = 180, h = 130;
     // bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1076,12 +1084,14 @@
   document.getElementById("dr-close").addEventListener("click", closeDrawer);
 
   function applyMinimapCollapsed(collapsed) {
+    if (!minimapEl || !minimapToggle) return;
     minimapEl.setAttribute("data-collapsed", collapsed ? "1" : "0");
     minimapToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
     minimapToggle.setAttribute("aria-label", collapsed ? "展开小地图" : "折叠小地图");
   }
 
   function applyNeighborsCollapsed(collapsed) {
+    if (!drawerNeighbors || !drawerNeighborsHeading) return;
     drawerNeighbors.setAttribute("data-collapsed", collapsed ? "1" : "0");
     drawerNeighborsHeading.setAttribute("aria-expanded", collapsed ? "false" : "true");
   }
@@ -1089,27 +1099,32 @@
   applyMinimapCollapsed(safeLocalStorage.get("wiki-minimap-collapsed") === "1");
   applyNeighborsCollapsed(safeLocalStorage.get("wiki-neighbors-collapsed") === "1");
 
-  minimapToggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const next = minimapEl.getAttribute("data-collapsed") !== "1";
-    applyMinimapCollapsed(next);
-    safeLocalStorage.set("wiki-minimap-collapsed", next ? "1" : "0");
-    if (!next) renderMinimap();
-  });
+  if (minimapEl && minimapToggle) {
+    minimapToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const next = minimapEl.getAttribute("data-collapsed") !== "1";
+      applyMinimapCollapsed(next);
+      safeLocalStorage.set("wiki-minimap-collapsed", next ? "1" : "0");
+      if (!next) renderMinimap();
+    });
+  }
 
   function toggleNeighbors() {
+    if (!drawerNeighbors) return;
     const next = drawerNeighbors.getAttribute("data-collapsed") !== "1";
     applyNeighborsCollapsed(next);
     safeLocalStorage.set("wiki-neighbors-collapsed", next ? "1" : "0");
   }
 
-  drawerNeighborsHeading.addEventListener("click", toggleNeighbors);
-  drawerNeighborsHeading.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      toggleNeighbors();
-    }
-  });
+  if (drawerNeighborsHeading) {
+    drawerNeighborsHeading.addEventListener("click", toggleNeighbors);
+    drawerNeighborsHeading.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleNeighbors();
+      }
+    });
+  }
 
   // ---------- Minimap navigation ----------
   mmSvg.on("click", function (ev) {

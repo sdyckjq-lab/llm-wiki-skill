@@ -39,30 +39,80 @@ test_graph_html_has_minimap_toggle_markup() {
     build_graph_html_fixture "$tmp_dir"
     html="$tmp_dir/wiki/knowledge-graph.html"
 
-    assert_file_contains "$html" '<div class="minimap" id="minimap" data-collapsed="0">'
+    assert_file_contains "$html" 'id="minimap"'
+    assert_file_contains "$html" 'data-collapsed="0"'
     assert_file_contains "$html" 'id="minimap-toggle"'
-    assert_file_contains "$html" 'aria-label="折叠小地图" aria-expanded="true"'
+    assert_file_contains "$html" 'aria-label="折叠小地图"'
+    assert_file_contains "$html" 'aria-expanded="true"'
 
     rm -rf "$tmp_dir"
 }
 
-test_graph_html_has_minimap_toggle_js() {
+test_graph_html_minimap_runtime_guards_and_state() {
     local tmp_dir output_dir
     tmp_dir="$(mktemp -d)"
     output_dir="$tmp_dir/wiki"
 
     build_graph_html_fixture "$tmp_dir"
 
-    assert_file_contains "$output_dir/graph-wash.js" 'function applyMinimapCollapsed(collapsed) {'
-    assert_file_contains "$output_dir/graph-wash.js" 'safeLocalStorage.get("wiki-minimap-collapsed") === "1"'
-    assert_file_contains "$output_dir/graph-wash.js" 'safeLocalStorage.set("wiki-minimap-collapsed", next ? "1" : "0")'
+    node - <<'NODE' "$output_dir/graph-wash.js" || exit 1
+const fs = require('fs');
+const vm = require('vm');
+const file = process.argv[2];
+const source = fs.readFileSync(file, 'utf8');
+
+function extractFunction(name) {
+  const signature = `function ${name}`;
+  const start = source.indexOf(signature);
+  if (start === -1) throw new Error(`missing ${name}`);
+  const braceStart = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+function makeEl(initial = {}) {
+  return {
+    attrs: { ...initial },
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    getAttribute(name) { return this.attrs[name]; }
+  };
+}
+
+const context = {
+  minimapEl: null,
+  minimapToggle: null,
+  console
+};
+vm.createContext(context);
+vm.runInContext(`${extractFunction('applyMinimapCollapsed')}; this.applyMinimapCollapsed = applyMinimapCollapsed;`, context);
+context.applyMinimapCollapsed(true);
+
+context.minimapEl = makeEl({ 'data-collapsed': '0' });
+context.minimapToggle = makeEl({ 'aria-expanded': 'true', 'aria-label': '折叠小地图' });
+context.applyMinimapCollapsed(true);
+if (context.minimapEl.attrs['data-collapsed'] !== '1') throw new Error('minimap collapsed state not updated');
+if (context.minimapToggle.attrs['aria-expanded'] !== 'false') throw new Error('minimap aria-expanded not collapsed');
+if (context.minimapToggle.attrs['aria-label'] !== '展开小地图') throw new Error('minimap aria-label not collapsed');
+context.applyMinimapCollapsed(false);
+if (context.minimapEl.attrs['data-collapsed'] !== '0') throw new Error('minimap expanded state not updated');
+if (context.minimapToggle.attrs['aria-expanded'] !== 'true') throw new Error('minimap aria-expanded not expanded');
+if (context.minimapToggle.attrs['aria-label'] !== '折叠小地图') throw new Error('minimap aria-label not expanded');
+NODE
 
     rm -rf "$tmp_dir"
 }
 
 main() {
     test_graph_html_has_minimap_toggle_markup
-    test_graph_html_has_minimap_toggle_js
+    test_graph_html_minimap_runtime_guards_and_state
     echo "PASS: graph HTML minimap regression coverage"
 }
 

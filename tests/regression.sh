@@ -92,6 +92,13 @@ make_stub() {
     chmod +x "$path"
 }
 
+make_repo_copy_without_git() {
+    local dest="$1"
+
+    cp -R "$REPO_ROOT" "$dest"
+    rm -rf "$dest/.git"
+}
+
 make_legacy_wiki() {
     local wiki_root="$1"
 
@@ -247,9 +254,12 @@ exit 1'
 }
 
 test_upgrade_refreshes_claude_companion_skill() {
-    local tmp_dir output
+    local tmp_dir output repo_copy
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
+
+    repo_copy="$tmp_dir/repo"
+    make_repo_copy_without_git "$repo_copy"
 
     mkdir -p "$tmp_dir/home/.claude/skills/llm-wiki" "$tmp_dir/home/.claude/skills/llm-wiki-upgrade"
     printf '# Changelog\n\n## v2.3.0 (2026-04-15)\n' > "$tmp_dir/home/.claude/skills/llm-wiki/CHANGELOG.md"
@@ -257,7 +267,7 @@ test_upgrade_refreshes_claude_companion_skill() {
 
     output="$(
         HOME="$tmp_dir/home" \
-        bash "$REPO_ROOT/install.sh" --upgrade --platform claude 2>&1
+        bash "$repo_copy/install.sh" --upgrade --platform claude 2>&1
     )" || fail "install.sh --upgrade should refresh the Claude companion skill"
 
     assert_text_contains "$output" "/llm-wiki-upgrade"
@@ -547,8 +557,8 @@ test_changelog_mentions_wiki_core_upgrades() {
 }
 
 test_readme_sections() {
-    assert_file_contains "$REPO_ROOT/README.md" "## 前置条件"
-    assert_file_contains "$REPO_ROOT/README.md" "## 常见问题"
+    assert_file_contains "$REPO_ROOT/README.md" "## 30 秒上手"
+    assert_file_contains "$REPO_ROOT/README.md" "<summary><strong>常见问题</strong></summary>"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform claude"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform codex"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform openclaw"
@@ -615,9 +625,12 @@ test_upgrade_auto_refuses_ambiguous_installed_platforms() {
 }
 
 test_upgrade_uses_explicit_target_dir() {
-    local tmp_dir output custom_target
+    local tmp_dir output custom_target repo_copy
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
+
+    repo_copy="$tmp_dir/repo"
+    make_repo_copy_without_git "$repo_copy"
 
     custom_target="$tmp_dir/custom/llm-wiki"
     mkdir -p "$tmp_dir/home/.openclaw/skills" "$custom_target"
@@ -625,27 +638,31 @@ test_upgrade_uses_explicit_target_dir() {
 
     output="$(
         HOME="$tmp_dir/home" \
-        bash "$REPO_ROOT/install.sh" --upgrade --platform openclaw --target-dir "$custom_target" 2>&1
+        bash "$repo_copy/install.sh" --upgrade --platform openclaw --target-dir "$custom_target" 2>&1
     )" || fail "install.sh --upgrade should support explicit target directories"
 
     assert_text_contains "$output" "目标目录：$custom_target"
     assert_text_contains "$output" "llm-wiki 升级完成"
     assert_path_exists "$custom_target/install.sh"
-    assert_file_contains "$custom_target/README.md" "llm-wiki - 多平台知识库构建 Skill"
+    cmp -s "$custom_target/README.md" "$repo_copy/README.md" \
+        || fail "Expected explicit target dir upgrade to refresh README.md"
     [ ! -d "$tmp_dir/home/.openclaw/skills/llm-wiki" ] || fail "Did not expect upgrade to write into the default OpenClaw skill path"
 }
 
 test_upgrade_fails_when_explicit_target_dir_is_missing() {
-    local tmp_dir output custom_target
+    local tmp_dir output custom_target repo_copy
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
+
+    repo_copy="$tmp_dir/repo"
+    make_repo_copy_without_git "$repo_copy"
 
     custom_target="$tmp_dir/custom/llm-wiki"
     mkdir -p "$tmp_dir/home/.openclaw/skills"
 
     if output="$(
         HOME="$tmp_dir/home" \
-        bash "$REPO_ROOT/install.sh" --upgrade --platform openclaw --target-dir "$custom_target" 2>&1
+        bash "$repo_copy/install.sh" --upgrade --platform openclaw --target-dir "$custom_target" 2>&1
     )"; then
         fail "install.sh --upgrade should fail when the explicit target directory is missing"
     fi
@@ -860,13 +877,20 @@ test_new_wiki_compat_reports_purpose_and_cache_present() {
 }
 
 test_readme_aligns_source_boundary_to_registry() {
-    assert_file_contains "$REPO_ROOT/README.md" "scripts/source-registry.tsv"
-    assert_file_contains "$REPO_ROOT/README.md" "核心主线"
-    assert_file_contains "$REPO_ROOT/README.md" "可选外挂"
-    assert_file_contains "$REPO_ROOT/README.md" "手动入口"
-    assert_registry_labels_present_in_file "$REPO_ROOT/README.md" "core_builtin"
-    assert_registry_labels_present_in_file "$REPO_ROOT/README.md" "optional_adapter"
-    assert_registry_labels_present_in_file "$REPO_ROOT/README.md" "manual_only"
+    assert_file_contains "$REPO_ROOT/README.md" "## 素材来源"
+    assert_file_contains "$REPO_ROOT/README.md" "| 核心 |"
+    assert_file_contains "$REPO_ROOT/README.md" "| 可选 |"
+    assert_file_contains "$REPO_ROOT/README.md" "| 手动 |"
+    assert_file_contains "$REPO_ROOT/README.md" "PDF"
+    assert_file_contains "$REPO_ROOT/README.md" "Markdown"
+    assert_file_contains "$REPO_ROOT/README.md" "HTML"
+    assert_file_contains "$REPO_ROOT/README.md" "纯文本粘贴"
+    assert_file_contains "$REPO_ROOT/README.md" "网页文章"
+    assert_file_contains "$REPO_ROOT/README.md" "X/Twitter"
+    assert_file_contains "$REPO_ROOT/README.md" "微信公众号"
+    assert_file_contains "$REPO_ROOT/README.md" "YouTube"
+    assert_file_contains "$REPO_ROOT/README.md" "知乎"
+    assert_file_contains "$REPO_ROOT/README.md" "小红书"
 }
 
 test_skill_status_and_ingest_align_to_registry() {
