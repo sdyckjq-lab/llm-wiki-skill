@@ -125,3 +125,4 @@ OUTPUT="$WIKI_ROOT/wiki/knowledge-graph.html"
 - Session history: `feat/sketchy-graph-redesign` 分支保留了 vis-network 布局优化尝试（未合并）
 - 前置工作: `docs/solutions/integration-issues/claude-code-hook-pretooluse-to-sessionstart-2026-04-11.md`（SessionStart hook 基础设施）
 - 前置工作: `docs/solutions/workflow-issues/cache-update-reliability-2026-04-16.md`（缓存可靠性机制）
+- 后续修复: `docs/solutions/ui-bugs/graph-wash-null-safety-and-label-truncation-fix-2026-04-21.md`（wash-only 简化后遗漏的空引用防护和标签截断统一）
