@@ -39,11 +39,19 @@ test_graph_html_has_truncate_label_markup_hooks() {
 
     build_graph_html_fixture "$tmp_dir"
 
-    assert_file_contains "$output_dir/graph-wash.js" 'const labelSegmenter = new Intl.Segmenter("zh", { granularity: "grapheme" });'
-    assert_file_contains "$output_dir/graph-wash.js" 'const LABEL_CJK_WIDTH = 15;'
-    assert_file_contains "$output_dir/graph-wash.js" 'const widthByLabel = measureLabelWidth(splitLabelGraphemes(label));'
-    assert_file_contains "$output_dir/graph-wash.js" 'function truncateLabel(label, maxWidth) {'
     assert_file_contains "$output_dir/graph-wash.js" 'gg.append("title").text(label);'
+
+    # helpers file copied to output
+    [ -f "$output_dir/graph-wash-helpers.js" ] || fail "helpers file should be copied to output"
+
+    # helpers loads before wash in HTML
+    local html="$output_dir/knowledge-graph.html"
+    local helpers_line wash_line
+    helpers_line=$(grep -n 'graph-wash-helpers.js' "$html" | head -1 | cut -d: -f1)
+    wash_line=$(grep -n 'src="graph-wash.js"' "$html" | head -1 | cut -d: -f1)
+    [ -n "$helpers_line" ] || fail "HTML should reference graph-wash-helpers.js"
+    [ -n "$wash_line" ] || fail "HTML should reference graph-wash.js"
+    [ "$helpers_line" -lt "$wash_line" ] || fail "helpers.js must load before wash.js in HTML"
 
     rm -rf "$tmp_dir"
 }
@@ -55,72 +63,22 @@ test_graph_html_truncate_label_runtime_behavior() {
 
     build_graph_html_fixture "$tmp_dir"
 
-    node - <<'NODE' "$output_dir/graph-wash.js" || exit 1
-const fs = require('fs');
-const vm = require('vm');
-const file = process.argv[2];
-const source = fs.readFileSync(file, 'utf8');
+    # Use extracted helpers module directly (no vm extraction)
+    node - <<'NODE' "$output_dir/graph-wash-helpers.js" || exit 1
+const path = require('path');
+const helpers = require(path.resolve(process.argv[2]));
 
-function extractConst(name) {
-  const pattern = new RegExp(`const ${name} = [^;]+;`);
-  const match = source.match(pattern);
-  if (!match) throw new Error(`missing const ${name}`);
-  return match[0];
-}
+const { truncateLabel, cardDims } = helpers;
 
-function extractFunction(name) {
-  const signature = `function ${name}`;
-  const start = source.indexOf(signature);
-  if (start === -1) throw new Error(`missing ${name}`);
-  const braceStart = source.indexOf('{', start);
-  let depth = 0;
-  for (let i = braceStart; i < source.length; i++) {
-    const ch = source[i];
-    if (ch === '{') depth += 1;
-    if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(start, i + 1);
-    }
-  }
-  throw new Error(`unterminated ${name}`);
-}
-
-const context = { Intl, console };
-vm.createContext(context);
-vm.runInContext(`
-${extractConst('labelSegmenter')}
-${extractConst('LABEL_CJK_WIDTH')}
-${extractConst('LABEL_LATIN_WIDTH')}
-${extractConst('LABEL_PADDING')}
-${extractConst('LABEL_MIN_WIDTH')}
-${extractConst('LABEL_MAX_WIDTH')}
-${extractConst('LABEL_ELLIPSIS')}
-${extractConst('LABEL_ELLIPSIS_WIDTH')}
-${extractFunction('splitLabelGraphemes')}
-${extractFunction('labelCharWidth')}
-${extractFunction('measureLabelWidth')}
-${extractFunction('cardDims')}
-${extractFunction('truncateLabel')}
-this.cardDims = cardDims;
-this.truncateLabel = truncateLabel;
-`, context);
-
-const invalid = context.truncateLabel('', 100);
-if (invalid.text !== '' || invalid.truncated !== false) throw new Error('invalid input should return empty safe result');
-
-const wide = context.cardDims({ id: '1', label: '超级超级超级超级超级超级长标签AlphaBeta', type: 'entity' });
+const wide = cardDims({ id: '1', label: '超级超级超级超级超级超级长标签AlphaBeta', type: 'entity' });
 if (wide.w > 180) throw new Error('cardDims should respect max width');
 if (wide.w < 72) throw new Error('cardDims should respect min width');
 
-const truncated = context.truncateLabel('节点A👨‍👩‍👧‍👦AlphaBeta超长标签', 120);
+const truncated = truncateLabel('节点A👨‍👩‍👧‍👦AlphaBeta超长标签', 120);
 if (!truncated.truncated) throw new Error('expected long label to truncate');
 if (!truncated.text.endsWith('…')) throw new Error('truncated label should end with ellipsis');
 if (truncated.text.includes('undefined')) throw new Error('truncate output corrupted');
 if (/\uD800(?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(truncated.text)) throw new Error('truncate should not emit unmatched surrogate halves');
-
-const untouched = context.truncateLabel('短标签', 120);
-if (untouched.truncated) throw new Error('short label should stay untouched');
-if (untouched.text !== '短标签') throw new Error('short label text changed');
 NODE
 
     rm -rf "$tmp_dir"

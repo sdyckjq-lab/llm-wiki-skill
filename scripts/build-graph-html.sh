@@ -109,13 +109,15 @@ ASSET_SPECS=(
   "$DEPS_DIR/LICENSE-roughjs.txt|LICENSE-roughjs.txt"
   "$DEPS_DIR/LICENSE-marked.txt|LICENSE-marked.txt"
   "$DEPS_DIR/LICENSE-purify.txt|LICENSE-purify.txt"
+  "$TEMPLATES_DIR/graph-styles/wash/graph-wash-helpers.js|graph-wash-helpers.js"
   "$TEMPLATES_DIR/graph-styles/wash/graph-wash.js|graph-wash.js"
 )
 
 output_dir="$(dirname "$OUTPUT")"
 mkdir -p "$output_dir"
 output_tmp="$OUTPUT.partial"
-rm -f "$output_tmp"
+output_next="$OUTPUT.next"
+rm -f "$output_tmp" "$output_next"
 
 # 替换占位符
 WIKI_TITLE_VAL="$WIKI_TITLE" \
@@ -134,15 +136,16 @@ perl -pe 's|</script>|<\\/script>|gi' "$DATA" >> "$output_tmp"
 
 cat "$FOOTER" >> "$output_tmp"
 
-mv "$output_tmp" "$OUTPUT"
-
-# 复制 vendor 资产
+# 先复制 vendor 资产，全部成功后再替换 HTML
 for spec in "${ASSET_SPECS[@]}"; do
   src="${spec%%|*}"
   name="${spec#*|}"
   ensure_file "$src" "vendor"
   cp "$src" "$output_dir/$name"
 done
+
+mv "$output_tmp" "$output_next"
+mv "$output_next" "$OUTPUT"
 
 output_size=$(wc -c < "$OUTPUT" | tr -d ' ')
 output_kb=$((output_size / 1024))

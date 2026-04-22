@@ -60,6 +60,7 @@ test_graph_html_wash_output_exists() {
     assert_file_exists "$output_dir/marked.min.js"
     assert_file_exists "$output_dir/purify.min.js"
     assert_file_exists "$output_dir/graph-wash.js"
+    assert_file_exists "$output_dir/graph-wash-helpers.js"
     assert_file_exists "$output_dir/LICENSE-d3.txt"
     assert_file_exists "$output_dir/LICENSE-roughjs.txt"
     assert_file_exists "$output_dir/LICENSE-marked.txt"
@@ -82,6 +83,15 @@ test_graph_html_wash_uses_local_assets() {
     assert_file_contains "$html" 'src="marked.min.js"'
     assert_file_contains "$html" 'src="purify.min.js"'
     assert_file_contains "$html" 'src="graph-wash.js"'
+    assert_file_contains "$html" 'src="graph-wash-helpers.js"'
+
+    local helpers_line wash_line
+    helpers_line=$(grep -n 'graph-wash-helpers.js' "$html" | head -1 | cut -d: -f1)
+    wash_line=$(grep -n 'src="graph-wash.js"' "$html" | head -1 | cut -d: -f1)
+    [ -n "$helpers_line" ] || fail "HTML should reference graph-wash-helpers.js"
+    [ -n "$wash_line" ] || fail "HTML should reference graph-wash.js"
+    [ "$helpers_line" -lt "$wash_line" ] || fail "helpers.js must load before wash.js in HTML"
+
     assert_file_not_contains "$html" 'cdn.jsdelivr.net'
     assert_file_not_contains "$html" 'sample-data.js'
     assert_file_not_contains "$html" 'vis-network.min.js'
@@ -97,7 +107,8 @@ test_graph_html_wash_runtime_reads_injected_data_and_sanitizes_html() {
     build_graph_html_fixture "$tmp_dir"
 
     assert_file_contains "$output_dir/graph-wash.js" 'const dataEl = document.getElementById("graph-data");'
-    assert_file_contains "$output_dir/graph-wash.js" 'const DATA = dataEl ? JSON.parse(dataEl.textContent) : window.SAMPLE_GRAPH;'
+    assert_file_contains "$output_dir/graph-wash.js" 'JSON.parse(dataEl.textContent)'
+    assert_file_contains "$output_dir/graph-wash.js" 'window.SAMPLE_GRAPH'
     assert_file_contains "$output_dir/graph-wash.js" 'DOMPurify.sanitize(html, { ADD_ATTR: ["target", "data-target", "tabindex"] });'
 
     rm -rf "$tmp_dir"
