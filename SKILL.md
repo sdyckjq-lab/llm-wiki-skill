@@ -707,7 +707,9 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 4. 读取 `log.md` 最后 5 条记录
 5. 读取 `index.md` 获取主题概览
 6. 运行 `bash ${SKILL_DIR}/scripts/adapter-state.sh summary-human` 获取外挂状态
-7. **输出报告**（按 `WIKI_LANG` 切换语言）：
+7. 运行 `node ${SKILL_DIR}/scripts/source-signal-coverage.js <wiki_root>` 获取来源信号覆盖数据，从返回 JSON 的 `summary` 中读取：
+   - `ok`（已参与）、`missing_sources`（缺少 sources）、`empty_sources`（sources 为空）、`invalid_sources`（格式无效）、`not_applicable`（当前不参与）
+8. **输出报告**（按 `WIKI_LANG` 切换语言）：
 
    **zh**：
    ```
@@ -724,6 +726,13 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
      - 素材摘要：{N}
      - 对比分析：{N}
      - 综合分析：{N}
+
+   图谱来源信号覆盖：
+   - 已参与：{ok}
+   - 缺少 sources：{missing_sources}
+   - sources 为空：{empty_sources}
+   - 格式无效：{invalid_sources}
+   - 当前不参与：{not_applicable}
 
    研究方向：
    - purpose.md 是否存在：{是/否}
