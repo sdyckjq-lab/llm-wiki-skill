@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.0.7 (2026-04-22)
+
+### 修复
+
+- `graph-wash-helpers.js` 在 `Intl.Segmenter` 不可用时会把 ZWJ emoji、组合附加符和肤色修饰符并回同一段，旧运行时下的长标签截断不再拆坏家庭 emoji
+- `graph-wash-helpers.js` 现在同时导出到浏览器全局和 CommonJS，避免桌面壳或混合运行时里 `graph-wash.js` 拿不到 helper 后整页不启动
+- `build-graph-html.sh` 改为先复制全部 graph 资产，再替换最终 `knowledge-graph.html`，helper 缺失时不再把旧的可用 HTML 覆盖成坏产物
+
+### 测试
+
+- 新增 `tests/js/graph-wash-bootstrap.test.js`，覆盖 helper 缺失和 CommonJS + 浏览器双导出场景
+- `tests/js/graph-wash-helpers.test.js` 补充 `Intl.Segmenter` fallback 下的家庭 emoji 边界断言
+- `tests/graph-build-failures.regression-1.sh` 新增 helper 资产缺失时保留旧 HTML 的失败路径回归，`tests/regression.sh` 同步接入 bootstrap 单测
+
 ## v3.0.6 (2026-04-22)
 
 ### 新增
