@@ -109,6 +109,7 @@ ASSET_SPECS=(
   "$DEPS_DIR/LICENSE-roughjs.txt|LICENSE-roughjs.txt"
   "$DEPS_DIR/LICENSE-marked.txt|LICENSE-marked.txt"
   "$DEPS_DIR/LICENSE-purify.txt|LICENSE-purify.txt"
+  "$TEMPLATES_DIR/graph-styles/wash/graph-wash-helpers.js|graph-wash-helpers.js"
   "$TEMPLATES_DIR/graph-styles/wash/graph-wash.js|graph-wash.js"
 )
 

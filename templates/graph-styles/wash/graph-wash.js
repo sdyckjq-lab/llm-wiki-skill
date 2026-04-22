@@ -4,6 +4,13 @@
 (function () {
   "use strict";
 
+  const helpers = window.WikiGraphWashHelpers;
+  if (!helpers) {
+    console.error("[wiki] graph-wash-helpers.js is missing or failed to load");
+    return;
+  }
+  const { truncateLabel, cardDims, createSafeStorage } = helpers;
+
   const dataEl = document.getElementById("graph-data");
   let DATA;
   try {
@@ -44,16 +51,11 @@
     )
   };
 
-  const safeLocalStorage = {
-    get(key) {
-      try { return localStorage.getItem(key); }
-      catch (err) { console.warn("[wiki] localStorage.get failed:", key, err); return null; }
-    },
-    set(key, value) {
-      try { localStorage.setItem(key, value); }
-      catch (err) { console.warn("[wiki] localStorage.set failed:", key, err); }
-    }
-  };
+  let rawLocalStorage = null;
+  try {
+    rawLocalStorage = window.localStorage;
+  } catch (_) {}
+  const safeLocalStorage = createSafeStorage(rawLocalStorage, console.warn);
 
   // ---------- tokens (variants) ----------
   const VARIANTS = {
@@ -246,61 +248,6 @@
       return 18;
     }
     return 12 + Math.sqrt(n.degree) * 4;
-  }
-
-  // Card dimensions (w, h) for the "card" node style
-  function cardDims(n) {
-    const label = n.label || n.id;
-    const widthByLabel = measureLabelWidth(splitLabelGraphemes(label));
-    let width = Math.max(LABEL_MIN_WIDTH, Math.min(LABEL_MAX_WIDTH, widthByLabel + LABEL_PADDING));
-    let height = 36;
-    if (n.type === "topic") { height = 40; width += 6; }
-    if (n.type === "source") { height = 32; }
-    return { w: width, h: height };
-  }
-
-  const labelSegmenter = new Intl.Segmenter("zh", { granularity: "grapheme" });
-  const LABEL_CJK_WIDTH = 15;
-  const LABEL_LATIN_WIDTH = 8.5;
-  const LABEL_PADDING = 22;
-  const LABEL_MIN_WIDTH = 72;
-  const LABEL_MAX_WIDTH = 180;
-  const LABEL_ELLIPSIS = "…";
-  const LABEL_ELLIPSIS_WIDTH = 8;
-
-  function splitLabelGraphemes(label) {
-    return Array.from(labelSegmenter.segment(label), ({ segment }) => segment);
-  }
-
-  function labelCharWidth(grapheme) {
-    return /[一-鿿]/.test(grapheme) ? LABEL_CJK_WIDTH : LABEL_LATIN_WIDTH;
-  }
-
-  function measureLabelWidth(graphemes) {
-    let width = 0;
-    for (const grapheme of graphemes) width += labelCharWidth(grapheme);
-    return width;
-  }
-
-  function truncateLabel(label, maxWidth) {
-    if (!label || typeof label !== "string") {
-      console.warn("[wiki] truncateLabel: invalid input", label);
-      return { text: "", truncated: false };
-    }
-
-    const graphemes = splitLabelGraphemes(label);
-    const totalWidth = measureLabelWidth(graphemes);
-    if (totalWidth + LABEL_PADDING <= maxWidth) return { text: label, truncated: false };
-
-    let out = "";
-    let width = 0;
-    for (const grapheme of graphemes) {
-      const graphemeWidth = labelCharWidth(grapheme);
-      if (width + graphemeWidth + LABEL_ELLIPSIS_WIDTH + LABEL_PADDING > maxWidth) break;
-      out += grapheme;
-      width += graphemeWidth;
-    }
-    return { text: out + LABEL_ELLIPSIS, truncated: true };
   }
 
   // Jittered rounded rectangle path (slight imperfection for hand feel)
@@ -709,8 +656,9 @@
       // collect padded points around each node
       function hullPoints(padding) {
         const pts = c.nodes.filter(n => n.x != null).map(n => {
+          const dim = state.tweaks.nodeStyle === "card" ? cardDims(n) : null;
           const r = (state.tweaks.nodeStyle === "card"
-            ? Math.max(cardDims(n).w, cardDims(n).h) * 0.6
+            ? Math.max(dim.w, dim.h) * 0.6
             : nodeRadius(n)) + padding;
           const out = [];
           for (let i = 0; i < 10; i++) {
