@@ -153,7 +153,7 @@ bash install.sh --upgrade --platform hermes --target-dir <你的技能目录>/ll
 
 ### 前置条件
 
-- 核心：agent 能执行 shell 命令、读写本地文件即可；图谱构建额外需要 `jq` + `node`
+- 核心：agent 能执行 shell 命令、读写本地文件即可；图谱构建和来源信号覆盖检查需要 `jq` + `node`
 - 可选：微信公众号提取需要 `uv`；网页提取需要 `bun` 或 `npm`；需要登录态的内容可开启 Chrome 调试端口 9222
 
 </details>

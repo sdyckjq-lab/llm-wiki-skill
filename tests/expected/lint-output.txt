@@ -12,4 +12,18 @@
 --- index 一致性（index.md 有记录但文件缺失） ---
   index 有但文件缺失: Ghost
 
+--- source-signal 覆盖情况 ---
+  已参与：0
+  缺少 sources 字段：5
+  sources 为空：0
+  sources 格式无效：0
+  当前不参与：0
+
+  缺少 sources 字段：
+  - wiki/entities/C++.md
+  - wiki/entities/Lonely.md
+  - wiki/entities/Other.md
+  - wiki/entities/Real.md
+  - wiki/topics/AIbasic.md
+
 === 机械检查完成。矛盾检测、交叉引用、置信度抽查由 AI 继续执行 ===

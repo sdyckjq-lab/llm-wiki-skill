@@ -48,9 +48,43 @@
 - **Context**：本次 `/plan-eng-review` 已明确把 deep-analysis 从图谱 2.0 第一段交付拿掉，防止把最不稳定的模型编排绑进主实现；完成来源契约、权重、Louvain、Insights 主线后再进入第二阶段更稳。
 - **Depends on / blocked by**：先完成本轮的来源契约、权重、Louvain、Insights 主线，并验证 `graph-data.json` 的新结构稳定。
 
-- **What**：在 lint / status 一类工作流里增加“缺 `sources` 的页面提示”，明确哪些旧页面当前没有参与 source signal 计算。
-- **Why**：本次评审已决定缺来源时该信号不计入总分，如果没有提示，用户只会看到某些边不像预期那么强，却不知道是数据不全。
-- **Pros**：让图谱结果更可解释，也给后续补齐来源留一个清晰入口。
-- **Cons**：会多一条工作流输出，解释文案要写清楚，避免变成噪音。
-- **Context**：本轮图谱 2.0 方案把兼容层限制为“无 `sources` 视为空数组，不猜正文来源”，因此提示机制是最温和的补救。
-- **Depends on / blocked by**：依赖本轮 sources 契约、`graph-data.json` 新字段和 lint/status 输出设计。
+- ~~**What**：在 lint / status 一类工作流里增加”缺 `sources` 的页面提示”，明确哪些旧页面当前没有参与 source signal 计算。~~
+- **Completed:** v3.0.5 (2026-04-22) — `feat/source-signal-coverage` 分支落地
+
+## Review follow-ups
+
+### Edge-level same-source summary
+
+**What:** Add a separate status/lint follow-up that reports how many graph edges actually used the same-source overlap signal, rather than only which pages were eligible.
+
+**Why:** Page eligibility answers “which pages can participate,” but it does not answer whether the edge-level source overlap signal is doing useful work in real graph output.
+
+**Context:** The 2026-04-22 `/plan-eng-review` reduced Batch 1 to page-level eligibility coverage only. Outside voice review flagged that “coverage summary” and “same-source signal summary” are different questions. This follow-up should stay separate from the first batch so the current change stays honest and small.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** Shared eligibility/coverage landing first
+
+### Document source-signal applicable page types
+
+**What:** Write down the canonical rule for which page types are applicable vs not_applicable for source-signal, including exclusions like query pages and any synthesis subdirectories that should never count.
+
+**Why:** Without an explicit project-level rule, future work can silently drift and re-include derived pages, which would pollute the evidence-quality meaning of source overlap.
+
+**Context:** The 2026-04-22 `/plan-eng-review` changed `query` from applicable to not_applicable after outside voice review pointed out that query pages are derived content (`derived: true`) and are treated as secondary sources in `SKILL.md`. The same review also flagged that recursive synthesis scanning needs a clearly documented boundary.
+
+**Effort:** S
+**Priority:** P1
+**Depends on:** Final first-batch implementation rules being settled
+
+### Deconflict graph node IDs across page types
+
+**What:** Define and implement a strategy so graph node IDs cannot silently collide when different page types share the same filename.
+
+**Why:** Today the graph uses basename-derived IDs, so `entities/Foo.md` and `topics/Foo.md` would collide and make both graph output and any eligibility coverage misleading.
+
+**Context:** The 2026-04-22 outside voice review flagged this as an existing structural risk in `build-graph-data.sh` and `graph-analysis.js`. It is not part of the first batch because that batch is intentionally limited to source-signal eligibility coverage and lint/status explanation.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** None

@@ -81,5 +81,40 @@ fi
 rm -f "$_TMP_MISSING"
 echo ""
 
+# 检查 4：source-signal 覆盖情况
+echo "--- source-signal 覆盖情况 ---"
+_COVERAGE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/source-signal-coverage.js"
+if [ -f "$_COVERAGE_SCRIPT" ] && command -v node >/dev/null 2>&1; then
+  _COVERAGE_JSON=$(node "$_COVERAGE_SCRIPT" "$WIKI_ROOT" 2>/dev/null)
+  if [ $? -eq 0 ] && [ -n "$_COVERAGE_JSON" ]; then
+    node -e '
+      const data = JSON.parse(require("fs").readFileSync("/dev/stdin", "utf8"));
+      const s = data.summary;
+      console.log("  已参与：" + s.ok);
+      console.log("  缺少 sources 字段：" + s.missing_sources);
+      console.log("  sources 为空：" + s.empty_sources);
+      console.log("  sources 格式无效：" + s.invalid_sources);
+      console.log("  当前不参与：" + s.not_applicable);
+      const issues = data.pages.filter(p => p.reason !== "ok" && p.reason !== "not_applicable");
+      if (issues.length > 0) {
+        const byReason = { missing_sources: [], empty_sources: [], invalid_sources: [] };
+        for (const p of issues) { if (byReason[p.reason]) byReason[p.reason].push(p.path); }
+        for (const [reason, paths] of Object.entries(byReason)) {
+          if (paths.length === 0) continue;
+          const label = { missing_sources: "缺少 sources 字段", empty_sources: "sources 为空", invalid_sources: "sources 格式无效" }[reason];
+          console.log("");
+          console.log("  " + label + "：");
+          for (const p of paths) console.log("  - " + p);
+        }
+      }
+    ' <<< "$_COVERAGE_JSON"
+  else
+    echo "  （coverage 脚本执行失败，跳过覆盖检查）"
+  fi
+else
+  echo "  （coverage 脚本或 node 不可用，跳过覆盖检查）"
+fi
+echo ""
+
 echo "=== 机械检查完成。矛盾检测、交叉引用、置信度抽查由 AI 继续执行 ==="
 exit 0

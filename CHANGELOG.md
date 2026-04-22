@@ -1,5 +1,25 @@
 # Changelog
 
+## v3.0.5 (2026-04-22)
+
+### 新增
+
+- 新增 `scripts/lib/source-signal-eligibility.js` 共享模块，统一 6 种页面类型的来源信号（source-signal）资格判定逻辑
+- 新增 `scripts/source-signal-coverage.js` 批量扫描脚本，输出 JSON 格式的覆盖情况汇总
+- lint 报告新增"检查 4：source-signal 覆盖情况"，按原因分组列出未参与页面
+- status 工作流新增覆盖数据汇报步骤，报告模板增加"图谱来源信号覆盖"摘要
+
+### 改进
+
+- 从 `graph-analysis.js` 提取约 115 行重复的 frontmatter 解析和来源解析函数到共享模块，graph 回归测试全部通过
+- README 先决条件更新：来源信号覆盖检查需要 `node`
+
+### 测试
+
+- 新增 31 个 JS 单元/集成测试（`source-signal-eligibility.test.js` 25 个 + `source-signal-coverage.test.js` 6 个），覆盖全部 5 种资格原因
+- 新增 `tests/lint-output.regression-1.sh` lint 输出 golden diff 回归
+- `tests/regression.sh` 集成 JS 单测和 lint 回归
+
 ## v3.0.4 (2026-04-22)
 
 ### 新增
