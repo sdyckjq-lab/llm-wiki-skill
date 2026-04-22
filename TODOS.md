@@ -15,14 +15,12 @@
 - 已锁住旧知识库兼容与迁移规则
 - 已对齐安装、状态、说明和回归测试
 
-## 引入 JS 单测框架（跨项目决策，不夹带在功能 PR 里）
+## 引入 JS 单测框架（已完成）
 
-- **What**：给项目加一个 JavaScript 单测 runner（候选：`bun test` / `vitest` / `node:test`），为 `templates/graph-styles/wash/graph-wash.js` 里的纯函数写细粒度单测——覆盖 `truncateLabel`、`safeLocalStorage`、`cardDims` 等。
-- **Why**：现有 `tests/graph-html-*.regression-*.sh` 是 shell + golden HTML + DOM 字符串断言，能抓"页面结构变了"，抓不住"纯函数给边界输入返回错结果"。`truncateLabel` 这种带宽度估算、字素簇遍历、省略号逻辑的函数，golden fixture 间接覆盖率低。
-- **Pros**：对纯函数边界（空串 / 单字符 / 超长 / 复杂 emoji / 全角标点）能真正断言。重构提速。新增 graph 逻辑时低成本补测。
-- **Cons**：新依赖（对应 runner）、CI 多一步、其他协作者重新 setup、要决定用哪个 runner。所以这是独立决策，不该藏在 UX 修复 PR 里。
-- **Context**：决策发生在 2026-04-21 graph UX 修复 v3 plan 的 `/plan-eng-review` 环节。当时为了不扩张 PR 范围，决定把纯函数覆盖交给"多长度 golden fixture 间接测试"，并把这件事单独记下来。v3 plan 已在 "NOT in scope" 显式延后，不重复决策。
-- **Depends on / blocked by**：无硬性依赖。动手前先决定 runner（bun test 最轻，但要求所有协作者装 bun；node:test 零依赖但 API 偏底层；vitest 生态最成熟但拉 npm 依赖最重）。
+- **Completed:** v3.0.6 (2026-04-22)
+- **Decision**：采用 `node:test`，零额外依赖，直接复用项目现有 Node 运行时。
+- **Delivered**：新增 `templates/graph-styles/wash/graph-wash-helpers.js` 和 `tests/js/graph-wash-helpers.test.js`，覆盖 `truncateLabel`、`createSafeStorage`、`cardDims` 以及底层字素簇/宽度 helper。
+- **Result**：纯函数边界行为不再只靠 shell + HTML 回归间接兜底，`tests/regression.sh` 也已接入该 JS 单测。 
 
 ## Phase 1b - 交互式图谱进阶功能（Phase 1 落地后再评）
 

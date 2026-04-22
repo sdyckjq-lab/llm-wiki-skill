@@ -1,5 +1,25 @@
 # Changelog
 
+## v3.0.6 (2026-04-22)
+
+### 新增
+
+- 新增 `templates/graph-styles/wash/graph-wash-helpers.js`，把长标签截断、宽度估算和安全存储封装为可复用 helper，供浏览器运行时和 Node 单测共用
+- 新增 `tests/js/graph-wash-helpers.test.js`，用 `node:test` 覆盖 grapheme 分段、宽度计算、标签截断、卡片尺寸和安全存储边界行为
+
+### 改进
+
+- `graph-wash.js` 改为从共享 helpers 读取 `truncateLabel`、`cardDims` 和 `createSafeStorage`，减少前端运行时里的重复逻辑
+- `graph-wash.js` 在 `graph-wash-helpers.js` 缺失或加载失败时会显式报错并停止初始化，不再因为顶层解构直接抛出难定位的异常
+- `build-graph-html.sh` 与 wash footer 现在会复制并先加载 `graph-wash-helpers.js`，长标签回归不再依赖 `vm` 从浏览器脚本抽函数
+- `tests/regression.sh` 接入 `graph-html-styles`、`graph-html-search`、`graph-html-mobile` 三个遗漏回归，避免全量回归漏跑图谱场景
+
+### 测试
+
+- 新增 `graph-wash-helpers` JS 单测，并把它集成进 `tests/regression.sh`
+- `graph-wash-helpers` 单测补充 `Intl.Segmenter` 不可用时的 fallback 分支和浏览器全局导出分支覆盖
+- 更新 `graph-html-long-label.regression-1.sh` 与 `graph-html-styles.regression-1.sh`，验证 helpers 产物复制、脚本加载顺序和长标签行为
+
 ## v3.0.5 (2026-04-22)
 
 ### 新增
