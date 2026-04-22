@@ -13,6 +13,10 @@
 - `tests/regression.sh` 新增 Hermes 安装与入口文档断言，继续兜住四平台安装矩阵
 - README 结构断言扩展到 Hermes 安装、升级与根 `HERMES.md` 提示
 
+### 致谢
+
+- 感谢 [Zihan Zhao](https://github.com/ZZXX-bit) 贡献 Hermes 平台支持
+
 ## v3.0.3 (2026-04-21)
 
 ### 新增
