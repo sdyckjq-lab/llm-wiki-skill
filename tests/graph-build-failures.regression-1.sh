@@ -58,9 +58,33 @@ test_graph_data_exits_when_helper_missing() {
     rm -rf "$tmp_dir"
 }
 
+test_graph_html_keeps_existing_html_when_helper_copy_fails() {
+    local tmp_dir repo_copy output html_path
+    tmp_dir="$(mktemp -d)"
+    repo_copy="$tmp_dir/repo"
+
+    cp -R "$REPO_ROOT" "$repo_copy"
+    rm -rf "$repo_copy/.git"
+    rm "$repo_copy/templates/graph-styles/wash/graph-wash-helpers.js"
+
+    html_path="$repo_copy/tests/fixtures/graph-interactive-basic/wiki/knowledge-graph.html"
+    printf 'stable old html\n' > "$html_path"
+
+    if output="$(bash "$repo_copy/scripts/build-graph-html.sh" "$repo_copy/tests/fixtures/graph-interactive-basic" 2>&1)"; then
+        fail "build-graph-html.sh should fail when helper asset is missing"
+    fi
+
+    assert_text_contains "$output" "graph-wash-helpers.js"
+    assert_text_contains "$output" "找不到vendor"
+    assert_text_contains "$(cat "$html_path")" "stable old html"
+
+    rm -rf "$tmp_dir"
+}
+
 main() {
     test_graph_data_exits_without_node
     test_graph_data_exits_when_helper_missing
+    test_graph_html_keeps_existing_html_when_helper_copy_fails
     echo "PASS: graph build failure regression coverage"
 }
 

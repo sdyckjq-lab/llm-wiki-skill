@@ -70,6 +70,7 @@ describe("splitLabelGraphemes", () => {
 
     assert.deepEqual(Array.from(fallbackHelpers.splitLabelGraphemes("abc")), ["a", "b", "c"]);
     assert.deepEqual(Array.from(fallbackHelpers.splitLabelGraphemes("中文")), ["中", "文"]);
+    assert.deepEqual(Array.from(fallbackHelpers.splitLabelGraphemes("👨‍👩‍👧‍👦")), ["👨‍👩‍👧‍👦"]);
 
     const truncated = fallbackHelpers.truncateLabel("节点A👨‍👩‍👧‍👦AlphaBeta超长标签" + "超".repeat(20), 120);
     assert.equal(truncated.truncated, true);
@@ -77,6 +78,17 @@ describe("splitLabelGraphemes", () => {
     assert.ok(
       !/\uD800(?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(truncated.text),
       "fallback path keeps surrogate pairs intact"
+    );
+
+    const emojiBoundary = fallbackHelpers.truncateLabel("节点A👨‍👩‍👧‍👦AlphaBeta超长标签" + "超".repeat(20), 90);
+    assert.ok(emojiBoundary.text.endsWith(LABEL_ELLIPSIS));
+    assert.ok(
+      !emojiBoundary.text.startsWith("‍") && !emojiBoundary.text.includes("‍" + LABEL_ELLIPSIS),
+      "fallback path should not cut through a ZWJ sequence"
+    );
+    assert.ok(
+      !emojiBoundary.text.includes("👨‍") || emojiBoundary.text.includes("👨‍👩‍👧‍👦"),
+      "fallback path should keep the family emoji intact if it is included"
     );
   });
 });
@@ -213,7 +225,7 @@ describe("cardDims", () => {
   });
 });
 
-// --- createSafeStorage ---
+// --- browser export ---
 
 describe("browser export", () => {
   it("exports helpers to window when CommonJS is unavailable", () => {

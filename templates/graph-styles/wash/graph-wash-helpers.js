@@ -14,13 +14,53 @@
       ? new Intl.Segmenter("zh", { granularity: "grapheme" })
       : null;
 
+  function isVariationSelector(grapheme) {
+    var code = grapheme.codePointAt(0);
+    return code >= 0xFE00 && code <= 0xFE0F;
+  }
+
+  function isCombiningMark(grapheme) {
+    var code = grapheme.codePointAt(0);
+    return (code >= 0x0300 && code <= 0x036F)
+      || (code >= 0x1AB0 && code <= 0x1AFF)
+      || (code >= 0x1DC0 && code <= 0x1DFF)
+      || (code >= 0x20D0 && code <= 0x20FF)
+      || (code >= 0xFE20 && code <= 0xFE2F);
+  }
+
+  function isEmojiModifier(grapheme) {
+    var code = grapheme.codePointAt(0);
+    return code >= 0x1F3FB && code <= 0x1F3FF;
+  }
+
   function splitLabelGraphemes(label) {
     if (labelSegmenter) {
       return Array.from(labelSegmenter.segment(label), function (s) {
         return s.segment;
       });
     }
-    return Array.from(label);
+
+    var parts = Array.from(label);
+    if (!parts.length) return [];
+
+    var graphemes = [parts[0]];
+    for (var i = 1; i < parts.length; i++) {
+      var current = parts[i];
+      var previous = parts[i - 1];
+      if (
+        current === "‍"
+        || previous === "‍"
+        || isVariationSelector(current)
+        || isCombiningMark(current)
+        || isEmojiModifier(current)
+      ) {
+        graphemes[graphemes.length - 1] += current;
+      } else {
+        graphemes.push(current);
+      }
+    }
+
+    return graphemes;
   }
 
   function labelCharWidth(grapheme) {
@@ -89,9 +129,8 @@
     createSafeStorage: createSafeStorage
   };
 
+  root.WikiGraphWashHelpers = helpers;
   if (typeof module !== "undefined" && module.exports) {
     module.exports = helpers;
-  } else {
-    root.WikiGraphWashHelpers = helpers;
   }
 })(typeof window !== "undefined" ? window : this);
