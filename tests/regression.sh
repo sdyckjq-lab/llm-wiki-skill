@@ -214,7 +214,7 @@ test_install_auto_refuses_ambiguous_platforms() {
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
 
-    mkdir -p "$tmp_dir/home/.claude/skills" "$tmp_dir/home/.codex/skills"
+    mkdir -p "$tmp_dir/home/.claude/skills" "$tmp_dir/home/.codex/skills" "$tmp_dir/home/.hermes/skills"
 
     if output="$(
         HOME="$tmp_dir/home" \
@@ -251,6 +251,31 @@ exit 1'
     assert_path_exists "$tmp_dir/home/.openclaw/skills/llm-wiki/deps/baoyu-url-to-markdown"
     [ ! -d "$tmp_dir/home/.openclaw/skills/llm-wiki-upgrade" ] || fail "Did not expect Claude-only companion skill to be installed for OpenClaw"
     [ ! -d "$tmp_dir/home/.openclaw/skills/baoyu-url-to-markdown" ] || fail "Did not expect optional adapters to be enabled by default"
+}
+
+test_install_hermes_copies_bundle() {
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/home/.hermes/skills" "$tmp_dir/bin"
+
+    make_stub "$tmp_dir/bin/bun" '#!/bin/sh
+mkdir -p node_modules
+exit 0'
+
+    make_stub "$tmp_dir/bin/lsof" '#!/bin/sh
+exit 1'
+
+    HOME="$tmp_dir/home" \
+    PATH="$tmp_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "$REPO_ROOT/install.sh" --platform hermes > /dev/null 2>&1 || fail "install.sh should install for Hermes"
+
+    assert_path_exists "$tmp_dir/home/.hermes/skills/llm-wiki/SKILL.md"
+    assert_path_exists "$tmp_dir/home/.hermes/skills/llm-wiki/HERMES.md"
+    assert_path_exists "$tmp_dir/home/.hermes/skills/llm-wiki/platforms/hermes/README.md"
+    assert_path_exists "$tmp_dir/home/.hermes/skills/llm-wiki/scripts/source-registry.sh"
+    [ ! -d "$tmp_dir/home/.hermes/skills/baoyu-url-to-markdown" ] || fail "Did not expect optional adapters to be enabled by default"
 }
 
 test_upgrade_refreshes_claude_companion_skill() {
@@ -527,6 +552,8 @@ test_platform_entries_mention_hook_and_wiki_context() {
     assert_file_contains "$REPO_ROOT/platforms/claude/CLAUDE.md" "--install-hooks"
     assert_file_contains "$REPO_ROOT/platforms/codex/AGENTS.md" "优先查阅 wiki/index.md"
     assert_file_contains "$REPO_ROOT/platforms/openclaw/README.md" "--upgrade --platform openclaw --target-dir <你的技能目录>/llm-wiki"
+    assert_file_contains "$REPO_ROOT/platforms/hermes/README.md" "--platform hermes"
+    assert_file_contains "$REPO_ROOT/platforms/hermes/README.md" "~/.hermes/skills/llm-wiki"
 }
 
 test_root_entries_explain_core_only_optional_and_target_dir() {
@@ -536,6 +563,8 @@ test_root_entries_explain_core_only_optional_and_target_dir() {
     assert_file_contains "$REPO_ROOT/CLAUDE.md" "/llm-wiki-upgrade"
     assert_file_contains "$REPO_ROOT/CLAUDE.md" "--with-optional-adapters"
     assert_file_contains "$REPO_ROOT/CLAUDE.md" "默认只准备知识库核心主线"
+    assert_file_contains "$REPO_ROOT/HERMES.md" "--platform hermes"
+    assert_file_contains "$REPO_ROOT/HERMES.md" "~/.hermes/skills/llm-wiki"
 }
 
 test_skill_md_phase5_lint_mentions_confidence_audit() {
@@ -562,11 +591,14 @@ test_readme_sections() {
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform claude"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform codex"
     assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform openclaw"
+    assert_file_contains "$REPO_ROOT/README.md" "bash install.sh --platform hermes"
     assert_file_contains "$REPO_ROOT/README.md" "--with-optional-adapters"
     assert_file_contains "$REPO_ROOT/README.md" "/llm-wiki-upgrade"
     assert_file_contains "$REPO_ROOT/README.md" "--target-dir <你的技能目录>/llm-wiki"
     assert_file_contains "$REPO_ROOT/README.md" "--upgrade --platform openclaw --target-dir <你的技能目录>/llm-wiki"
+    assert_file_contains "$REPO_ROOT/README.md" "--upgrade --platform hermes --target-dir <你的技能目录>/llm-wiki"
     assert_file_contains "$REPO_ROOT/README.md" "wechat-article-to-markdown"
+    assert_file_contains "$REPO_ROOT/README.md" "HERMES.md"
     assert_file_not_contains "$REPO_ROOT/README.md" "bash setup.sh"
     assert_file_not_contains "$REPO_ROOT/README.md" "x-article-extractor"
     assert_file_not_contains "$REPO_ROOT/README.md" "baoyu-danger-x-to-markdown"
@@ -611,7 +643,7 @@ test_upgrade_auto_refuses_ambiguous_installed_platforms() {
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
 
-    mkdir -p "$tmp_dir/home/.claude/skills/llm-wiki" "$tmp_dir/home/.codex/skills/llm-wiki"
+    mkdir -p "$tmp_dir/home/.claude/skills/llm-wiki" "$tmp_dir/home/.codex/skills/llm-wiki" "$tmp_dir/home/.hermes/skills/llm-wiki"
 
     if output="$(
         HOME="$tmp_dir/home" \
@@ -1192,6 +1224,7 @@ test_upgrade_uses_explicit_target_dir
 test_upgrade_fails_when_explicit_target_dir_is_missing
 test_upgrade_refreshes_claude_companion_skill
 test_install_openclaw_copies_bundle
+test_install_hermes_copies_bundle
 test_init_fills_language_placeholder
 test_phase1_templates_exist
 test_init_creates_purpose_and_cache_files
@@ -1485,14 +1518,16 @@ test_graph_data_self_links_are_ignored() {
 }
 
 test_graph_data_exits_without_jq() {
-    local tmp_dir
+    local tmp_dir output
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
 
     mkdir -p "$tmp_dir/wiki/entities"
+    mkdir -p "$tmp_dir/bin"
+    ln -s /bin/bash "$tmp_dir/bin/bash"
 
-    # 用 PATH 只含 /bin（无 jq）来测试依赖缺失
-    if output="$(PATH=/bin bash "$REPO_ROOT/scripts/build-graph-data.sh" "$tmp_dir" 2>&1)"; then
+    # 用只包含 bash 的隔离 PATH 来测试 jq 依赖缺失，避免宿主机把 jq 装进 /bin
+    if output="$(PATH="$tmp_dir/bin" "$tmp_dir/bin/bash" "$REPO_ROOT/scripts/build-graph-data.sh" "$tmp_dir" 2>&1)"; then
         fail "build-graph-data.sh should fail when jq is not available"
     fi
     assert_text_contains "$output" "jq"

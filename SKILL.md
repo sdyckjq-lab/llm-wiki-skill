@@ -1,5 +1,8 @@
 ---
 name: llm-wiki
+version: 3.1.0
+author: sdyckjq-lab
+license: MIT
 description: |
   个人知识库构建系统（基于 Karpathy llm-wiki 方法论）。让 AI 持续构建和维护你的知识库，
   支持多种素材源（网页、推特、公众号、小红书、知乎、YouTube、PDF、本地文件），
@@ -7,6 +10,13 @@ description: |
   触发条件：用户明确提到"知识库"、"wiki"、"llm-wiki"，或要求对已初始化的知识库执行
   消化、查询、健康检查等操作。不要在用户只是要求"总结这篇文章"时触发——必须是明确的
   知识库相关意图。
+metadata:
+  hermes:
+    tags:
+      - knowledge-base
+      - wiki
+      - research
+      - note-taking
 ---
 
 # llm-wiki — 个人知识库构建系统

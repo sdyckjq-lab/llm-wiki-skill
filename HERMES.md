@@ -1,34 +1,34 @@
-# AGENTS.md
+# HERMES.md
 
-这是 llm-wiki 在 Codex 下的入口文件。
+这是 llm-wiki 在 Hermes 下的入口文件。
 
 先看这三个文件：
 
 - [README.md](README.md)：多平台总说明
-- [platforms/codex/AGENTS.md](platforms/codex/AGENTS.md)：Codex 专属入口提示
+- [platforms/hermes/README.md](platforms/hermes/README.md)：Hermes 专属入口提示
 - [SKILL.md](SKILL.md)：核心能力和工作流
 
-## Codex 安装动作
+## Hermes 安装动作
 
 如果当前任务是安装这个 skill，执行：
 
 ```bash
-bash install.sh --platform codex
+bash install.sh --platform hermes
 ```
 
-默认安装到 `~/.codex/skills/llm-wiki`。如果用户机器上还是旧的 `~/.Codex/skills`，安装器也会自动兼容。
+默认安装到 `~/.hermes/skills/llm-wiki`。
 
 默认只准备知识库核心主线。如果这次要自动提取网页 / X / 微信公众号 / YouTube / 知乎，再执行：
 
 ```bash
-bash install.sh --platform codex --with-optional-adapters
+bash install.sh --platform hermes --with-optional-adapters
 ```
 
 ## 重要提醒
 
-- 不要把这个仓库当成 Codex 专属仓库；Claude Code、OpenClaw、Hermes 也共用同一套核心内容
+- 不要把这个仓库当成 Hermes 专属仓库；Claude Code、Codex、OpenClaw 也共用同一套核心内容
+- Hermes 会优先读取仓库根的 `HERMES.md`；这里负责安装入口，知识库能力本身仍以 [SKILL.md](SKILL.md) 为准
 - 安装完成后，再按 [SKILL.md](SKILL.md) 的工作流继续做事
-- 如果 OpenClaw 使用的是自定义技能目录，可以改用 `--target-dir <你的技能目录>/llm-wiki`
 
 ## 使用顺序
 

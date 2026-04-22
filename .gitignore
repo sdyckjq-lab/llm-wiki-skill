@@ -8,3 +8,5 @@ deps/baoyu-url-to-markdown/scripts/bun.lock
 .context/
 .gstack/
 .playwright-cli/
+.omx/
+.codex

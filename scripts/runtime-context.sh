@@ -16,6 +16,9 @@ resolve_platform_skill_root() {
     openclaw)
       printf '%s\n' "$HOME/.openclaw/skills"
       ;;
+    hermes)
+      printf '%s\n' "$HOME/.hermes/skills"
+      ;;
     *)
       echo "不支持的平台：$1" >&2
       return 1

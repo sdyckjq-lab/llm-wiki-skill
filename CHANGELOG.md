@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.0.4 (2026-04-22)
+
+### 新增
+
+- 新增根 `HERMES.md` 与 `platforms/hermes/README.md`，让 Hermes 进入仓库时能走自己的安装入口，不再误吃 Codex 专属提示
+- `install.sh` 与 `scripts/runtime-context.sh` 新增 `hermes` 平台支持，默认技能目录为 `~/.hermes/skills/llm-wiki`
+- `README.md`、`README.en.md`、`SKILL.md` 补齐 Hermes 平台说明与 metadata，保持共享核心不分叉
+
+### 测试
+
+- `tests/regression.sh` 新增 Hermes 安装与入口文档断言，继续兜住四平台安装矩阵
+- README 结构断言扩展到 Hermes 安装、升级与根 `HERMES.md` 提示
+
 ## v3.0.3 (2026-04-21)
 
 ### 新增
