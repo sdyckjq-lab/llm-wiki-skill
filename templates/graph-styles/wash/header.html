@@ -347,6 +347,33 @@ html, body {
 .chip--inferred  { color: var(--edge-inferred); }
 .chip--ambiguous { color: var(--edge-ambiguous); }
 
+/* Mode switch */
+.mode-switch {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--paper-warm);
+  border-radius: 6px;
+  border: 1px dashed var(--paper-ink-faint);
+}
+.mode-btn {
+  padding: 6px 12px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--paper-ink-dim);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.mode-btn[data-on="1"] {
+  background: #fffdf6;
+  color: var(--paper-ink);
+  box-shadow: 0 1px 2px rgba(43,38,32,0.1);
+  font-weight: 600;
+}
+
 .tools__spacer { flex: 1; }
 
 .iconbtn {
@@ -811,6 +838,30 @@ html, body {
 }
 .drawer-close:hover { color: var(--paper-ink); border-color: var(--paper-ink); }
 
+/* Drawer learning explanation sections */
+.drawer-learning {
+  padding: 16px 28px 0 48px;
+  border-bottom: 1px dashed var(--paper-ink-faint);
+}
+.drawer-learning__section {
+  margin-bottom: 14px;
+}
+.drawer-learning__label {
+  font-family: var(--font-hand);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pen-rust);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.drawer-learning__content {
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--paper-ink-dim);
+}
+
 .drawer-body {
   flex: 1 1 0;
   overflow-y: auto;
@@ -1230,6 +1281,12 @@ body[data-variant="wash"] {
       </button>
     </div>
 
+    <div class="mode-switch" id="mode-switch">
+      <button class="mode-btn" data-mode="path" data-on="0" aria-label="路径视图" data-tip="推荐起点驱动的学习路径">路径</button>
+      <button class="mode-btn" data-mode="community" data-on="0" aria-label="社区视图" data-tip="聚焦当前最重社区">社区</button>
+      <button class="mode-btn" data-mode="global" data-on="1" aria-label="全局视图" data-tip="查看完整知识图谱">全局</button>
+    </div>
+
     <div class="tools__spacer"></div>
 
     <button class="iconbtn iconbtn--labeled" id="btn-refit" aria-label="重新排布" data-tip="重新布置节点">
@@ -1258,9 +1315,10 @@ body[data-variant="wash"] {
 
     <aside class="insights-panel" id="insights-panel" aria-label="图谱洞察">
       <div class="insights-panel__head">
-        <div class="insights-panel__title">Insights</div>
+        <div class="insights-panel__title" id="panel-title">Insights</div>
         <div class="insights-panel__meta" id="insights-meta">0 项</div>
       </div>
+      <div class="insights-panel__body" id="learning-body" hidden></div>
       <div class="insights-panel__body" id="insights-body"></div>
     </aside>
 
@@ -1322,6 +1380,21 @@ body[data-variant="wash"] {
           </div>
         </div>
         <button class="drawer-close" id="dr-close" title="关闭">×</button>
+      </div>
+
+      <div class="drawer-learning" id="dr-learning" hidden>
+        <div class="drawer-learning__section">
+          <div class="drawer-learning__label">这是什么</div>
+          <div class="drawer-learning__content" id="dr-what-body"></div>
+        </div>
+        <div class="drawer-learning__section">
+          <div class="drawer-learning__label">为什么现在看</div>
+          <div class="drawer-learning__content" id="dr-why-body"></div>
+        </div>
+        <div class="drawer-learning__section">
+          <div class="drawer-learning__label">下一步看什么</div>
+          <div class="drawer-learning__content" id="dr-next-body"></div>
+        </div>
       </div>
 
       <div class="drawer-body" id="dr-body"></div>
