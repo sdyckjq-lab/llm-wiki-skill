@@ -1,5 +1,23 @@
 # Changelog
 
+## v3.1.0 (2026-04-23)
+
+### 新增
+
+- 知识图谱新增「学习驾驶舱」：首次打开图谱时，自动展示推荐起点驱动的学习路径，而不是默认的全局视图
+- 新增路径/社区/全局三种学习模式切换，路径模式聚焦推荐起点及其直接邻居，社区模式聚焦最大社区
+- 侧边抽屉新增学习解释区：这是什么、为什么现在看、下一步看什么，引导用户渐进探索
+- Insights 面板在学习模式下切换为学习入口，展示推荐起点和社区概览
+- 搜索、小地图、底栏均适配子图模式，只搜索/显示/统计当前可见节点
+- `graph-analysis.js` 新增 `buildLearning()` 预计算函数，构建时生成完整学习元数据（降级瀑布、社区统计、推荐起点）
+- `graph-wash-helpers.js` 新增 6 个学习辅助函数（defaultLearning、normalizeLearning、resolveInitialMode、getVisibleNodeIds、getVisibleLinks、shouldAutoOpenDrawer）
+
+### 测试
+
+- 新增 `tests/js/graph-wash-learning.test.js`，20 个单元测试覆盖全部学习辅助函数
+- 新增 `tests/graph-html-learning-cockpit.regression-1.sh`，5 个回归测试覆盖 HTML 壳、运行时钩子和既有功能兼容性
+- 更新 `tests/expected/graph-data-sample.json` 和 `graph-data-empty.json` 金文件，反映新增的 learning 字段
+
 ## v3.0.7 (2026-04-22)
 
 ### 修复

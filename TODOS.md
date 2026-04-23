@@ -1,5 +1,14 @@
 # TODOs
 
+## 学习驾驶舱
+
+**Completed:** v3.1.0 (2026-04-23)
+
+1. **预计算 learning metadata contract** — DONE
+2. **把 wash 首页改成学习入口优先** — DONE
+3. **接入运行时学习状态与右侧学习解释** — DONE
+4. **补齐学习驾驶舱回归测试** — DONE
+
 ## After Multi-Platform Adaptation
 
 - 修复 Windows / PowerShell 下的中文乱码问题（#16），至少先明确 PowerShell 5.1 / 7 的支持边界，并补安装与使用提示。
