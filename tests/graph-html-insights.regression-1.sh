@@ -40,6 +40,8 @@ test_graph_html_has_insights_panel_shell() {
 
     assert_file_contains "$html" 'id="insights-panel"'
     assert_file_contains "$html" 'id="insights-body"'
+    assert_file_contains "$html" 'id="learning-body"'
+    assert_file_contains "$html" 'id="panel-title"'
     assert_file_contains "$js" 'renderInsights()'
     assert_file_contains "$js" 'focusNode(nodeId)'
     assert_file_contains "$js" 'insight-item'
