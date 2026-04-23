@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "build_date": "2026-04-23T12:00:00Z",
+    "wiki_title": "AI知识图谱Demo",
+    "total_nodes": 20,
+    "total_edges": 30,
+    "initial_view": ["n1","n2","n3","n4","n5","n6","n7","n8","n9","n10","n11","n12","n13","n14","n15","n16","n17","n18","n19","n20"],
+    "degraded": false
+  },
+  "nodes": [
+    {
+      "id": "n1", "label": "机器学习基础", "type": "topic", "community": "c1",
+      "content": "机器学习是人工智能的核心分支，通过数据驱动的方式让计算机自动发现模式并做出预测。它涵盖了监督学习、无监督学习和强化学习三大范式，是现代智能系统的基石。"
+    },
+    {
+      "id": "n2", "label": "深度学习", "type": "topic", "community": "c1",
+      "content": "深度学习是机器学习的子领域，利用多层神经网络自动提取数据的层次化特征表示。它在图像识别、语音处理和自然语言理解等任务上取得了突破性进展。"
+    },
+    {
+      "id": "n3", "label": "神经网络架构", "type": "entity", "community": "c1",
+      "content": "神经网络架构定义了神经元之间的连接方式和信息流动路径。常见的架构包括前馈网络、残差网络和U-Net，不同架构适用于不同类型的任务和数据特征。"
+    },
+    {
+      "id": "n4", "label": "卷积神经网络", "type": "entity", "community": "c1",
+      "content": "卷积神经网络通过局部感受野和权值共享机制高效处理网格状数据。它在图像分类、目标检测等视觉任务中表现出色，是计算机视觉领域最常用的网络结构。"
+    },
+    {
+      "id": "n5", "label": "循环神经网络", "type": "entity", "community": "c1",
+      "content": "循环神经网络通过隐藏状态在时间步之间传递信息，天然适合处理序列数据。LSTM和GRU等变体有效缓解了长程依赖中的梯度消失问题。"
+    },
+    {
+      "id": "n6", "label": "Transformer模型", "type": "entity", "community": "c1",
+      "content": "Transformer完全基于自注意力机制，摒弃了传统的循环和卷积结构。它通过并行计算大幅提升了训练效率，已成为NLP乃至多模态学习的主流架构。"
+    },
+    {
+      "id": "n7", "label": "注意力机制", "type": "entity", "community": "c1",
+      "content": "注意力机制让模型能够动态聚焦于输入中最相关的部分。多头注意力进一步扩展了这一能力，使模型能同时关注不同位置和不同表示子空间的信息。"
+    },
+    {
+      "id": "n8", "label": "自然语言处理", "type": "topic", "community": "c2",
+      "content": "自然语言处理研究如何让计算机理解、生成和转换人类语言。从早期的规则方法到现代预训练语言模型，NLP技术已广泛应用于翻译、摘要和对话系统。"
+    },
+    {
+      "id": "n9", "label": "词向量表示", "type": "entity", "community": "c2",
+      "content": "词向量将离散的词语映射为连续的稠密向量表示，使语义相近的词在向量空间中距离接近。Word2Vec和GloVe是两种经典的词向量生成方法。"
+    },
+    {
+      "id": "n10", "label": "语义分析", "type": "entity", "community": "c2",
+      "content": "语义分析旨在理解文本的深层含义，包括词义消歧、语义角色标注和情感分析等任务。它是实现机器真正理解自然语言的关键技术环节。"
+    },
+    {
+      "id": "n11", "label": "文本分类", "type": "entity", "community": "c2",
+      "content": "文本分类将文本文档自动归入预定义的类别中，广泛用于垃圾邮件过滤、新闻分类和意图识别。现代方法通常采用预训练模型加微调的策略。"
+    },
+    {
+      "id": "n12", "label": "语言模型", "type": "entity", "community": "c2",
+      "content": "语言模型学习自然语言的概率分布，能够预测序列中下一个词的概率。从N-gram到GPT系列，语言模型的能力和规模持续增长，推动了AI的快速发展。"
+    },
+    {
+      "id": "n13", "label": "计算机视觉", "type": "topic", "community": "c3",
+      "content": "计算机视觉让机器能够从图像和视频中提取有意义的信息。深度学习革命性地提升了视觉识别的准确率，使自动驾驶、医学影像分析等应用成为现实。"
+    },
+    {
+      "id": "n14", "label": "图像识别", "type": "entity", "community": "c3",
+      "content": "图像识别旨在将输入图像归类到已知类别中。从AlexNet到EfficientNet，卷积神经网络的演进不断提升ImageNet等基准上的分类精度。"
+    },
+    {
+      "id": "n15", "label": "目标检测", "type": "entity", "community": "c3",
+      "content": "目标检测不仅识别图像中的物体类别，还精确定位其位置。YOLO和Faster R-CNN等算法在速度和精度之间取得了良好的平衡。"
+    },
+    {
+      "id": "n16", "label": "图像分割", "type": "entity", "community": "c3",
+      "content": "图像分割将图像的每个像素分配到对应的语义类别，实现细粒度的场景理解。语义分割、实例分割和全景分割是三种主要的分割范式。"
+    },
+    {
+      "id": "n17", "label": "数据预处理", "type": "topic", "community": "c4",
+      "content": "数据预处理是机器学习流水线的第一步，涵盖缺失值填充、异常值处理和数据标准化等操作。高质量的预处理直接影响下游模型的训练效果和泛化能力。"
+    },
+    {
+      "id": "n18", "label": "特征工程", "type": "entity", "community": "c4",
+      "content": "特征工程从原始数据中构造有效的输入特征，是传统机器学习的核心技能。尽管深度学习减少了对人工特征的依赖，但在表格数据场景中仍然至关重要。"
+    },
+    {
+      "id": "n19", "label": "数据清洗", "type": "entity", "community": "c4",
+      "content": "数据清洗识别并修复数据集中的错误、不一致和冗余记录。常见问题包括重复条目、格式不统一和标签噪声，清洗质量直接决定模型可靠性。"
+    },
+    {
+      "id": "n20", "label": "特征选择", "type": "entity", "community": "c4",
+      "content": "特征选择从候选特征集中筛选出最相关的子集，降低维度灾难风险并提升模型可解释性。过滤法、包裹法和嵌入法是三种主流的特征选择策略。"
+    }
+  ],
+  "edges": [
+    {"id": "e1",  "from": "n1",  "to": "n2",  "type": "EXTRACTED", "weight": 0.95},
+    {"id": "e2",  "from": "n2",  "to": "n3",  "type": "EXTRACTED", "weight": 0.90},
+    {"id": "e3",  "from": "n2",  "to": "n4",  "type": "EXTRACTED", "weight": 0.88},
+    {"id": "e4",  "from": "n2",  "to": "n5",  "type": "EXTRACTED", "weight": 0.85},
+    {"id": "e5",  "from": "n2",  "to": "n6",  "type": "EXTRACTED", "weight": 0.92},
+    {"id": "e6",  "from": "n6",  "to": "n7",  "type": "EXTRACTED", "weight": 0.91},
+    {"id": "e7",  "from": "n3",  "to": "n4",  "type": "INFERRED", "weight": 0.70},
+    {"id": "e8",  "from": "n3",  "to": "n5",  "type": "INFERRED", "weight": 0.68},
+    {"id": "e9",  "from": "n8",  "to": "n9",  "type": "EXTRACTED", "weight": 0.93},
+    {"id": "e10", "from": "n8",  "to": "n10", "type": "EXTRACTED", "weight": 0.90},
+    {"id": "e11", "from": "n8",  "to": "n11", "type": "EXTRACTED", "weight": 0.87},
+    {"id": "e12", "from": "n8",  "to": "n12", "type": "EXTRACTED", "weight": 0.94},
+    {"id": "e13", "from": "n9",  "to": "n12", "type": "INFERRED", "weight": 0.72},
+    {"id": "e14", "from": "n10", "to": "n11", "type": "INFERRED", "weight": 0.65},
+    {"id": "e15", "from": "n13", "to": "n14", "type": "EXTRACTED", "weight": 0.91},
+    {"id": "e16", "from": "n13", "to": "n15", "type": "EXTRACTED", "weight": 0.89},
+    {"id": "e17", "from": "n13", "to": "n16", "type": "EXTRACTED", "weight": 0.86},
+    {"id": "e18", "from": "n14", "to": "n15", "type": "INFERRED", "weight": 0.73},
+    {"id": "e19", "from": "n15", "to": "n16", "type": "INFERRED", "weight": 0.67},
+    {"id": "e20", "from": "n17", "to": "n18", "type": "EXTRACTED", "weight": 0.90},
+    {"id": "e21", "from": "n17", "to": "n19", "type": "EXTRACTED", "weight": 0.92},
+    {"id": "e22", "from": "n17", "to": "n20", "type": "EXTRACTED", "weight": 0.88},
+    {"id": "e23", "from": "n18", "to": "n20", "type": "INFERRED", "weight": 0.75},
+    {"id": "e24", "from": "n19", "to": "n18", "type": "INFERRED", "weight": 0.60},
+    {"id": "e25", "from": "n6",  "to": "n12", "type": "EXTRACTED", "weight": 0.96},
+    {"id": "e26", "from": "n4",  "to": "n14", "type": "INFERRED", "weight": 0.80},
+    {"id": "e27", "from": "n1",  "to": "n17", "type": "INFERRED", "weight": 0.55},
+    {"id": "e28", "from": "n7",  "to": "n10", "type": "INFERRED", "weight": 0.62},
+    {"id": "e29", "from": "n5",  "to": "n12", "type": "INFERRED", "weight": 0.58},
+    {"id": "e30", "from": "n4",  "to": "n16", "type": "INFERRED", "weight": 0.64}
+  ],
+  "insights": {
+    "surprising_connections": [
+      {"from": "n6", "to": "n12", "weight": 0.96, "reason": "Transformer架构与语言模型的强关联，跨社区最高权重边"},
+      {"from": "n4", "to": "n14", "weight": 0.80, "reason": "CNN从视觉向NLP迁移的技术纽带"}
+    ],
+    "isolated_nodes": [],
+    "bridge_nodes": [
+      {"id": "n6", "reason": "连接深度学习与NLP两个社区的关键桥梁"},
+      {"id": "n4", "reason": "卷积网络在视觉和NLP之间的跨域应用"}
+    ],
+    "sparse_communities": [],
+    "meta": {"degraded": false}
+  },
+  "learning": {
+    "version": 1,
+    "entry": {
+      "recommended_start_node_id": "n1",
+      "recommended_start_reason": "community_hub",
+      "default_mode": "path"
+    },
+    "views": {
+      "path": {
+        "enabled": true,
+        "start_node_id": "n1",
+        "node_ids": ["n1","n2","n3","n4","n5","n6","n7"],
+        "degraded": false
+      },
+      "community": {
+        "enabled": true,
+        "community_id": "c1",
+        "label": "深度学习",
+        "node_ids": ["n1","n2","n3","n4","n5","n6","n7"],
+        "is_weak": false,
+        "degraded": false
+      },
+      "global": {
+        "enabled": true,
+        "node_ids": [],
+        "degraded": false
+      }
+    },
+    "communities": [
+      {
+        "id": "c1",
+        "label": "深度学习",
+        "node_count": 7,
+        "source_count": 4,
+        "is_primary": true,
+        "is_weak": false,
+        "internal_edge_weight": 5.82,
+        "recommended_start_node_id": "n1"
+      },
+      {
+        "id": "c2",
+        "label": "自然语言处理",
+        "node_count": 5,
+        "source_count": 3,
+        "is_primary": false,
+        "is_weak": false,
+        "internal_edge_weight": 4.37,
+        "recommended_start_node_id": "n8"
+      },
+      {
+        "id": "c3",
+        "label": "计算机视觉",
+        "node_count": 4,
+        "source_count": 2,
+        "is_primary": false,
+        "is_weak": false,
+        "internal_edge_weight": 3.21,
+        "recommended_start_node_id": "n13"
+      },
+      {
+        "id": "c4",
+        "label": "数据工程",
+        "node_count": 4,
+        "source_count": 2,
+        "is_primary": false,
+        "is_weak": false,
+        "internal_edge_weight": 2.85,
+        "recommended_start_node_id": "n17"
+      }
+    ],
+    "drawer": {
+      "section_order": ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"]
+    },
+    "degraded": {
+      "path_to_community": false,
+      "community_to_global": false
+    }
+  }
+}

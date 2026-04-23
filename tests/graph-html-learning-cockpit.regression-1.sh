@@ -61,13 +61,17 @@ test_learning_cockpit_html_has_drawer_learning_sections() {
     rm -rf "$tmp_dir"
 }
 
-test_learning_cockpit_html_has_learning_panel_body() {
+test_learning_cockpit_html_has_nav_panel_shell() {
     local tmp_dir html
     tmp_dir="$(mktemp -d)"
     build_graph_html_fixture "$tmp_dir"
     html="$tmp_dir/wiki/knowledge-graph.html"
 
-    assert_file_contains "$html" 'id="learning-body"'
+    assert_file_contains "$html" 'id="nav-panel"'
+    assert_file_contains "$html" 'id="nav-communities"'
+    assert_file_contains "$html" 'id="nav-start"'
+    assert_file_contains "$html" 'id="nav-inline-hint"'
+    assert_file_contains "$html" 'id="nav-toggle"'
     assert_file_contains "$html" 'id="panel-title"'
     assert_file_contains "$html" 'id="insights-body"'
 
@@ -82,7 +86,9 @@ test_learning_cockpit_js_has_runtime_hooks() {
 
     assert_file_contains "$js" 'bootstrapLearningEntry()'
     assert_file_contains "$js" 'setLearningMode('
-    assert_file_contains "$js" 'renderLearningPanel()'
+    assert_file_contains "$js" 'renderNavPanel()'
+    assert_file_contains "$js" 'setActiveCommunity('
+    assert_file_contains "$js" 'updateInsightsTitle()'
     assert_file_contains "$js" 'renderDrawerLearning('
     assert_file_contains "$js" 'applySubgraph()'
     assert_file_contains "$js" 'updateVisibleSnapshot()'
@@ -99,13 +105,11 @@ test_learning_cockpit_preserves_existing_hooks() {
     html="$tmp_dir/wiki/knowledge-graph.html"
     js="$tmp_dir/wiki/graph-wash.js"
 
-    # insights panel still exists
     assert_file_contains "$html" 'id="insights-panel"'
     assert_file_contains "$html" 'id="insights-body"'
     assert_file_contains "$js" 'renderInsights()'
-    assert_file_contains "$js" 'focusNode(nodeId)'
+    assert_file_contains "$js" 'focusNode(nodeId, openDrawer)'
 
-    # drawer core hooks still exist
     assert_file_contains "$html" 'id="dr-close"'
     assert_file_contains "$html" 'id="dr-body"'
     assert_file_contains "$html" 'id="dr-title"'
@@ -118,7 +122,7 @@ test_learning_cockpit_preserves_existing_hooks() {
 main() {
     test_learning_cockpit_html_has_mode_switch
     test_learning_cockpit_html_has_drawer_learning_sections
-    test_learning_cockpit_html_has_learning_panel_body
+    test_learning_cockpit_html_has_nav_panel_shell
     test_learning_cockpit_js_has_runtime_hooks
     test_learning_cockpit_preserves_existing_hooks
     echo "PASS: learning cockpit HTML regression coverage"

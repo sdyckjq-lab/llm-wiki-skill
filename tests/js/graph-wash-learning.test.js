@@ -4,6 +4,7 @@ const {
   defaultLearning,
   normalizeLearning,
   resolveInitialMode,
+  getCommunityNodeIds,
   getVisibleNodeIds,
   getVisibleLinks,
   shouldAutoOpenDrawer
@@ -48,7 +49,7 @@ describe("normalizeLearning", () => {
         community: { enabled: true, community_id: "c1", label: "Community 1", node_ids: ["A", "B", "C"], is_weak: false, degraded: false },
         global: { enabled: true, node_ids: ["A", "B", "C"], degraded: false }
       },
-      communities: [{ id: "c1", label: "Community 1", node_count: 3 }],
+      communities: [{ id: "c1", label: "Community 1", node_count: 3, source_count: 1, is_primary: true }],
       drawer: { section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"] },
       degraded: { path_to_community: false, community_to_global: false }
     };
@@ -97,6 +98,28 @@ describe("resolveInitialMode", () => {
   });
 });
 
+describe("getCommunityNodeIds", () => {
+  it("returns sorted node ids for a matching community", () => {
+    const nodes = [
+      { id: "B", community: "c2" },
+      { id: "A", community: "c1" },
+      { id: "C", community: "c1" },
+      { id: "D", community: null }
+    ];
+    assert.deepEqual(getCommunityNodeIds(nodes, "c1"), ["A", "C"]);
+  });
+
+  it("returns empty array for missing community", () => {
+    const nodes = [{ id: "A", community: "c1" }];
+    assert.deepEqual(getCommunityNodeIds(nodes, "c9"), []);
+  });
+
+  it("returns empty array when community id is absent", () => {
+    const nodes = [{ id: "A", community: "c1" }];
+    assert.deepEqual(getCommunityNodeIds(nodes, null), []);
+  });
+});
+
 describe("getVisibleNodeIds", () => {
   it("returns empty array when learning is null", () => {
     assert.deepEqual(getVisibleNodeIds(null, "path"), []);
@@ -112,7 +135,7 @@ describe("getVisibleNodeIds", () => {
     assert.deepEqual(getVisibleNodeIds(learning, "path"), []);
   });
 
-  it("returns empty for global mode (all nodes visible)", () => {
+  it("returns empty for global mode when view node_ids is empty", () => {
     const learning = { views: { global: { enabled: true, node_ids: [] } } };
     assert.deepEqual(getVisibleNodeIds(learning, "global"), []);
   });

@@ -190,6 +190,18 @@
     return "global";
   }
 
+  function getCommunityNodeIds(nodes, communityId) {
+    if (!Array.isArray(nodes) || !communityId) return [];
+    return nodes
+      .filter(function (node) {
+        return node && node.community != null && String(node.community) === String(communityId);
+      })
+      .map(function (node) {
+        return node.id;
+      })
+      .sort();
+  }
+
   function getVisibleNodeIds(learning, mode) {
     if (!learning || !learning.views) return [];
     var view = learning.views[mode];
@@ -222,6 +234,7 @@
     defaultLearning: defaultLearning,
     normalizeLearning: normalizeLearning,
     resolveInitialMode: resolveInitialMode,
+    getCommunityNodeIds: getCommunityNodeIds,
     getVisibleNodeIds: getVisibleNodeIds,
     getVisibleLinks: getVisibleLinks,
     shouldAutoOpenDrawer: shouldAutoOpenDrawer

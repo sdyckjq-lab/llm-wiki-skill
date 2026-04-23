@@ -51,6 +51,7 @@
   --font-mono:  "JetBrains Mono", ui-monospace, Menlo, monospace;
 
   --drawer-w: 440px;
+  --nav-w: 280px;
   --radius: 6px;
 }
 
@@ -133,19 +134,146 @@ html, body {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 0fr;
+  grid-template-columns: var(--nav-w) 1fr 0fr;
   grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
-    "brand   drawer"
-    "tools   drawer"
-    "canvas  drawer"
-    "footer  drawer";
+    "nav     brand   drawer"
+    "nav     tools   drawer"
+    "nav     canvas  drawer"
+    "nav     footer  drawer";
   height: 100vh;
   width: 100vw;
   transition: grid-template-columns 280ms cubic-bezier(.4,0,.2,1);
 }
 .app.drawer-open {
-  grid-template-columns: 1fr var(--drawer-w);
+  grid-template-columns: var(--nav-w) 1fr var(--drawer-w);
+}
+
+.nav-panel {
+  grid-area: nav;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px 18px 20px 28px;
+  background: rgba(255, 252, 243, 0.72);
+  border-right: 1px dashed rgba(117, 100, 84, 0.35);
+  overflow-y: auto;
+}
+.nav-panel::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  right: 20px;
+  width: 1px;
+  background: var(--paper-margin);
+  opacity: 0.18;
+  pointer-events: none;
+}
+.nav-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.nav-panel__title {
+  font-family: var(--font-hand);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--paper-ink);
+  transform: rotate(-0.4deg);
+}
+.nav-toggle {
+  display: none;
+}
+.nav-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.nav-panel__section-title {
+  font-family: var(--font-hand);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--paper-ink-dim);
+}
+.nav-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nav-panel__empty,
+.nav-panel__hint {
+  padding: 10px 12px;
+  border: 1px dashed rgba(117, 100, 84, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 248, 234, 0.55);
+  color: var(--paper-ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.nav-panel__hint[hidden] {
+  display: none;
+}
+.nav-community,
+.nav-start-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 10px 14px;
+  background: rgba(255, 248, 234, 0.65);
+  border: 1px dashed rgba(117, 100, 84, 0.35);
+  border-left: 4px solid var(--paper-rule);
+  border-radius: 6px;
+  color: var(--paper-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, transform 120ms;
+}
+.nav-community:hover,
+.nav-start-item:hover {
+  background: var(--paper-warm);
+  border-color: rgba(117, 100, 84, 0.55);
+  transform: translateY(-1px);
+}
+.nav-community[data-on="1"],
+.nav-start-item[data-on="1"] {
+  background: #fffdf6;
+  border-style: solid;
+  border-color: rgba(117, 100, 84, 0.55);
+  box-shadow: 1px 2px 0 rgba(43, 38, 32, 0.08);
+}
+.nav-community__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.nav-community__title,
+.nav-start-item__title {
+  min-width: 0;
+  font-family: var(--font-text);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--paper-ink);
+}
+.nav-community__meta,
+.nav-start-item__meta {
+  font-size: 12px;
+  color: var(--paper-ink-dim);
+  line-height: 1.4;
+}
+.nav-community__badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(182, 82, 57, 0.12);
+  color: var(--pen-rust);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 /* ---------- Brand bar (paper-style header) ---------- */
@@ -154,7 +282,7 @@ html, body {
   display: flex;
   align-items: baseline;
   gap: 18px;
-  padding: 18px 28px 8px 100px;
+  padding: 18px 28px 8px 24px;
   position: relative;
 }
 .brand__mark {
@@ -215,14 +343,14 @@ html, body {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 4px 28px 14px 100px;
+  padding: 4px 28px 14px 24px;
   flex-wrap: wrap;
   position: relative;
 }
 .tools::after {
   content: "";
   position: absolute;
-  left: 100px; right: 28px; bottom: 4px;
+  left: 24px; right: 28px; bottom: 4px;
   height: 1px;
   background: repeating-linear-gradient(90deg,
     var(--paper-ink-dim) 0 4px, transparent 4px 8px);
@@ -752,7 +880,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 28px 12px 100px;
+  padding: 8px 28px 12px 24px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--paper-ink-faint);
@@ -1232,9 +1360,41 @@ body[data-variant="wash"] {
 /* ============================================================
    Responsive
    ============================================================ */
+@media (max-width: 1023px) {
+  .app,
+  .app.drawer-open {
+    grid-template-columns: 1fr 0fr;
+    grid-template-areas:
+      "brand   drawer"
+      "tools   drawer"
+      "canvas  drawer"
+      "footer  drawer";
+  }
+  .nav-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, calc(100vw - 40px));
+    padding-right: 28px;
+    background: rgba(255, 252, 243, 0.96);
+    box-shadow: 4px 0 18px rgba(43, 38, 32, 0.12);
+    transform: translateX(-105%);
+    transition: transform 220ms ease;
+    z-index: 24;
+  }
+  .app.nav-open .nav-panel {
+    transform: translateX(0);
+  }
+  .nav-toggle {
+    display: inline-flex;
+  }
+}
+
 @media (max-width: 900px) {
   .margin-line { display: none; }
   .brand, .tools, .footer { padding-left: 20px; }
+  .tools::after { left: 20px; }
   .minimap { display: none; }
   .iconbtn--labeled { width: 34px; padding: 0; }
   .iconbtn__text { display: none; }
@@ -1247,6 +1407,22 @@ body[data-variant="wash"] {
 <div class="margin-line" aria-hidden="true"></div>
 
 <div class="app" id="app">
+
+  <aside class="nav-panel" id="nav-panel" aria-label="学习导航">
+    <div class="nav-panel__head">
+      <div class="nav-panel__title">学习驾驶舱</div>
+      <button class="iconbtn nav-toggle" id="nav-close" type="button" aria-label="关闭学习导航">×</button>
+    </div>
+    <section class="nav-panel__section" aria-labelledby="nav-communities-title">
+      <div class="nav-panel__section-title" id="nav-communities-title">社区榜</div>
+      <div class="nav-panel__list" id="nav-communities"></div>
+    </section>
+    <section class="nav-panel__section" aria-labelledby="nav-start-title">
+      <div class="nav-panel__section-title" id="nav-start-title">推荐起点</div>
+      <div class="nav-panel__list" id="nav-start"></div>
+      <div class="nav-panel__hint" id="nav-inline-hint" hidden></div>
+    </section>
+  </aside>
 
   <header class="brand">
     <a class="brand__mark" href="https://github.com/sdyckjq-lab/llm-wiki-skill"
@@ -1289,6 +1465,12 @@ body[data-variant="wash"] {
 
     <div class="tools__spacer"></div>
 
+    <button class="iconbtn iconbtn--labeled nav-toggle" id="nav-toggle" aria-label="学习导航" data-tip="打开/关闭学习导航">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>
+      <span class="iconbtn__text">导航</span>
+    </button>
     <button class="iconbtn iconbtn--labeled" id="btn-refit" aria-label="重新排布" data-tip="重新布置节点">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/>
@@ -1318,7 +1500,6 @@ body[data-variant="wash"] {
         <div class="insights-panel__title" id="panel-title">Insights</div>
         <div class="insights-panel__meta" id="insights-meta">0 项</div>
       </div>
-      <div class="insights-panel__body" id="learning-body" hidden></div>
       <div class="insights-panel__body" id="insights-body"></div>
     </aside>
 

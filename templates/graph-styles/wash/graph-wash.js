@@ -9,7 +9,7 @@
     console.error("[wiki] graph-wash-helpers.js is missing or failed to load");
     return;
   }
-  const { truncateLabel, cardDims, createSafeStorage, defaultLearning, normalizeLearning, resolveInitialMode, getVisibleNodeIds, getVisibleLinks, shouldAutoOpenDrawer } = helpers;
+  const { truncateLabel, cardDims, createSafeStorage, defaultLearning, normalizeLearning, resolveInitialMode, getCommunityNodeIds, getVisibleNodeIds, getVisibleLinks, shouldAutoOpenDrawer } = helpers;
 
   const dataEl = document.getElementById("graph-data");
   let DATA;
@@ -27,6 +27,12 @@
   const drawerNeighborsHeading = drawerNeighbors ? drawerNeighbors.querySelector("h4") : null;
   const insightsBody = document.getElementById("insights-body");
   const insightsMeta = document.getElementById("insights-meta");
+  const navPanel = document.getElementById("nav-panel");
+  const navCommunities = document.getElementById("nav-communities");
+  const navStart = document.getElementById("nav-start");
+  const navInlineHint = document.getElementById("nav-inline-hint");
+  const navToggle = document.getElementById("nav-toggle");
+  const navClose = document.getElementById("nav-close");
 
   // ---------- state ----------
   const state = {
@@ -64,7 +70,9 @@
       searchIndex: []
     },
     ui: {
-      bootstrappedEntry: false
+      bootstrappedEntry: false,
+      navOpen: false,
+      topCommunityIds: []
     }
   };
 
@@ -912,8 +920,16 @@
   // ---------- Selection + drawer ----------
   function selectNode(id, openDrawer) {
     state.selected = id;
+    const node = state.byId[id];
+    if (state.learning.activeMode !== "global" && node && node.community != null) {
+      const nodeCommunityId = String(node.community);
+      if (state.ui.topCommunityIds.indexOf(nodeCommunityId) !== -1) {
+        state.learning.activeCommunityId = nodeCommunityId;
+      }
+    }
     applyHighlight();
     pulseNode(id);
+    renderNavPanel();
     if (openDrawer) openDetailDrawer(id);
   }
 
@@ -1024,6 +1040,7 @@
     document.getElementById("drawer").setAttribute("aria-hidden", "true");
     state.selected = null;
     applyHighlight();
+    renderNavPanel();
   }
 
   function escapeHtml(s) {
@@ -1042,17 +1059,179 @@
     toastTimer = setTimeout(() => t.setAttribute("data-show", "0"), 1800);
   }
 
-  function focusNode(nodeId) {
+  function focusNode(nodeId, openDrawer) {
     const hit = state.byId[nodeId];
     if (!hit) return;
-    selectNode(hit.id, true);
+    selectNode(hit.id, openDrawer !== false);
     svg.transition().duration(450).call(zoomBehavior.translateTo, hit.x, hit.y);
+  }
+
+  function getSortedCommunities() {
+    return (state.learning.data.communities || []).slice().sort((a, b) => {
+      if (!!b.is_primary !== !!a.is_primary) return b.is_primary ? 1 : -1;
+      if ((b.node_count || 0) !== (a.node_count || 0)) return (b.node_count || 0) - (a.node_count || 0);
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
+  }
+
+  function getPrimaryCommunity() {
+    return getSortedCommunities().find((community) => community.is_primary) || getSortedCommunities()[0] || null;
+  }
+
+  function getActiveCommunity() {
+    const communities = state.learning.data.communities || [];
+    return communities.find((community) => community.id === state.learning.activeCommunityId) || getPrimaryCommunity();
+  }
+
+  function getRecommendedStartNodeId(community) {
+    if (community && community.recommended_start_node_id) return community.recommended_start_node_id;
+    return state.learning.data.entry && state.learning.data.entry.recommended_start_node_id;
+  }
+
+  function getPathNodeIdsForCommunity(community) {
+    if (!community) return [];
+    const startNodeId = getRecommendedStartNodeId(community);
+    if (!startNodeId) return [];
+
+    const communityNodeIds = new Set(getCommunityNodeIds(state.nodes, community.id));
+    if (!communityNodeIds.size) return [];
+
+    const nodeIds = [startNodeId];
+    state.links.forEach((link) => {
+      const sourceId = link.source && link.source.id ? link.source.id : link.source;
+      const targetId = link.target && link.target.id ? link.target.id : link.target;
+      if (sourceId === startNodeId && communityNodeIds.has(targetId)) nodeIds.push(targetId);
+      if (targetId === startNodeId && communityNodeIds.has(sourceId)) nodeIds.push(sourceId);
+    });
+
+    return [...new Set(nodeIds)].filter((id) => communityNodeIds.has(id));
+  }
+
+  function isLearningModeEnabled(mode) {
+    if (mode === "global") return true;
+    if (state.learning.data.views[mode] && state.learning.data.views[mode].enabled) return true;
+
+    const activeCommunity = getActiveCommunity();
+    if (!activeCommunity) return false;
+    if (mode === "community") return getCommunityNodeIds(state.nodes, activeCommunity.id).length > 0;
+    if (mode === "path") return getPathNodeIdsForCommunity(activeCommunity).length > 0;
+    return false;
+  }
+
+  function updateInsightsTitle() {
+    const panelTitle = document.getElementById("panel-title");
+    if (!panelTitle) return;
+    panelTitle.textContent = state.learning.activeMode === "global" ? "Insights" : "洞察";
+  }
+
+  function setNavOpen(open) {
+    state.ui.navOpen = open;
+    const app = document.getElementById("app");
+    if (app) app.classList.toggle("nav-open", !!open);
+    if (navToggle) navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function renderNavPanel() {
+    if (!navCommunities || !navStart) return;
+
+    const sortedCommunities = getSortedCommunities();
+    const visibleCommunities = sortedCommunities.slice(0, 3);
+    const activeCommunity = getActiveCommunity();
+    const selectedNode = state.selected ? state.byId[state.selected] : null;
+    const selectedCommunityId = selectedNode && selectedNode.community != null ? String(selectedNode.community) : null;
+    const topCommunityIds = visibleCommunities.map((community) => String(community.id));
+    state.ui.topCommunityIds = topCommunityIds;
+
+    navCommunities.innerHTML = "";
+    navStart.innerHTML = "";
+
+    if (navInlineHint) {
+      if (selectedCommunityId && topCommunityIds.indexOf(selectedCommunityId) === -1) {
+        navInlineHint.hidden = false;
+        navInlineHint.textContent = "当前节点属于未展示社区，左侧仍保持当前社区上下文。";
+      } else {
+        navInlineHint.hidden = true;
+        navInlineHint.textContent = "";
+      }
+    }
+
+    if (!visibleCommunities.length) {
+      const empty = document.createElement("div");
+      empty.className = "nav-panel__empty";
+      empty.textContent = "暂无社区信息。";
+      navCommunities.appendChild(empty);
+    }
+
+    visibleCommunities.forEach((community) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "nav-community";
+      button.style.borderLeftColor = state.communities[String(community.id)] ? state.communities[String(community.id)].color : "var(--paper-rule)";
+      button.setAttribute("data-on", state.learning.activeMode !== "global" && activeCommunity && community.id === activeCommunity.id ? "1" : "0");
+      button.innerHTML = `
+        <span class="nav-community__row">
+          <span class="nav-community__title">${escapeHtml(community.label || community.id)}</span>
+          ${community.is_primary ? '<span class="nav-community__badge">TOP</span>' : ""}
+        </span>
+        <span class="nav-community__meta">${community.node_count || 0} 个节点 · ${community.source_count || 0} 个来源</span>
+      `;
+      button.addEventListener("click", () => {
+        setActiveCommunity(community.id);
+        setNavOpen(false);
+      });
+      navCommunities.appendChild(button);
+    });
+
+    if (!activeCommunity) {
+      const empty = document.createElement("div");
+      empty.className = "nav-panel__empty";
+      empty.textContent = "暂无推荐起点。";
+      navStart.appendChild(empty);
+      return;
+    }
+
+    const startNodeId = getRecommendedStartNodeId(activeCommunity);
+    const startNode = startNodeId ? state.byId[startNodeId] : null;
+    if (!startNode) {
+      const empty = document.createElement("div");
+      empty.className = "nav-panel__empty";
+      empty.textContent = "当前社区暂无推荐起点。";
+      navStart.appendChild(empty);
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "nav-start-item";
+    button.setAttribute("data-on", state.selected === startNode.id ? "1" : "0");
+    button.innerHTML = `
+      <span class="nav-start-item__title">${escapeHtml(startNode.label || startNode.id)}</span>
+      <span class="nav-start-item__meta">${escapeHtml(activeCommunity.label || activeCommunity.id)} · 推荐起点</span>
+    `;
+    button.addEventListener("click", () => {
+      if (state.learning.activeCommunityId !== activeCommunity.id) state.learning.activeCommunityId = activeCommunity.id;
+      setLearningMode("path");
+      focusNode(startNode.id);
+      setNavOpen(false);
+    });
+    navStart.appendChild(button);
   }
 
   // ---------- Learning mode ----------
   function updateVisibleSnapshot() {
     const mode = state.learning.activeMode;
-    const ids = getVisibleNodeIds(state.learning.data, mode);
+    let ids = [];
+
+    if (mode === "community") {
+      const activeCommunity = getActiveCommunity();
+      ids = activeCommunity ? getCommunityNodeIds(state.nodes, activeCommunity.id) : [];
+    } else if (mode === "path") {
+      const activeCommunity = getActiveCommunity();
+      ids = activeCommunity ? getPathNodeIdsForCommunity(activeCommunity) : getVisibleNodeIds(state.learning.data, mode);
+    } else {
+      ids = getVisibleNodeIds(state.learning.data, mode);
+    }
+
     if (!ids.length) {
       state.visible.nodeIds = new Set(state.nodes.map(n => n.id));
       state.visible.nodes = state.nodes;
@@ -1086,98 +1265,46 @@
     });
   }
 
+  function syncDrawerWithVisibleSnapshot() {
+    if (!state.selected) return;
+    if (state.visible.nodeIds.size && !state.visible.nodeIds.has(state.selected)) {
+      closeDrawer();
+    }
+  }
+
   function setLearningMode(mode) {
-    if (!state.learning.data.views[mode] || !state.learning.data.views[mode].enabled) return;
+    if (!isLearningModeEnabled(mode)) return;
     state.learning.activeMode = mode;
+    if (!state.learning.activeCommunityId) {
+      const primary = getPrimaryCommunity();
+      state.learning.activeCommunityId = primary ? primary.id : null;
+    }
 
     updateVisibleSnapshot();
     applySubgraph();
+    syncDrawerWithVisibleSnapshot();
 
     document.querySelectorAll("#mode-switch .mode-btn").forEach(btn => {
       btn.setAttribute("data-on", btn.dataset.mode === mode ? "1" : "0");
     });
 
-    renderLearningPanel();
+    updateInsightsTitle();
+    renderNavPanel();
     fitVisibleToView();
   }
 
-  function renderLearningPanel() {
-    const learningBody = document.getElementById("learning-body");
-    const insightsBodyEl = document.getElementById("insights-body");
-    const panelTitle = document.getElementById("panel-title");
-    if (!learningBody) return;
+  function setActiveCommunity(communityId) {
+    if (!communityId) return;
+    const drawerEl = document.getElementById("drawer");
+    const shouldKeepDrawerOpen = drawerEl && drawerEl.getAttribute("aria-hidden") === "false";
 
-    const mode = state.learning.activeMode;
-    const data = state.learning.data;
-    const showLearning = mode && mode !== "global";
+    state.learning.activeCommunityId = communityId;
+    setLearningMode("community");
 
-    if (showLearning) {
-      if (panelTitle) panelTitle.textContent = "学习入口";
-      learningBody.removeAttribute("hidden");
-      if (insightsBodyEl) insightsBodyEl.setAttribute("hidden", "");
-      learningBody.innerHTML = "";
-
-      const view = data.views[mode];
-      const community = data.communities.find(c => c.id === (view && view.community_id));
-
-      const startId = mode === "path" ? (view && view.start_node_id) : (community && community.recommended_start_node_id);
-      const startNode = state.byId[startId];
-
-      const sections = [];
-
-      if (startNode) {
-        sections.push({
-          title: "推荐起点",
-          meta: `${startNode.label || startNode.id} · ${startNode.type}`,
-          onClick() { focusNode(startNode.id); }
-        });
-      }
-
-      if (community) {
-        sections.push({
-          title: community.label || community.id,
-          meta: `${community.node_count} 个节点 · ${roundNumber(community.internal_edge_weight)} 内部权重`,
-          onClick() { if (community.recommended_start_node_id) focusNode(community.recommended_start_node_id); }
-        });
-      }
-
-      if (view && view.node_ids) {
-        const otherNodes = view.node_ids
-          .filter(id => id !== startId)
-          .map(id => state.byId[id])
-          .filter(Boolean)
-          .slice(0, 5);
-        otherNodes.forEach(n => {
-          sections.push({
-            title: n.label || n.id,
-            meta: n.type,
-            onClick() { focusNode(n.id); }
-          });
-        });
-      }
-
-      sections.forEach(item => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "insight-item";
-        button.innerHTML = `
-          <span class="insight-item__title">${escapeHtml(item.title)}</span>
-          <span class="insight-item__meta">${escapeHtml(item.meta)}</span>
-        `;
-        button.addEventListener("click", item.onClick);
-        learningBody.appendChild(button);
-      });
-
-      if (!sections.length) {
-        const empty = document.createElement("div");
-        empty.className = "insights-panel__empty";
-        empty.textContent = "暂无学习入口。";
-        learningBody.appendChild(empty);
-      }
-    } else {
-      if (panelTitle) panelTitle.textContent = "Insights";
-      learningBody.setAttribute("hidden", "");
-      if (insightsBodyEl) insightsBodyEl.removeAttribute("hidden");
+    const activeCommunity = getActiveCommunity();
+    const startNodeId = getRecommendedStartNodeId(activeCommunity);
+    if (startNodeId && state.byId[startNodeId]) {
+      focusNode(startNodeId, shouldKeepDrawerOpen);
     }
   }
 
@@ -1194,10 +1321,8 @@
 
     container.removeAttribute("hidden");
     const node = state.byId[nodeId];
-    const data = state.learning.data;
-    const view = data.views[mode];
+    const activeCommunity = getActiveCommunity();
 
-    // What this is
     const whatBody = document.getElementById("dr-what-body");
     if (whatBody) {
       const typeLabel = ({ entity: "实体", topic: "主题", source: "来源" })[node.type] || node.type;
@@ -1205,21 +1330,19 @@
         (node.community ? `，属于「${node.community}」社区。` : "。");
     }
 
-    // Why now
     const whyBody = document.getElementById("dr-why-body");
     if (whyBody) {
-      if (mode === "path" && view && view.start_node_id === nodeId) {
+      if (mode === "path" && getRecommendedStartNodeId(activeCommunity) === nodeId) {
         whyBody.textContent = "这是学习路径的推荐起点，拥有最多的社区内连接。";
       } else if (mode === "path") {
         whyBody.textContent = "这个节点在学习路径中，与起点直接关联。";
-      } else if (mode === "community") {
-        whyBody.textContent = `当前聚焦「${view.label || view.community_id}」社区。`;
+      } else if (mode === "community" && activeCommunity) {
+        whyBody.textContent = `当前聚焦「${activeCommunity.label || activeCommunity.id}」社区。`;
       } else {
         whyBody.textContent = "";
       }
     }
 
-    // Next steps
     const nextBody = document.getElementById("dr-next-body");
     if (nextBody) {
       nextBody.innerHTML = "";
@@ -1285,8 +1408,10 @@
     state.ui.bootstrappedEntry = true;
 
     const data = state.learning.data;
+    const primaryCommunity = getPrimaryCommunity();
     const mode = resolveInitialMode(data);
     state.learning.activeMode = mode;
+    state.learning.activeCommunityId = primaryCommunity ? primaryCommunity.id : null;
     state.learning.recommendedStartNodeId = data.entry.recommended_start_node_id;
     state.learning.pathDegraded = data.views.path.degraded;
     state.learning.communityDegraded = data.views.community.degraded;
@@ -1298,7 +1423,8 @@
     });
 
     applySubgraph();
-    renderLearningPanel();
+    updateInsightsTitle();
+    renderNavPanel();
 
     const startId = data.entry.recommended_start_node_id;
     if (startId && state.byId[startId]) {
@@ -1584,6 +1710,19 @@
     const ty = minY + (pt[1] - oy) / s;
     svg.transition().duration(320).call(zoomBehavior.translateTo, tx, ty);
   });
+
+  if (navToggle) {
+    navToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setNavOpen(!state.ui.navOpen);
+    });
+  }
+  if (navClose) {
+    navClose.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setNavOpen(false);
+    });
+  }
 
   // ---------- Footer ----------
   function updateFooter() {
