@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/shared-config.sh"
+
 usage() {
   cat <<'EOF'
 用法：
@@ -62,7 +66,7 @@ EOF
 }
 
 relative_path() {
-  python3 - "$1" "$2" <<'PY'
+  "$PYTHON_CMD" - "$1" "$2" <<'PY'
 import os
 import sys
 
@@ -81,7 +85,7 @@ normalized_source_page() {
 
   case "$source_page" in
     /*)
-      python3 - "$wiki_root" "$source_page" <<'PY'
+      "$PYTHON_CMD" - "$wiki_root" "$source_page" <<'PY'
 import os
 import sys
 
@@ -106,7 +110,7 @@ PY
 }
 
 file_hash() {
-  python3 - "$1" "$2" <<'PY'
+  "$PYTHON_CMD" - "$1" "$2" <<'PY'
 import hashlib
 import pathlib
 import sys
@@ -140,7 +144,7 @@ cache_check() {
   current_hash="$(file_hash "$relative_path_value" "$file_path")"
 
   result="$(
-    python3 - "$cache_file" "$wiki_root" "$relative_path_value" "$current_hash" <<'PY'
+    "$PYTHON_CMD" - "$cache_file" "$wiki_root" "$relative_path_value" "$current_hash" <<'PY'
 import hashlib
 import json
 import os
@@ -221,7 +225,7 @@ cache_update() {
   normalized_source="$(normalized_source_page "$wiki_root" "$source_page")"
   timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-  python3 - "$cache_file" "$relative_path_value" "$current_hash" "$timestamp" "$normalized_source" <<'PY'
+  "$PYTHON_CMD" - "$cache_file" "$relative_path_value" "$current_hash" "$timestamp" "$normalized_source" <<'PY'
 import json
 import os
 import sys
@@ -267,7 +271,7 @@ cache_invalidate() {
 
   relative_path_value="$(relative_path "$wiki_root" "$file_path")"
 
-  python3 - "$cache_file" "$relative_path_value" <<'PY'
+  "$PYTHON_CMD" - "$cache_file" "$relative_path_value" <<'PY'
 import json
 import os
 import sys

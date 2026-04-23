@@ -210,6 +210,41 @@ Requires `uv`. Install it, then re-run with `--with-optional-adapters`.
 
 ---
 
+## Windows Users
+
+Windows PowerShell 5.1 (bundled with Win10 / Win11) defaults to GB2312 for console encoding, ASCII (CP1252) for `$OutputEncoding`, and `gbk` for Python subprocess `sys.stdout.encoding` on Chinese locale. Running `bash install.sh` directly under PowerShell 5.1 garbles Chinese output and hook JSON ([#16](https://github.com/sdyckjq-lab/llm-wiki-skill/issues/16)).
+
+**Option A — Use `install.ps1` (recommended)**
+
+From the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 --platform claude
+powershell -ExecutionPolicy Bypass -File install.ps1 --platform codex --dry-run
+```
+
+`install.ps1` sets console / `$OutputEncoding` / `PYTHONIOENCODING` all to UTF-8, then delegates to `bash install.sh`.
+
+**Option B — Manually set PowerShell encoding**
+
+```powershell
+chcp 65001
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = 'utf-8'
+bash install.sh --platform claude
+```
+
+**Option C — Upgrade to PowerShell 7+**
+
+PowerShell 7 defaults to UTF-8. Install: `winget install Microsoft.PowerShell`, then run `bash install.sh --platform claude` under `pwsh` directly.
+
+### Python command
+
+Windows typically installs Python as `python.exe`, not `python3.exe` (the `python3` on PATH via Microsoft Store is a stub that prompts installation instead of running). `scripts/shared-config.sh` auto-detects: **tries `python3` first, falls back to `python`**. As long as Python 3.8+ is on PATH under either name, all scripts work.
+
+---
+
 ## Credits
 
 This project builds on:

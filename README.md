@@ -213,6 +213,41 @@ Hermes 会优先加载仓库根的 `HERMES.md` 作为项目上下文。这个文
 
 ---
 
+## Windows 用户
+
+Windows PowerShell 5.1（Win10 / Win11 系统自带）默认 console 编码为 GB2312、`$OutputEncoding` 为 ASCII，Python 子进程 `sys.stdout.encoding` 默认为 `gbk`。直接在 PS 5.1 下运行 `bash install.sh` 会导致中文输出和 hook JSON 出现乱码（[#16](https://github.com/sdyckjq-lab/llm-wiki-skill/issues/16)）。
+
+**方案 A — 使用 `install.ps1`（推荐）**
+
+在仓库根目录下：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 --platform claude
+powershell -ExecutionPolicy Bypass -File install.ps1 --platform codex --dry-run
+```
+
+`install.ps1` 会自动把 console / `$OutputEncoding` / `PYTHONIOENCODING` 全部设为 UTF-8，再转发到 `bash install.sh`。
+
+**方案 B — 手动设置 PowerShell 编码**
+
+```powershell
+chcp 65001
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = 'utf-8'
+bash install.sh --platform claude
+```
+
+**方案 C — 升级到 PowerShell 7+**
+
+PowerShell 7 默认 UTF-8。安装：`winget install Microsoft.PowerShell`，然后 `pwsh` 下直接 `bash install.sh --platform claude`。
+
+### Python 命令
+
+Windows 上 Python 通常安装为 `python.exe` 而非 `python3.exe`（Microsoft Store 的 `python3` 是安装提示 stub，调用会失败）。本项目 `scripts/shared-config.sh` 已加入自动检测：**先尝试 `python3`，失败回退到 `python`**。所以只要 Python 3.8+ 在 PATH 中（任一命名即可），脚本能正常工作。
+
+---
+
 ## 致谢
 
 本项目复用和集成了以下开源项目：

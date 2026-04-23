@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/shared-config.sh"
+
 usage() {
   cat <<'EOF'
 用法：
@@ -27,7 +31,7 @@ scan_refs() {
 
   {
     grep -rlF --include='*.md' -- "$needle" "$wiki_dir" 2>/dev/null || true
-  } | python3 -c '
+  } | "$PYTHON_CMD" -c '
 import os
 import sys
 
