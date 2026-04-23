@@ -1,5 +1,31 @@
 # Changelog
 
+## v3.2.0 (2026-04-23)
+
+### 新增
+
+- 学习驾驶舱左侧社区导航面板：桌面端独立三列布局（导航 | 画布 | 抽屉），窄屏（<1024px）自动切换为 overlay
+- 社区榜展示前 3 个社区（按 is_primary + node_count 排序），每个社区显示名称、节点数和来源数，primary 社区带 TOP 标记
+- 点击社区切换到该社区的 community 视图，点击推荐起点进入 path 视图并自动展开抽屉
+- 左中右联动：首次打开、点击社区、点击起点、点击节点、切换模式、切到全局，六种触发动作的完整状态一致性
+- 社区切换后若当前选中节点不在新可见集内，自动关闭抽屉（drawer 漂移修复）
+- 非 top-3 社区节点点击时显示内联提示，左侧高亮不跳转
+- `graph-wash-helpers.js` 新增 `getCommunityNodeIds()` 运行时派生函数，任意社区的可见节点集合不再依赖 primary 预计算
+- 新增 `tests/fixtures/graph-interactive-multicomm/` 多社区测试 fixture（4 社区、20 节点、30 边）
+
+### 改进
+
+- `graph-wash.js` 社区视图改为通过 `activeCommunityId` 运行时派生可见节点，不再复用 `learning.views.community.node_ids`
+- 旧的 `renderLearningPanel()` 拆分为 `renderNavPanel()`（左侧导航）和 `updateInsightsTitle()`（标题同步），职责分离
+- Insights 面板不再隐藏/替换，`#insights-body` 始终可见
+- `focusNode()` 新增 `openDrawer` 参数，社区切换时可保持抽屉状态
+
+### 测试
+
+- 新增 `getCommunityNodeIds()` 3 个单元测试（正常匹配、不存在社区、空 community id）
+- 更新 HTML 回归脚本：新增 nav-panel 相关 DOM hook 断言，删除旧 learning-body 断言
+- `focusNode` 签名变更在两个回归脚本中同步更新
+
 ## v3.1.0 (2026-04-23)
 
 ### 新增
