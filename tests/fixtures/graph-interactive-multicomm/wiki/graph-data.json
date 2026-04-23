@@ -123,13 +123,13 @@
   ],
   "insights": {
     "surprising_connections": [
-      {"from": "n6", "to": "n12", "weight": 0.96, "reason": "Transformer架构与语言模型的强关联，跨社区最高权重边"},
-      {"from": "n4", "to": "n14", "weight": 0.80, "reason": "CNN从视觉向NLP迁移的技术纽带"}
+      {"from": "Transformer模型", "to": "语言模型", "weight": 0.96, "reason": "Transformer架构与语言模型的强关联，跨社区最高权重边"},
+      {"from": "卷积神经网络", "to": "图像识别", "weight": 0.80, "reason": "CNN从视觉向NLP迁移的技术纽带"}
     ],
     "isolated_nodes": [],
     "bridge_nodes": [
-      {"id": "n6", "reason": "连接深度学习与NLP两个社区的关键桥梁"},
-      {"id": "n4", "reason": "卷积网络在视觉和NLP之间的跨域应用"}
+      {"id": "n6", "label": "Transformer模型", "community_count": 2, "reason": "连接深度学习与NLP两个社区的关键桥梁"},
+      {"id": "n4", "label": "卷积神经网络", "community_count": 2, "reason": "卷积网络在视觉和NLP之间的跨域应用"}
     ],
     "sparse_communities": [],
     "meta": {"degraded": false}
