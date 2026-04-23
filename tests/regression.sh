@@ -1565,6 +1565,7 @@ bash "$REPO_ROOT/tests/graph-html-a11y.regression-1.sh" || fail "graph-html-a11y
 bash "$REPO_ROOT/tests/graph-html-styles.regression-1.sh" || fail "graph-html-styles.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-search.regression-1.sh" || fail "graph-html-search.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-mobile.regression-1.sh" || fail "graph-html-mobile.regression-1.sh 测试失败"
+bash "$REPO_ROOT/tests/graph-html-learning-cockpit.regression-1.sh" || fail "graph-html-learning-cockpit.regression-1.sh 测试失败"
 test_graph_data_dead_links_are_ignored
 test_graph_data_self_links_are_ignored
 test_graph_data_exits_without_jq
@@ -1577,6 +1578,7 @@ node --test "$REPO_ROOT/tests/js/source-signal-eligibility.test.js" || fail "sou
 node --test "$REPO_ROOT/tests/js/source-signal-coverage.test.js" || fail "source-signal-coverage integration tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-helpers.test.js" || fail "graph-wash-helpers unit tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-bootstrap.test.js" || fail "graph-wash bootstrap unit tests failed"
+node --test "$REPO_ROOT/tests/js/graph-wash-learning.test.js" || fail "graph-wash learning unit tests failed"
 
 # ─── Lint 回归 ────────────────────────────────────────────────────
 bash "$REPO_ROOT/tests/lint-output.regression-1.sh" || fail "lint output regression failed"

@@ -9,7 +9,7 @@
     console.error("[wiki] graph-wash-helpers.js is missing or failed to load");
     return;
   }
-  const { truncateLabel, cardDims, createSafeStorage } = helpers;
+  const { truncateLabel, cardDims, createSafeStorage, defaultLearning, normalizeLearning, resolveInitialMode, getVisibleNodeIds, getVisibleLinks, shouldAutoOpenDrawer } = helpers;
 
   const dataEl = document.getElementById("graph-data");
   let DATA;
@@ -48,7 +48,24 @@
     tweaks: Object.assign(
       { variant: "wash", sizeMode: "uniform", bubbleMode: "wash", nodeStyle: "card" },
       window.__TWEAKS || {}
-    )
+    ),
+    learning: {
+      data: normalizeLearning(DATA.learning),
+      activeMode: null,
+      activeCommunityId: null,
+      recommendedStartNodeId: null,
+      pathDegraded: false,
+      communityDegraded: false
+    },
+    visible: {
+      nodeIds: new Set(),
+      nodes: [],
+      links: [],
+      searchIndex: []
+    },
+    ui: {
+      bootstrappedEntry: false
+    }
   };
 
   let rawLocalStorage = null;
@@ -794,12 +811,13 @@
     let mmNodes = mmSvg.selectAll("circle.mm-node").data(state.nodes, d => d.id);
     mmNodes.exit().remove();
     mmNodes = mmNodes.enter().append("circle").attr("class", "mm-node").merge(mmNodes);
+    const hasSubgraph = state.visible.nodeIds.size > 0 && state.visible.nodeIds.size < state.nodes.length;
     mmNodes
       .attr("cx", d => (d.x - minX) * s + ox)
       .attr("cy", d => (d.y - minY) * s + oy)
       .attr("r", 1.8)
       .attr("fill", d => d.commColor)
-      .attr("opacity", 0.7);
+      .attr("opacity", d => hasSubgraph && !state.visible.nodeIds.has(d.id) ? 0.15 : 0.7);
 
     // viewport rect
     const viewBox = svgNode.getBoundingClientRect();
@@ -997,6 +1015,8 @@
       });
       nb.appendChild(el);
     });
+
+    renderDrawerLearning(id);
   }
 
   function closeDrawer() {
@@ -1027,6 +1047,276 @@
     if (!hit) return;
     selectNode(hit.id, true);
     svg.transition().duration(450).call(zoomBehavior.translateTo, hit.x, hit.y);
+  }
+
+  // ---------- Learning mode ----------
+  function updateVisibleSnapshot() {
+    const mode = state.learning.activeMode;
+    const ids = getVisibleNodeIds(state.learning.data, mode);
+    if (!ids.length) {
+      state.visible.nodeIds = new Set(state.nodes.map(n => n.id));
+      state.visible.nodes = state.nodes;
+      state.visible.links = state.links;
+    } else {
+      const idSet = new Set(ids);
+      state.visible.nodeIds = idSet;
+      state.visible.nodes = state.nodes.filter(n => idSet.has(n.id));
+      state.visible.links = getVisibleLinks(state.links, ids);
+    }
+    state.visible.searchIndex = state.visible.nodes.map(n => ({
+      node: n,
+      haystack: `${(n.label || n.id || "").toLowerCase()}\n${(n.content || "").slice(0, 500).toLowerCase()}`
+    }));
+  }
+
+  function applySubgraph() {
+    const idSet = state.visible.nodeIds;
+    if (!idSet.size || idSet.size === state.nodes.length) {
+      nodeLayer.selectAll("g.node-group").style("display", null);
+      edgeLayer.selectAll("g.edge-wrap").style("display", null);
+      return;
+    }
+    nodeLayer.selectAll("g.node-group").each(function (d) {
+      d3.select(this).style("display", idSet.has(d.id) ? null : "none");
+    });
+    edgeLayer.selectAll("g.edge-wrap").each(function (d) {
+      const s = d.source.id || d.source;
+      const t = d.target.id || d.target;
+      d3.select(this).style("display", (idSet.has(s) && idSet.has(t)) ? null : "none");
+    });
+  }
+
+  function setLearningMode(mode) {
+    if (!state.learning.data.views[mode] || !state.learning.data.views[mode].enabled) return;
+    state.learning.activeMode = mode;
+
+    updateVisibleSnapshot();
+    applySubgraph();
+
+    document.querySelectorAll("#mode-switch .mode-btn").forEach(btn => {
+      btn.setAttribute("data-on", btn.dataset.mode === mode ? "1" : "0");
+    });
+
+    renderLearningPanel();
+    fitVisibleToView();
+  }
+
+  function renderLearningPanel() {
+    const learningBody = document.getElementById("learning-body");
+    const insightsBodyEl = document.getElementById("insights-body");
+    const panelTitle = document.getElementById("panel-title");
+    if (!learningBody) return;
+
+    const mode = state.learning.activeMode;
+    const data = state.learning.data;
+    const showLearning = mode && mode !== "global";
+
+    if (showLearning) {
+      if (panelTitle) panelTitle.textContent = "学习入口";
+      learningBody.removeAttribute("hidden");
+      if (insightsBodyEl) insightsBodyEl.setAttribute("hidden", "");
+      learningBody.innerHTML = "";
+
+      const view = data.views[mode];
+      const community = data.communities.find(c => c.id === (view && view.community_id));
+
+      const startId = mode === "path" ? (view && view.start_node_id) : (community && community.recommended_start_node_id);
+      const startNode = state.byId[startId];
+
+      const sections = [];
+
+      if (startNode) {
+        sections.push({
+          title: "推荐起点",
+          meta: `${startNode.label || startNode.id} · ${startNode.type}`,
+          onClick() { focusNode(startNode.id); }
+        });
+      }
+
+      if (community) {
+        sections.push({
+          title: community.label || community.id,
+          meta: `${community.node_count} 个节点 · ${roundNumber(community.internal_edge_weight)} 内部权重`,
+          onClick() { if (community.recommended_start_node_id) focusNode(community.recommended_start_node_id); }
+        });
+      }
+
+      if (view && view.node_ids) {
+        const otherNodes = view.node_ids
+          .filter(id => id !== startId)
+          .map(id => state.byId[id])
+          .filter(Boolean)
+          .slice(0, 5);
+        otherNodes.forEach(n => {
+          sections.push({
+            title: n.label || n.id,
+            meta: n.type,
+            onClick() { focusNode(n.id); }
+          });
+        });
+      }
+
+      sections.forEach(item => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "insight-item";
+        button.innerHTML = `
+          <span class="insight-item__title">${escapeHtml(item.title)}</span>
+          <span class="insight-item__meta">${escapeHtml(item.meta)}</span>
+        `;
+        button.addEventListener("click", item.onClick);
+        learningBody.appendChild(button);
+      });
+
+      if (!sections.length) {
+        const empty = document.createElement("div");
+        empty.className = "insights-panel__empty";
+        empty.textContent = "暂无学习入口。";
+        learningBody.appendChild(empty);
+      }
+    } else {
+      if (panelTitle) panelTitle.textContent = "Insights";
+      learningBody.setAttribute("hidden", "");
+      if (insightsBodyEl) insightsBodyEl.removeAttribute("hidden");
+    }
+  }
+
+  function renderDrawerLearning(nodeId) {
+    const container = document.getElementById("dr-learning");
+    if (!container) return;
+
+    const mode = state.learning.activeMode;
+    const showLearning = mode && mode !== "global" && nodeId;
+    if (!showLearning) {
+      container.setAttribute("hidden", "");
+      return;
+    }
+
+    container.removeAttribute("hidden");
+    const node = state.byId[nodeId];
+    const data = state.learning.data;
+    const view = data.views[mode];
+
+    // What this is
+    const whatBody = document.getElementById("dr-what-body");
+    if (whatBody) {
+      const typeLabel = ({ entity: "实体", topic: "主题", source: "来源" })[node.type] || node.type;
+      whatBody.textContent = `${node.label || node.id} 是一个${typeLabel}节点` +
+        (node.community ? `，属于「${node.community}」社区。` : "。");
+    }
+
+    // Why now
+    const whyBody = document.getElementById("dr-why-body");
+    if (whyBody) {
+      if (mode === "path" && view && view.start_node_id === nodeId) {
+        whyBody.textContent = "这是学习路径的推荐起点，拥有最多的社区内连接。";
+      } else if (mode === "path") {
+        whyBody.textContent = "这个节点在学习路径中，与起点直接关联。";
+      } else if (mode === "community") {
+        whyBody.textContent = `当前聚焦「${view.label || view.community_id}」社区。`;
+      } else {
+        whyBody.textContent = "";
+      }
+    }
+
+    // Next steps
+    const nextBody = document.getElementById("dr-next-body");
+    if (nextBody) {
+      nextBody.innerHTML = "";
+      const neighbors = [];
+      state.visible.links.forEach(l => {
+        const s = l.source.id || l.source;
+        const t = l.target.id || l.target;
+        if (s === nodeId) neighbors.push(t);
+        else if (t === nodeId) neighbors.push(s);
+      });
+      const unique = [...new Set(neighbors)].slice(0, 5);
+      if (unique.length) {
+        unique.forEach(nid => {
+          const n = state.byId[nid];
+          if (!n) return;
+          const a = document.createElement("a");
+          a.className = "wikilink";
+          a.setAttribute("data-target", nid);
+          a.textContent = n.label || nid;
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            selectNode(nid, true);
+            svg.transition().duration(450).call(zoomBehavior.translateTo, n.x, n.y);
+          });
+          nextBody.appendChild(a);
+          nextBody.appendChild(document.createTextNode(" · "));
+        });
+      } else {
+        nextBody.textContent = "已到达当前视图的边界。";
+      }
+    }
+  }
+
+  function fitVisibleToView() {
+    const visibleNodes = state.visible.nodeIds.size && state.visible.nodeIds.size < state.nodes.length
+      ? state.nodes.filter(n => state.visible.nodeIds.has(n.id))
+      : state.nodes;
+    if (!visibleNodes.length) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    visibleNodes.forEach(n => {
+      const r = nodeRadius(n) + 30;
+      if (n.x - r < minX) minX = n.x - r;
+      if (n.y - r < minY) minY = n.y - r;
+      if (n.x + r > maxX) maxX = n.x + r;
+      if (n.y + r > maxY) maxY = n.y + r;
+    });
+    const pad = 60;
+    const bw = maxX - minX + pad * 2;
+    const bh = maxY - minY + pad * 2;
+    const rect = svgNode.getBoundingClientRect();
+    const k = Math.min(rect.width / bw, rect.height / bh, 1.3);
+    const tx = rect.width / 2 - ((minX + maxX) / 2) * k;
+    const ty = rect.height / 2 - ((minY + maxY) / 2) * k;
+    svg.transition().duration(600).call(
+      zoomBehavior.transform,
+      d3.zoomIdentity.translate(tx, ty).scale(k)
+    );
+  }
+
+  function bootstrapLearningEntry() {
+    if (state.ui.bootstrappedEntry) return;
+    state.ui.bootstrappedEntry = true;
+
+    const data = state.learning.data;
+    const mode = resolveInitialMode(data);
+    state.learning.activeMode = mode;
+    state.learning.recommendedStartNodeId = data.entry.recommended_start_node_id;
+    state.learning.pathDegraded = data.views.path.degraded;
+    state.learning.communityDegraded = data.views.community.degraded;
+
+    updateVisibleSnapshot();
+
+    document.querySelectorAll("#mode-switch .mode-btn").forEach(btn => {
+      btn.setAttribute("data-on", btn.dataset.mode === mode ? "1" : "0");
+    });
+
+    applySubgraph();
+    renderLearningPanel();
+
+    const startId = data.entry.recommended_start_node_id;
+    if (startId && state.byId[startId]) {
+      selectNode(startId, shouldAutoOpenDrawer(mode));
+      if (mode !== "global") {
+        setTimeout(() => fitVisibleToView(), 200);
+      }
+    }
+
+    if (mode !== "global" && state.visible.nodeIds.size < state.nodes.length) {
+      setTimeout(() => fitVisibleToView(), 100);
+    }
+  }
+
+  function roundNumber(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "0";
+    return Math.round(numeric * 1000) / 1000;
   }
 
   function renderInsights() {
@@ -1152,7 +1442,8 @@
     input.addEventListener("input", () => {
       const q = input.value.trim().toLowerCase();
       if (!q) { dd.setAttribute("data-open", "0"); return; }
-      results = state.searchIndex
+      const idx = state.visible.searchIndex.length ? state.visible.searchIndex : state.searchIndex;
+      results = idx
         .filter(entry => entry.haystack.includes(q))
         .map(entry => entry.node);
       activeIdx = 0;
@@ -1299,7 +1590,8 @@
     document.getElementById("n-nodes").textContent = state.nodes.length;
     document.getElementById("n-edges").textContent = state.links.length;
     document.getElementById("n-date").textContent = DATA.meta.build_date;
-    document.getElementById("foot-shown").textContent = state.nodes.length;
+    const shown = state.visible.nodeIds.size || state.nodes.length;
+    document.getElementById("foot-shown").textContent = shown;
     document.getElementById("foot-total").textContent = state.nodes.length;
     const comms = Object.keys(state.communities).filter(k => k !== "_none").length;
     document.getElementById("foot-communities").textContent = comms;
@@ -1441,6 +1733,13 @@
   renderInsights();
   updateFooter();
 
-  // Auto-select a node after stabilization for visual polish (comment out if not wanted)
-  // setTimeout(() => selectNode("Transformer", false), 1500);
+  // Mode switch buttons
+  document.querySelectorAll("#mode-switch .mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setLearningMode(btn.dataset.mode);
+    });
+  });
+
+  // Bootstrap learning entry after simulation stabilizes
+  setTimeout(() => { bootstrapLearningEntry(); }, 600);
 })();

@@ -120,13 +120,111 @@
     };
   }
 
+  function defaultLearning() {
+    return {
+      version: 1,
+      entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" },
+      views: {
+        path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+        community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+        global: { enabled: true, node_ids: [], degraded: false }
+      },
+      communities: [],
+      drawer: { section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"] },
+      degraded: { path_to_community: true, community_to_global: true }
+    };
+  }
+
+  function normalizeLearning(raw) {
+    if (!raw || typeof raw !== "object") return defaultLearning();
+    var d = defaultLearning();
+    function pick(obj, key, fallback) {
+      return obj && obj[key] != null ? obj[key] : fallback;
+    }
+    return {
+      version: pick(raw, "version", d.version),
+      entry: {
+        recommended_start_node_id: pick(raw.entry, "recommended_start_node_id", d.entry.recommended_start_node_id),
+        recommended_start_reason: pick(raw.entry, "recommended_start_reason", d.entry.recommended_start_reason),
+        default_mode: pick(raw.entry, "default_mode", d.entry.default_mode)
+      },
+      views: {
+        path: {
+          enabled: pick(raw.views && raw.views.path, "enabled", d.views.path.enabled),
+          start_node_id: pick(raw.views && raw.views.path, "start_node_id", d.views.path.start_node_id),
+          node_ids: Array.isArray(raw.views && raw.views.path && raw.views.path.node_ids) ? raw.views.path.node_ids : d.views.path.node_ids,
+          degraded: pick(raw.views && raw.views.path, "degraded", d.views.path.degraded)
+        },
+        community: {
+          enabled: pick(raw.views && raw.views.community, "enabled", d.views.community.enabled),
+          community_id: pick(raw.views && raw.views.community, "community_id", d.views.community.community_id),
+          label: pick(raw.views && raw.views.community, "label", d.views.community.label),
+          node_ids: Array.isArray(raw.views && raw.views.community && raw.views.community.node_ids) ? raw.views.community.node_ids : d.views.community.node_ids,
+          is_weak: pick(raw.views && raw.views.community, "is_weak", d.views.community.is_weak),
+          degraded: pick(raw.views && raw.views.community, "degraded", d.views.community.degraded)
+        },
+        global: {
+          enabled: pick(raw.views && raw.views.global, "enabled", d.views.global.enabled),
+          node_ids: Array.isArray(raw.views && raw.views.global && raw.views.global.node_ids) ? raw.views.global.node_ids : d.views.global.node_ids,
+          degraded: pick(raw.views && raw.views.global, "degraded", d.views.global.degraded)
+        }
+      },
+      communities: Array.isArray(raw.communities) ? raw.communities : d.communities,
+      drawer: {
+        section_order: Array.isArray(raw.drawer && raw.drawer.section_order)
+          ? raw.drawer.section_order : d.drawer.section_order
+      },
+      degraded: {
+        path_to_community: pick(raw.degraded, "path_to_community", d.degraded.path_to_community),
+        community_to_global: pick(raw.degraded, "community_to_global", d.degraded.community_to_global)
+      }
+    };
+  }
+
+  function resolveInitialMode(learning) {
+    if (!learning) return "global";
+    var mode = learning.entry && learning.entry.default_mode;
+    if (mode === "path" && learning.views && learning.views.path && !learning.views.path.degraded) return "path";
+    if (mode === "community" && learning.views && learning.views.community && !learning.views.community.degraded) return "community";
+    if (mode === "path" && learning.views && learning.views.community && !learning.views.community.degraded) return "community";
+    return "global";
+  }
+
+  function getVisibleNodeIds(learning, mode) {
+    if (!learning || !learning.views) return [];
+    var view = learning.views[mode];
+    if (!view || !view.enabled) return [];
+    return Array.isArray(view.node_ids) ? view.node_ids : [];
+  }
+
+  function getVisibleLinks(allLinks, visibleIds) {
+    if (!visibleIds || !visibleIds.length) return allLinks;
+    var idSet = {};
+    for (var i = 0; i < visibleIds.length; i++) idSet[visibleIds[i]] = true;
+    return allLinks.filter(function (l) {
+      var s = l.source.id || l.source;
+      var t = l.target.id || l.target;
+      return idSet[s] && idSet[t];
+    });
+  }
+
+  function shouldAutoOpenDrawer(mode) {
+    return mode === "path";
+  }
+
   var helpers = {
     splitLabelGraphemes: splitLabelGraphemes,
     labelCharWidth: labelCharWidth,
     measureLabelWidth: measureLabelWidth,
     truncateLabel: truncateLabel,
     cardDims: cardDims,
-    createSafeStorage: createSafeStorage
+    createSafeStorage: createSafeStorage,
+    defaultLearning: defaultLearning,
+    normalizeLearning: normalizeLearning,
+    resolveInitialMode: resolveInitialMode,
+    getVisibleNodeIds: getVisibleNodeIds,
+    getVisibleLinks: getVisibleLinks,
+    shouldAutoOpenDrawer: shouldAutoOpenDrawer
   };
 
   root.WikiGraphWashHelpers = helpers;

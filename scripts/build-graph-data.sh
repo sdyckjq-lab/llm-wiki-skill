@@ -118,6 +118,24 @@ if [ ! -s "$NODES_TSV" ]; then
           max_insight_nodes: 250,
           max_insight_edges: 1000
         }
+      },
+      learning: {
+        version: 1,
+        entry: {
+          recommended_start_node_id: null,
+          recommended_start_reason: null,
+          default_mode: "global"
+        },
+        views: {
+          path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+          community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+          global: { enabled: true, node_ids: [], degraded: false }
+        },
+        communities: [],
+        drawer: {
+          section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"]
+        },
+        degraded: { path_to_community: true, community_to_global: true }
       }
     }' > "$OUTPUT_TMP"
   mv "$OUTPUT_TMP" "$OUTPUT"
@@ -255,7 +273,8 @@ jq -e '
   (.insights.surprising_connections | type) == "array" and
   (.insights.isolated_nodes | type) == "array" and
   (.insights.bridge_nodes | type) == "array" and
-  (.insights.sparse_communities | type) == "array"
+  (.insights.sparse_communities | type) == "array" and
+  (.learning | type) == "object"
 ' "$ANALYSIS_JSON" > /dev/null 2>&1 || {
   echo "ERROR: 图谱分析 helper 返回坏 JSON：$ANALYSIS_JSON" >&2
   exit 1
@@ -310,6 +329,7 @@ jq -n \
   --argjson nodes "$(cat "$TMPDIR/nodes.sorted.json")" \
   --argjson edges "$(cat "$TMPDIR/edges.sorted.json")" \
   --argjson insights "$(jq '.insights' "$ANALYSIS_JSON")" \
+  --argjson learning "$(jq '.learning' "$ANALYSIS_JSON")" \
   --argjson degraded "$DEGRADE" \
   --argjson insights_degraded "$INSIGHTS_DEGRADED" \
   '{
@@ -324,7 +344,8 @@ jq -n \
     },
     nodes: $nodes,
     edges: $edges,
-    insights: $insights
+    insights: $insights,
+    learning: $learning
   }' > "$OUTPUT_TMP"
 
 mv "$OUTPUT_TMP" "$OUTPUT"

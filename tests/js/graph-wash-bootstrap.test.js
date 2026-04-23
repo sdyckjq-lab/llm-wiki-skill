@@ -54,7 +54,13 @@ describe("graph-wash bootstrap", () => {
           createSafeStorage: (storage) => {
             capturedStorage = storage;
             return { get: () => null, set: () => {} };
-          }
+          },
+          defaultLearning: () => ({ version: 1, entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" }, views: { path: { enabled: false, start_node_id: null, node_ids: [], degraded: true }, community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true }, global: { enabled: true, node_ids: [], degraded: false } }, communities: [], drawer: { section_order: [] }, degraded: { path_to_community: true, community_to_global: true } }),
+          normalizeLearning: () => ({ version: 1, entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" }, views: { path: { enabled: false, start_node_id: null, node_ids: [], degraded: true }, community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true }, global: { enabled: true, node_ids: [], degraded: false } }, communities: [], drawer: { section_order: [] }, degraded: { path_to_community: true, community_to_global: true } }),
+          resolveInitialMode: () => "global",
+          getVisibleNodeIds: () => [],
+          getVisibleLinks: () => [],
+          shouldAutoOpenDrawer: () => false
         },
         get localStorage() {
           throw new Error("blocked");

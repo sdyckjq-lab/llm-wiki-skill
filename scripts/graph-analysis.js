@@ -494,6 +494,128 @@ function buildInsights(nodesById, edges, pairMetrics, communityAssignments, opti
   };
 }
 
+function buildLearning(analyzedNodes, analyzedEdges) {
+  const degreeMap = new Map();
+  for (const edge of analyzedEdges) {
+    degreeMap.set(edge.from, (degreeMap.get(edge.from) || 0) + 1);
+    degreeMap.set(edge.to, (degreeMap.get(edge.to) || 0) + 1);
+  }
+
+  const communityGroups = new Map();
+  for (const node of analyzedNodes) {
+    if (node.community == null) continue;
+    if (!communityGroups.has(node.community)) communityGroups.set(node.community, []);
+    communityGroups.get(node.community).push(node);
+  }
+
+  const communities = [];
+  for (const [cid, members] of communityGroups.entries()) {
+    const memberIds = new Set(members.map(n => n.id));
+    let totalWeight = 0;
+    for (const edge of analyzedEdges) {
+      if (memberIds.has(edge.from) && memberIds.has(edge.to)) totalWeight += edge.weight;
+    }
+    const isWeak = members.length < 3;
+    const startNode = members.slice().sort((a, b) => {
+      const degDiff = (degreeMap.get(b.id) || 0) - (degreeMap.get(a.id) || 0);
+      if (degDiff !== 0) return degDiff;
+      return a.id.localeCompare(b.id);
+    })[0];
+
+    communities.push({
+      id: cid,
+      label: (members.find(n => n.id === cid) || members[0]).label,
+      node_count: members.length,
+      source_count: members.filter(n => n.type === "source").length,
+      internal_edge_weight: roundNumber(totalWeight),
+      is_primary: false,
+      is_weak: isWeak,
+      recommended_start_node_id: startNode.id
+    });
+  }
+
+  communities.sort((a, b) => {
+    if (b.node_count !== a.node_count) return b.node_count - a.node_count;
+    if (b.internal_edge_weight !== a.internal_edge_weight) return b.internal_edge_weight - a.internal_edge_weight;
+    return a.id.localeCompare(b.id);
+  });
+
+  if (communities.length > 0) communities[0].is_primary = true;
+
+  const primary = communities.length > 0 ? communities[0] : null;
+  const startNodeId = primary ? primary.recommended_start_node_id : null;
+
+  let pathNodeIds = [];
+  let pathDegraded = false;
+  if (primary && !primary.is_weak && startNodeId) {
+    const primaryMemberIds = new Set(communityGroups.get(primary.id).map(n => n.id));
+    const neighbors = analyzedEdges
+      .filter(e => (e.from === startNodeId && primaryMemberIds.has(e.to)) ||
+                   (e.to === startNodeId && primaryMemberIds.has(e.from)))
+      .map(e => e.from === startNodeId ? e.to : e.from);
+    pathNodeIds = [startNodeId, ...sortedUnique(neighbors).filter(id => id !== startNodeId)];
+    if (pathNodeIds.length < 2) pathDegraded = true;
+  } else {
+    pathDegraded = true;
+  }
+
+  let communityNodeIds = [];
+  let communityDegraded = false;
+  if (primary && !primary.is_weak) {
+    communityNodeIds = communityGroups.get(primary.id).map(n => n.id).sort();
+  } else {
+    communityDegraded = true;
+  }
+
+  const globalNodeIds = analyzedNodes.slice().sort((a, b) => {
+    const degDiff = (degreeMap.get(b.id) || 0) - (degreeMap.get(a.id) || 0);
+    if (degDiff !== 0) return degDiff;
+    return a.id.localeCompare(b.id);
+  }).map(n => n.id);
+
+  let defaultMode = "global";
+  if (!pathDegraded) defaultMode = "path";
+  else if (!communityDegraded) defaultMode = "community";
+
+  return {
+    version: 1,
+    entry: {
+      recommended_start_node_id: startNodeId,
+      recommended_start_reason: startNodeId ? "community_hub" : null,
+      default_mode: defaultMode
+    },
+    views: {
+      path: {
+        enabled: !pathDegraded,
+        start_node_id: pathDegraded ? null : startNodeId,
+        node_ids: pathDegraded ? [] : pathNodeIds,
+        degraded: pathDegraded
+      },
+      community: {
+        enabled: !communityDegraded,
+        community_id: primary && !communityDegraded ? primary.id : null,
+        label: primary && !communityDegraded ? primary.label : null,
+        node_ids: communityDegraded ? [] : communityNodeIds,
+        is_weak: primary ? primary.is_weak : false,
+        degraded: communityDegraded
+      },
+      global: {
+        enabled: true,
+        node_ids: globalNodeIds,
+        degraded: false
+      }
+    },
+    communities,
+    drawer: {
+      section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"]
+    },
+    degraded: {
+      path_to_community: pathDegraded,
+      community_to_global: communityDegraded
+    }
+  };
+}
+
 function analyzeGraph(nodes, edges, options = {}) {
   const degraded = options.degraded === true;
   const maxLines = options.maxLines || 500;
@@ -544,7 +666,9 @@ function analyzeGraph(nodes, edges, options = {}) {
     maxInsightEdges
   });
 
-  return { nodes: analyzedNodes, edges: analyzedEdges, insights };
+  const learning = buildLearning(analyzedNodes, analyzedEdges);
+
+  return { nodes: analyzedNodes, edges: analyzedEdges, insights, learning };
 }
 
 function main(argv) {
@@ -598,6 +722,7 @@ if (require.main === module) {
 module.exports = {
   analyzeGraph,
   buildInsights,
+  buildLearning,
   chooseCommunityLabels,
   computePairMetrics,
   extractFrontmatter,
