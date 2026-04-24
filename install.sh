@@ -29,6 +29,7 @@ MANAGED_ITEMS=(
   "CHANGELOG.md"
   "install.sh"
   "setup.sh"
+  "install.ps1"
   "scripts"
   "templates"
   "deps"
@@ -301,6 +302,19 @@ install_bundle() {
 
     copy_item "$source_path" "$target_path"
   done
+
+  # 安装后校验：确保清单文件都已就位（Windows install.ps1 尤其重要）
+  if [ "$DRY_RUN" -ne 1 ]; then
+    for item in "${MANAGED_ITEMS[@]}"; do
+      source_path="$SCRIPT_DIR/$item"
+      target_path="$target_dir/$item"
+      if [ -e "$source_path" ] && [ ! -e "$target_path" ]; then
+        err "$item：已列入安装清单但未出现在目标目录，拷贝可能失败"
+        exit 1
+      fi
+    done
+    ok "已校验全部 ${#MANAGED_ITEMS[@]} 项安装清单文件"
+  fi
 }
 
 install_node_deps() {

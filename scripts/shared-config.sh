@@ -6,9 +6,11 @@ WECHAT_TOOL_URL="git+https://github.com/jackwener/wechat-article-to-markdown.git
 # Python 命令检测：Windows 默认安装为 python.exe，不存在 python3 命令
 # （Microsoft Store 的 python3 是安装提示 stub，运行会失败）
 _detect_python_cmd() {
-  if command -v python3 >/dev/null 2>&1 && python3 -c "" >/dev/null 2>&1; then
+  # 要求 Python 3.8+（见 README Windows 小节与下方错误消息）
+  local ver_check='import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)'
+  if command -v python3 >/dev/null 2>&1 && python3 -c "$ver_check" >/dev/null 2>&1; then
     echo "python3"
-  elif command -v python >/dev/null 2>&1 && python -c "" >/dev/null 2>&1; then
+  elif command -v python >/dev/null 2>&1 && python -c "$ver_check" >/dev/null 2>&1; then
     echo "python"
   else
     echo ""

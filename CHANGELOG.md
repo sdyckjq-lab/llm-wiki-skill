@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.2.1 (2026-04-24)
+
+### 修复
+
+- Windows PowerShell 5.1 中文编码乱码（issue #16）：
+  - `scripts/shared-config.sh` 自动检测 `python3` / `python` 命令（Windows 默认只有 `python.exe`）
+  - 自动导出 `PYTHONIOENCODING=utf-8`，统一 Python 子进程输出编码
+  - Python 检测增加 3.8+ 版本校验，和错误消息、README 文档对齐
+- `hook-session-start.sh` / `cache.sh` / `delete-helper.sh` 引用 `shared-config.sh`，统一使用 `$PYTHON_CMD`
+
+### 新增
+
+- `install.ps1` Windows PowerShell 安装入口：自动 `chcp 65001` + `$OutputEncoding = UTF8` + 转发 bash 安装流程
+- `install.sh` 的 `MANAGED_ITEMS` 清单加入 `install.ps1`，并新增安装后校验环节，确保清单文件都拷贝到位
+- `README.md` / `README.en.md` 新增 Windows 章节（Python 检测说明 + `install.ps1` 使用流程）
+
 ## v3.2.0 (2026-04-23)
 
 ### 新增
