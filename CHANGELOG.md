@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.4.0 (2026-04-24)
+
+### 新增
+
+- source 模板新增 `image_paths` frontmatter 字段，追踪已下载到 `raw/assets/` 的图片路径列表
+- ingest 流程（完整 + 简化）记录图片数量和路径，用户下载图片后可手动或通过 lint 补全
+- `lint-runner.sh` 新增图片资产一致性检查：source 页面声明了 `image_paths` 但文件不存在时报告缺失
+
 ## v3.3.1 (2026-04-24)
 
 ### 新增
