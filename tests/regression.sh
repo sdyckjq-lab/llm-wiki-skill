@@ -1578,7 +1578,9 @@ node --test "$REPO_ROOT/tests/js/source-signal-eligibility.test.js" || fail "sou
 node --test "$REPO_ROOT/tests/js/source-signal-coverage.test.js" || fail "source-signal-coverage integration tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-helpers.test.js" || fail "graph-wash-helpers unit tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-bootstrap.test.js" || fail "graph-wash bootstrap unit tests failed"
+node --test "$REPO_ROOT/tests/js/graph-wash-queue.test.js" || fail "graph-wash queue unit tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-learning.test.js" || fail "graph-wash learning unit tests failed"
+node --test "$REPO_ROOT/tests/js/graph-wash-runtime-state.test.js" || fail "graph-wash runtime state unit tests failed"
 
 # ─── Lint 回归 ────────────────────────────────────────────────────
 bash "$REPO_ROOT/tests/lint-output.regression-1.sh" || fail "lint output regression failed"

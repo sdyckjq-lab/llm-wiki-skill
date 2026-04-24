@@ -573,9 +573,7 @@ function buildLearning(analyzedNodes, analyzedEdges) {
     return a.id.localeCompare(b.id);
   }).map(n => n.id);
 
-  let defaultMode = "global";
-  if (!pathDegraded) defaultMode = "path";
-  else if (!communityDegraded) defaultMode = "community";
+  const defaultMode = "global";
 
   return {
     version: 1,
@@ -606,9 +604,6 @@ function buildLearning(analyzedNodes, analyzedEdges) {
       }
     },
     communities,
-    drawer: {
-      section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"]
-    },
     degraded: {
       path_to_community: pathDegraded,
       community_to_global: communityDegraded

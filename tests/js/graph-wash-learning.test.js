@@ -7,6 +7,11 @@ const {
   getCommunityNodeIds,
   getVisibleNodeIds,
   getVisibleLinks,
+  buildSearchIndex,
+  applySearchToNodeIds,
+  filterLinksByTypes,
+  applyFocusMode,
+  resolveVisibleSnapshot,
   shouldAutoOpenDrawer
 } = require("../../templates/graph-styles/wash/graph-wash-helpers");
 
@@ -50,7 +55,6 @@ describe("normalizeLearning", () => {
         global: { enabled: true, node_ids: ["A", "B", "C"], degraded: false }
       },
       communities: [{ id: "c1", label: "Community 1", node_count: 3, source_count: 1, is_primary: true }],
-      drawer: { section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"] },
       degraded: { path_to_community: false, community_to_global: false }
     };
     const n = normalizeLearning(raw);
@@ -77,23 +81,13 @@ describe("resolveInitialMode", () => {
     assert.equal(resolveInitialMode(null), "global");
   });
 
-  it("returns path when path is not degraded", () => {
+  it("keeps the first paint global even when path is available", () => {
     const learning = { entry: { default_mode: "path" }, views: { path: { degraded: false }, community: { degraded: false } } };
-    assert.equal(resolveInitialMode(learning), "path");
-  });
-
-  it("falls back to community when path is degraded", () => {
-    const learning = { entry: { default_mode: "path" }, views: { path: { degraded: true }, community: { degraded: false } } };
-    assert.equal(resolveInitialMode(learning), "community");
-  });
-
-  it("falls back to global when both path and community are degraded", () => {
-    const learning = { entry: { default_mode: "path" }, views: { path: { degraded: true }, community: { degraded: true } } };
     assert.equal(resolveInitialMode(learning), "global");
   });
 
-  it("returns global when default_mode is community but community is degraded", () => {
-    const learning = { entry: { default_mode: "community" }, views: { path: { degraded: true }, community: { degraded: true } } };
+  it("keeps the first paint global when community is available", () => {
+    const learning = { entry: { default_mode: "community" }, views: { path: { degraded: true }, community: { degraded: false } } };
     assert.equal(resolveInitialMode(learning), "global");
   });
 });
@@ -160,8 +154,98 @@ describe("getVisibleLinks", () => {
   });
 });
 
+describe("search helpers", () => {
+  it("builds searchable haystacks and finds matches", () => {
+    const nodes = [
+      { id: "A", label: "Transformer", content: "attention and language" },
+      { id: "B", label: "CNN", content: "vision only" }
+    ];
+    const index = buildSearchIndex(nodes);
+    assert.equal(index.length, 2);
+    assert.deepEqual(applySearchToNodeIds(index, "attention"), ["A"]);
+    assert.deepEqual(applySearchToNodeIds(index, ""), ["A", "B"]);
+  });
+});
+
+describe("filterLinksByTypes", () => {
+  it("keeps only enabled edge types", () => {
+    const links = [
+      { id: "e1", type: "EXTRACTED" },
+      { id: "e2", type: "INFERRED" },
+      { id: "e3", type: "AMBIGUOUS" }
+    ];
+    const result = filterLinksByTypes(links, { EXTRACTED: true, INFERRED: false, AMBIGUOUS: false });
+    assert.deepEqual(result.map((link) => link.id), ["e1"]);
+  });
+});
+
+describe("applyFocusMode", () => {
+  const nodes = [
+    { id: "A", degree: 3 },
+    { id: "B", degree: 2 },
+    { id: "C", degree: 2 },
+    { id: "D", degree: 1 }
+  ];
+  const links = [
+    { source: "A", target: "B", weight: 0.95 },
+    { source: "A", target: "C", weight: 0.82 },
+    { source: "C", target: "D", weight: 0.45 }
+  ];
+  const nodeIds = ["A", "B", "C", "D"];
+
+  it("returns scoped nodes unchanged for all mode", () => {
+    const result = applyFocusMode({ mode: "all", nodes, links, nodeIds });
+    assert.deepEqual(result.node_ids, nodeIds);
+    assert.equal(result.links.length, 3);
+  });
+
+  it("keeps anchor and one-hop neighbors for one_hop mode", () => {
+    const result = applyFocusMode({ mode: "one_hop", nodes, links, nodeIds, anchorNodeId: "A" });
+    assert.deepEqual(result.node_ids, ["A", "B", "C"]);
+    assert.equal(result.links.length, 2);
+  });
+
+  it("keeps only strong links for high_confidence mode", () => {
+    const result = applyFocusMode({ mode: "high_confidence", nodes, links, nodeIds, anchorNodeId: "A", highConfidenceThreshold: 0.8 });
+    assert.deepEqual(result.node_ids, ["A", "B", "C"]);
+    assert.equal(result.links.length, 2);
+  });
+
+  it("prefers high-score nodes for core mode", () => {
+    const result = applyFocusMode({ mode: "core", nodes, links, nodeIds, coreLimit: 2 });
+    assert.deepEqual(result.node_ids, ["A", "C"]);
+    assert.equal(result.links.length, 1);
+  });
+});
+
+describe("resolveVisibleSnapshot", () => {
+  it("applies search after focus mode", () => {
+    const nodes = [
+      { id: "A", label: "Transformer", content: "attention", degree: 3 },
+      { id: "B", label: "Attention", content: "weights", degree: 2 },
+      { id: "C", label: "CNN", content: "vision", degree: 1 }
+    ];
+    const links = [
+      { source: "A", target: "B", type: "EXTRACTED", weight: 0.95 },
+      { source: "A", target: "C", type: "INFERRED", weight: 0.4 }
+    ];
+    const result = resolveVisibleSnapshot({
+      nodes,
+      links,
+      baseNodeIds: ["A", "B", "C"],
+      filters: { EXTRACTED: true, INFERRED: false, AMBIGUOUS: false },
+      focusMode: "high_confidence",
+      searchQuery: "attention",
+      anchorNodeId: "A",
+      highConfidenceThreshold: 0.8
+    });
+    assert.deepEqual(result.node_ids, ["A", "B"]);
+    assert.equal(result.links.length, 1);
+  });
+});
+
 describe("shouldAutoOpenDrawer", () => {
-  it("returns true for path mode", () => {
+  it("returns true for path mode after explicit path entry", () => {
     assert.equal(shouldAutoOpenDrawer("path"), true);
   });
 
