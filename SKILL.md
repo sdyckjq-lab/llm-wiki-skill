@@ -352,11 +352,12 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
      bash ${SKILL_DIR}/scripts/cache.sh check “<raw 文件路径>”
      ```
    - 如果返回 `HIT` 或 `HIT(repaired)` → 跳过本次 LLM 调用，直接读取已有 wiki 页面，并告诉用户这是”无变化，直接复用已有结果”
-     - `HIT(repaired)` 表示缓存自愈修复成功（上次 update 被跳过但 source 页面存在）
+     - `HIT(repaired)` 表示缓存自愈修复成功（上次 update 被跳过但 source 页面存在且 source_path 匹配）
    - 如果返回 `MISS:<reason>` → 继续执行下面的两步流程
      - `MISS:no_entry` — 首次处理此素材（正常情况）
      - `MISS:hash_changed` — 素材内容有变化，需要重新处理
      - `MISS:no_source` — 有缓存记录但 source 页面被删除了
+     - `MISS:repaired_needs_verify` — 找到同名 source 页面但 source_path 不匹配，需要重新处理以确认关联正确
 
 5. **Step 1：结构化分析**：
    - 输入：原始内容 + `purpose.md` + 现有 wiki 结构（至少读取 `index.md` 概要）

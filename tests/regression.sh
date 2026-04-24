@@ -357,7 +357,13 @@ test_cache_script_handles_miss_hit_and_invalidate() {
     )" || fail "cache.sh check should work for uncached files"
     [ "$output" = "MISS:no_entry" ] || fail "Expected initial cache check to be MISS:no_entry, got: $output"
 
-    printf '# 来源页\n' > "$wiki_root/wiki/sources/example.md"
+    # source 页面必须有 source_path frontmatter，自愈才能验证通过
+    cat > "$wiki_root/wiki/sources/example.md" <<'SRCEOF'
+---
+source_path: raw/articles/example.md
+---
+# 来源页
+SRCEOF
     bash "$REPO_ROOT/scripts/cache.sh" update "$file_path" "wiki/sources/example.md" > /dev/null 2>&1 \
         || fail "cache.sh update should succeed"
 
@@ -372,7 +378,7 @@ test_cache_script_handles_miss_hit_and_invalidate() {
     output="$(
         bash "$REPO_ROOT/scripts/cache.sh" check "$file_path" 2>&1
     )" || fail "cache.sh check should work after invalidation"
-    # 自愈：invalidate 后 source 页面仍存在，stem 匹配 → HIT(repaired)
+    # 自愈：invalidate 后 source 页面仍存在，stem + source_path 匹配 → HIT(repaired)
     [ "$output" = "HIT(repaired)" ] || fail "Expected invalidated cache check to be HIT(repaired), got: $output"
 }
 
@@ -982,7 +988,7 @@ test_validate_step1_valid_json_passes() {
     local tmp_dir
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
-    printf '%s\n' '{"entities":[{"name":"test","confidence":"EXTRACTED"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+    printf '%s\n' '{"entities":[{"name":"test","type":"concept","confidence":"EXTRACTED"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
         > "$tmp_dir/step1.json"
     bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" \
         || fail "validate-step1.sh should pass with valid JSON"
@@ -992,19 +998,19 @@ test_validate_step1_missing_confidence_fails() {
     local tmp_dir output
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
-    printf '%s\n' '{"entities":[{"name":"test"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+    printf '%s\n' '{"entities":[{"name":"test","type":"concept"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
         > "$tmp_dir/step1.json"
     if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" 2>&1)"; then
         fail "validate-step1.sh should fail when confidence is missing"
     fi
-    assert_text_contains "$output" "MISSING"
+    assert_text_contains "$output" "missing required fields"
 }
 
 test_validate_step1_invalid_confidence_value_fails() {
     local tmp_dir output
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
-    printf '%s\n' '{"entities":[{"name":"test","confidence":"HIGH"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+    printf '%s\n' '{"entities":[{"name":"test","type":"concept","confidence":"HIGH"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
         > "$tmp_dir/step1.json"
     if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" 2>&1)"; then
         fail "validate-step1.sh should fail with invalid confidence value"
@@ -1128,7 +1134,12 @@ test_cache_check_self_heals_with_matching_stem() {
     printf 'RLHF 论文内容\n' > "$raw_file"
 
     # 直接写 source 页面（不通过脚本，模拟 AI 忘了 update）
-    printf '# RLHF 摘要\n' > "$wiki_root/wiki/sources/rlhf-paper.md"
+    cat > "$wiki_root/wiki/sources/rlhf-paper.md" <<'SRCEOF'
+---
+source_path: raw/articles/rlhf-paper.md
+---
+# RLHF 摘要
+SRCEOF
 
     # cache check 应该自愈
     output="$(
