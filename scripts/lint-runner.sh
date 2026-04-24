@@ -110,13 +110,16 @@ echo ""
 
 # 检查 5：图片资产一致性
 # 定义：source 页面 frontmatter 中 image_paths 列出的文件，在知识库中是否实际存在
+# 支持 block list 格式和 inline array 格式
 echo "--- 图片资产一致性（image_paths 声明但文件缺失） ---"
 _IMG_ISSUES=0
 for f in "$WIKI_DIR"/sources/*.md; do
   [ -f "$f" ] || continue
-  # 提取 image_paths 中的路径（简单解析 YAML 数组）
+  _BASENAME=$(basename "$f" .md)
+  # 提取 frontmatter 中 image_paths 的值
   _IN_FM=false
   _IN_IMG=false
+  _INLINE_VAL=""
   while IFS= read -r line; do
     case "$line" in
       "---")
@@ -127,14 +130,36 @@ for f in "$WIKI_DIR"/sources/*.md; do
     esac
     [ "$_IN_FM" = true ] || continue
     case "$line" in
-      image_paths:*) _IN_IMG=true; continue ;;
+      image_paths:*)
+        # 检查是否有 inline value（如 image_paths: ["a.png", "b.jpg"]）
+        _INLINE_VAL=$(echo "$line" | sed 's/^image_paths:[[:space:]]*//')
+        if [ -n "$_INLINE_VAL" ] && [ "$_INLINE_VAL" != "[]" ]; then
+          # 解析 inline array：去掉 []，按逗号分割
+          echo "$_INLINE_VAL" | tr -d '[]' | tr ',' '\n' | while IFS= read -r _ITEM; do
+            _PATH=$(echo "$_ITEM" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"' | tr -d "'")
+            [ -z "$_PATH" ] && continue
+            if [ ! -f "$WIKI_ROOT/$_PATH" ]; then
+              echo "  缺失: $_BASENAME → $_PATH"
+            fi
+          done
+          _INLINE_COUNT=$(echo "$_INLINE_VAL" | tr -d '[]' | tr ',' '\n' | while IFS= read -r _ITEM; do
+            _P=$(echo "$_ITEM" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"' | tr -d "'")
+            [ -z "$_P" ] && continue
+            [ ! -f "$WIKI_ROOT/$_P" ] && echo "x"
+          done | wc -l | tr -d ' ')
+          _IMG_ISSUES=$((_IMG_ISSUES + _INLINE_COUNT))
+          _IN_IMG=false
+        else
+          _IN_IMG=true
+        fi
+        continue
+        ;;
       "  - "*)
         if [ "$_IN_IMG" = true ]; then
-          _PATH=$(echo "$line" | sed 's/^  - //' | tr -d '"' | tr -d "'")
+          _PATH=$(echo "$line" | sed 's/^[[:space:]]*- //' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"' | tr -d "'")
           [ -z "$_PATH" ] && continue
-          _ABS_PATH="$WIKI_ROOT/$_PATH"
-          if [ ! -f "$_ABS_PATH" ]; then
-            echo "  缺失: $(basename "$f" .md) → $_PATH"
+          if [ ! -f "$WIKI_ROOT/$_PATH" ]; then
+            echo "  缺失: $_BASENAME → $_PATH"
             _IMG_ISSUES=$((_IMG_ISSUES + 1))
           fi
         fi
