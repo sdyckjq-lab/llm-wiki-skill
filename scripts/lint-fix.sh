@@ -25,6 +25,13 @@ fi
 
 FIXED=0
 
+index_has_entry() {
+  local entry="$1"
+  grep -ohE "\[\[[^]]+\]\]" "$INDEX_FILE" 2>/dev/null | \
+    sed -e 's/\[\[//g' -e 's/\]\]//g' -e 's/|.*//' | \
+    grep -Fxq "$entry"
+}
+
 # Insert a [[link]] entry after the matching section header in index.md.
 # If no matching section is found, appends to end of file as fallback.
 insert_under_section() {
@@ -53,9 +60,12 @@ insert_under_section() {
       offset=$((offset + 1))
     done
     # Insert after the last list item
-    sed -i '' "${last_list_line}a\\
-- [[${entry}]]
-" "$index_file"
+    local tmp_file
+    tmp_file=$(mktemp "${index_file}.tmp.XXXXXX") || return 1
+    awk -v insert_after="$last_list_line" -v entry="$entry" '
+      { print }
+      NR == insert_after { print "- [[" entry "]]" }
+    ' "$index_file" > "$tmp_file" && mv "$tmp_file" "$index_file"
   else
     # Fallback: append to end of file
     printf '\n- [[%s]]\n' "$entry" >> "$index_file"
@@ -77,7 +87,7 @@ for _subdir in entities topics sources comparisons synthesis; do
     case "$f" in
       */queries/*|*/sessions/*) continue ;;
     esac
-    if ! grep -qF "[[$BASENAME]]" "$INDEX_FILE" 2>/dev/null; then
+    if ! index_has_entry "$BASENAME"; then
       SECTION_PATTERN=""
       case "$_subdir" in
         entities) SECTION_PATTERN="实体页|Entities" ;;

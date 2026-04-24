@@ -1040,6 +1040,71 @@ test_validate_step1_empty_entities_array_passes() {
         || fail "validate-step1.sh should pass with empty entities array"
 }
 
+test_validate_step1_rejects_non_object_items() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    printf '%s\n' '{"entities":["not-an-object"],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+        > "$tmp_dir/entity.json"
+    if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/entity.json" 2>&1)"; then
+        fail "validate-step1.sh should fail when an entity item is not an object"
+    fi
+    assert_text_contains "$output" "entity"
+
+    printf '%s\n' '{"entities":[],"topics":["not-an-object"],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+        > "$tmp_dir/topic.json"
+    if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/topic.json" 2>&1)"; then
+        fail "validate-step1.sh should fail when a topic item is not an object"
+    fi
+    assert_text_contains "$output" "topic"
+
+    printf '%s\n' '{"entities":[],"topics":[],"connections":["not-an-object"],"contradictions":[],"new_vs_existing":{}}' \
+        > "$tmp_dir/connection.json"
+    if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/connection.json" 2>&1)"; then
+        fail "validate-step1.sh should fail when a connection item is not an object"
+    fi
+    assert_text_contains "$output" "connection"
+}
+
+test_lint_runner_accepts_index_alias_entries() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki/entities"
+    printf '# Index\n\n## 实体页\n- [[Real|真实页面]]\n' > "$tmp_dir/index.md"
+    printf '# Real\n' > "$tmp_dir/wiki/entities/Real.md"
+
+    output="$(bash "$REPO_ROOT/scripts/lint-runner.sh" "$tmp_dir" 2>&1)" \
+        || fail "lint-runner.sh should run on alias index fixture"
+    assert_text_not_contains "$output" "未收录: entities/Real"
+}
+
+test_lint_fix_does_not_require_macos_sed_in_place() {
+    local tmp_dir wiki_root real_sed
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+    wiki_root="$tmp_dir/wiki-root"
+    real_sed="$(command -v sed)"
+
+    mkdir -p "$wiki_root/wiki/entities" "$tmp_dir/bin"
+    printf '# Index\n\n## 实体页\n' > "$wiki_root/index.md"
+    printf '# Lonely\n' > "$wiki_root/wiki/entities/Lonely.md"
+
+    make_stub "$tmp_dir/bin/sed" "#!/bin/sh
+if [ \"\${1:-}\" = \"-i\" ] && [ \"\${2+x}\" = \"x\" ] && [ \"\$2\" = \"\" ]; then
+  echo 'sed -i empty extension is not portable' >&2
+  exit 2
+fi
+exec \"$real_sed\" \"\$@\"
+"
+
+    PATH="$tmp_dir/bin:$PATH" bash "$REPO_ROOT/scripts/lint-fix.sh" "$wiki_root" > /dev/null \
+        || fail "lint-fix.sh should not depend on macOS sed -i syntax"
+    assert_file_contains "$wiki_root/index.md" "- [[Lonely]]"
+}
+
 test_skill_md_ingest_has_confidence_assignment_rules() {
     local section
     section="$(sed -n '/## 工作流 2：ingest/,/## 工作流 3：batch-ingest/p' "$REPO_ROOT/SKILL.md")"
@@ -1284,6 +1349,9 @@ test_validate_step1_missing_confidence_fails
 test_validate_step1_invalid_confidence_value_fails
 test_validate_step1_entities_not_array_fails
 test_validate_step1_empty_entities_array_passes
+test_validate_step1_rejects_non_object_items
+test_lint_runner_accepts_index_alias_entries
+test_lint_fix_does_not_require_macos_sed_in_place
 test_skill_md_ingest_has_confidence_assignment_rules
 test_skill_md_has_crystallize_workflow_and_route
 test_init_creates_synthesis_sessions_subdir

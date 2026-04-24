@@ -29,6 +29,12 @@ VALID_CONFIDENCE="EXTRACTED|INFERRED|AMBIGUOUS|UNVERIFIED"
 
 ENTITY_COUNT=$(jq '.entities | length' "$JSON_FILE" 2>/dev/null)
 if [ "$ENTITY_COUNT" -gt 0 ] 2>/dev/null; then
+    NON_OBJECT_ENTITY_COUNT=$(jq '[.entities[] | select(type != "object")] | length' "$JSON_FILE" 2>/dev/null)
+    if [ "$NON_OBJECT_ENTITY_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "ERROR: $NON_OBJECT_ENTITY_COUNT entity/entities must be objects"
+        exit 1
+    fi
+
     # name, type, confidence 必须存在且非空
     BAD_ENTITY_COUNT=$(jq '
         [.entities[] | select(
@@ -66,6 +72,12 @@ fi
 # 检查每个 topic 的必需子字段
 TOPIC_COUNT=$(jq '.topics | length' "$JSON_FILE" 2>/dev/null)
 if [ "$TOPIC_COUNT" -gt 0 ] 2>/dev/null; then
+    NON_OBJECT_TOPIC_COUNT=$(jq '[.topics[] | select(type != "object")] | length' "$JSON_FILE" 2>/dev/null)
+    if [ "$NON_OBJECT_TOPIC_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "ERROR: $NON_OBJECT_TOPIC_COUNT topic(s) must be objects"
+        exit 1
+    fi
+
     BAD_TOPIC_COUNT=$(jq '
         [.topics[] | select(
             (.name // "" | length) == 0
@@ -80,6 +92,12 @@ fi
 # 检查每个 connection 的必需子字段（from, to, confidence）
 CONN_COUNT=$(jq '.connections | length' "$JSON_FILE" 2>/dev/null)
 if [ "$CONN_COUNT" -gt 0 ] 2>/dev/null; then
+    NON_OBJECT_CONN_COUNT=$(jq '[.connections[] | select(type != "object")] | length' "$JSON_FILE" 2>/dev/null)
+    if [ "$NON_OBJECT_CONN_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "ERROR: $NON_OBJECT_CONN_COUNT connection(s) must be objects"
+        exit 1
+    fi
+
     BAD_CONN_COUNT=$(jq '
         [.connections[] | select(
             (.from // "" | length) == 0 or

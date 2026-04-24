@@ -21,6 +21,13 @@ if [ ! -f "$INDEX_FILE" ]; then
   exit 1
 fi
 
+index_has_entry() {
+  local entry="$1"
+  grep -ohE "\[\[[^]]+\]\]" "$INDEX_FILE" 2>/dev/null | \
+    sed -e 's/\[\[//g' -e 's/\]\]//g' -e 's/|.*//' | \
+    grep -Fxq "$entry"
+}
+
 echo "=== llm-wiki lint 报告 ==="
 echo "时间：$(date '+%Y-%m-%d %H:%M')"
 echo "检查路径：$WIKI_DIR"
@@ -96,7 +103,7 @@ for _subdir in entities topics sources comparisons synthesis; do
     case "$f" in
       */queries/*|*/sessions/*) continue ;;
     esac
-    if ! grep -qF "[[$BASENAME]]" "$INDEX_FILE" 2>/dev/null; then
+    if ! index_has_entry "$BASENAME"; then
       echo "  未收录: $_subdir/$BASENAME"
       echo "$BASENAME" >> "$_TMP_UNLISTED"
     fi
