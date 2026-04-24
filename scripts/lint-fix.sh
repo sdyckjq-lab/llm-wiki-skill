@@ -25,6 +25,43 @@ fi
 
 FIXED=0
 
+# Insert a [[link]] entry after the matching section header in index.md.
+# If no matching section is found, appends to end of file as fallback.
+insert_under_section() {
+  local index_file="$1"
+  local section_pattern="$2"
+  local entry="$3"
+
+  # Find the line number of the section header
+  local line_num
+  line_num=$(grep -n -i -E "^#.*($section_pattern)" "$index_file" 2>/dev/null | head -1 | cut -d: -f1)
+
+  if [ -n "$line_num" ]; then
+    # Scan from section header to find insert point:
+    # last "- [[" line before next "##" header or EOF
+    local total_lines last_list_line offset
+    total_lines=$(wc -l < "$index_file" | tr -d ' ')
+    last_list_line="$line_num"
+    offset=$((line_num + 1))
+    while [ "$offset" -le "$total_lines" ]; do
+      local cur_line
+      cur_line=$(sed -n "${offset}p" "$index_file")
+      case "$cur_line" in
+        "##"*) break ;;
+        "- [["*) last_list_line="$offset" ;;
+      esac
+      offset=$((offset + 1))
+    done
+    # Insert after the last list item
+    sed -i '' "${last_list_line}a\\
+- [[${entry}]]
+" "$index_file"
+  else
+    # Fallback: append to end of file
+    printf '\n- [[%s]]\n' "$entry" >> "$index_file"
+  fi
+}
+
 echo "=== lint-fix: low-risk auto-repair ==="
 echo ""
 
@@ -41,21 +78,19 @@ for _subdir in entities topics sources comparisons synthesis; do
       */queries/*|*/sessions/*) continue ;;
     esac
     if ! grep -qF "[[$BASENAME]]" "$INDEX_FILE" 2>/dev/null; then
+      SECTION_PATTERN=""
+      case "$_subdir" in
+        entities) SECTION_PATTERN="实体页|Entities" ;;
+        topics) SECTION_PATTERN="主题页|Topics" ;;
+        sources) SECTION_PATTERN="素材摘要|Sources" ;;
+        comparisons) SECTION_PATTERN="对比分析|Comparisons" ;;
+        synthesis) SECTION_PATTERN="综合分析|Synthesis" ;;
+      esac
       if [ "$DRY_RUN" = true ]; then
-        echo "  [dry-run] Would add [[$BASENAME]] to index.md under $_subdir"
+        echo "  [dry-run] Would add [[$BASENAME]] under $_subdir section"
       else
-        # Append to the appropriate section if it exists, otherwise append at end
-        SECTION_HEADER=""
-        case "$_subdir" in
-          entities) SECTION_HEADER="实体页\|Entities" ;;
-          topics) SECTION_HEADER="主题页\|Topics" ;;
-          sources) SECTION_HEADER="素材摘要\|Sources" ;;
-          comparisons) SECTION_HEADER="对比分析\|Comparisons" ;;
-          synthesis) SECTION_HEADER="综合分析\|Synthesis" ;;
-        esac
-        # Simple append: add to end of file
-        printf '\n- [[%s]]\n' "$BASENAME" >> "$INDEX_FILE"
-        echo "  Fixed: added [[$BASENAME]] to index.md"
+        insert_under_section "$INDEX_FILE" "$SECTION_PATTERN" "$BASENAME"
+        echo "  Fixed: added [[$BASENAME]] under $_subdir section"
       fi
       FIXED=$((FIXED + 1))
     fi

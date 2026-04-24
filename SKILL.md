@@ -377,8 +377,8 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    ```
 
    置信度赋值规则（Claude 必须遵守）：
-   - EXTRACTED：信息直接出现在原文里，字面可以找到。**必须在 `evidence` 字段提供原文摘录**（≤50 字）
-   - INFERRED：信息是从多处原文推断出来的，原文没有直接说。**必须在 `evidence` 字段说明推理依据**
+   - EXTRACTED：信息直接出现在原文里，字面可以找到。**应在 `evidence` 字段提供原文摘录**（建议 ≤50 字）；缺失时脚本会发出 WARN 但不阻塞
+   - INFERRED：信息是从多处原文推断出来的，原文没有直接说。**应在 `evidence` 字段说明推理依据**；缺失时脚本会发出 WARN 但不阻塞
    - AMBIGUOUS：原文说法不清楚，或者有歧义。`evidence` 可选
    - UNVERIFIED：信息来自 Claude 的背景知识，原文没有证据。`evidence` 可选
 
