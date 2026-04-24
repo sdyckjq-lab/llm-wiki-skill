@@ -50,6 +50,17 @@ if [ "$ENTITY_COUNT" -gt 0 ] 2>/dev/null; then
         echo "       Valid values: EXTRACTED | INFERRED | AMBIGUOUS | UNVERIFIED"
         exit 1
     fi
+
+    # EXTRACTED 和 INFERRED 必须提供 evidence 字段
+    NO_EVIDENCE_COUNT=$(jq '
+        [.entities[] | select(
+            (.confidence == "EXTRACTED" or .confidence == "INFERRED") and
+            ((.evidence // "" | length) == 0)
+        )] | length
+    ' "$JSON_FILE" 2>/dev/null)
+    if [ "$NO_EVIDENCE_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "WARN: $NO_EVIDENCE_COUNT entity/entities with EXTRACTED/INFERRED confidence missing 'evidence' field"
+    fi
 fi
 
 # 检查每个 topic 的必需子字段
@@ -87,6 +98,17 @@ if [ "$CONN_COUNT" -gt 0 ] 2>/dev/null; then
         echo "ERROR: invalid connection confidence value(s): $INVALID_CONN_CONF"
         echo "       Valid values: EXTRACTED | INFERRED | AMBIGUOUS | UNVERIFIED"
         exit 1
+    fi
+
+    # EXTRACTED 和 INFERRED connections 必须提供 evidence
+    NO_CONN_EVIDENCE=$(jq '
+        [.connections[] | select(
+            (.confidence == "EXTRACTED" or .confidence == "INFERRED") and
+            ((.evidence // "" | length) == 0)
+        )] | length
+    ' "$JSON_FILE" 2>/dev/null)
+    if [ "$NO_CONN_EVIDENCE" -gt 0 ] 2>/dev/null; then
+        echo "WARN: $NO_CONN_EVIDENCE connection(s) with EXTRACTED/INFERRED confidence missing 'evidence' field"
     fi
 fi
 

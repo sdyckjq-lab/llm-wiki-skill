@@ -368,19 +368,19 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    ```json
    {
      "source_summary": "一句话概括",
-     "entities": [{"name": "xxx", "type": "concept", "relevance": "high", "confidence": "EXTRACTED"}],
+     "entities": [{"name": "xxx", "type": "concept", "relevance": "high", "confidence": "EXTRACTED", "evidence": "原文摘录或推理依据"}],
      "topics": [{"name": "xxx", "importance": "high"}],
-     "connections": [{"from": "A", "to": "B", "type": "因果", "confidence": "INFERRED"}],
+     "connections": [{"from": "A", "to": "B", "type": "因果", "confidence": "INFERRED", "evidence": "推理依据"}],
      "contradictions": [{"claim_a": "...", "claim_b": "...", "context": "..."}],
      "new_vs_existing": {"new_entities": [], "updates": []}
    }
    ```
 
    置信度赋值规则（Claude 必须遵守）：
-   - EXTRACTED：信息直接出现在原文里，字面可以找到
-   - INFERRED：信息是从多处原文推断出来的，原文没有直接说
-   - AMBIGUOUS：原文说法不清楚，或者有歧义
-   - UNVERIFIED：信息来自 Claude 的背景知识，原文没有证据
+   - EXTRACTED：信息直接出现在原文里，字面可以找到。**必须在 `evidence` 字段提供原文摘录**（≤50 字）
+   - INFERRED：信息是从多处原文推断出来的，原文没有直接说。**必须在 `evidence` 字段说明推理依据**
+   - AMBIGUOUS：原文说法不清楚，或者有歧义。`evidence` 可选
+   - UNVERIFIED：信息来自 Claude 的背景知识，原文没有证据。`evidence` 可选
 
    Step 1 完成后，必须执行验证：
    1. mkdir -p {wiki_root}/.wiki-tmp
