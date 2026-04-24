@@ -132,9 +132,6 @@ if [ ! -s "$NODES_TSV" ]; then
           global: { enabled: true, node_ids: [], degraded: false }
         },
         communities: [],
-        drawer: {
-          section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"]
-        },
         degraded: { path_to_community: true, community_to_global: true }
       }
     }' > "$OUTPUT_TMP"

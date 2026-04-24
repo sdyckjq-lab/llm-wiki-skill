@@ -50,8 +50,9 @@
   --font-ui:    "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, Menlo, monospace;
 
-  --drawer-w: 440px;
-  --nav-w: 280px;
+  --drawer-w: 376px;
+  --nav-w: 260px;
+  --aux-w: 300px;
   --radius: 6px;
 }
 
@@ -148,24 +149,31 @@ html, body {
 .app.drawer-open {
   grid-template-columns: var(--nav-w) 1fr var(--drawer-w);
 }
+.app.nav-collapsed {
+  grid-template-columns: 68px 1fr 0fr;
+}
+.app.nav-collapsed.drawer-open {
+  grid-template-columns: 68px 1fr var(--drawer-w);
+}
 
 .nav-panel {
   grid-area: nav;
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
-  padding: 24px 18px 20px 28px;
+  padding: 20px 16px 18px 24px;
   background: rgba(255, 252, 243, 0.72);
   border-right: 1px dashed rgba(117, 100, 84, 0.35);
   overflow-y: auto;
+  transition: padding 220ms ease, width 220ms ease, background 220ms ease;
 }
 .nav-panel::after {
   content: "";
   position: absolute;
   top: 0; bottom: 0;
-  right: 20px;
+  right: 18px;
   width: 1px;
   background: var(--paper-margin);
   opacity: 0.18;
@@ -194,18 +202,33 @@ html, body {
   min-width: 0;
 }
 .nav-panel__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-family: var(--font-hand);
   font-size: 14px;
   font-weight: 700;
   color: var(--paper-ink-dim);
+}
+.nav-panel__section-title-text {
+  min-width: 0;
 }
 .nav-panel__list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+.nav-panel__list[hidden],
+.nav-panel__hint[hidden],
+.nav-panel__search-hint[hidden],
+.nav-panel__search-empty[hidden] {
+  display: none;
+}
 .nav-panel__empty,
-.nav-panel__hint {
+.nav-panel__hint,
+.nav-panel__search-hint,
+.nav-panel__search-empty {
   padding: 10px 12px;
   border: 1px dashed rgba(117, 100, 84, 0.35);
   border-radius: 6px;
@@ -214,9 +237,23 @@ html, body {
   font-size: 12px;
   line-height: 1.5;
 }
-.nav-panel__hint[hidden] {
-  display: none;
+.nav-panel__search {
+  position: relative;
 }
+.nav-panel__search .search {
+  max-width: none;
+  flex: 1 1 auto;
+}
+.nav-panel__search .search__input {
+  height: 38px;
+  background: rgba(255, 252, 243, 0.86);
+}
+.nav-panel__search-hint,
+.nav-panel__search-empty {
+  margin-top: 8px;
+}
+.nav-panel__queue-card,
+.nav-panel__secondary,
 .nav-community,
 .nav-start-item {
   width: 100%;
@@ -230,43 +267,61 @@ html, body {
   border-radius: 6px;
   color: var(--paper-ink);
   text-align: left;
-  cursor: pointer;
   transition: background 120ms, border-color 120ms, transform 120ms;
 }
+.nav-community,
+.nav-start-item,
+.nav-panel__secondary {
+  cursor: pointer;
+}
 .nav-community:hover,
-.nav-start-item:hover {
+.nav-start-item:hover,
+.nav-panel__secondary:hover {
   background: var(--paper-warm);
   border-color: rgba(117, 100, 84, 0.55);
   transform: translateY(-1px);
 }
 .nav-community[data-on="1"],
-.nav-start-item[data-on="1"] {
+.nav-start-item[data-on="1"],
+.nav-panel__secondary[data-on="1"] {
   background: #fffdf6;
   border-style: solid;
   border-color: rgba(117, 100, 84, 0.55);
   box-shadow: 1px 2px 0 rgba(43, 38, 32, 0.08);
 }
-.nav-community__row {
+.nav-community__row,
+.nav-panel__secondary-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 .nav-community__title,
-.nav-start-item__title {
+.nav-start-item__title,
+.nav-panel__queue-title,
+.nav-panel__secondary-title {
   min-width: 0;
   font-family: var(--font-text);
   font-size: 13px;
   font-weight: 600;
   color: var(--paper-ink);
 }
+.nav-start-item__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--pen-rust);
+}
 .nav-community__meta,
-.nav-start-item__meta {
+.nav-start-item__meta,
+.nav-panel__queue-meta,
+.nav-panel__secondary-meta {
   font-size: 12px;
   color: var(--paper-ink-dim);
   line-height: 1.4;
 }
-.nav-community__badge {
+.nav-community__badge,
+.nav-panel__secondary-badge {
   flex-shrink: 0;
   padding: 1px 6px;
   border-radius: 999px;
@@ -274,6 +329,110 @@ html, body {
   color: var(--pen-rust);
   font-family: var(--font-mono);
   font-size: 10px;
+}
+.nav-panel__secondary {
+  align-items: stretch;
+}
+.nav-panel__secondary-badge {
+  background: rgba(43, 78, 122, 0.1);
+  color: var(--pen-indigo);
+}
+.nav-panel__queue-card {
+  cursor: default;
+}
+.nav-panel__queue-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.nav-panel__queue-metric {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 252, 243, 0.7);
+  border: 1px dashed rgba(117, 100, 84, 0.28);
+}
+.nav-panel__queue-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--paper-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.nav-panel__queue-value {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-text);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--paper-ink);
+}
+.nav-panel__queue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nav-panel__queue-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 252, 243, 0.82);
+  border: 1px solid rgba(117, 100, 84, 0.18);
+  font-size: 11px;
+  color: var(--paper-ink-dim);
+}
+button.nav-panel__queue-pill {
+  cursor: pointer;
+}
+button.nav-panel__queue-pill:hover {
+  background: #fffdf6;
+  color: var(--paper-ink);
+}
+.nav-panel__collapse {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(117, 100, 84, 0.25);
+  border-radius: 50%;
+  color: var(--paper-ink-dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+.nav-panel__collapse:hover {
+  color: var(--paper-ink);
+  border-color: rgba(117, 100, 84, 0.45);
+  background: rgba(255, 252, 243, 0.75);
+}
+.app.nav-collapsed .nav-panel {
+  padding-left: 14px;
+  padding-right: 14px;
+  background: rgba(255, 252, 243, 0.84);
+}
+.app.nav-collapsed .nav-panel::after,
+.app.nav-collapsed .nav-panel__section,
+.app.nav-collapsed .nav-panel__hint,
+.app.nav-collapsed .nav-panel__search-hint,
+.app.nav-collapsed .nav-panel__search-empty,
+.app.nav-collapsed .nav-panel__search,
+.app.nav-collapsed #nav-all-communities,
+.app.nav-collapsed #nav-secondary-entry {
+  display: none;
+}
+.app.nav-collapsed .nav-panel__head {
+  justify-content: center;
+}
+.app.nav-collapsed .nav-panel__title {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 16px;
+  transform: none;
+}
+.app.nav-collapsed #nav-close {
+  display: inline-flex;
 }
 
 /* ---------- Brand bar (paper-style header) ---------- */
@@ -501,7 +660,123 @@ html, body {
   box-shadow: 0 1px 2px rgba(43,38,32,0.1);
   font-weight: 600;
 }
-
+.secondary-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: min(var(--aux-w), calc(100vw - 40px));
+  max-height: min(64vh, 560px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 252, 243, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1.5px solid var(--paper-ink-faint);
+  border-radius: var(--radius);
+  box-shadow: 2px 3px 0 rgba(43, 38, 32, 0.06);
+  z-index: 6;
+  transform: rotate(0.2deg);
+  overflow: hidden;
+}
+.secondary-panel[hidden],
+.secondary-panel__content[hidden] {
+  display: none;
+}
+.secondary-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px dashed rgba(117, 100, 84, 0.35);
+  background: rgba(244, 236, 219, 0.86);
+}
+.secondary-panel__title {
+  font-family: var(--font-hand);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--paper-ink);
+}
+.secondary-panel__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--paper-ink-dim);
+}
+.secondary-panel__close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(117, 100, 84, 0.28);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--paper-ink-dim);
+  cursor: pointer;
+}
+.secondary-panel__close:hover {
+  color: var(--paper-ink);
+  border-color: rgba(117, 100, 84, 0.5);
+  background: rgba(255, 252, 243, 0.75);
+}
+.secondary-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+}
+.secondary-panel__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.secondary-panel__section-title {
+  font-family: var(--font-hand);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--paper-ink-dim);
+}
+.secondary-panel .secondary-panel__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: static;
+  left: auto;
+  bottom: auto;
+  background: transparent;
+  backdrop-filter: none;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  transform: none;
+  z-index: auto;
+}
+.secondary-panel__panel {
+  position: static;
+  width: auto;
+  max-height: none;
+  box-shadow: none;
+  border: 1px dashed rgba(117, 100, 84, 0.35);
+  transform: none;
+}
+.secondary-panel__panel .insights-panel__head {
+  padding: 10px 12px 8px;
+}
+.secondary-panel__panel .insights-panel__body {
+  max-height: 220px;
+}
+.secondary-panel .secondary-panel__minimap {
+  position: static;
+  width: 100%;
+  height: 164px;
+  box-shadow: none;
+  transform: none;
+  border-style: dashed;
+}
+.secondary-panel .secondary-panel__minimap[data-collapsed="1"] {
+  width: 100%;
+  height: 30px;
+}
 .tools__spacer { flex: 1; }
 
 .iconbtn {
@@ -655,11 +930,7 @@ html, body {
 
 /* insights panel */
 .insights-panel {
-  position: absolute;
-  left: 28px;
-  top: 20px;
-  width: 290px;
-  max-height: min(52vh, 420px);
+  position: relative;
   display: flex;
   flex-direction: column;
   background: rgba(255, 252, 243, 0.92);
@@ -667,8 +938,6 @@ html, body {
   border: 1.5px solid var(--paper-ink-faint);
   border-radius: var(--radius);
   box-shadow: 2px 3px 0 rgba(43, 38, 32, 0.06);
-  z-index: 5;
-  transform: rotate(-0.25deg);
   overflow: hidden;
 }
 .insights-panel__head {
@@ -772,8 +1041,7 @@ html, body {
 
 /* Minimap */
 .minimap {
-  position: absolute;
-  right: 20px; top: 20px;
+  position: relative;
   width: 180px; height: 130px;
   background: rgba(255, 252, 243, 0.9);
   border: 1.5px solid var(--paper-ink-dim);
@@ -898,6 +1166,7 @@ html, body {
   display: flex;
   flex-direction: column;
   position: relative;
+  min-width: 0;
 }
 .drawer::before {
   content: "";
@@ -966,28 +1235,37 @@ html, body {
 }
 .drawer-close:hover { color: var(--paper-ink); border-color: var(--paper-ink); }
 
-/* Drawer learning explanation sections */
-.drawer-learning {
+
+.drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   padding: 16px 28px 0 48px;
-  border-bottom: 1px dashed var(--paper-ink-faint);
 }
-.drawer-learning__section {
-  margin-bottom: 14px;
-}
-.drawer-learning__label {
-  font-family: var(--font-hand);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--pen-rust);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-.drawer-learning__content {
-  font-family: var(--font-text);
-  font-size: 14px;
-  line-height: 1.7;
+.drawer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px dashed rgba(117, 100, 84, 0.4);
+  background: rgba(255, 252, 243, 0.82);
   color: var(--paper-ink-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms, transform 120ms;
+}
+.drawer-action:hover {
+  background: var(--paper-warm);
+  border-color: rgba(117, 100, 84, 0.6);
+  color: var(--paper-ink);
+  transform: translateY(-1px);
+}
+.drawer-action[data-on="1"] {
+  background: #fffdf6;
+  border-style: solid;
+  color: var(--paper-ink);
 }
 
 .drawer-body {
@@ -1360,9 +1638,19 @@ body[data-variant="wash"] {
 /* ============================================================
    Responsive
    ============================================================ */
-@media (max-width: 1023px) {
+@media (max-width: 1439px) {
+  :root {
+    --nav-w: 248px;
+    --drawer-w: 360px;
+    --aux-w: 280px;
+  }
+}
+
+@media (max-width: 1179px) {
   .app,
-  .app.drawer-open {
+  .app.drawer-open,
+  .app.nav-collapsed,
+  .app.nav-collapsed.drawer-open {
     grid-template-columns: 1fr 0fr;
     grid-template-areas:
       "brand   drawer"
@@ -1389,13 +1677,27 @@ body[data-variant="wash"] {
   .nav-toggle {
     display: inline-flex;
   }
+  #nav-close {
+    display: inline-flex;
+  }
+  .secondary-panel {
+    top: auto;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    width: auto;
+    max-height: min(58vh, 520px);
+  }
+  .canvas-wrap > .minimap,
+  .canvas > .minimap {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
   .margin-line { display: none; }
   .brand, .tools, .footer { padding-left: 20px; }
   .tools::after { left: 20px; }
-  .minimap { display: none; }
   .iconbtn--labeled { width: 34px; padding: 0; }
   .iconbtn__text { display: none; }
 }
@@ -1411,16 +1713,58 @@ body[data-variant="wash"] {
   <aside class="nav-panel" id="nav-panel" aria-label="学习导航">
     <div class="nav-panel__head">
       <div class="nav-panel__title">学习驾驶舱</div>
-      <button class="iconbtn nav-toggle" id="nav-close" type="button" aria-label="关闭学习导航">×</button>
+      <button class="iconbtn" id="nav-close" type="button" aria-label="收起学习导航">×</button>
     </div>
     <section class="nav-panel__section" aria-labelledby="nav-communities-title">
-      <div class="nav-panel__section-title" id="nav-communities-title">社区榜</div>
+      <div class="nav-panel__section-title" id="nav-communities-title">
+        <span class="nav-panel__section-title-text">社区分类</span>
+        <button class="nav-panel__collapse" id="nav-all-communities-toggle" type="button" aria-controls="nav-all-communities" aria-expanded="false">⌄</button>
+      </div>
       <div class="nav-panel__list" id="nav-communities"></div>
+      <div class="nav-panel__list" id="nav-all-communities" hidden></div>
+      <div class="nav-panel__hint" id="nav-inline-hint" hidden></div>
+    </section>
+    <section class="nav-panel__section" aria-labelledby="nav-focus-title">
+      <div class="nav-panel__section-title" id="nav-focus-title">
+        <span class="nav-panel__section-title-text">当前主题聚焦</span>
+      </div>
+      <div class="nav-panel__list" id="nav-focus"></div>
+    </section>
+    <section class="nav-panel__section" aria-labelledby="nav-search-title">
+      <div class="nav-panel__section-title" id="nav-search-title">
+        <span class="nav-panel__section-title-text">学习搜索</span>
+      </div>
+      <div class="nav-panel__search" id="nav-search-shell">
+        <div class="search">
+          <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+          </svg>
+          <input type="search" id="search" class="search__input"
+                 placeholder="搜索当前学习范围..." autocomplete="off" spellcheck="false">
+          <span class="search__hint">/</span>
+          <div class="search__dropdown" id="search-dropdown"></div>
+        </div>
+        <div class="nav-panel__search-hint" id="nav-search-hint">当前搜索范围：全局图谱</div>
+        <div class="nav-panel__search-empty" id="nav-search-empty" hidden>先输入关键词，再在当前学习范围里定位节点。</div>
+      </div>
+    </section>
+    <section class="nav-panel__section" aria-labelledby="nav-queue-title">
+      <div class="nav-panel__section-title" id="nav-queue-title">
+        <span class="nav-panel__section-title-text">学习队列</span>
+      </div>
+      <div class="nav-panel__list" id="nav-queue"></div>
     </section>
     <section class="nav-panel__section" aria-labelledby="nav-start-title">
-      <div class="nav-panel__section-title" id="nav-start-title">推荐起点</div>
+      <div class="nav-panel__section-title" id="nav-start-title">
+        <span class="nav-panel__section-title-text">推荐起点</span>
+      </div>
       <div class="nav-panel__list" id="nav-start"></div>
-      <div class="nav-panel__hint" id="nav-inline-hint" hidden></div>
+    </section>
+    <section class="nav-panel__section" aria-labelledby="nav-secondary-title">
+      <div class="nav-panel__section-title" id="nav-secondary-title">
+        <span class="nav-panel__section-title-text">辅助信息</span>
+      </div>
+      <div class="nav-panel__list" id="nav-secondary-entry"></div>
     </section>
   </aside>
 
@@ -1435,16 +1779,6 @@ body[data-variant="wash"] {
   </header>
 
   <div class="tools">
-    <div class="search">
-      <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
-      </svg>
-      <input type="search" id="search" class="search__input"
-             placeholder="搜索节点..." autocomplete="off" spellcheck="false">
-      <span class="search__hint">/</span>
-      <div class="search__dropdown" id="search-dropdown"></div>
-    </div>
-
     <div class="filters" id="filters">
       <button class="chip chip--extracted" data-type="EXTRACTED" data-on="1">
         <span class="chip__swatch"></span>明确
@@ -1457,11 +1791,13 @@ body[data-variant="wash"] {
       </button>
     </div>
 
-    <div class="mode-switch" id="mode-switch">
-      <button class="mode-btn" data-mode="path" data-on="0" aria-label="路径视图" data-tip="推荐起点驱动的学习路径">路径</button>
-      <button class="mode-btn" data-mode="community" data-on="0" aria-label="社区视图" data-tip="聚焦当前最重社区">社区</button>
-      <button class="mode-btn" data-mode="global" data-on="1" aria-label="全局视图" data-tip="查看完整知识图谱">全局</button>
-    </div>
+    <button class="iconbtn iconbtn--labeled" id="secondary-toggle" aria-label="辅助信息面板" aria-expanded="false" data-tip="洞察、图例、小地图与视图模式">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12 5v.01M12 19v.01M5 12h.01M19 12h.01M7.8 7.8h.01M16.2 16.2h.01M7.8 16.2h.01M16.2 7.8h.01"></path>
+      </svg>
+      <span class="iconbtn__text">辅助</span>
+    </button>
 
     <div class="tools__spacer"></div>
 
@@ -1495,32 +1831,60 @@ body[data-variant="wash"] {
   <main class="canvas-wrap">
     <svg id="canvas" tabindex="0" role="img" aria-label="知识图谱"></svg>
 
-    <aside class="insights-panel" id="insights-panel" aria-label="图谱洞察">
-      <div class="insights-panel__head">
-        <div class="insights-panel__title" id="panel-title">Insights</div>
-        <div class="insights-panel__meta" id="insights-meta">0 项</div>
+    <aside class="secondary-panel" id="secondary-panel" aria-label="辅助信息面板" hidden>
+      <div class="secondary-panel__head">
+        <div>
+          <div class="secondary-panel__title">辅助信息</div>
+          <div class="secondary-panel__meta" id="secondary-meta">洞察 · 图例 · 小地图 · 视图模式</div>
+        </div>
+        <button class="secondary-panel__close" id="secondary-close" type="button" aria-label="关闭辅助信息面板">×</button>
       </div>
-      <div class="insights-panel__body" id="insights-body"></div>
-    </aside>
+      <div class="secondary-panel__body">
+        <section class="secondary-panel__content" id="secondary-mode-section">
+          <div class="secondary-panel__section-title">视图模式</div>
+          <div class="mode-switch" id="mode-switch">
+            <button class="mode-btn" data-mode="path" data-on="0" aria-label="路径视图" data-tip="推荐起点驱动的学习路径">路径</button>
+            <button class="mode-btn" data-mode="community" data-on="0" aria-label="社区视图" data-tip="聚焦当前最重社区">社区</button>
+            <button class="mode-btn" data-mode="global" data-on="1" aria-label="全局视图" data-tip="查看完整知识图谱">全局</button>
+          </div>
+        </section>
 
-    <div class="legend">
-      <div class="legend__title">图例</div>
-      <div class="legend__row"><span class="legend__card" style="color: var(--node-entity)"></span><span class="legend__glyph" style="color: var(--node-entity)">◇</span>实体 entity</div>
-      <div class="legend__row"><span class="legend__card" style="color: var(--node-topic)"></span><span class="legend__glyph" style="color: var(--node-topic)">✦</span>主题 topic</div>
-      <div class="legend__row"><span class="legend__card" style="color: var(--node-source)"></span><span class="legend__glyph" style="color: var(--node-source)">§</span>来源 source</div>
-    </div>
+        <section class="secondary-panel__content" id="secondary-insights-section">
+          <div class="secondary-panel__section-title">洞察</div>
+          <aside class="insights-panel secondary-panel__panel" id="insights-panel" aria-label="图谱洞察">
+            <div class="insights-panel__head">
+              <div class="insights-panel__title" id="panel-title">Insights</div>
+              <div class="insights-panel__meta" id="insights-meta">0 项</div>
+            </div>
+            <div class="insights-panel__body" id="insights-body"></div>
+          </aside>
+        </section>
+
+        <section class="secondary-panel__content" id="secondary-legend-section">
+          <div class="secondary-panel__section-title">图例</div>
+          <div class="secondary-panel__legend legend" id="legend-panel">
+            <div class="legend__row"><span class="legend__card" style="color: var(--node-entity)"></span><span class="legend__glyph" style="color: var(--node-entity)">◇</span>实体 entity</div>
+            <div class="legend__row"><span class="legend__card" style="color: var(--node-topic)"></span><span class="legend__glyph" style="color: var(--node-topic)">✦</span>主题 topic</div>
+            <div class="legend__row"><span class="legend__card" style="color: var(--node-source)"></span><span class="legend__glyph" style="color: var(--node-source)">§</span>来源 source</div>
+          </div>
+        </section>
+
+        <section class="secondary-panel__content" id="secondary-minimap-section">
+          <div class="secondary-panel__section-title">小地图</div>
+          <div class="minimap secondary-panel__minimap" id="minimap" data-collapsed="0">
+            <div class="minimap__label">小地图</div>
+            <button class="minimap__toggle" id="minimap-toggle"
+                    aria-label="折叠小地图" aria-expanded="true"
+                    data-tip="折叠/展开小地图">⌄</button>
+            <svg id="minimap-svg"></svg>
+          </div>
+        </section>
+      </div>
+    </aside>
 
     <div class="zoom-ctrl">
       <button id="zoom-in" title="放大">＋</button>
       <button id="zoom-out" title="缩小">−</button>
-    </div>
-
-    <div class="minimap" id="minimap" data-collapsed="0">
-      <div class="minimap__label">小地图</div>
-      <button class="minimap__toggle" id="minimap-toggle"
-              aria-label="折叠小地图" aria-expanded="true"
-              data-tip="折叠/展开小地图">⌄</button>
-      <svg id="minimap-svg"></svg>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -1563,19 +1927,9 @@ body[data-variant="wash"] {
         <button class="drawer-close" id="dr-close" title="关闭">×</button>
       </div>
 
-      <div class="drawer-learning" id="dr-learning" hidden>
-        <div class="drawer-learning__section">
-          <div class="drawer-learning__label">这是什么</div>
-          <div class="drawer-learning__content" id="dr-what-body"></div>
-        </div>
-        <div class="drawer-learning__section">
-          <div class="drawer-learning__label">为什么现在看</div>
-          <div class="drawer-learning__content" id="dr-why-body"></div>
-        </div>
-        <div class="drawer-learning__section">
-          <div class="drawer-learning__label">下一步看什么</div>
-          <div class="drawer-learning__content" id="dr-next-body"></div>
-        </div>
+      <div class="drawer-actions" id="dr-actions">
+        <button class="drawer-action" id="dr-favorite" type="button" data-on="0">☆ 收藏</button>
+        <button class="drawer-action" id="dr-note" type="button" data-on="0">✎ 加入学习笔记</button>
       </div>
 
       <div class="drawer-body" id="dr-body"></div>
