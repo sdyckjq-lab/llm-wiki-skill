@@ -1292,8 +1292,8 @@
     navFocus.innerHTML = "";
 
     const options = [
-      { id: "all", title: "显示当前全部", meta: activeCommunity ? `完整显示「${activeCommunity.label || activeCommunity.id}」当前范围` : "完整显示当前全局范围" },
-      { id: "core", title: "只看核心节点", meta: activeCommunity ? `围绕「${activeCommunity.label || activeCommunity.id}」保留关键节点` : "在全局里优先保留连接最强的节点" },
+      { id: "all", title: "显示当前全部", meta: activeCommunity ? `完整显示「${escapeHtml(activeCommunity.label || activeCommunity.id)}」当前范围` : "完整显示当前全局范围" },
+      { id: "core", title: "只看核心节点", meta: activeCommunity ? `围绕「${escapeHtml(activeCommunity.label || activeCommunity.id)}」保留关键节点` : "在全局里优先保留连接最强的节点" },
       { id: "one_hop", title: "只看一级关联", meta: state.selected ? "围绕当前选中节点显示一跳邻居" : "围绕推荐起点显示一跳邻居" },
       { id: "high_confidence", title: "只看高置信度", meta: "仅保留高权重连接及相关节点" }
     ];
