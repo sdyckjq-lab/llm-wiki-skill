@@ -341,10 +341,13 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 文件名格式：`{日期}-{短标题}.md`
    - 如果是 URL 类素材，在文件头部记录原始 URL
 
-   **图片检测提醒**：保存素材后，扫描内容中是否包含图片引用（`![` 或 `<img` 或 `.png`/`.jpg`/`.gif`/`.svg` URL）。如果检测到图片：
+   **图片检测与追踪**：保存素材后，扫描内容中是否包含图片引用（`![` 或 `<img` 或 `.png`/`.jpg`/`.gif`/`.svg` URL）。如果检测到图片：
    - 告诉用户："素材包含 {N} 张图片引用。图片链接可能失效，建议手动下载到 `raw/assets/`（Obsidian 用户可在设置中绑定快捷键一键下载附件）"
-   - 在后续 source 页面的 `images` frontmatter 字段记录图片数量
+   - 在后续 source 页面的 frontmatter 中：
+     - `images`：记录检测到的图片引用数量
+     - `image_paths`：如果用户已将图片下载到 `raw/assets/`，记录实际文件路径（如 `["raw/assets/2026-01-15-fig1.png", "raw/assets/2026-01-15-fig2.jpg"]`）；如果尚未下载，保持为空数组 `[]`
    - 不阻塞 ingest 流程，仅做提醒
+   - 用户后续下载图片后，可以手动更新 source 页面的 `image_paths`，或在下次 lint 时由 AI 辅助补全
 
 3. **读取上下文**：
    - 优先顺序：`purpose.md` > `.wiki-schema.md` > `index.md`
@@ -472,7 +475,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 适用于短推文、小红书笔记、简短评论等。
 
 1. **保存原始素材**到对应 `raw/` 目录
-   - **图片检测提醒**：同完整处理流程，扫描图片引用并提醒用户；在 source 页面 `images` frontmatter 字段记录数量
+   - **图片检测与追踪**：同完整处理流程，扫描图片引用并提醒用户；在 source 页面 `images` 和 `image_paths` frontmatter 字段记录数量和路径
 2. **读取上下文并检查缓存**：
    - 仍然优先读取 `purpose.md`
    - 仍然先运行 `bash ${SKILL_DIR}/scripts/cache.sh check "<raw 文件路径>"`
