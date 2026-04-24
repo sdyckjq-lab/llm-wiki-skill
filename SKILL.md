@@ -342,7 +342,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 如果是 URL 类素材，在文件头部记录原始 URL
 
    **图片检测提醒**：保存素材后，扫描内容中是否包含图片引用（`![` 或 `<img` 或 `.png`/`.jpg`/`.gif`/`.svg` URL）。如果检测到图片：
-   - 告诉用户："素材包含 {N} 张图片引用。图片链接可能失效，建议用 Obsidian 下载附件到 `raw/assets/`（参见 docs/obsidian.md）"
+   - 告诉用户："素材包含 {N} 张图片引用。图片链接可能失效，建议手动下载到 `raw/assets/`（Obsidian 用户可在设置中绑定快捷键一键下载附件）"
    - 在后续 source 页面的 `images` frontmatter 字段记录图片数量
    - 不阻塞 ingest 流程，仅做提醒
 
@@ -472,6 +472,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 适用于短推文、小红书笔记、简短评论等。
 
 1. **保存原始素材**到对应 `raw/` 目录
+   - **图片检测提醒**：同完整处理流程，扫描图片引用并提醒用户；在 source 页面 `images` frontmatter 字段记录数量
 2. **读取上下文并检查缓存**：
    - 仍然优先读取 `purpose.md`
    - 仍然先运行 `bash ${SKILL_DIR}/scripts/cache.sh check "<raw 文件路径>"`
