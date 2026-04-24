@@ -1,5 +1,20 @@
 # Changelog
 
+## v3.2.1 (2026-04-24)
+
+### 修复
+
+- `validate-step1.sh` 加强子字段校验：entity 必须有 name/type/confidence，topic 必须有 name，connection 必须有 from/to/confidence，缺失即触发回退
+- `lint-runner.sh` 孤立页检测从仅 `entities/` 扩展到 `entities/`、`topics/`、`sources/` 三个目录
+- `lint-runner.sh` 新增反向 index 一致性检查：文件存在但 index.md 未收录（跳过 derived 页面）
+- `cache.sh` 自愈逻辑收紧：stem 匹配后还需验证 source 页面 frontmatter 的 `source_path` 是否指向当前 raw 文件，不匹配时返回 `MISS:repaired_needs_verify` 而非 `HIT(repaired)`
+
+### 测试
+
+- 更新 lint 回归金文件，新增 source fixture 覆盖孤立页和反向索引检查
+- 更新缓存回归测试 fixture，source 页面补 frontmatter 适配自愈验证逻辑
+- 更新 validate-step1 回归测试，entity JSON 补 `type` 字段适配新校验
+
 ## v3.2.0 (2026-04-23)
 
 ### 新增
