@@ -2,7 +2,7 @@
 
 ## 学习驾驶舱全局重构主线
 
-**Status:** active
+**Status:** completed
 **设计文档：** 以仓库内全局计划为准
 **全局计划：** `docs/plans/2026-04-23-learning-cockpit-global-reframe-plan.md`
 **建议分支：** `feat/learning-cockpit-reframe`
