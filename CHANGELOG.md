@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.3.0 (2026-04-24)
+
+### 新增
+
+- query/digest/ingest 工作流新增单页长度上限规则（2000/3000 字），超长页面只读 frontmatter + 关键段落，避免 token 浪费
+- query 搜索结果按相关性排序：文件名精确命中 > index 条目命中 > 正文关键词命中
+- Step 1 JSON 契约新增 `evidence` 字段：EXTRACTED 应附原文摘录，INFERRED 应附推理依据；校验脚本以 WARN 形式提示缺失
+- 新增 `docs/obsidian.md` Obsidian 集成指南：Web Clipper 配置、Graph View 过滤、Dataview 查询示例、图片本地化工作流
+- 新增 `scripts/lint-fix.sh` 低风险自动修复脚本：按 section 补齐 index.md 中未收录的页面，支持 `--dry-run`
+
 ## v3.2.1 (2026-04-24)
 
 ### 修复
