@@ -27,16 +27,18 @@ echo "检查路径：$WIKI_DIR"
 echo ""
 
 # 检查 1：孤立页面
-# 定义：entities/ 下的页面，除了自己之外没有任何其他 wiki 页面用 [[名称]] 引用它
-echo "--- 孤立页面（entities/ 下没有被其他页面引用） ---"
+# 定义：entities/、topics/、sources/ 下的页面，除了自己之外没有任何其他 wiki 页面用 [[名称]] 引用它
+echo "--- 孤立页面（没有被其他页面引用） ---"
 _ORPHANS=0
-for f in "$WIKI_DIR"/entities/*.md; do
-  [ -f "$f" ] || continue
-  BASENAME=$(basename "$f" .md)
-  if ! grep -rlF "[[$BASENAME]]" "$WIKI_DIR" 2>/dev/null | grep -vxF "$f" | grep -q .; then
-    echo "  孤立: $BASENAME"
-    _ORPHANS=$((_ORPHANS + 1))
-  fi
+for _subdir in entities topics sources; do
+  for f in "$WIKI_DIR"/$_subdir/*.md; do
+    [ -f "$f" ] || continue
+    BASENAME=$(basename "$f" .md)
+    if ! grep -rlF "[[$BASENAME]]" "$WIKI_DIR" 2>/dev/null | grep -vxF "$f" | grep -q .; then
+      echo "  孤立: $_subdir/$BASENAME"
+      _ORPHANS=$((_ORPHANS + 1))
+    fi
+  done
 done
 [ "$_ORPHANS" -eq 0 ] && echo "  （无孤立页面）"
 echo ""
@@ -81,7 +83,32 @@ fi
 rm -f "$_TMP_MISSING"
 echo ""
 
-# 检查 4：source-signal 覆盖情况
+# 检查 4：反向 index 一致性
+# 定义：wiki/ 下实际存在的页面，但 index.md 里没有 [[页面名]] 记录
+# 排除 derived 页面（queries/、synthesis/sessions/）
+echo "--- 反向 index 一致性（文件存在但 index.md 未收录） ---"
+_TMP_UNLISTED=$(mktemp)
+for _subdir in entities topics sources comparisons synthesis; do
+  for f in "$WIKI_DIR"/$_subdir/*.md; do
+    [ -f "$f" ] || continue
+    BASENAME=$(basename "$f" .md)
+    # 跳过 derived 页面
+    case "$f" in
+      */queries/*|*/sessions/*) continue ;;
+    esac
+    if ! grep -qF "[[$BASENAME]]" "$INDEX_FILE" 2>/dev/null; then
+      echo "  未收录: $_subdir/$BASENAME"
+      echo "$BASENAME" >> "$_TMP_UNLISTED"
+    fi
+  done
+done
+if [ ! -s "$_TMP_UNLISTED" ]; then
+  echo "  （所有页面均已收录）"
+fi
+rm -f "$_TMP_UNLISTED"
+echo ""
+
+# 检查 5：source-signal 覆盖情况
 echo "--- source-signal 覆盖情况 ---"
 _COVERAGE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/source-signal-coverage.js"
 if [ -f "$_COVERAGE_SCRIPT" ] && command -v node >/dev/null 2>&1; then

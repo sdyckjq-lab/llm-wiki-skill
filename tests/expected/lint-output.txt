@@ -2,8 +2,10 @@
 时间：YYYY-MM-DD HH:MM
 检查路径：tests/fixtures/lint-sample-wiki/wiki
 
---- 孤立页面（entities/ 下没有被其他页面引用） ---
-  孤立: Lonely
+--- 孤立页面（没有被其他页面引用） ---
+  孤立: entities/Lonely
+  孤立: topics/AIbasic
+  孤立: sources/2026-01-01-test-source
 
 --- 断链（被链接但不存在的页面） ---
   断链: [[Missing]]
@@ -12,9 +14,13 @@
 --- index 一致性（index.md 有记录但文件缺失） ---
   index 有但文件缺失: Ghost
 
+--- 反向 index 一致性（文件存在但 index.md 未收录） ---
+  未收录: entities/Lonely
+  未收录: sources/2026-01-01-test-source
+
 --- source-signal 覆盖情况 ---
   已参与：0
-  缺少 sources 字段：5
+  缺少 sources 字段：6
   sources 为空：0
   sources 格式无效：0
   当前不参与：0
@@ -25,5 +31,6 @@
   - wiki/entities/Other.md
   - wiki/entities/Real.md
   - wiki/topics/AIbasic.md
+  - wiki/sources/2026-01-01-test-source.md
 
 === 机械检查完成。矛盾检测、交叉引用、置信度抽查由 AI 继续执行 ===
