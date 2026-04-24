@@ -539,7 +539,7 @@
     });
     var focusNodeIds = focusResult.node_ids || [];
     if (!focusNodeIds.length && safe.focusMode && safe.focusMode !== "all") {
-        return { node_ids: [], nodes: [], links: [], search_index: [] };
+        return { node_ids: [], nodes: [], links: [], searchIndex: [] };
     }
     if (!focusNodeIds.length) focusNodeIds = baseNodeIds;
     var focusNodes = nodes.filter(function (node) {
@@ -558,7 +558,7 @@
       links: finalNodeIds.length
         ? getVisibleLinks(focusResult.links && focusResult.links.length ? focusResult.links : scopedLinks, finalNodeIds)
         : [],
-      search_index: searchIndex
+      searchIndex: searchIndex
     };
   }
 

@@ -31,7 +31,7 @@ describe("resolveVisibleSnapshot", () => {
     assert.deepEqual(snapshot.node_ids, ["n2", "n3"]);
     assert.deepEqual(snapshot.nodes.map((node) => node.id), ["n2", "n3"]);
     assert.deepEqual(snapshot.links.map((link) => link.id), ["e2"]);
-    assert.deepEqual(snapshot.search_index.map((entry) => entry.node.id), ["n1", "n2", "n3"]);
+    assert.deepEqual(snapshot.searchIndex.map((entry) => entry.node.id), ["n1", "n2", "n3"]);
   });
 
   it("keeps one-hop scope around the selected anchor", () => {
@@ -63,6 +63,6 @@ describe("resolveVisibleSnapshot", () => {
     assert.deepEqual(snapshot.node_ids, []);
     assert.deepEqual(snapshot.nodes, []);
     assert.deepEqual(snapshot.links, []);
-    assert.equal(snapshot.search_index.length, 3);
+    assert.equal(snapshot.searchIndex.length, 3);
   });
 });

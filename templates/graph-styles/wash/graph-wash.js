@@ -11,6 +11,10 @@
   }
   const { truncateLabel, cardDims, createSafeStorage, getWikiStorageNamespace, defaultQueue, normalizeQueue, toggleQueueFavorite, appendQueueNote, summarizeQueue, defaultLearning, normalizeLearning, resolveInitialMode, getCommunityNodeIds, getVisibleNodeIds, getVisibleLinks, buildSearchIndex, filterLinksByTypes, resolveVisibleSnapshot, shouldAutoOpenDrawer } = helpers;
 
+  const NAV_BREAKPOINT = 1180;
+  const NOTE_EXCERPT_LIMIT = 140;
+  const QUEUE_NOTE_LIMIT = 50;
+
   const dataEl = document.getElementById("graph-data");
   let DATA;
   try {
@@ -51,7 +55,6 @@
     hover: null,
     nodes: [],
     links: [],
-    visibleLinks: [],
     communities: {},
     insights: {
       surprising_connections: [],
@@ -83,9 +86,6 @@
       searchIndex: []
     },
     queue: defaultQueue(),
-    storage: {
-      namespace: ""
-    },
     ui: {
       bootstrappedEntry: false,
       navOpen: false,
@@ -102,7 +102,6 @@
   } catch (_) {}
   const safeLocalStorage = createSafeStorage(rawLocalStorage, console.warn);
   const storageNamespace = getWikiStorageNamespace(DATA.meta, window.location && window.location.pathname);
-  state.storage.namespace = storageNamespace;
 
   function queueStorageKey(name) {
     return storageNamespace + ":" + name;
@@ -135,7 +134,7 @@
       .replace(/\[\[([^\]]+)\]\]/g, "$1")
       .replace(/\s+/g, " ")
       .trim();
-    const excerpt = raw.slice(0, 140);
+    const excerpt = raw.slice(0, NOTE_EXCERPT_LIMIT);
     return node && node.label ? `${node.label}${excerpt ? "：" + excerpt : ""}` : excerpt;
   }
 
@@ -568,8 +567,6 @@
       .slice()
       .sort((left, right) => clampWeight(right.weight) - clampWeight(left.weight));
     vis.forEach((edge, index) => { edge._blurRank = index; });
-    state.visibleLinks = vis;
-
     const groups = edgeLayer.selectAll("g.edge-wrap")
       .data(vis, d => d.id);
     groups.exit().remove();
@@ -1043,7 +1040,7 @@
       ? selectedText
       : "";
     const note = createQueueNote(node, scopedSelectedText);
-    state.queue = appendQueueNote(state.queue, note, 50);
+    state.queue = appendQueueNote(state.queue, note, QUEUE_NOTE_LIMIT);
     toast(scopedSelectedText ? "已收进学习笔记" : "已记下当前节点");
     updateQueueUI();
     if (state.selected === node.id) openDetailDrawer(node.id);
@@ -1258,7 +1255,7 @@
   function setNavCollapsed(collapsed) {
     state.ui.navCollapsed = collapsed;
     const app = document.getElementById("app");
-    if (app) app.classList.toggle("nav-collapsed", !!collapsed && window.innerWidth >= 1180);
+    if (app) app.classList.toggle("nav-collapsed", !!collapsed && window.innerWidth >= NAV_BREAKPOINT);
     if (navClose) navClose.setAttribute("aria-label", collapsed ? "展开学习导航" : "收起学习导航");
   }
 
@@ -1285,7 +1282,7 @@
     `;
     button.addEventListener("click", () => {
       setActiveCommunity(community.id);
-      if (window.innerWidth < 1180) setNavOpen(false);
+      if (window.innerWidth < NAV_BREAKPOINT) setNavOpen(false);
     });
     return button;
   }
@@ -1360,7 +1357,7 @@
         button.title = item.text || item.label;
         button.addEventListener("click", () => {
           focusNode(item.node_id);
-          if (window.innerWidth < 1180) setNavOpen(false);
+          if (window.innerWidth < NAV_BREAKPOINT) setNavOpen(false);
         });
         list.appendChild(button);
       });
@@ -1495,7 +1492,7 @@
         setLearningMode("path");
         focusNode(startNode.id);
       }
-      if (window.innerWidth < 1180) setNavOpen(false);
+      if (window.innerWidth < NAV_BREAKPOINT) setNavOpen(false);
     });
     navStart.appendChild(button);
   }
@@ -1537,7 +1534,7 @@
     state.visible.nodeIds = new Set(snapshot.node_ids);
     state.visible.nodes = snapshot.nodes;
     state.visible.links = snapshot.links;
-    state.visible.searchIndex = snapshot.search_index;
+    state.visible.searchIndex = snapshot.searchIndex;
   }
 
   function applySubgraph() {
@@ -1982,7 +1979,7 @@
   if (navClose) {
     navClose.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (window.innerWidth < 1180) {
+      if (window.innerWidth < NAV_BREAKPOINT) {
         setNavOpen(false);
       } else {
         setNavCollapsed(!state.ui.navCollapsed);
@@ -2136,14 +2133,14 @@
   }
 
   function syncResponsiveUI() {
-    if (window.innerWidth < 1180) {
+    if (window.innerWidth < NAV_BREAKPOINT) {
       const app = document.getElementById("app");
       if (app) app.classList.remove("nav-collapsed");
     } else {
       setNavOpen(false);
       setNavCollapsed(state.ui.navCollapsed);
     }
-    if (window.innerWidth < 1180) {
+    if (window.innerWidth < NAV_BREAKPOINT) {
       setSecondaryOpen(false);
     }
   }
