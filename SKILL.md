@@ -392,6 +392,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
 6. **Step 2：页面生成**：
    - 输入：原始内容 + `purpose.md` + Step 1 的分析结果 + 现有相关 wiki 页面
+   - **上下文加载规则**：只读取 Step 1 中 `new_vs_existing.updates` 列出的已有页面；如果某页超过 2000 字，只读取 frontmatter + 需要更新的章节
    - 输出：所有需要创建或更新的 wiki 页面内容
    - Step 2 负责完成原流程中的素材摘要、实体页、主题页、index、log 更新
 
@@ -575,7 +576,9 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 3. **搜索相关页面**：
    - 先在 index.md 中定位相关分类和条目
    - 再用 Grep 在 `wiki/` 目录下搜索关键词
+   - 按相关性排序：文件名精确命中 > index.md 条目命中 > 正文关键词命中次数
    - 读取最相关的 3-5 个页面
+   - **单页长度上限**：如果某页超过 2000 字，只读取 frontmatter + 前 500 字 + Grep 命中段落（前后各 3 行），避免长页面消耗过多上下文
 4. **综合回答**：
    - 按 `WIKI_LANG` 用对应语言回答用户的问题
    - 标注信息来源（引用 wiki 页面，用 `[[页面名]]` 格式）
@@ -776,6 +779,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
 2. **深度阅读所有相关页面 + 选择输出格式**：
    - 读取找到的所有相关 wiki 页面（sources/、entities/、topics/）
+   - **单页长度上限**：如果某页超过 3000 字，优先读取 frontmatter + 核心观点章节 + 与主题直接相关的段落，跳过"原文精彩摘录"等冗长引用部分
    - 归纳每个页面的核心观点和来源信息
    - **根据触发关键词决定输出格式**：
      - 用户说"对比"/"比较"类 → 使用**对比表格式**（见下方模板 B）
