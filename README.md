@@ -96,6 +96,7 @@ bash install.sh --platform claude --with-optional-adapters
 - [Codex](platforms/codex/AGENTS.md)
 - [OpenClaw](platforms/openclaw/README.md)
 - [Hermes](platforms/hermes/README.md)
+- [Obsidian Integration Guide](docs/obsidian.md)
 
 ---
 
