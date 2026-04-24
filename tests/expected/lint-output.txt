@@ -18,6 +18,10 @@
   未收录: entities/Lonely
   未收录: sources/2026-01-01-test-source
 
+--- 图片资产一致性（image_paths 声明但文件缺失） ---
+  缺失: 2026-01-01-test-source → raw/assets/test-fig1.png
+  缺失: 2026-01-01-test-source → raw/assets/test-fig2.jpg
+
 --- source-signal 覆盖情况 ---
   已参与：0
   缺少 sources 字段：6

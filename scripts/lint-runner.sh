@@ -108,7 +108,45 @@ fi
 rm -f "$_TMP_UNLISTED"
 echo ""
 
-# 检查 5：source-signal 覆盖情况
+# 检查 5：图片资产一致性
+# 定义：source 页面 frontmatter 中 image_paths 列出的文件，在知识库中是否实际存在
+echo "--- 图片资产一致性（image_paths 声明但文件缺失） ---"
+_IMG_ISSUES=0
+for f in "$WIKI_DIR"/sources/*.md; do
+  [ -f "$f" ] || continue
+  # 提取 image_paths 中的路径（简单解析 YAML 数组）
+  _IN_FM=false
+  _IN_IMG=false
+  while IFS= read -r line; do
+    case "$line" in
+      "---")
+        if [ "$_IN_FM" = true ]; then break; fi
+        _IN_FM=true
+        continue
+        ;;
+    esac
+    [ "$_IN_FM" = true ] || continue
+    case "$line" in
+      image_paths:*) _IN_IMG=true; continue ;;
+      "  - "*)
+        if [ "$_IN_IMG" = true ]; then
+          _PATH=$(echo "$line" | sed 's/^  - //' | tr -d '"' | tr -d "'")
+          [ -z "$_PATH" ] && continue
+          _ABS_PATH="$WIKI_ROOT/$_PATH"
+          if [ ! -f "$_ABS_PATH" ]; then
+            echo "  缺失: $(basename "$f" .md) → $_PATH"
+            _IMG_ISSUES=$((_IMG_ISSUES + 1))
+          fi
+        fi
+        ;;
+      *) _IN_IMG=false ;;
+    esac
+  done < "$f"
+done
+[ "$_IMG_ISSUES" -eq 0 ] && echo "  （无缺失图片）"
+echo ""
+
+# 检查 6：source-signal 覆盖情况
 echo "--- source-signal 覆盖情况 ---"
 _COVERAGE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/source-signal-coverage.js"
 if [ -f "$_COVERAGE_SCRIPT" ] && command -v node >/dev/null 2>&1; then
