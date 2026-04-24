@@ -10,3 +10,4 @@ deps/baoyu-url-to-markdown/scripts/bun.lock
 .playwright-cli/
 .omx/
 .codex
+.codex-review-stamp
