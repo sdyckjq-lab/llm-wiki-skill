@@ -132,9 +132,6 @@ if [ ! -s "$NODES_TSV" ]; then
           global: { enabled: true, node_ids: [], degraded: false }
         },
         communities: [],
-        drawer: {
-          section_order: ["what_this_is", "why_now", "next_steps", "raw_content", "neighbors"]
-        },
         degraded: { path_to_community: true, community_to_global: true }
       }
     }' > "$OUTPUT_TMP"
@@ -175,6 +172,13 @@ VALID_IDS="$TMPDIR/valid_ids.txt"
 cut -f1 "$NODES_TSV" | sort -u > "$VALID_IDS"
 
 EDGES_TSV="$TMPDIR/edges.tsv"
+# 合并同一 from+to 的多条 raw edges：
+#   - 第一次遇到时记录（有 conf 就用 conf，无 conf 就留空 → 最终默认 EXTRACTED）
+#   - 后续遇到带显式 conf 的条目时 **升级**（覆盖之前的空值或 EXTRACTED 默认）
+#   - 若后续遇到多条不同的非空 conf，保留首个非空（按首次显式标注优先）
+#
+# 这解决了"同一对节点被多次 [[]] 引用（正文 + 相关页面列表）时，
+#  首次出现的空 conf 会永久锁定 edge type 为 EXTRACTED"的问题。
 awk -F'\t' -v valids="$VALID_IDS" '
   BEGIN {
     while ((getline line < valids) > 0) valid[line] = 1
@@ -185,10 +189,13 @@ awk -F'\t' -v valids="$VALID_IDS" '
     if (!(to in valid)) next
     if (from == to) next
     key = from "\t" to
-    if (!(key in seen) || (conf != "" && saved_conf[key] == "")) {
+    if (!(key in seen)) {
       seen[key] = 1
-      saved_conf[key] = (conf != "" ? conf : (saved_conf[key] == "" ? "EXTRACTED" : saved_conf[key]))
+      saved_conf[key] = conf  # 可能为空，在 END 中兜底为 EXTRACTED
       order[++count] = key
+    } else if (conf != "" && saved_conf[key] == "") {
+      # 升级：之前未见显式 conf（留空），现在有，采用
+      saved_conf[key] = conf
     }
   }
   END {

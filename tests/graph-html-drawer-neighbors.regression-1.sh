@@ -92,6 +92,7 @@ const context = {
   drawerNeighbors: null,
   drawerNeighborsHeading: null,
   safeLocalStorage: { set(key, value) { persisted.push([key, value]); } },
+  queueStorageKey: (name) => `llm-wiki:test:${name}`,
   console
 };
 vm.createContext(context);
@@ -107,7 +108,7 @@ if (context.drawerNeighborsHeading.attrs['aria-expanded'] !== 'false') throw new
 context.toggleNeighbors();
 if (context.drawerNeighbors.attrs['data-collapsed'] !== '0') throw new Error('neighbors toggle did not expand');
 if (context.drawerNeighborsHeading.attrs['aria-expanded'] !== 'true') throw new Error('neighbors aria-expanded not expanded');
-if (!persisted.some(([key, value]) => key === 'wiki-neighbors-collapsed' && value === '0')) throw new Error('neighbors state not persisted');
+if (!persisted.some(([key, value]) => key === 'llm-wiki:test:neighbors-collapsed' && value === '0')) throw new Error('neighbors state not persisted');
 NODE
 
     rm -rf "$tmp_dir"

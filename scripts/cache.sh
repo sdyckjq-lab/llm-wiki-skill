@@ -158,15 +158,40 @@ with open(cache_file, "r", encoding="utf-8") as fh:
 
 entry = data.get("entries", {}).get(relative_path)
 
-# 无 cache entry → 尝试自愈（exact filename stem match）
+# 无 cache entry → 尝试自愈（exact filename stem match + source_path 验证）
 if not entry:
     raw_stem = pathlib.Path(relative_path).stem
     sources_dir = os.path.join(wiki_root, "wiki", "sources")
     if os.path.isdir(sources_dir):
         for f in os.listdir(sources_dir):
             if pathlib.Path(f).stem == raw_stem and f.endswith(".md"):
-                # 找到匹配的 source 页面 → 自愈
                 source_page = os.path.join("wiki", "sources", f)
+                source_abs = os.path.join(wiki_root, source_page)
+                # 验证 source 页面的 source_path frontmatter 是否指向当前 raw 文件
+                source_path_match = False
+                try:
+                    with open(source_abs, "r", encoding="utf-8") as sf:
+                        in_frontmatter = False
+                        for line in sf:
+                            stripped = line.strip()
+                            if stripped == "---":
+                                if in_frontmatter:
+                                    break  # end of frontmatter
+                                in_frontmatter = True
+                                continue
+                            if in_frontmatter and stripped.startswith("source_path:"):
+                                fm_value = stripped.split(":", 1)[1].strip()
+                                # 匹配相对路径的末尾部分
+                                if relative_path.endswith(fm_value) or fm_value.endswith(relative_path) or fm_value == relative_path:
+                                    source_path_match = True
+                                break
+                except (OSError, UnicodeDecodeError):
+                    pass
+                if not source_path_match:
+                    # stem 匹配但 source_path 不一致 → 不信任，需要验证
+                    print("MISS:repaired_needs_verify")
+                    raise SystemExit(0)
+                # stem + source_path 都匹配 → 安全自愈
                 timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 entries = data.setdefault("entries", {})
                 entries[relative_path] = {

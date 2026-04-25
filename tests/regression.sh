@@ -357,7 +357,13 @@ test_cache_script_handles_miss_hit_and_invalidate() {
     )" || fail "cache.sh check should work for uncached files"
     [ "$output" = "MISS:no_entry" ] || fail "Expected initial cache check to be MISS:no_entry, got: $output"
 
-    printf '# 来源页\n' > "$wiki_root/wiki/sources/example.md"
+    # source 页面必须有 source_path frontmatter，自愈才能验证通过
+    cat > "$wiki_root/wiki/sources/example.md" <<'SRCEOF'
+---
+source_path: raw/articles/example.md
+---
+# 来源页
+SRCEOF
     bash "$REPO_ROOT/scripts/cache.sh" update "$file_path" "wiki/sources/example.md" > /dev/null 2>&1 \
         || fail "cache.sh update should succeed"
 
@@ -372,7 +378,7 @@ test_cache_script_handles_miss_hit_and_invalidate() {
     output="$(
         bash "$REPO_ROOT/scripts/cache.sh" check "$file_path" 2>&1
     )" || fail "cache.sh check should work after invalidation"
-    # 自愈：invalidate 后 source 页面仍存在，stem 匹配 → HIT(repaired)
+    # 自愈：invalidate 后 source 页面仍存在，stem + source_path 匹配 → HIT(repaired)
     [ "$output" = "HIT(repaired)" ] || fail "Expected invalidated cache check to be HIT(repaired), got: $output"
 }
 
@@ -982,7 +988,7 @@ test_validate_step1_valid_json_passes() {
     local tmp_dir
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
-    printf '%s\n' '{"entities":[{"name":"test","confidence":"EXTRACTED"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+    printf '%s\n' '{"entities":[{"name":"test","type":"concept","confidence":"EXTRACTED"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
         > "$tmp_dir/step1.json"
     bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" \
         || fail "validate-step1.sh should pass with valid JSON"
@@ -992,19 +998,19 @@ test_validate_step1_missing_confidence_fails() {
     local tmp_dir output
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
-    printf '%s\n' '{"entities":[{"name":"test"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+    printf '%s\n' '{"entities":[{"name":"test","type":"concept"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
         > "$tmp_dir/step1.json"
     if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" 2>&1)"; then
         fail "validate-step1.sh should fail when confidence is missing"
     fi
-    assert_text_contains "$output" "MISSING"
+    assert_text_contains "$output" "missing required fields"
 }
 
 test_validate_step1_invalid_confidence_value_fails() {
     local tmp_dir output
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' RETURN
-    printf '%s\n' '{"entities":[{"name":"test","confidence":"HIGH"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+    printf '%s\n' '{"entities":[{"name":"test","type":"concept","confidence":"HIGH"}],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
         > "$tmp_dir/step1.json"
     if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" 2>&1)"; then
         fail "validate-step1.sh should fail with invalid confidence value"
@@ -1032,6 +1038,71 @@ test_validate_step1_empty_entities_array_passes() {
         > "$tmp_dir/step1.json"
     bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/step1.json" \
         || fail "validate-step1.sh should pass with empty entities array"
+}
+
+test_validate_step1_rejects_non_object_items() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    printf '%s\n' '{"entities":["not-an-object"],"topics":[],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+        > "$tmp_dir/entity.json"
+    if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/entity.json" 2>&1)"; then
+        fail "validate-step1.sh should fail when an entity item is not an object"
+    fi
+    assert_text_contains "$output" "entity"
+
+    printf '%s\n' '{"entities":[],"topics":["not-an-object"],"connections":[],"contradictions":[],"new_vs_existing":{}}' \
+        > "$tmp_dir/topic.json"
+    if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/topic.json" 2>&1)"; then
+        fail "validate-step1.sh should fail when a topic item is not an object"
+    fi
+    assert_text_contains "$output" "topic"
+
+    printf '%s\n' '{"entities":[],"topics":[],"connections":["not-an-object"],"contradictions":[],"new_vs_existing":{}}' \
+        > "$tmp_dir/connection.json"
+    if output="$(bash "$REPO_ROOT/scripts/validate-step1.sh" "$tmp_dir/connection.json" 2>&1)"; then
+        fail "validate-step1.sh should fail when a connection item is not an object"
+    fi
+    assert_text_contains "$output" "connection"
+}
+
+test_lint_runner_accepts_index_alias_entries() {
+    local tmp_dir output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mkdir -p "$tmp_dir/wiki/entities"
+    printf '# Index\n\n## 实体页\n- [[Real|真实页面]]\n' > "$tmp_dir/index.md"
+    printf '# Real\n' > "$tmp_dir/wiki/entities/Real.md"
+
+    output="$(bash "$REPO_ROOT/scripts/lint-runner.sh" "$tmp_dir" 2>&1)" \
+        || fail "lint-runner.sh should run on alias index fixture"
+    assert_text_not_contains "$output" "未收录: entities/Real"
+}
+
+test_lint_fix_does_not_require_macos_sed_in_place() {
+    local tmp_dir wiki_root real_sed
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+    wiki_root="$tmp_dir/wiki-root"
+    real_sed="$(command -v sed)"
+
+    mkdir -p "$wiki_root/wiki/entities" "$tmp_dir/bin"
+    printf '# Index\n\n## 实体页\n' > "$wiki_root/index.md"
+    printf '# Lonely\n' > "$wiki_root/wiki/entities/Lonely.md"
+
+    make_stub "$tmp_dir/bin/sed" "#!/bin/sh
+if [ \"\${1:-}\" = \"-i\" ] && [ \"\${2+x}\" = \"x\" ] && [ \"\$2\" = \"\" ]; then
+  echo 'sed -i empty extension is not portable' >&2
+  exit 2
+fi
+exec \"$real_sed\" \"\$@\"
+"
+
+    PATH="$tmp_dir/bin:$PATH" bash "$REPO_ROOT/scripts/lint-fix.sh" "$wiki_root" > /dev/null \
+        || fail "lint-fix.sh should not depend on macOS sed -i syntax"
+    assert_file_contains "$wiki_root/index.md" "- [[Lonely]]"
 }
 
 test_skill_md_ingest_has_confidence_assignment_rules() {
@@ -1128,7 +1199,12 @@ test_cache_check_self_heals_with_matching_stem() {
     printf 'RLHF 论文内容\n' > "$raw_file"
 
     # 直接写 source 页面（不通过脚本，模拟 AI 忘了 update）
-    printf '# RLHF 摘要\n' > "$wiki_root/wiki/sources/rlhf-paper.md"
+    cat > "$wiki_root/wiki/sources/rlhf-paper.md" <<'SRCEOF'
+---
+source_path: raw/articles/rlhf-paper.md
+---
+# RLHF 摘要
+SRCEOF
 
     # cache check 应该自愈
     output="$(
@@ -1273,6 +1349,9 @@ test_validate_step1_missing_confidence_fails
 test_validate_step1_invalid_confidence_value_fails
 test_validate_step1_entities_not_array_fails
 test_validate_step1_empty_entities_array_passes
+test_validate_step1_rejects_non_object_items
+test_lint_runner_accepts_index_alias_entries
+test_lint_fix_does_not_require_macos_sed_in_place
 test_skill_md_ingest_has_confidence_assignment_rules
 test_skill_md_has_crystallize_workflow_and_route
 test_init_creates_synthesis_sessions_subdir
@@ -1555,6 +1634,7 @@ test_graph_html_missing_data_exits_with_error
 test_graph_html_missing_template_exits_with_error
 bash "$REPO_ROOT/tests/graph-analysis-helper.regression-1.sh" || fail "graph-analysis-helper.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-build-failures.regression-1.sh" || fail "graph-build-failures.regression-1.sh 测试失败"
+bash "$REPO_ROOT/tests/graph-data-confidence-merge.regression-1.sh" || fail "graph-data-confidence-merge.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-brand-link.regression-1.sh" || fail "graph-html-brand-link.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-long-label.regression-1.sh" || fail "graph-html-long-label.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-minimap.regression-1.sh" || fail "graph-html-minimap.regression-1.sh 测试失败"
@@ -1578,7 +1658,9 @@ node --test "$REPO_ROOT/tests/js/source-signal-eligibility.test.js" || fail "sou
 node --test "$REPO_ROOT/tests/js/source-signal-coverage.test.js" || fail "source-signal-coverage integration tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-helpers.test.js" || fail "graph-wash-helpers unit tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-bootstrap.test.js" || fail "graph-wash bootstrap unit tests failed"
+node --test "$REPO_ROOT/tests/js/graph-wash-queue.test.js" || fail "graph-wash queue unit tests failed"
 node --test "$REPO_ROOT/tests/js/graph-wash-learning.test.js" || fail "graph-wash learning unit tests failed"
+node --test "$REPO_ROOT/tests/js/graph-wash-runtime-state.test.js" || fail "graph-wash runtime state unit tests failed"
 
 # ─── Lint 回归 ────────────────────────────────────────────────────
 bash "$REPO_ROOT/tests/lint-output.regression-1.sh" || fail "lint output regression failed"

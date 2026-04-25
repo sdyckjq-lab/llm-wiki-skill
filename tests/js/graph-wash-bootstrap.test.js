@@ -55,8 +55,14 @@ describe("graph-wash bootstrap", () => {
             capturedStorage = storage;
             return { get: () => null, set: () => {} };
           },
-          defaultLearning: () => ({ version: 1, entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" }, views: { path: { enabled: false, start_node_id: null, node_ids: [], degraded: true }, community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true }, global: { enabled: true, node_ids: [], degraded: false } }, communities: [], drawer: { section_order: [] }, degraded: { path_to_community: true, community_to_global: true } }),
-          normalizeLearning: () => ({ version: 1, entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" }, views: { path: { enabled: false, start_node_id: null, node_ids: [], degraded: true }, community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true }, global: { enabled: true, node_ids: [], degraded: false } }, communities: [], drawer: { section_order: [] }, degraded: { path_to_community: true, community_to_global: true } }),
+          getWikiStorageNamespace: () => "llm-wiki:test:abc",
+          defaultQueue: () => ({ version: 1, favorites: [], notes: [], recentNoteIds: [] }),
+          normalizeQueue: (queue) => queue,
+          toggleQueueFavorite: (queue) => queue,
+          appendQueueNote: (queue) => queue,
+          summarizeQueue: () => ({ favorite_count: 0, note_count: 0, recent_items: [] }),
+          defaultLearning: () => ({ version: 1, entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" }, views: { path: { enabled: false, start_node_id: null, node_ids: [], degraded: true }, community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true }, global: { enabled: true, node_ids: [], degraded: false } }, communities: [], degraded: { path_to_community: true, community_to_global: true } }),
+          normalizeLearning: () => ({ version: 1, entry: { recommended_start_node_id: null, recommended_start_reason: null, default_mode: "global" }, views: { path: { enabled: false, start_node_id: null, node_ids: [], degraded: true }, community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true }, global: { enabled: true, node_ids: [], degraded: false } }, communities: [], degraded: { path_to_community: true, community_to_global: true } }),
           resolveInitialMode: () => "global",
           getVisibleNodeIds: () => [],
           getVisibleLinks: () => [],

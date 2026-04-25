@@ -1,6 +1,6 @@
 ---
 name: llm-wiki
-version: 3.0.4
+version: 3.3.0
 author: sdyckjq-lab
 license: MIT
 description: |
@@ -341,6 +341,19 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 文件名格式：`{日期}-{短标题}.md`
    - 如果是 URL 类素材，在文件头部记录原始 URL
 
+   **图片检测与追踪**：保存素材后，扫描内容中是否包含图片引用（`![` 或 `<img` 或 `.png`/`.jpg`/`.gif`/`.svg` URL）。如果检测到图片：
+   - 告诉用户："素材包含 {N} 张图片引用。图片链接可能失效，建议手动下载到 `raw/assets/`（Obsidian 用户可在设置中绑定快捷键一键下载附件）"
+   - 在后续 source 页面的 frontmatter 中：
+     - `images`：记录检测到的图片引用数量
+     - `image_paths`：如果用户已将图片下载到 `raw/assets/`，用 YAML block list 格式记录路径；如果尚未下载，保持为空数组 `[]`。示例：
+       ```yaml
+       image_paths:
+         - raw/assets/2026-01-15-fig1.png
+         - raw/assets/2026-01-15-fig2.jpg
+       ```
+   - 不阻塞 ingest 流程，仅做提醒
+   - 用户后续下载图片后，可以手动更新 source 页面的 `image_paths`，或在下次 lint 时由 AI 辅助补全
+
 3. **读取上下文**：
    - 优先顺序：`purpose.md` > `.wiki-schema.md` > `index.md`
    - 如果 `purpose.md` 存在，先读取其中的核心目标、关键问题和研究范围
@@ -352,11 +365,12 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
      bash ${SKILL_DIR}/scripts/cache.sh check “<raw 文件路径>”
      ```
    - 如果返回 `HIT` 或 `HIT(repaired)` → 跳过本次 LLM 调用，直接读取已有 wiki 页面，并告诉用户这是”无变化，直接复用已有结果”
-     - `HIT(repaired)` 表示缓存自愈修复成功（上次 update 被跳过但 source 页面存在）
+     - `HIT(repaired)` 表示缓存自愈修复成功（上次 update 被跳过但 source 页面存在且 source_path 匹配）
    - 如果返回 `MISS:<reason>` → 继续执行下面的两步流程
      - `MISS:no_entry` — 首次处理此素材（正常情况）
      - `MISS:hash_changed` — 素材内容有变化，需要重新处理
      - `MISS:no_source` — 有缓存记录但 source 页面被删除了
+     - `MISS:repaired_needs_verify` — 找到同名 source 页面但 source_path 不匹配，需要重新处理以确认关联正确
 
 5. **Step 1：结构化分析**：
    - 输入：原始内容 + `purpose.md` + 现有 wiki 结构（至少读取 `index.md` 概要）
@@ -367,19 +381,19 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    ```json
    {
      "source_summary": "一句话概括",
-     "entities": [{"name": "xxx", "type": "concept", "relevance": "high", "confidence": "EXTRACTED"}],
+     "entities": [{"name": "xxx", "type": "concept", "relevance": "high", "confidence": "EXTRACTED", "evidence": "原文摘录或推理依据"}],
      "topics": [{"name": "xxx", "importance": "high"}],
-     "connections": [{"from": "A", "to": "B", "type": "因果", "confidence": "INFERRED"}],
+     "connections": [{"from": "A", "to": "B", "type": "因果", "confidence": "INFERRED", "evidence": "推理依据"}],
      "contradictions": [{"claim_a": "...", "claim_b": "...", "context": "..."}],
      "new_vs_existing": {"new_entities": [], "updates": []}
    }
    ```
 
    置信度赋值规则（Claude 必须遵守）：
-   - EXTRACTED：信息直接出现在原文里，字面可以找到
-   - INFERRED：信息是从多处原文推断出来的，原文没有直接说
-   - AMBIGUOUS：原文说法不清楚，或者有歧义
-   - UNVERIFIED：信息来自 Claude 的背景知识，原文没有证据
+   - EXTRACTED：信息直接出现在原文里，字面可以找到。**应在 `evidence` 字段提供原文摘录**（建议 ≤50 字）；缺失时脚本会发出 WARN 但不阻塞
+   - INFERRED：信息是从多处原文推断出来的，原文没有直接说。**应在 `evidence` 字段说明推理依据**；缺失时脚本会发出 WARN 但不阻塞
+   - AMBIGUOUS：原文说法不清楚，或者有歧义。`evidence` 可选
+   - UNVERIFIED：信息来自 Claude 的背景知识，原文没有证据。`evidence` 可选
 
    Step 1 完成后，必须执行验证：
    1. mkdir -p {wiki_root}/.wiki-tmp
@@ -391,6 +405,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
 6. **Step 2：页面生成**：
    - 输入：原始内容 + `purpose.md` + Step 1 的分析结果 + 现有相关 wiki 页面
+   - **上下文加载规则**：只读取 Step 1 中 `new_vs_existing.updates` 列出的已有页面；如果某页超过 2000 字，只读取 frontmatter + 需要更新的章节
    - 输出：所有需要创建或更新的 wiki 页面内容
    - Step 2 负责完成原流程中的素材摘要、实体页、主题页、index、log 更新
 
@@ -457,6 +472,9 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
    发现关联：
    - 这篇素材和 [[已有素材]] 在 {某概念} 上有联系
+
+   别名建议：（仅当发现新的同义词关系时显示）
+   - 建议添加到别名词表：{术语A} = {术语B}
    ```
    （英文版按「输出语言规则」生成，结构相同。）
 
@@ -465,6 +483,7 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 适用于短推文、小红书笔记、简短评论等。
 
 1. **保存原始素材**到对应 `raw/` 目录
+   - **图片检测与追踪**：同完整处理流程，扫描图片引用并提醒用户；在 source 页面 `images` 和 `image_paths` frontmatter 字段记录数量和路径
 2. **读取上下文并检查缓存**：
    - 仍然优先读取 `purpose.md`
    - 仍然先运行 `bash ${SKILL_DIR}/scripts/cache.sh check "<raw 文件路径>"`
@@ -572,9 +591,15 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 如果没有可用知识库，提示用户先初始化
 2. **读取 index.md** 了解知识库全貌
 3. **搜索相关页面**：
-   - 先在 index.md 中定位相关分类和条目
-   - 再用 Grep 在 `wiki/` 目录下搜索关键词
+   - **别名展开**：先读取 `.wiki-schema.md` 中的"别名词表"，如果用户的查询关键词命中了某一组别名，则将该组所有同义词都纳入搜索（如搜"LLM"时同时搜"大语言模型"和"大模型"）
+     - 展开规则：只在命中的那一组内展开，不跨组传递（A=B 和 B=C 是两组时，搜 A 只展开第一组，不合并第二组）
+     - 去重：展开后的关键词列表自动去重，忽略空项和纯空格项
+   - 在 index.md 中定位相关分类和条目（用展开后的全部关键词）
+   - 再用 Grep 在 `wiki/` 目录下搜索所有关键词（原始 + 别名展开）
+   - 按相关性排序：文件名精确命中 > index.md 条目命中 > 正文关键词命中次数（同一别名组的多个词命中同一页面时只计一次，避免别名密集的页面分数虚高）
+   - **段落上限**：展开后每个关键词最多取 3 个命中段落，总段落数不超过 15 个
    - 读取最相关的 3-5 个页面
+   - **单页长度上限**：如果某页超过 2000 字，只读取 frontmatter + 前 500 字 + Grep 命中段落（前后各 3 行），避免长页面消耗过多上下文
 4. **综合回答**：
    - 按 `WIKI_LANG` 用对应语言回答用户的问题
    - 标注信息来源（引用 wiki 页面，用 `[[页面名]]` 格式）
@@ -770,11 +795,13 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 执行**通用前置检查**（见上方定义）。如果没有可用知识库，提示用户先初始化。
 
 1. **搜索相关页面**：
-   - 用 Grep 在 `wiki/` 下搜索主题关键词
+   - **别名展开**：同 query 工作流，先读取 `.wiki-schema.md` 中的"别名词表"展开同义词（不跨组传递，自动去重）
+   - 用 Grep 在 `wiki/` 下搜索所有关键词（原始 + 别名展开），同一别名组命中同一页面只计一次
    - 列出将要综合的页面（让用户了解报告覆盖范围）
 
 2. **深度阅读所有相关页面 + 选择输出格式**：
    - 读取找到的所有相关 wiki 页面（sources/、entities/、topics/）
+   - **单页长度上限**：如果某页超过 3000 字，优先读取 frontmatter + 核心观点章节 + 与主题直接相关的段落，跳过"原文精彩摘录"等冗长引用部分
    - 归纳每个页面的核心观点和来源信息
    - **根据触发关键词决定输出格式**：
      - 用户说"对比"/"比较"类 → 使用**对比表格式**（见下方模板 B）

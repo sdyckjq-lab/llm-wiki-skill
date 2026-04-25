@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.2.1 (2026-04-24)
+## v3.5.1 (2026-04-25)
 
 ### 修复
 
@@ -15,6 +15,70 @@
 - `install.ps1` Windows PowerShell 安装入口：自动 `chcp 65001` + `$OutputEncoding = UTF8` + 转发 bash 安装流程
 - `install.sh` 的 `MANAGED_ITEMS` 清单加入 `install.ps1`，并新增安装后校验环节，确保清单文件都拷贝到位
 - `README.md` / `README.en.md` 新增 Windows 章节（Python 检测说明 + `install.ps1` 使用流程）
+
+## v3.5.0 (2026-04-24)
+
+### 新增
+
+- `.wiki-schema.md` 新增「别名词表」section：用户维护同义词组（如 `LLM = 大语言模型 = 大模型`），query 和 digest 搜索时自动展开
+- query 工作流搜索前先读取别名词表，展开用户查询关键词的所有同义词，再用全部关键词搜索
+- digest 工作流同步支持别名展开搜索
+- ingest 完成后如果发现新的同义词关系，主动建议用户添加到别名词表
+
+## v3.4.0 (2026-04-24)
+
+### 新增
+
+- source 模板新增 `image_paths` frontmatter 字段，追踪已下载到 `raw/assets/` 的图片路径列表
+- ingest 流程（完整 + 简化）记录图片数量和路径，用户下载图片后可手动或通过 lint 补全
+- `lint-runner.sh` 新增图片资产一致性检查：source 页面声明了 `image_paths` 但文件不存在时报告缺失
+
+## v3.3.1 (2026-04-24)
+
+### 新增
+
+- ingest 完整处理和简化处理均在保存素材后检测图片引用（`![`、`<img`、图片 URL），提醒用户下载到 `raw/assets/` 防止链接失效
+- source 模板新增 `images` frontmatter 字段，记录素材包含的图片数量
+
+## v3.3.0 (2026-04-24)
+
+### 新增
+
+- 学习驾驶舱重构为左侧五段式导航：社区分类、当前主题聚焦、学习搜索、学习队列、推荐起点
+- 新增当前主题聚焦：完整范围、核心节点、一级关联、高置信度，统一汇入可见图谱状态
+- 新增学习队列 MVP：节点收藏、学习笔记、最近条目回跳，浏览器本地按 wiki namespace 隔离持久化
+- 新增 `tests/js/graph-wash-runtime-state.test.js` 与 `tests/js/graph-wash-queue.test.js`，覆盖可见状态联动与队列状态
+- query/digest/ingest 工作流新增单页长度上限规则（2000/3000 字），超长页面只读 frontmatter + 关键段落，避免 token 浪费
+- query 搜索结果按相关性排序：文件名精确命中 > index 条目命中 > 正文关键词命中
+- Step 1 JSON 契约新增 `evidence` 字段：EXTRACTED 应附原文摘录，INFERRED 应附推理依据；校验脚本以 WARN 形式提示缺失
+- 新增 `docs/obsidian.md` Obsidian 集成指南：Web Clipper 配置、Graph View 过滤、Dataview 查询示例、图片本地化工作流
+- 新增 `scripts/lint-fix.sh` 低风险自动修复脚本：按 section 补齐 index.md 中未收录的页面，支持 `--dry-run`
+
+### 改进
+
+- 图谱首次打开回到全局视图，推荐起点降级为左侧底部辅助入口，不再抢占主叙事
+- 顶部搜索移入左侧学习搜索，搜索范围跟随当前社区、聚焦模式和边过滤后的可见快照
+- 洞察、图例、小地图统一归入二级信息入口，小地图与相邻节点折叠状态改为 wiki 级别隔离存储
+- 桌面端收紧三列宽度，新增 1180px 响应式阈值；窄屏左右栏改为 overlay，13 寸屏正文和画布更少互相挤压
+
+### 移除
+
+- 删除右侧抽屉旧学习三段说明和 `drawer.section_order` 旧 contract，不再保留 `dr-learning` 兼容壳
+
+## v3.2.1 (2026-04-24)
+
+### 修复
+
+- `validate-step1.sh` 加强子字段校验：entity 必须有 name/type/confidence，topic 必须有 name，connection 必须有 from/to/confidence，缺失即触发回退
+- `lint-runner.sh` 孤立页检测从仅 `entities/` 扩展到 `entities/`、`topics/`、`sources/` 三个目录
+- `lint-runner.sh` 新增反向 index 一致性检查：文件存在但 index.md 未收录（跳过 derived 页面）
+- `cache.sh` 自愈逻辑收紧：stem 匹配后还需验证 source 页面 frontmatter 的 `source_path` 是否指向当前 raw 文件，不匹配时返回 `MISS:repaired_needs_verify` 而非 `HIT(repaired)`
+
+### 测试
+
+- 更新 lint 回归金文件，新增 source fixture 覆盖孤立页和反向索引检查
+- 更新缓存回归测试 fixture，source 页面补 frontmatter 适配自愈验证逻辑
+- 更新 validate-step1 回归测试，entity JSON 补 `type` 字段适配新校验
 
 ## v3.2.0 (2026-04-23)
 

@@ -5,6 +5,8 @@ updated: {{DATE}}
 sources: []
 source_type: {{TYPE}}
 source_path: {{RAW_PATH}}
+images: 0
+image_paths: []
 ---
 
 # {{SOURCE_TITLE}}

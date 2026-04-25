@@ -288,7 +288,7 @@
     "entry": {
       "recommended_start_node_id": "Transformer",
       "recommended_start_reason": "community_hub",
-      "default_mode": "path"
+      "default_mode": "global"
     },
     "views": {
       "path": {
@@ -362,15 +362,6 @@
         "recommended_start_node_id": "Attention"
       }
     ],
-    "drawer": {
-      "section_order": [
-        "what_this_is",
-        "why_now",
-        "next_steps",
-        "raw_content",
-        "neighbors"
-      ]
-    },
     "degraded": {
       "path_to_community": false,
       "community_to_global": false

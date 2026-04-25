@@ -124,6 +124,26 @@ sources: [关联素材列表]
 | Markdown/文本/HTML | `raw/notes/` | 直接读取 |
 | 纯文本粘贴 | `raw/notes/` | 直接使用 |
 
+## 别名词表（Alias Table）
+
+用于 query 和 digest 时自动展开搜索。搜索任意一个词，会同时搜索同一行的所有别名。
+AI 在 ingest 时如果发现新的同义词关系，可以建议用户添加。
+
+格式：每行一组同义词，用 `=` 分隔。
+
+```
+LLM = 大语言模型 = 大模型 = Large Language Model
+RAG = 检索增强生成 = Retrieval Augmented Generation
+fine-tuning = 微调 = 精调
+prompt engineering = 提示工程 = 提示词工程
+```
+
+维护原则：
+- 只收录在你的知识库里**实际出现过**的同义词，不要预填一堆用不到的
+- 每组控制在 5 个以内，太多说明概念本身需要拆分
+- 中英文混用时把最常用的放第一个
+- ingest 发现新的同义词关系时，AI 应主动建议添加到此表
+
 ## Query（查询）规则
 
 1. 先读 `index.md`，定位相关条目

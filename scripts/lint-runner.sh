@@ -21,22 +21,31 @@ if [ ! -f "$INDEX_FILE" ]; then
   exit 1
 fi
 
+index_has_entry() {
+  local entry="$1"
+  grep -ohE "\[\[[^]]+\]\]" "$INDEX_FILE" 2>/dev/null | \
+    sed -e 's/\[\[//g' -e 's/\]\]//g' -e 's/|.*//' | \
+    grep -Fxq "$entry"
+}
+
 echo "=== llm-wiki lint 报告 ==="
 echo "时间：$(date '+%Y-%m-%d %H:%M')"
 echo "检查路径：$WIKI_DIR"
 echo ""
 
 # 检查 1：孤立页面
-# 定义：entities/ 下的页面，除了自己之外没有任何其他 wiki 页面用 [[名称]] 引用它
-echo "--- 孤立页面（entities/ 下没有被其他页面引用） ---"
+# 定义：entities/、topics/、sources/ 下的页面，除了自己之外没有任何其他 wiki 页面用 [[名称]] 引用它
+echo "--- 孤立页面（没有被其他页面引用） ---"
 _ORPHANS=0
-for f in "$WIKI_DIR"/entities/*.md; do
-  [ -f "$f" ] || continue
-  BASENAME=$(basename "$f" .md)
-  if ! grep -rlF "[[$BASENAME]]" "$WIKI_DIR" 2>/dev/null | grep -vxF "$f" | grep -q .; then
-    echo "  孤立: $BASENAME"
-    _ORPHANS=$((_ORPHANS + 1))
-  fi
+for _subdir in entities topics sources; do
+  for f in "$WIKI_DIR"/$_subdir/*.md; do
+    [ -f "$f" ] || continue
+    BASENAME=$(basename "$f" .md)
+    if ! grep -rlF "[[$BASENAME]]" "$WIKI_DIR" 2>/dev/null | grep -vxF "$f" | grep -q .; then
+      echo "  孤立: $_subdir/$BASENAME"
+      _ORPHANS=$((_ORPHANS + 1))
+    fi
+  done
 done
 [ "$_ORPHANS" -eq 0 ] && echo "  （无孤立页面）"
 echo ""
@@ -81,7 +90,95 @@ fi
 rm -f "$_TMP_MISSING"
 echo ""
 
-# 检查 4：source-signal 覆盖情况
+# 检查 4：反向 index 一致性
+# 定义：wiki/ 下实际存在的页面，但 index.md 里没有 [[页面名]] 记录
+# 排除 derived 页面（queries/、synthesis/sessions/）
+echo "--- 反向 index 一致性（文件存在但 index.md 未收录） ---"
+_TMP_UNLISTED=$(mktemp)
+for _subdir in entities topics sources comparisons synthesis; do
+  for f in "$WIKI_DIR"/$_subdir/*.md; do
+    [ -f "$f" ] || continue
+    BASENAME=$(basename "$f" .md)
+    # 跳过 derived 页面
+    case "$f" in
+      */queries/*|*/sessions/*) continue ;;
+    esac
+    if ! index_has_entry "$BASENAME"; then
+      echo "  未收录: $_subdir/$BASENAME"
+      echo "$BASENAME" >> "$_TMP_UNLISTED"
+    fi
+  done
+done
+if [ ! -s "$_TMP_UNLISTED" ]; then
+  echo "  （所有页面均已收录）"
+fi
+rm -f "$_TMP_UNLISTED"
+echo ""
+
+# 检查 5：图片资产一致性
+# 定义：source 页面 frontmatter 中 image_paths 列出的文件，在知识库中是否实际存在
+# 支持 block list 格式和 inline array 格式
+echo "--- 图片资产一致性（image_paths 声明但文件缺失） ---"
+_IMG_ISSUES=0
+for f in "$WIKI_DIR"/sources/*.md; do
+  [ -f "$f" ] || continue
+  _BASENAME=$(basename "$f" .md)
+  # 提取 frontmatter 中 image_paths 的值
+  _IN_FM=false
+  _IN_IMG=false
+  _INLINE_VAL=""
+  while IFS= read -r line; do
+    case "$line" in
+      "---")
+        if [ "$_IN_FM" = true ]; then break; fi
+        _IN_FM=true
+        continue
+        ;;
+    esac
+    [ "$_IN_FM" = true ] || continue
+    case "$line" in
+      image_paths:*)
+        # 检查是否有 inline value（如 image_paths: ["a.png", "b.jpg"]）
+        _INLINE_VAL=$(echo "$line" | sed 's/^image_paths:[[:space:]]*//')
+        if [ -n "$_INLINE_VAL" ] && [ "$_INLINE_VAL" != "[]" ]; then
+          # 解析 inline array：去掉 []，按逗号分割
+          echo "$_INLINE_VAL" | tr -d '[]' | tr ',' '\n' | while IFS= read -r _ITEM; do
+            _PATH=$(echo "$_ITEM" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"' | tr -d "'")
+            [ -z "$_PATH" ] && continue
+            if [ ! -f "$WIKI_ROOT/$_PATH" ]; then
+              echo "  缺失: $_BASENAME → $_PATH"
+            fi
+          done
+          _INLINE_COUNT=$(echo "$_INLINE_VAL" | tr -d '[]' | tr ',' '\n' | while IFS= read -r _ITEM; do
+            _P=$(echo "$_ITEM" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"' | tr -d "'")
+            [ -z "$_P" ] && continue
+            [ ! -f "$WIKI_ROOT/$_P" ] && echo "x"
+          done | wc -l | tr -d ' ')
+          _IMG_ISSUES=$((_IMG_ISSUES + _INLINE_COUNT))
+          _IN_IMG=false
+        else
+          _IN_IMG=true
+        fi
+        continue
+        ;;
+      "  - "*)
+        if [ "$_IN_IMG" = true ]; then
+          _PATH=$(echo "$line" | sed 's/^[[:space:]]*- //' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"' | tr -d "'")
+          [ -z "$_PATH" ] && continue
+          if [ ! -f "$WIKI_ROOT/$_PATH" ]; then
+            echo "  缺失: $_BASENAME → $_PATH"
+            _IMG_ISSUES=$((_IMG_ISSUES + 1))
+          fi
+        fi
+        ;;
+      *) _IN_IMG=false ;;
+    esac
+  done < "$f"
+done
+[ "$_IMG_ISSUES" -eq 0 ] && echo "  （无缺失图片）"
+echo ""
+
+# 检查 6：source-signal 覆盖情况
 echo "--- source-signal 覆盖情况 ---"
 _COVERAGE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/source-signal-coverage.js"
 if [ -f "$_COVERAGE_SCRIPT" ] && command -v node >/dev/null 2>&1; then
