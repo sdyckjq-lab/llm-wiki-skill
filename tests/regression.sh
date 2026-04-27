@@ -1704,6 +1704,7 @@ bash "$REPO_ROOT/tests/graph-html-long-label.regression-1.sh" || fail "graph-htm
 bash "$REPO_ROOT/tests/graph-html-minimap.regression-1.sh" || fail "graph-html-minimap.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-toolbar.regression-1.sh" || fail "graph-html-toolbar.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-drawer-neighbors.regression-1.sh" || fail "graph-html-drawer-neighbors.regression-1.sh 测试失败"
+bash "$REPO_ROOT/tests/graph-html-density.regression-1.sh" || fail "graph-html-density.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-insights.regression-1.sh" || fail "graph-html-insights.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-a11y.regression-1.sh" || fail "graph-html-a11y.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-styles.regression-1.sh" || fail "graph-html-styles.regression-1.sh 测试失败"

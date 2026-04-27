@@ -523,7 +523,7 @@
     var safe = options && typeof options === "object" ? options : {};
     var nodes = Array.isArray(safe.nodes) ? safe.nodes : [];
     var links = Array.isArray(safe.links) ? safe.links : [];
-    var baseNodeIds = Array.isArray(safe.baseNodeIds) && safe.baseNodeIds.length
+    var baseNodeIds = Array.isArray(safe.baseNodeIds)
       ? safe.baseNodeIds.slice()
       : nodes.map(function (node) { return node.id; });
     var filteredLinks = filterLinksByTypes(links, safe.filters);

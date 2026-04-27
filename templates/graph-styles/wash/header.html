@@ -4,11 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>知识图谱 · __WIKI_TITLE__</title>
-
-<!-- 字体：思源 + Kalam（手绘英文） + JetBrains Mono -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:,">
 
 <style>
 /* ============================================================
@@ -16,13 +12,13 @@
    ============================================================ */
 :root {
   /* paper palette */
-  --paper-cream:   #f6efe0;
-  --paper-warm:    #efe6d0;
-  --paper-ink:     #2b2620;
-  --paper-ink-dim: #6b5e4f;
-  --paper-ink-faint:#a69b87;
-  --paper-rule:    #d7c9aa;
-  --paper-margin:  #b9423a;   /* 红色批注线（像作业本页边） */
+  --paper-cream:   #f4ecdc;
+  --paper-warm:    #eadfc7;
+  --paper-ink:     #2f2a23;
+  --paper-ink-dim: #6f6252;
+  --paper-ink-faint:#aa9b83;
+  --paper-rule:    #d8c7a8;
+  --paper-margin:  #9f352d;
 
   /* accent pencils */
   --pen-indigo:  #2b4e7a;
@@ -45,10 +41,10 @@
   --node-source: #7a3f6b;
 
   /* ui */
-  --font-hand:  "Kalam", "Noto Serif SC", "LXGW WenKai", serif;
-  --font-text:  "Noto Serif SC", "Songti SC", "LXGW WenKai", Georgia, serif;
-  --font-ui:    "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
-  --font-mono:  "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-hand:  "Songti SC", "STSong", "LXGW WenKai", "Noto Serif CJK SC", Georgia, serif;
+  --font-text:  "Songti SC", "STSong", "Noto Serif CJK SC", Georgia, serif;
+  --font-ui:    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono:  ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --drawer-w: 376px;
   --nav-w: 260px;
@@ -439,23 +435,30 @@ button.nav-panel__queue-pill:hover {
 .brand {
   grid-area: brand;
   display: flex;
-  align-items: baseline;
-  gap: 18px;
-  padding: 18px 28px 8px 24px;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 28px 10px 24px;
   position: relative;
+  background:
+    linear-gradient(90deg, rgba(255,252,244,0.74), rgba(255,252,244,0.44)),
+    radial-gradient(circle at 12% 20%, rgba(159,53,45,0.08), transparent 30%);
 }
 .brand__mark {
-  font-family: var(--font-hand);
-  font-weight: 700;
-  font-size: 26px;
-  color: var(--paper-ink);
-  letter-spacing: 0.5px;
-  position: relative;
-  transform: rotate(-0.6deg);
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  color: #fff8e9;
+  background: linear-gradient(145deg, #b04436, #7f2c25);
+  border: 1px solid rgba(95, 38, 31, 0.36);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    0 2px 0 rgba(43, 38, 32, 0.14);
   text-decoration: none;
+  transform: rotate(-0.8deg);
   transition: transform 200ms;
 }
 .brand__mark:hover,
@@ -467,34 +470,92 @@ button.nav-panel__queue-pill:hover {
   box-shadow: 0 0 0 2px var(--paper-ink-dim);
   border-radius: 4px;
 }
-.brand__mark::before {
-  content: "";
-  display: inline-block;
-  width: 22px; height: 22px;
-  background: radial-gradient(circle at 35% 35%, var(--pen-rust) 0%, #7a2d24 100%);
-  border-radius: 50%;
-  box-shadow: 1px 2px 0 rgba(0,0,0,0.12);
-  transform: rotate(12deg);
+.brand__mark svg {
+  width: 30px;
+  height: 30px;
+  display: block;
 }
-.brand__mark:hover::before {
-  box-shadow: 2px 3px 0 rgba(0,0,0,0.2);
+.brand__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .brand__title {
   font-family: var(--font-text);
-  font-size: 17px;
-  font-weight: 500;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.12;
   color: var(--paper-ink);
-  border-bottom: 2px dotted var(--paper-ink-dim);
-  padding-bottom: 1px;
+  letter-spacing: 0;
+  border: 0;
+  padding: 0;
+  word-break: keep-all;
 }
 .brand__sub {
-  font-family: var(--font-hand);
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: 13px;
   color: var(--paper-ink-dim);
-  margin-left: auto;
-  transform: rotate(-0.4deg);
+  transform: none;
 }
-.brand__sub b { color: var(--pen-rust); font-weight: 700; }
+.brand__stats {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.brand__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 11px;
+  border: 1px solid rgba(117, 100, 84, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 252, 243, 0.68);
+  color: var(--paper-ink-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.brand__pill b { color: var(--paper-ink); font-weight: 600; }
+.brand__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #517a5c;
+  box-shadow: 0 0 0 3px rgba(81, 122, 92, 0.12);
+}
+.brand__github {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid rgba(117, 100, 84, 0.32);
+  border-radius: 9px;
+  background: rgba(255, 252, 243, 0.86);
+  color: var(--paper-ink);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 1px 0 rgba(43, 38, 32, 0.06);
+}
+.brand__github:hover,
+.brand__github:focus-visible {
+  border-color: rgba(159, 53, 45, 0.48);
+  background: #fffdf6;
+  outline: none;
+}
+.brand__github svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
 
 /* ---------- Toolbar ---------- */
 .tools {
@@ -1268,11 +1329,47 @@ button.nav-panel__queue-pill:hover {
   color: var(--paper-ink);
 }
 
-.drawer-body {
+.drawer-scroll {
   flex: 1 1 0;
   overflow-y: auto;
   min-height: 0;
   padding: 20px 28px 40px 48px;
+}
+.drawer-section-label {
+  margin: 0 0 8px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--paper-ink);
+}
+.drawer-summary {
+  margin: 0 0 18px;
+  padding: 12px 14px 12px 16px;
+  background: rgba(248, 241, 226, 0.82);
+  border-left: 3px solid var(--paper-margin);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--paper-ink);
+}
+.drawer-empty {
+  padding: 12px 14px;
+  border: 1px dashed rgba(117, 100, 84, 0.34);
+  border-radius: var(--radius);
+  background: rgba(255, 252, 243, 0.58);
+  color: var(--paper-ink-dim);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.drawer-content-block {
+  margin-top: 0;
+}
+.drawer-body {
+  overflow: visible;
+  min-height: 0;
+  padding: 0 0 8px;
   font-family: var(--font-text);
   font-size: 15px;
   line-height: 1.8;
@@ -1338,7 +1435,7 @@ button.nav-panel__queue-pill:hover {
 .drawer-neighbors {
   flex-shrink: 0;
   max-height: 35vh;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 0 28px 24px 48px;
   border-top: 1px dashed var(--paper-ink-faint);
   margin-top: 8px;
@@ -1371,6 +1468,9 @@ button.nav-panel__queue-pill:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: calc(35vh - 62px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .nb-item {
   display: flex;
@@ -1536,6 +1636,27 @@ button.nav-panel__queue-pill:hover {
 body[data-variant="wash"] .node-card {
   fill: rgba(253, 248, 234, 0.92);
 }
+.node-group[data-density-mode="compact"] .node-card {
+  fill: rgba(253, 248, 234, 0.86);
+  filter: drop-shadow(0.8px 1.4px 0 rgba(43, 38, 32, 0.06));
+}
+.node-group[data-density-mode="compact"] .node-label--in {
+  font-size: 11.5px;
+}
+.node-group[data-density-mode="point"] .node-shape {
+  fill: currentColor;
+  stroke-width: 1.2;
+  filter: drop-shadow(0 1px 0 rgba(43, 38, 32, 0.1));
+}
+.node-group[data-density-mode="point"][data-selected="1"] .node-shape,
+.node-group[data-density-mode="point"][data-hover="1"] .node-shape {
+  stroke-width: 2;
+}
+.node-group[data-density-mode="point"] .node-label,
+.node-group[data-density-mode="point"] .node-tab,
+.node-group[data-density-mode="point"] .node-glyph {
+  display: none;
+}
 
 /* ---- Watercolor wash blobs ---- */
 .community-wash {
@@ -1651,12 +1772,12 @@ body[data-variant="wash"] {
   .app.drawer-open,
   .app.nav-collapsed,
   .app.nav-collapsed.drawer-open {
-    grid-template-columns: 1fr 0fr;
+    grid-template-columns: 1fr;
     grid-template-areas:
-      "brand   drawer"
-      "tools   drawer"
-      "canvas  drawer"
-      "footer  drawer";
+      "brand"
+      "tools"
+      "canvas"
+      "footer";
   }
   .nav-panel {
     position: fixed;
@@ -1692,11 +1813,52 @@ body[data-variant="wash"] {
   .canvas > .minimap {
     display: none;
   }
+  .drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: min(74vh, 720px);
+    z-index: 28;
+    border-left: 0;
+    border-top: 1.5px solid var(--paper-ink-dim);
+    box-shadow: 0 -10px 26px rgba(43, 38, 32, 0.16);
+    transform: translateY(105%);
+    transition: transform 240ms ease;
+  }
+  .app.drawer-open .drawer {
+    transform: translateY(0);
+  }
+  .drawer::before {
+    display: none;
+  }
+  .drawer-inner {
+    width: 100%;
+  }
+  .drawer-head,
+  .drawer-actions,
+  .drawer-scroll,
+  .drawer-neighbors {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
 }
 
 @media (max-width: 900px) {
   .margin-line { display: none; }
   .brand, .tools, .footer { padding-left: 20px; }
+  .brand {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .brand__title {
+    font-size: 23px;
+  }
+  .brand__stats {
+    width: 100%;
+    margin-left: 60px;
+    justify-content: flex-start;
+  }
   .tools::after { left: 20px; }
   .iconbtn--labeled { width: 34px; padding: 0; }
   .iconbtn__text { display: none; }
@@ -1771,23 +1933,41 @@ body[data-variant="wash"] {
   <header class="brand">
     <a class="brand__mark" href="https://github.com/sdyckjq-lab/llm-wiki-skill"
        target="_blank" rel="noopener"
-       data-tip="查看 llm-wiki 项目 · GitHub">llm-wiki</a>
-    <div class="brand__title" id="wiki-title">__WIKI_TITLE__</div>
-    <div class="brand__sub">
-      <span id="n-nodes">—</span> 节点 · <span id="n-edges">—</span> 关联 · 更新 <b id="n-date">—</b>
+       data-tip="查看 llm-wiki 项目 · GitHub" aria-label="打开 llm-wiki GitHub 项目">
+      <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <path d="M8 34c5.4-7.1 9.5-12.1 12.2-15 1.2-1.3 2.6-1.4 4-.2l4.5 4.6 3.5-3.9c1.4-1.5 3-1.3 4 .5L41 30.8" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 36.5c9.7-1.8 18.8-1.8 27.3 0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M31 12.5c1.9.3 3.5 1.9 3.8 3.8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+    </a>
+    <div class="brand__copy">
+      <div class="brand__title" id="wiki-title">__WIKI_TITLE__</div>
+      <div class="brand__sub">国风知识库·数字山水图</div>
+    </div>
+    <div class="brand__stats" aria-label="图谱状态">
+      <span class="brand__pill"><span class="brand__dot"></span>已生成 <b id="n-nodes">—</b> 个索引点</span>
+      <span class="brand__pill">关系 <b id="n-edges">—</b> 条</span>
+      <span class="brand__pill">最近更新 <b id="n-date">—</b></span>
+      <a class="brand__github" href="https://github.com/sdyckjq-lab/llm-wiki-skill"
+         target="_blank" rel="noopener" aria-label="打开 GitHub 项目">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 .8a11.2 11.2 0 0 0-3.55 21.82c.56.1.77-.24.77-.54v-2.1c-3.13.68-3.79-1.35-3.79-1.35-.51-1.3-1.25-1.65-1.25-1.65-1.03-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1.01 1.72 2.64 1.22 3.28.93.1-.73.39-1.22.71-1.5-2.5-.28-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.16-3.02-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.15A10.7 10.7 0 0 1 12 5.58c.96 0 1.91.13 2.81.38 2.15-1.46 3.1-1.15 3.1-1.15.61 1.55.23 2.7.11 2.98.72.79 1.16 1.79 1.16 3.02 0 4.32-2.64 5.27-5.15 5.55.4.35.76 1.03.76 2.08v3.64c0 .3.2.65.78.54A11.2 11.2 0 0 0 12 .8Z"/>
+        </svg>
+        GitHub
+      </a>
     </div>
   </header>
 
   <div class="tools">
     <div class="filters" id="filters">
       <button class="chip chip--extracted" data-type="EXTRACTED" data-on="1">
-        <span class="chip__swatch"></span>明确
+        <span class="chip__swatch"></span>直接提取
       </button>
       <button class="chip chip--inferred" data-type="INFERRED" data-on="1">
-        <span class="chip__swatch"></span>推断
+        <span class="chip__swatch"></span>推断关联
       </button>
       <button class="chip chip--ambiguous" data-type="AMBIGUOUS" data-on="0">
-        <span class="chip__swatch"></span>存疑
+        <span class="chip__swatch"></span>存在歧义
       </button>
     </div>
 
@@ -1853,7 +2033,7 @@ body[data-variant="wash"] {
           <div class="secondary-panel__section-title">洞察</div>
           <aside class="insights-panel secondary-panel__panel" id="insights-panel" aria-label="图谱洞察">
             <div class="insights-panel__head">
-              <div class="insights-panel__title" id="panel-title">Insights</div>
+              <div class="insights-panel__title" id="panel-title">洞察</div>
               <div class="insights-panel__meta" id="insights-meta">0 项</div>
             </div>
             <div class="insights-panel__body" id="insights-body"></div>
@@ -1863,9 +2043,9 @@ body[data-variant="wash"] {
         <section class="secondary-panel__content" id="secondary-legend-section">
           <div class="secondary-panel__section-title">图例</div>
           <div class="secondary-panel__legend legend" id="legend-panel">
-            <div class="legend__row"><span class="legend__card" style="color: var(--node-entity)"></span><span class="legend__glyph" style="color: var(--node-entity)">◇</span>实体 entity</div>
-            <div class="legend__row"><span class="legend__card" style="color: var(--node-topic)"></span><span class="legend__glyph" style="color: var(--node-topic)">✦</span>主题 topic</div>
-            <div class="legend__row"><span class="legend__card" style="color: var(--node-source)"></span><span class="legend__glyph" style="color: var(--node-source)">§</span>来源 source</div>
+            <div class="legend__row"><span class="legend__card" style="color: var(--node-entity)"></span><span class="legend__glyph" style="color: var(--node-entity)">◇</span>实体</div>
+            <div class="legend__row"><span class="legend__card" style="color: var(--node-topic)"></span><span class="legend__glyph" style="color: var(--node-topic)">✦</span>主题</div>
+            <div class="legend__row"><span class="legend__card" style="color: var(--node-source)"></span><span class="legend__glyph" style="color: var(--node-source)">§</span>来源</div>
           </div>
         </section>
 
@@ -1905,10 +2085,10 @@ body[data-variant="wash"] {
     <div class="footer__stats">
       <b id="foot-shown">0</b>/<b id="foot-total">0</b> 节点 ·
       <b id="foot-communities">0</b> 社区 ·
-      过滤 <b id="foot-filter">EXTRACTED+INFERRED</b>
+      过滤 <b id="foot-filter">直接提取+推断关联</b>
     </div>
     <div>
-      generated by <a href="https://github.com/sdyckjq-lab/llm-wiki-skill" target="_blank" rel="noopener">llm-wiki</a>
+      由 <a href="https://github.com/sdyckjq-lab/llm-wiki-skill" target="_blank" rel="noopener">llm-wiki</a> 生成
     </div>
   </footer>
 
@@ -1917,7 +2097,7 @@ body[data-variant="wash"] {
     <div class="drawer-inner">
       <div class="drawer-head">
         <div class="drawer-head__main">
-          <div class="drawer-kicker" id="dr-kicker">Entity</div>
+          <div class="drawer-kicker" id="dr-kicker">实体</div>
           <h1 class="drawer-title" id="dr-title">—</h1>
           <div class="drawer-meta">
             <span id="dr-community" hidden>社区 —</span>
@@ -1932,10 +2112,19 @@ body[data-variant="wash"] {
         <button class="drawer-action" id="dr-note" type="button" data-on="0">✎ 加入学习笔记</button>
       </div>
 
-      <div class="drawer-body" id="dr-body"></div>
+      <div class="drawer-scroll" id="dr-scroll">
+        <section class="drawer-summary-block" aria-labelledby="dr-summary-title">
+          <h2 class="drawer-section-label" id="dr-summary-title">摘要</h2>
+          <div class="drawer-summary" id="dr-summary"></div>
+        </section>
+        <section class="drawer-content-block" aria-labelledby="dr-content-title">
+          <h2 class="drawer-section-label" id="dr-content-title">知识内容</h2>
+          <div class="drawer-body" id="dr-body"></div>
+        </section>
+      </div>
 
-      <div class="drawer-neighbors" id="dr-neighbors" data-collapsed="0">
-        <h4 tabindex="0" role="button" aria-expanded="true">相邻节点</h4>
+      <div class="drawer-neighbors" id="dr-neighbors" data-collapsed="1">
+        <h4 tabindex="0" role="button" aria-expanded="false">相邻节点 <span id="dr-neighbor-count"></span></h4>
         <div class="nb-list" id="nb-list"></div>
       </div>
     </div>
@@ -1944,7 +2133,7 @@ body[data-variant="wash"] {
 
 <!-- TWEAKS PANEL -->
 <div class="tweaks" id="tweaks">
-  <h3 class="tweaks__title">Tweaks</h3>
+  <h3 class="tweaks__title">视觉设置</h3>
 
   <label class="tweaks__label">视觉变体</label>
   <div class="tweaks__seg" id="seg-variant">
@@ -1952,19 +2141,6 @@ body[data-variant="wash"] {
     <button data-val="paper">笔记本</button>
     <button data-val="vellum">羊皮卷</button>
     <button data-val="blueprint">设计稿</button>
-  </div>
-
-  <label class="tweaks__label">节点形态</label>
-  <div class="tweaks__seg" id="seg-nodestyle">
-    <button data-val="card" data-on="1">卡片</button>
-    <button data-val="organic">手绘</button>
-  </div>
-
-  <label class="tweaks__label">节点大小映射</label>
-  <div class="tweaks__seg" id="seg-size">
-    <button data-val="uniform" data-on="1">统一</button>
-    <button data-val="degree">按度数</button>
-    <button data-val="type">按类型</button>
   </div>
 
   <label class="tweaks__label">社区展现</label>
@@ -1976,7 +2152,7 @@ body[data-variant="wash"] {
   </div>
 
   <div class="tweaks__hint">
-    ✎ 即时生效，刷新不丢失
+    密度随当前节点数量自动调整，避免大图被卡片淹没。
   </div>
 </div>
 

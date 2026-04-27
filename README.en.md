@@ -10,7 +10,7 @@ Based on [Andrej Karpathy](https://karpathy.ai/)'s [llm-wiki methodology](https:
 
 Turn scattered information into a growing, interconnected knowledge base
 
-[![version](https://img.shields.io/badge/v3.3.0-Learning%20Cockpit%20Reframe-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.0-Digital%20Landscape%20Graph-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -24,7 +24,7 @@ Turn scattered information into a growing, interconnected knowledge base
 <img src="docs/assets/graph-demo.gif" width="100%" alt="Knowledge Graph Demo">
 </div>
 
-Watercolor card-style interactive knowledge graph — double-click the HTML file to explore in your browser. Search, filter, expand nodes, community clustering — all offline, no server needed.
+Oriental editorial × digital landscape interactive knowledge graph — double-click the HTML file to explore in your browser. Search, filter, adaptive node density, summaries, full markdown content, and community clustering — all offline, no server needed.
 
 ---
 
@@ -59,7 +59,7 @@ The key difference: knowledge is **compiled once, maintained continuously** — 
 
 | | Feature | Description |
 |---|---|---|
-| 🗺️ | **Interactive Knowledge Graph** | Watercolor card-style HTML, offline-ready, with search, filters, weighted edges, insights, community clustering, and a learning cockpit |
+| 🗺️ | **Digital Landscape Graph** | Self-contained HTML with adaptive node density, summaries, full content, search, filters, community clustering, and a learning cockpit |
 | 🎓 | **Learning Cockpit** | Left-side communities, focus filters, scoped search, a local learning queue, and one auxiliary recommended start per context |
 | 📦 | **Zero-config Init** | One sentence to create a full knowledge base with directory structure and templates |
 | 🔗 | **Structured Wiki** | Auto-generates entity pages, topic pages, source summaries with `[[bidirectional links]]` |

@@ -65,4 +65,20 @@ describe("resolveVisibleSnapshot", () => {
     assert.deepEqual(snapshot.links, []);
     assert.equal(snapshot.searchIndex.length, 3);
   });
+
+  it("keeps an explicitly empty current range empty", () => {
+    const snapshot = resolveVisibleSnapshot({
+      nodes,
+      links,
+      baseNodeIds: [],
+      filters: { EXTRACTED: true, INFERRED: true, AMBIGUOUS: false },
+      focusMode: "all",
+      searchQuery: "机器"
+    });
+
+    assert.deepEqual(snapshot.node_ids, []);
+    assert.deepEqual(snapshot.nodes, []);
+    assert.deepEqual(snapshot.links, []);
+    assert.deepEqual(snapshot.searchIndex, []);
+  });
 });

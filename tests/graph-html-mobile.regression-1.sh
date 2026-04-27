@@ -40,6 +40,8 @@ test_graph_html_has_responsive_css() {
     html="$tmp_dir/wiki/knowledge-graph.html"
 
     assert_file_contains "$html" "@media (max-width: 900px)"
+    assert_file_contains "$html" "height: min(74vh, 720px);"
+    assert_file_contains "$html" "transform: translateY(105%);"
 
     rm -rf "$tmp_dir"
 }

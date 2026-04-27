@@ -39,7 +39,8 @@ test_graph_html_has_truncate_label_markup_hooks() {
 
     build_graph_html_fixture "$tmp_dir"
 
-    assert_file_contains "$output_dir/graph-wash.js" 'gg.append("title").text(label);'
+    assert_file_contains "$output_dir/graph-wash.js" 'gg.append("title").text(d.label || d.id);'
+    assert_file_contains "$output_dir/graph-wash.js" 'g.select("title").text(d.label || d.id);'
 
     # helpers file copied to output
     [ -f "$output_dir/graph-wash-helpers.js" ] || fail "helpers file should be copied to output"

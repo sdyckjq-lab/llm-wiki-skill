@@ -93,6 +93,8 @@ test_graph_html_wash_uses_local_assets() {
     [ "$helpers_line" -lt "$wash_line" ] || fail "helpers.js must load before wash.js in HTML"
 
     assert_file_not_contains "$html" 'cdn.jsdelivr.net'
+    assert_file_not_contains "$html" 'fonts.googleapis.com'
+    assert_file_not_contains "$html" 'fonts.gstatic.com'
     assert_file_not_contains "$html" 'sample-data.js'
     assert_file_not_contains "$html" 'vis-network.min.js'
 
@@ -114,10 +116,29 @@ test_graph_html_wash_runtime_reads_injected_data_and_sanitizes_html() {
     rm -rf "$tmp_dir"
 }
 
+test_graph_html_oriental_visual_contract() {
+    local tmp_dir output_dir html
+    tmp_dir="$(mktemp -d)"
+    output_dir="$tmp_dir/wiki"
+
+    build_graph_html_fixture "$tmp_dir"
+    html="$output_dir/knowledge-graph.html"
+
+    assert_file_contains "$html" "国风知识库·数字山水图"
+    assert_file_contains "$html" "class=\"brand__github\""
+    assert_file_contains "$html" "直接提取"
+    assert_file_contains "$html" "推断关联"
+    assert_file_contains "$html" "存在歧义"
+    assert_file_contains "$html" "drawer-summary"
+
+    rm -rf "$tmp_dir"
+}
+
 main() {
     test_graph_html_wash_output_exists
     test_graph_html_wash_uses_local_assets
     test_graph_html_wash_runtime_reads_injected_data_and_sanitizes_html
+    test_graph_html_oriental_visual_contract
     echo "PASS: graph HTML wash-only regression coverage"
 }
 

@@ -43,8 +43,10 @@ test_graph_html_has_bounded_neighbor_region() {
     assert_file_contains "$html" 'min-height: 0;'
     assert_file_contains "$html" '.drawer-neighbors {'
     assert_file_contains "$html" 'max-height: 35vh;'
+    assert_file_contains "$html" '.nb-list {'
+    assert_file_contains "$html" 'max-height: calc(35vh - 62px);'
     assert_file_contains "$html" 'id="dr-neighbors"'
-    assert_file_contains "$html" 'data-collapsed="0"'
+    assert_file_contains "$html" 'data-collapsed="1"'
 
     rm -rf "$tmp_dir"
 }

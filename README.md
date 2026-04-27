@@ -10,7 +10,7 @@
 
 把碎片化的信息变成持续积累、互相链接的知识库
 
-[![version](https://img.shields.io/badge/v3.3.0-学习驾驶舱重构-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.0-数字山水图谱-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-多平台-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -24,7 +24,7 @@
 <img src="docs/assets/graph-demo.gif" width="100%" alt="知识图谱演示">
 </div>
 
-水彩卡片风交互式知识图谱 — 双击 HTML 文件即可在浏览器中探索。搜索、过滤、节点展开、边权重、Insights 面板、社区聚类、学习驾驶舱，全部离线运行，不依赖服务器。
+东方编辑部 × 数字山水风交互式知识图谱 — 双击 HTML 文件即可在浏览器中探索。搜索、过滤、节点密度自适应、右侧摘要与正文、社区聚类、学习驾驶舱，全部离线运行，不依赖服务器。
 
 ---
 
@@ -59,7 +59,7 @@ bash install.sh --platform hermes
 
 | | 功能 | 说明 |
 |---|---|---|
-| 🗺️ | **水彩卡片风知识图谱** | 自包含 HTML，双击即可浏览；搜索、过滤、边权重、Insights、社区聚类、学习驾驶舱，离线运行 |
+| 🗺️ | **数字山水知识图谱** | 自包含 HTML，双击即可浏览；节点密度自适应，摘要、正文、搜索、过滤、社区聚类、学习驾驶舱全部离线运行 |
 | ✨ | **图谱阅读体验打磨** | 顶栏 GitHub 入口、长标签安全截断，小地图/相邻节点/洞察/图例收为二级信息，13 寸屏更好读 |
 | 🎓 | **学习驾驶舱** | 左侧社区、聚焦、搜索、学习队列、推荐起点五段式导航；搜索跟随当前可见范围，收藏和学习笔记按 wiki 本地隔离 |
 | 📦 | **零配置初始化** | 一句话创建完整知识库，自动生成目录结构、模板和研究方向页 |

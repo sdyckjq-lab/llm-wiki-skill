@@ -40,7 +40,7 @@ test_graph_html_has_reduced_motion_and_keyboard_markup() {
     html="$tmp_dir/wiki/knowledge-graph.html"
 
     assert_file_contains "$html" '@media (prefers-reduced-motion: reduce) {'
-    assert_file_contains "$html" '<h4 tabindex="0" role="button" aria-expanded="true">相邻节点</h4>'
+    assert_file_contains "$html" '<h4 tabindex="0" role="button" aria-expanded="false">相邻节点 <span id="dr-neighbor-count"></span></h4>'
     assert_file_contains "$html" 'id="minimap-toggle"'
     assert_file_contains "$html" 'aria-label="折叠小地图" aria-expanded="true"'
 

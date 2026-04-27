@@ -14,6 +14,18 @@
   const NAV_BREAKPOINT = 1180;
   const NOTE_EXCERPT_LIMIT = 140;
   const QUEUE_NOTE_LIMIT = 50;
+  const DENSITY_SMALL_LIMIT = 80;
+  const DENSITY_MEDIUM_LIMIT = 200;
+  const CONFIDENCE_LABELS = {
+    EXTRACTED: "直接提取",
+    INFERRED: "推断关联",
+    AMBIGUOUS: "存在歧义"
+  };
+  const TYPE_LABELS = {
+    entity: "实体",
+    topic: "主题",
+    source: "来源"
+  };
 
   const dataEl = document.getElementById("graph-data");
   let DATA;
@@ -155,22 +167,22 @@
   const VARIANTS = {
     wash: {
       // soft watercolor, muted. Primary aesthetic.
-      bg1: "#f4ecdb", bg2: "#ebe0c4",
-      ink: "#3a3026", inkDim: "#756454", inkFaint: "#ad9e87",
-      margin: "#a24a3f",
+      bg1: "#f4ecdc", bg2: "#eadfc7",
+      ink: "#2f2a23", inkDim: "#6f6252", inkFaint: "#aa9b83",
+      margin: "#9f352d",
       nodeFill: "#fbf5e6",
-      edgeExtracted: "#5a6e5c", edgeInferred: "#8b7a52", edgeAmbiguous: "#a36250",
-      entity: "#4a6a86", topic: "#b08440", source: "#7e5b79",
+      edgeExtracted: "#476b57", edgeInferred: "#b98131", edgeAmbiguous: "#9f352d",
+      entity: "#2d6472", topic: "#9f352d", source: "#50755f",
       // muted, dusty wash colors for community blobs
       commPalette: [
-        "#7a96a6", // dusty blue
-        "#8a9c7a", // sage
-        "#c2a06a", // ochre
-        "#a78099", // mauve
-        "#b77a66", // clay
-        "#9a9666", // olive
-        "#7e8896", // slate
-        "#a38d6a"  // wheat
+        "#6f8b7a",
+        "#2d6472",
+        "#b98131",
+        "#8a5f81",
+        "#b16a55",
+        "#7c8051",
+        "#6f7d91",
+        "#a28c64"
       ]
     },
     paper: {
@@ -300,6 +312,92 @@
       sparse_communities: Array.isArray(safe.sparse_communities) ? safe.sparse_communities : [],
       meta: safe.meta && typeof safe.meta === "object" ? safe.meta : { degraded: false }
     };
+  }
+
+  function confidenceLabel(type) {
+    return CONFIDENCE_LABELS[type || "EXTRACTED"] || String(type || "直接提取");
+  }
+
+  function typeLabel(type) {
+    return TYPE_LABELS[type] || String(type || "节点");
+  }
+
+  function endpointId(value) {
+    return value && value.id ? value.id : value;
+  }
+
+  function visibleNodeCount() {
+    return state.visible.ready ? state.visible.nodeIds.size : state.nodes.length;
+  }
+
+  function currentDensityMode() {
+    const count = visibleNodeCount();
+    if (count > DENSITY_MEDIUM_LIMIT) return "point";
+    if (count > DENSITY_SMALL_LIMIT) return "compact";
+    return "card";
+  }
+
+  function nodeMatchesSearch(node) {
+    const q = state.learning.searchQuery;
+    if (!q || !node) return false;
+    const haystack = `${node.label || node.id || ""}\n${String(node.content || "").slice(0, 500)}`.toLowerCase();
+    return haystack.indexOf(q) !== -1;
+  }
+
+  function shouldExpandNode(node) {
+    if (!node) return false;
+    return node.id === state.selected || node.id === state.hover || nodeMatchesSearch(node);
+  }
+
+  function nodeDisplayMode(node) {
+    const density = currentDensityMode();
+    if (density === "card" || shouldExpandNode(node)) return "card";
+    return density;
+  }
+
+  function compactWidth(node) {
+    const label = node.label || node.id || "";
+    const cjk = (label.match(/[一-鿿]/g) || []).length;
+    const latin = Math.max(0, label.length - cjk);
+    return Math.max(48, Math.min(118, cjk * 12 + latin * 6 + 18));
+  }
+
+  function densityCardDims(node) {
+    const mode = nodeDisplayMode(node);
+    if (mode === "point") return { w: 14, h: 14, r: 6 };
+    if (mode === "compact") return { w: compactWidth(node), h: 24, r: 4 };
+
+    const dim = cardDims(node);
+    const width = Math.max(66, Math.min(146, dim.w));
+    let height = node.type === "topic" ? 36 : 32;
+    if (node.type === "source") height = 30;
+    return { w: width, h: height, r: 5 };
+  }
+
+  function nodeCollisionRadius(node) {
+    const mode = nodeDisplayMode(node);
+    const dim = densityCardDims(node);
+    if (mode === "point") return 18;
+    return Math.max(dim.w, dim.h) * 0.52 + (mode === "compact" ? 8 : 12);
+  }
+
+  function nodeBoundsRadius(node) {
+    const dim = densityCardDims(node);
+    return Math.max(dim.w, dim.h) * 0.58 + 18;
+  }
+
+  function linkDistanceBase() {
+    const density = currentDensityMode();
+    if (density === "point") return 64;
+    if (density === "compact") return 92;
+    return 132;
+  }
+
+  function chargeStrength() {
+    const density = currentDensityMode();
+    if (density === "point") return -170;
+    if (density === "compact") return -360;
+    return -620;
   }
 
   function edgeStrokeWidth(edge) {
@@ -455,6 +553,25 @@
     return p;
   }
 
+  function wavyCirclePath(radius, seed, amplitude) {
+    const steps = 18;
+    const pts = [];
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const rr = radius + Math.sin(seed * (i + 1) * 1.9) * amplitude;
+      pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    let p = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i <= steps; i++) {
+      const cur = pts[i % steps];
+      const prev = pts[(i - 1) % steps];
+      const mx = (prev[0] + cur[0]) / 2;
+      const my = (prev[1] + cur[1]) / 2;
+      p += ` Q${prev[0]},${prev[1]} ${mx},${my}`;
+    }
+    return p + " Z";
+  }
+
   // ---------- D3 force simulation ----------
   let simulation, zoomBehavior;
   const rootG = svg.append("g").attr("class", "root");
@@ -479,22 +596,16 @@
     simulation = d3.forceSimulation(state.nodes)
       .force("link", d3.forceLink(state.links).id(d => d.id)
         .distance(l => {
-          const sameComm = state.byId[l.source.id || l.source]?.community
-                        === state.byId[l.target.id || l.target]?.community;
-          const base = state.tweaks.nodeStyle === "card" ? 150 : 110;
-          return sameComm ? base : base + 90;
+          const sameComm = state.byId[endpointId(l.source)]?.community
+                        === state.byId[endpointId(l.target)]?.community;
+          const base = linkDistanceBase();
+          return sameComm ? base : base + 62;
         })
         .strength(0.5))
-      .force("charge", d3.forceManyBody().strength(state.tweaks.nodeStyle === "card" ? -720 : -520).distanceMax(800))
+      .force("charge", d3.forceManyBody().strength(chargeStrength()).distanceMax(800))
       .force("x", d3.forceX(cx).strength(0.06))
       .force("y", d3.forceY(cy).strength(0.06))
-      .force("collide", d3.forceCollide().radius(d => {
-        if (state.tweaks.nodeStyle === "card") {
-          const dim = cardDims(d);
-          return Math.max(dim.w, dim.h) * 0.6 + 14;
-        }
-        return nodeRadius(d) + 18;
-      }).strength(0.95))
+      .force("collide", d3.forceCollide().radius(nodeCollisionRadius).strength(0.95))
       .force("comm", communityForce(0.05))
       .alphaDecay(0.025)
       .velocityDecay(0.5);
@@ -528,6 +639,26 @@
         fitToView();
       }
     }, 3000);
+  }
+
+  function updateSimulationForDensity(alpha) {
+    if (!simulation) return;
+    const linkForce = simulation.force("link");
+    if (linkForce && typeof linkForce.distance === "function") {
+      linkForce.distance(l => {
+        const sameComm = state.byId[endpointId(l.source)]?.community
+                      === state.byId[endpointId(l.target)]?.community;
+        const base = linkDistanceBase();
+        return sameComm ? base : base + 62;
+      });
+    }
+    const chargeForce = simulation.force("charge");
+    if (chargeForce && typeof chargeForce.strength === "function") {
+      chargeForce.strength(chargeStrength());
+    }
+    simulation.force("collide", d3.forceCollide().radius(nodeCollisionRadius).strength(0.95));
+    nodeLayer.selectAll("g.node-group").attr("data-shaped", null);
+    simulation.alpha(alpha == null ? 0.22 : alpha).restart();
   }
 
   function communityForce(strength) {
@@ -608,56 +739,23 @@
         .on("end",   (ev, d) => { if (!ev.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
       );
 
-    // Card-style: halo + card bg + tab + label inside + corner glyph
-    // Organic-style: halo + shape + external label + optional glyph
+    // Density-aware node shell. Shape size is recalculated as the visible range changes.
     enter.each(function (d) {
       const gg = d3.select(this);
-      const style = state.tweaks.nodeStyle;
-      if (style === "card") {
-        gg.append("path").attr("class", "node-halo");
-        gg.append("path").attr("class", "node-shape node-card")
-          .style("stroke", d => nodeStrokeColor(d));
-        gg.append("path").attr("class", "node-tab")
-          .style("fill", nodeStrokeColor(d))
-          .style("stroke", nodeStrokeColor(d));
-        // label inside card
-        const label = d.label || d.id;
-        const { text: displayLabel, truncated } = truncateLabel(label, 180);
-        gg.append("text").attr("class", "node-label node-label--in")
-          .attr("text-anchor", "middle")
-          .attr("dy", "0.35em")
-          .text(displayLabel);
-        if (truncated) {
-          gg.append("title").text(label);
-        }
-        // small type glyph top-right
-        gg.append("text").attr("class", "node-glyph")
-          .attr("text-anchor", "end")
-          .text(d.type === "topic" ? "✦" : d.type === "source" ? "§" : "◇")
-          .style("fill", nodeStrokeColor(d));
-      } else {
-        gg.append("path").attr("class", "node-halo");
-        gg.append("path").attr("class", "node-shape")
-          .style("stroke", d => nodeStrokeColor(d));
-        gg.append("text").attr("class", "node-label")
-          .attr("text-anchor", "middle")
-          .attr("dy", nodeRadius(d) + 14)
-          .text(d.label || d.id);
-        if (d.type === "topic") {
-          gg.append("text").attr("class", "node-icon")
-            .attr("text-anchor", "middle").attr("dy", "5")
-            .style("font-family", "var(--font-hand)")
-            .style("font-size", "13px")
-            .style("font-weight", "700")
-            .text("✦");
-        } else if (d.type === "source") {
-          gg.append("text").attr("class", "node-icon")
-            .attr("text-anchor", "middle").attr("dy", "5")
-            .style("font-family", "var(--font-hand)")
-            .style("font-size", "12px")
-            .text("§");
-        }
-      }
+      gg.append("path").attr("class", "node-halo");
+      gg.append("path").attr("class", "node-shape node-card")
+        .style("stroke", d => nodeStrokeColor(d));
+      gg.append("path").attr("class", "node-tab")
+        .style("fill", nodeStrokeColor(d))
+        .style("stroke", nodeStrokeColor(d));
+      gg.append("text").attr("class", "node-label node-label--in")
+        .attr("text-anchor", "middle")
+        .attr("dy", "0.35em");
+      gg.append("text").attr("class", "node-glyph")
+        .attr("text-anchor", "end")
+        .text(d.type === "topic" ? "✦" : d.type === "source" ? "§" : "◇")
+        .style("fill", nodeStrokeColor(d));
+      gg.append("title").text(d.label || d.id);
     });
 
     // update stroke colors on all (enter + update)
@@ -668,6 +766,68 @@
       .style("stroke", d => nodeStrokeColor(d));
     g.merge(enter).selectAll(".node-glyph")
       .style("fill", d => nodeStrokeColor(d));
+    refreshNodeShapes(g.merge(enter));
+  }
+
+  function refreshNodeShapes(selection) {
+    const target = selection || nodeLayer.selectAll("g.node-group");
+    target.each(function (d) {
+      const g = d3.select(this);
+      const mode = nodeDisplayMode(d);
+      const dim = densityCardDims(d);
+      const seed = d.idx + 1;
+      g.attr("data-density", currentDensityMode())
+        .attr("data-density-mode", mode)
+        .style("color", nodeStrokeColor(d));
+
+      if (mode === "point") {
+        const r = dim.r || 6;
+        g.select(".node-shape")
+          .attr("d", wavyCirclePath(r, seed, 0.8))
+          .style("stroke", nodeStrokeColor(d))
+          .style("fill", nodeStrokeColor(d));
+        g.select(".node-halo")
+          .attr("d", wavyCirclePath(r + 6, seed + 3, 1.2));
+        g.select(".node-tab").style("display", "none");
+        g.select(".node-label").style("display", "none");
+        g.select(".node-glyph").style("display", "none");
+        return;
+      }
+
+      g.select(".node-shape")
+        .attr("d", cardPath(dim.w, dim.h, dim.r || 5, seed))
+        .style("stroke", nodeStrokeColor(d))
+        .style("fill", null);
+      g.select(".node-halo")
+        .attr("d", cardPath(dim.w + 12, dim.h + 12, (dim.r || 5) + 2, seed + 19));
+
+      const tabOff = mode === "compact" ? -dim.w / 2 + 11 : Math.sin(seed * 1.3) * (dim.w * 0.25);
+      const tw = mode === "compact" ? 10 : 18;
+      const th = mode === "compact" ? dim.h - 6 : 8;
+      const x0 = tabOff - tw / 2;
+      const x1 = tabOff + tw / 2;
+      const y0 = mode === "compact" ? -dim.h / 2 + 3 : -dim.h / 2;
+      const jit = (k) => Math.sin((seed + 11) * (k + 1) * 2.7) * 0.45;
+      const tabD = mode === "compact"
+        ? `M${-dim.w/2},${-dim.h/2 + 4} Q${-dim.w/2 + 2},0 ${-dim.w/2},${dim.h/2 - 4} L${-dim.w/2 + 5},${dim.h/2 - 4} Q${-dim.w/2 + 7},0 ${-dim.w/2 + 5},${-dim.h/2 + 4} Z`
+        : `M${x0 + jit(1)},${y0} L${x0 + 2 + jit(2)},${y0 - th + jit(3)} L${x1 - 2 + jit(4)},${y0 - th + jit(5)} L${x1 + jit(6)},${y0} Z`;
+      g.select(".node-tab")
+        .style("display", null)
+        .attr("d", tabD);
+
+      const labelWidth = mode === "compact" ? dim.w - 12 : dim.w - 18;
+      const { text: displayLabel } = truncateLabel(d.label || d.id, labelWidth);
+      g.select(".node-label")
+        .style("display", null)
+        .text(displayLabel)
+        .attr("dy", "0.35em");
+      g.select("title").text(d.label || d.id);
+
+      g.select(".node-glyph")
+        .style("display", mode === "compact" ? "none" : null)
+        .attr("x", dim.w / 2 - 6)
+        .attr("y", -dim.h / 2 + 13);
+    });
   }
 
   function edgeBaseColor(edge) {
@@ -701,33 +861,7 @@
     nodeLayer.selectAll("g.node-group")
       .attr("transform", d => `translate(${d.x},${d.y})`)
       .each(function (d) {
-        const g = d3.select(this);
-        if (!g.attr("data-shaped")) {
-          if (state.tweaks.nodeStyle === "card") {
-            const dim = cardDims(d);
-            const seed = d.idx + 1;
-            g.select(".node-shape").attr("d", cardPath(dim.w, dim.h, 5, seed));
-            // tab offset: slight variation
-            const tabOff = Math.sin(seed * 1.3) * (dim.w * 0.25);
-            g.select(".node-tab").attr("d", tabPath(dim.w, seed + 11, tabOff).replace(/,0 Z/g, ',' + (-dim.h/2) + ' Z'))
-              .attr("transform", `translate(0,${-dim.h/2})`);
-            // re-build tab with proper baseline
-            const tw = 18, th = 8;
-            const x0 = tabOff - tw/2, x1 = tabOff + tw/2;
-            const y0 = -dim.h/2;
-            const jit = (k) => Math.sin((seed + 11) * (k+1) * 2.7) * 0.6;
-            const tabD = `M${x0 + jit(1)},${y0} L${x0 + 2 + jit(2)},${y0 - th + jit(3)} L${x1 - 2 + jit(4)},${y0 - th + jit(5)} L${x1 + jit(6)},${y0} Z`;
-            g.select(".node-tab").attr("d", tabD).attr("transform", null);
-            // glyph in top-right corner
-            g.select(".node-glyph")
-              .attr("x", dim.w/2 - 6)
-              .attr("y", -dim.h/2 + 13);
-          } else {
-            g.select(".node-shape").attr("d", nodeShapePath(d));
-            g.select(".node-halo").attr("d", nodeHaloPath(d));
-          }
-          g.attr("data-shaped", "1");
-        }
+        refreshNodeShapes(d3.select(this));
       });
 
     if (simulation.alpha() < 0.15) renderBlobs();
@@ -743,14 +877,15 @@
 
     Object.values(state.communities).forEach(c => {
       if (c.id === "_none" || c.nodes.length < 2) return;
+      const communityNodes = state.visible.ready
+        ? c.nodes.filter(n => state.visible.nodeIds.has(n.id))
+        : c.nodes;
+      if (communityNodes.length < 2) return;
 
       // collect padded points around each node
       function hullPoints(padding) {
-        const pts = c.nodes.filter(n => n.x != null).map(n => {
-          const dim = state.tweaks.nodeStyle === "card" ? cardDims(n) : null;
-          const r = (state.tweaks.nodeStyle === "card"
-            ? Math.max(dim.w, dim.h) * 0.6
-            : nodeRadius(n)) + padding;
+        const pts = communityNodes.filter(n => n.x != null).map(n => {
+          const r = nodeBoundsRadius(n) + padding;
           const out = [];
           for (let i = 0; i < 10; i++) {
             const a = (i / 10) * Math.PI * 2;
@@ -766,10 +901,12 @@
 
       if (mode === "wash") {
         // Multiple soft layers: outer (lightest), mid, inner. Each slightly jittered.
+        const density = currentDensityMode();
+        const alphaScale = density === "card" ? 1 : density === "compact" ? 0.42 : 0.3;
         const layers = [
-          { pad: 46, alpha: 0.12, alphaJit: 0.04, blur: 8,  jitter: 6 },
-          { pad: 30, alpha: 0.10, alphaJit: 0.03, blur: 4,  jitter: 4 },
-          { pad: 18, alpha: 0.14, alphaJit: 0.02, blur: 2,  jitter: 2 }
+          { pad: 46, alpha: 0.09 * alphaScale, blur: 8,  jitter: 6 },
+          { pad: 30, alpha: 0.08 * alphaScale, blur: 4,  jitter: 4 },
+          { pad: 18, alpha: 0.10 * alphaScale, blur: 2,  jitter: 2 }
         ];
         const line = d3.line().curve(d3.curveCatmullRomClosed.alpha(1.0));
         const seed = hashStr(c.id);
@@ -795,7 +932,7 @@
             .attr("class", "community-wash-edge")
             .attr("d", line(hullEdge))
             .style("fill", "none")
-            .style("stroke", hexToRgba(color, 0.22))
+            .style("stroke", hexToRgba(color, 0.16 * alphaScale))
             .style("stroke-width", 0.8)
             .style("stroke-dasharray", "2 6")
             .style("filter", "blur(0.4px)");
@@ -925,7 +1062,7 @@
     if (!state.nodes.length) return;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     state.nodes.forEach(n => {
-      const r = nodeRadius(n) + 30; // padding for labels
+      const r = nodeBoundsRadius(n);
       if (n.x - r < minX) minX = n.x - r;
       if (n.y - r < minY) minY = n.y - r;
       if (n.x + r > maxX) maxX = n.x + r;
@@ -950,8 +1087,13 @@
     const cls = "graph-dim";
     if (!focus) {
       rootG.classed(cls, false);
-      nodeLayer.selectAll("g.node-group").classed("focus", false).classed("neighbor", false);
+      nodeLayer.selectAll("g.node-group")
+        .classed("focus", false)
+        .classed("neighbor", false)
+        .attr("data-selected", "0")
+        .attr("data-hover", "0");
       edgeLayer.selectAll("path.edge").classed("edge--hi", false);
+      refreshNodeShapes();
       return;
     }
     const neighbors = new Set([focus]);
@@ -981,6 +1123,7 @@
     nodeLayer.selectAll("g.node-group")
       .attr("data-selected", d => d.id === state.selected ? "1" : "0")
       .attr("data-hover", d => d.id === state.hover ? "1" : "0");
+    refreshNodeShapes();
   }
 
   // ---------- Selection + drawer ----------
@@ -1001,6 +1144,7 @@
       renderMinimap();
     }
     applyHighlight();
+    updateSimulationForDensity(0.12);
     pulseNode(id);
     renderNavPanel();
     if (openDrawer) openDetailDrawer(id);
@@ -1052,11 +1196,7 @@
     document.getElementById("app").classList.add("drawer-open");
     document.getElementById("drawer").setAttribute("aria-hidden", "false");
 
-    document.getElementById("dr-kicker").textContent = ({
-      entity: "Entity · 实体",
-      topic: "Topic · 主题",
-      source: "Source · 来源"
-    })[n.type] || n.type;
+    document.getElementById("dr-kicker").textContent = typeLabel(n.type);
 
     document.getElementById("dr-title").textContent = n.label || n.id;
 
@@ -1082,9 +1222,20 @@
       noteButton.onclick = () => handleAddNote(n);
     }
 
+    const summary = document.getElementById("dr-summary");
+    const scrollBody = document.getElementById("dr-scroll");
+
+    const contentText = String(n.content || "").trim();
+    const summaryText = deriveNodeSummary(contentText);
+    if (summary) {
+      summary.innerHTML = summaryText
+        ? escapeHtml(summaryText)
+        : `<div class="drawer-empty">暂无摘要。</div>`;
+    }
+
     // body
     const body = document.getElementById("dr-body");
-    const raw = (n.content || "").replace(/\[\[([^\]]+)\]\]/g, (_, inner) => {
+    const raw = contentText.replace(/\[\[([^\]]+)\]\]/g, (_, inner) => {
       const parts = inner.split("|");
       const target = parts[0].trim();
       const label = (parts[1] || parts[0]).trim();
@@ -1092,12 +1243,16 @@
       const cls = exists ? "wikilink" : "wikilink wikilink--dead";
       return `<a class="${cls}" data-target="${escapeHtml(target)}">${escapeHtml(label)}</a>`;
     });
-    const html = marked.parse(raw, { breaks: false, gfm: true });
-    const safe = typeof DOMPurify === "undefined"
-      ? html
-      : DOMPurify.sanitize(html, { ADD_ATTR: ["target", "data-target", "tabindex"] });
-    body.innerHTML = safe;
-    body.scrollTop = 0;
+    if (raw) {
+      const html = marked.parse(raw, { breaks: false, gfm: true });
+      const safe = typeof DOMPurify === "undefined"
+        ? html
+        : DOMPurify.sanitize(html, { ADD_ATTR: ["target", "data-target", "tabindex"] });
+      body.innerHTML = safe;
+    } else {
+      body.innerHTML = `<div class="drawer-empty">暂无知识内容。</div>`;
+    }
+    if (scrollBody) scrollBody.scrollTop = 0;
 
     // wikilink clicks
     body.querySelectorAll("a.wikilink").forEach(a => {
@@ -1124,6 +1279,8 @@
       else if (t === id) neighbors.push({ other: state.byId[s], direction: "←", type: l.type, weight: l.weight });
     });
     const nb = document.getElementById("nb-list");
+    const nbCount = document.getElementById("dr-neighbor-count");
+    if (nbCount) nbCount.textContent = `${neighbors.length} 个`;
     nb.innerHTML = "";
     if (!neighbors.length) {
       nb.innerHTML = `<div style="color:var(--paper-ink-faint); font-family: var(--font-hand); padding: 10px;">（孤立节点）</div>`;
@@ -1138,7 +1295,7 @@
         <span class="nb-item__type" style="background:${o.other.commColor || '#999'}"></span>
         <span class="nb-item__name">${escapeHtml(o.other.label || o.other.id)}</span>
         <span class="nb-item__strength" style="width:${edgeStrengthSize(o)}px;height:${edgeStrengthSize(o)}px;background:${edgeBaseColor(o)}"></span>
-        <span class="nb-item__rel" data-rel="${o.type || 'EXTRACTED'}">${weight.toFixed(2)}</span>
+        <span class="nb-item__rel" data-rel="${o.type || 'EXTRACTED'}" title="权重 ${weight.toFixed(2)}">${confidenceLabel(o.type)}</span>
       `;
       el.addEventListener("click", () => {
         selectNode(o.other.id, true);
@@ -1154,7 +1311,30 @@
     document.getElementById("drawer").setAttribute("aria-hidden", "true");
     state.selected = null;
     applyHighlight();
+    updateSimulationForDensity(0.08);
     renderNavPanel();
+  }
+
+  function deriveNodeSummary(raw) {
+    const text = String(raw || "");
+    if (!text.trim()) return "";
+    const cleaned = text
+      .replace(/^---[\s\S]*?---\s*/m, "")
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/\[\[([^\]|]+)\|?([^\]]*)\]\]/g, (_, target, label) => label || target)
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+      .replace(/\[[^\]]+\]\([^)]+\)/g, (match) => match.replace(/^\[|\]\([^)]+\)$/g, ""))
+      .split(/\n{2,}|\r?\n/)
+      .map((line) => line
+        .replace(/^#{1,6}\s+/, "")
+        .replace(/^[-*+]\s+/, "")
+        .replace(/^\d+\.\s+/, "")
+        .replace(/[*_`>#]/g, "")
+        .trim())
+      .filter(Boolean)
+      .find((line) => line.length >= 8) || "";
+    if (!cleaned) return "";
+    return cleaned.length > 150 ? cleaned.slice(0, 150).trim() + "…" : cleaned;
   }
 
   function escapeHtml(s) {
@@ -1242,7 +1422,7 @@
   function updateInsightsTitle() {
     const panelTitle = document.getElementById("panel-title");
     if (!panelTitle) return;
-    panelTitle.textContent = state.learning.activeMode === "global" ? "Insights" : "洞察";
+    panelTitle.textContent = "洞察";
   }
 
   function setNavOpen(open) {
@@ -1273,9 +1453,9 @@
     const isActive = state.learning.activeMode !== "global" && activeCommunity && community.id === activeCommunity.id;
     button.setAttribute("data-on", isActive ? "1" : "0");
     button.innerHTML = `
-      <span class="nav-community__row">
-        <span class="nav-community__title">${escapeHtml(community.label || community.id)}</span>
-        ${community.is_primary ? '<span class="nav-community__badge">TOP</span>' : ""}
+        <span class="nav-community__row">
+          <span class="nav-community__title">${escapeHtml(community.label || community.id)}</span>
+        ${community.is_primary ? '<span class="nav-community__badge">主</span>' : ""}
         ${selectedCommunityId === String(community.id) && !isActive ? '<span class="nav-community__badge">当前</span>' : ""}
       </span>
       <span class="nav-community__meta">${community.node_count || 0} 个节点 · ${community.source_count || 0} 个来源</span>
@@ -1319,7 +1499,7 @@
         updateFooter();
         renderNavPanel();
         renderMinimap();
-        simulation.alpha(0.2).restart();
+        updateSimulationForDensity(0.2);
       });
       navFocus.appendChild(item);
     });
@@ -1376,7 +1556,13 @@
     const communityLabel = activeCommunity && state.learning.activeMode !== "global" ? ` · ${activeCommunity.label || activeCommunity.id}` : "";
     const focusLabel = ({ all: "完整范围", core: "核心节点", one_hop: "一级关联", high_confidence: "高置信度" })[state.learning.focusMode] || "完整范围";
     navSearchHint.textContent = `当前搜索范围：${modeLabel}${communityLabel} · ${focusLabel}`;
-    if (navSearchEmpty) navSearchEmpty.hidden = !!state.learning.searchQuery;
+    if (navSearchEmpty) {
+      const noVisibleMatches = !!state.learning.searchQuery && state.visible.ready && state.visible.nodeIds.size === 0;
+      navSearchEmpty.hidden = !noVisibleMatches && !!state.learning.searchQuery;
+      navSearchEmpty.textContent = noVisibleMatches
+        ? "当前范围没有匹配节点。可以清除搜索，或切回全图再搜。"
+        : "先输入关键词，再在当前学习范围里定位节点。";
+    }
   }
 
   function renderSecondaryEntry() {
@@ -1511,7 +1697,7 @@
       baseNodeIds = getVisibleNodeIds(state.learning.data, mode);
     }
 
-    if (!baseNodeIds.length) {
+    if (!baseNodeIds.length && (mode === "global" || !mode)) {
       baseNodeIds = state.nodes.map((node) => node.id);
     }
 
@@ -1590,6 +1776,7 @@
 
     updateInsightsTitle();
     renderNavPanel();
+    updateSimulationForDensity(0.22);
     fitVisibleToView();
   }
 
@@ -1616,7 +1803,7 @@
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     visibleNodes.forEach(n => {
-      const r = nodeRadius(n) + 30;
+      const r = nodeBoundsRadius(n);
       if (n.x - r < minX) minX = n.x - r;
       if (n.y - r < minY) minY = n.y - r;
       if (n.x + r > maxX) maxX = n.x + r;
@@ -1661,6 +1848,7 @@
     applySubgraph();
     updateInsightsTitle();
     renderNavPanel();
+    updateSimulationForDensity(0.22);
 
     const startId = data.entry.recommended_start_node_id;
     if (startId && state.byId[startId] && mode !== "global") {
@@ -1786,7 +1974,7 @@
         el.innerHTML = `
           <span class="type-dot" style="background:${nodeStrokeColor(n)}"></span>
           <span class="name">${escapeHtml(n.label || n.id)}</span>
-          <span class="meta">${n.type} · ${n.degree}</span>
+          <span class="meta">${typeLabel(n.type)} · ${n.degree}</span>
         `;
         el.addEventListener("click", () => {
           input.value = n.label || n.id;
@@ -1810,9 +1998,9 @@
       updateFooter();
       renderNavPanel();
       renderMinimap();
-      simulation.alpha(0.18).restart();
+      updateSimulationForDensity(0.18);
 
-      const idx = state.visible.searchIndex.length ? state.visible.searchIndex : state.searchIndex;
+      const idx = state.visible.ready ? state.visible.searchIndex : state.searchIndex;
       results = q
         ? idx.filter(entry => entry.haystack.includes(q)).map(entry => entry.node)
         : [];
@@ -1845,6 +2033,7 @@
         updateFooter();
         renderNavPanel();
         renderMinimap();
+        updateSimulationForDensity(0.16);
         dd.setAttribute("data-open", "0");
       }
     });
@@ -1878,9 +2067,9 @@
         applySubgraph();
         syncDrawerWithVisibleSnapshot();
         renderNavPanel();
-        simulation.alpha(0.2).restart();
         updateFooter();
         renderMinimap();
+        updateSimulationForDensity(0.2);
       });
     });
   }
@@ -1919,7 +2108,8 @@
   }
 
   applyMinimapCollapsed(safeLocalStorage.get(queueStorageKey("minimap-collapsed")) === "1");
-  applyNeighborsCollapsed(safeLocalStorage.get(queueStorageKey("neighbors-collapsed")) === "1");
+  const storedNeighborsCollapsed = safeLocalStorage.get(queueStorageKey("neighbors-collapsed"));
+  applyNeighborsCollapsed(storedNeighborsCollapsed == null ? true : storedNeighborsCollapsed === "1");
 
   if (minimapEl && minimapToggle) {
     minimapToggle.addEventListener("click", (e) => {
@@ -2019,7 +2209,7 @@
     const comms = Object.keys(state.communities).filter(k => k !== "_none").length;
     document.getElementById("foot-communities").textContent = comms;
     const on = Object.keys(state.filters).filter(k => state.filters[k]);
-    document.getElementById("foot-filter").textContent = on.join("+") || "none";
+    document.getElementById("foot-filter").textContent = on.map(confidenceLabel).join("+") || "无";
   }
 
   // ---------- Tweaks panel ----------
@@ -2034,6 +2224,7 @@
 
     function hookSeg(id, key, onChange) {
       const el = document.getElementById(id);
+      if (!el) return;
       // initialize
       el.querySelectorAll("button").forEach(b => {
         b.setAttribute("data-on", b.dataset.val === state.tweaks[key] ? "1" : "0");
@@ -2054,43 +2245,9 @@
       nodeLayer.selectAll(".node-shape").style("stroke", d => nodeStrokeColor(d));
       renderBlobs();
     });
-    hookSeg("seg-size", "sizeMode", () => {
-      // reset rendered flag so shapes re-generate
-      nodeLayer.selectAll("g.node-group").attr("data-shaped", null);
-      if (state.tweaks.nodeStyle === "organic") {
-        nodeLayer.selectAll("g.node-group").each(function(d) {
-          const g = d3.select(this);
-          g.select(".node-shape").attr("d", nodeShapePath(d));
-          g.select(".node-halo").attr("d", nodeHaloPath(d));
-          g.select(".node-label").attr("dy", nodeRadius(d) + 14);
-        });
-      }
-      simulation.force("collide", d3.forceCollide().radius(d => {
-        if (state.tweaks.nodeStyle === "card") {
-          const dim = cardDims(d);
-          return Math.max(dim.w, dim.h) * 0.6 + 14;
-        }
-        return nodeRadius(d) + 18;
-      }).strength(0.9));
-      simulation.alpha(0.5).restart();
-    });
     hookSeg("seg-bubble", "bubbleMode", () => {
       nodeLayer.selectAll(".node-shape").style("stroke", d => nodeStrokeColor(d));
       renderBlobs();
-    });
-    hookSeg("seg-nodestyle", "nodeStyle", () => {
-      // structural change — rebuild all node groups
-      nodeLayer.selectAll("g.node-group").remove();
-      renderNodes();
-      // re-run collide with new radius
-      simulation.force("collide", d3.forceCollide().radius(d => {
-        if (state.tweaks.nodeStyle === "card") {
-          const dim = cardDims(d);
-          return Math.max(dim.w, dim.h) * 0.6 + 14;
-        }
-        return nodeRadius(d) + 18;
-      }).strength(0.95));
-      simulation.alpha(0.5).restart();
     });
   }
 
@@ -2150,7 +2307,7 @@
     syncResponsiveUI();
     if (simulation) {
       simulation.force("center", d3.forceCenter(svgNode.clientWidth / 2, svgNode.clientHeight / 2).strength(0.05));
-      simulation.alpha(0.2).restart();
+      updateSimulationForDensity(0.2);
     }
     renderMinimap();
   });
