@@ -22,6 +22,14 @@
     deriveAtlasLayout,
     resolveAtlasVisibleSnapshot,
     resolveAtlasSelectedNodeId,
+    atlasNodePoint,
+    getAtlasModelBounds,
+    fitAtlasViewport,
+    centerAtlasViewportOnPoint,
+    zoomAtlasViewport,
+    atlasViewportToMinimapRect,
+    atlasPointToMinimap,
+    minimapPointToAtlasPoint,
     atlasConfidenceLabel,
     atlasTypeLabel,
     atlasNodeKind,
@@ -46,7 +54,9 @@
     dataError = true;
   }
 
+  const app = document.getElementById("app");
   const atlas = document.getElementById("atlas");
+  const graphSvg = document.querySelector(".graph-svg");
   const nodeLayer = document.getElementById("node-layer");
   const edgeLayer = document.getElementById("edge-layer");
   const communityList = document.getElementById("community-list");
@@ -94,8 +104,13 @@
       neighborExpanded: false,
       filters: { EXTRACTED: true, INFERRED: true, AMBIGUOUS: true, UNVERIFIED: true }
     },
+    viewport: { x: 0, y: 0, scale: 1 },
+    viewportReady: false,
     visible: null
   };
+
+  let viewportPaintFrame = 0;
+  let panState = null;
 
   function queueStorageKey(name) {
     return storageNamespace + ":" + name;
@@ -165,11 +180,90 @@
     return state.visible;
   }
 
+  function currentViewportSize() {
+    const rect = atlas.getBoundingClientRect();
+    return {
+      width: rect && rect.width ? rect.width : 1000,
+      height: rect && rect.height ? rect.height : 680
+    };
+  }
+
+  function viewportOptions() {
+    return { minScale: 0.62, maxScale: 3.2 };
+  }
+
+  function edgeTransformForViewport(viewport, size) {
+    const safeSize = size || currentViewportSize();
+    const x = (viewport.x / safeSize.width) * 1000;
+    const y = (viewport.y / safeSize.height) * 680;
+    return `translate(${x} ${y}) scale(${viewport.scale})`;
+  }
+
+  function applyViewportTransform() {
+    const size = currentViewportSize();
+    if (nodeLayer) {
+      nodeLayer.style.transform = `translate(${state.viewport.x}px, ${state.viewport.y}px) scale(${state.viewport.scale})`;
+    }
+    if (edgeLayer) {
+      edgeLayer.setAttribute("transform", edgeTransformForViewport(state.viewport, size));
+    }
+    updateMinimapViewport();
+  }
+
+  function updateMinimapViewport() {
+    if (!minimapSvg) return;
+    const rect = minimapSvg.querySelector(".mini-map-viewport");
+    if (!rect) return;
+    const miniRect = atlasViewportToMinimapRect(state.viewport, currentViewportSize());
+    rect.setAttribute("x", String(miniRect.x));
+    rect.setAttribute("y", String(miniRect.y));
+    rect.setAttribute("width", String(miniRect.width));
+    rect.setAttribute("height", String(miniRect.height));
+  }
+
+  function scheduleViewportPaint() {
+    if (viewportPaintFrame) return;
+    viewportPaintFrame = window.requestAnimationFrame(() => {
+      viewportPaintFrame = 0;
+      applyViewportTransform();
+    });
+  }
+
+  function setViewport(nextViewport, immediate) {
+    state.viewport = helpers.clampAtlasViewport(nextViewport, currentViewportSize(), viewportOptions());
+    if (immediate) {
+      if (viewportPaintFrame) {
+        window.cancelAnimationFrame(viewportPaintFrame);
+        viewportPaintFrame = 0;
+      }
+      applyViewportTransform();
+    } else {
+      scheduleViewportPaint();
+    }
+  }
+
+  function fitVisibleViewport() {
+    const visible = state.visible || refreshVisibleSnapshot();
+    const bounds = getAtlasModelBounds(visible.nodes, visible.nodes.length <= 1 ? 160 : 56);
+    setViewport(fitAtlasViewport(bounds, currentViewportSize(), { padding: 0.82, minScale: 0.62, maxScale: 2.2 }), true);
+    state.viewportReady = true;
+  }
+
+  function centerViewportOnNode(nodeId) {
+    const node = state.atlasModel.byId[nodeId];
+    if (!node) return;
+    const scale = Math.max(1.05, Math.min(state.viewport.scale || 1, 2.2));
+    setViewport(centerAtlasViewportOnPoint(atlasNodePoint(node), currentViewportSize(), scale, viewportOptions()), true);
+    state.viewportReady = true;
+  }
+
   function makePath(a, b, edge) {
-    const x1 = a.x * 10;
-    const y1 = a.y * 6.8;
-    const x2 = b.x * 10;
-    const y2 = b.y * 6.8;
+    const sourcePoint = atlasNodePoint(a);
+    const targetPoint = atlasNodePoint(b);
+    const x1 = sourcePoint.x;
+    const y1 = sourcePoint.y;
+    const x2 = targetPoint.x;
+    const y2 = targetPoint.y;
     const mx = (x1 + x2) / 2;
     const my = (y1 + y2) / 2;
     const curve = Math.max(-76, Math.min(76, (a.y - b.y) * 1.8 + (clampWeight(edge.weight) - 0.5) * 24));
@@ -263,16 +357,29 @@
     const queueList = document.querySelector(".queue-list");
     if (queueList) {
       queueList.innerHTML = "";
-      const recentItems = summary.recent_items.length
-        ? summary.recent_items
-        : starts.slice(0, 3).map((entry) => ({ node_id: entry.node.id, label: entry.node.label, kind: "start" }));
-      recentItems.slice(0, 3).forEach((item) => {
-        const chip = document.createElement("button");
-        chip.className = "chip";
-        chip.type = "button";
-        chip.textContent = item.kind === "note" ? `札记 · ${item.label}` : item.label;
-        chip.addEventListener("click", () => focusNode(item.node_id, true));
-        queueList.appendChild(chip);
+      if (!summary.recent_items.length) {
+        const empty = document.createElement("div");
+        empty.className = "note-card";
+        empty.textContent = "选中节点后可加入学习队列。";
+        queueList.appendChild(empty);
+        return;
+      }
+      summary.recent_items.slice(0, 3).forEach((item) => {
+        const node = state.atlasModel.byId[item.node_id];
+        const button = document.createElement("button");
+        const kindLabel = item.kind === "note" ? "札记" : "待读";
+        const meta = node ? `${atlasTypeLabel(node.type)} · ${atlasConfidenceLabel(node.confidence)}` : "队列条目";
+        button.className = "queue-item";
+        button.type = "button";
+        button.dataset.kind = item.kind;
+        button.setAttribute("aria-current", item.node_id === state.ui.selectedNodeId ? "true" : "false");
+        button.innerHTML = `
+          <i class="queue-item__marker" aria-hidden="true"></i>
+          <span class="queue-item__copy"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(meta)}</span></span>
+          <span class="queue-item__badge">${kindLabel}</span>
+        `;
+        button.addEventListener("click", () => focusNode(item.node_id, true));
+        queueList.appendChild(button);
       });
     }
   }
@@ -330,11 +437,13 @@
 
     applyFilters();
     renderMinimap();
+    applyViewportTransform();
   }
 
   function renderDrawer() {
     const selected = getSelectedNode();
     if (!drawer) return;
+    if (app) app.dataset.reading = selected ? "1" : "0";
     if (!selected) {
       document.getElementById("drawer-kind").innerHTML = `<span class="spark"></span>当前范围`;
       document.getElementById("drawer-title").textContent = "没有匹配节点";
@@ -468,24 +577,21 @@
     minimapSvg.appendChild(path);
 
     visible.nodes.slice(0, 60).forEach((node) => {
+      const point = atlasPointToMinimap(atlasNodePoint(node));
       const circle = document.createElementNS(ns, "circle");
-      circle.setAttribute("cx", String((node.x / 100) * 150 + 5));
-      circle.setAttribute("cy", String((node.y / 100) * 48 + 3));
+      circle.setAttribute("cx", String(point.x));
+      circle.setAttribute("cy", String(point.y));
       circle.setAttribute("r", node.id === state.ui.selectedNodeId ? "3.2" : "2.2");
       circle.setAttribute("fill", communityColor(node.community));
+      if (node.id === state.ui.selectedNodeId) circle.classList.add("is-selected");
       minimapSvg.appendChild(circle);
     });
 
     const rect = document.createElementNS(ns, "rect");
-    rect.setAttribute("x", "22");
-    rect.setAttribute("y", "12");
-    rect.setAttribute("width", "76");
-    rect.setAttribute("height", "32");
+    rect.setAttribute("class", "mini-map-viewport");
     rect.setAttribute("rx", "5");
-    rect.setAttribute("fill", "none");
-    rect.setAttribute("stroke", "#8b2e24");
-    rect.setAttribute("stroke-width", "1.2");
     minimapSvg.appendChild(rect);
+    updateMinimapViewport();
   }
 
   function applyFilters() {
@@ -541,8 +647,10 @@
     });
   }
 
-  function renderAtlasView() {
+  function renderAtlasView(options) {
+    const opts = options && typeof options === "object" ? options : {};
     refreshVisibleSnapshot();
+    if (opts.fitViewport || !state.viewportReady) fitVisibleViewport();
     renderTopbar();
     renderSidebar();
     renderCanvas();
@@ -563,16 +671,17 @@
       drawer.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
     renderAtlasView();
+    centerViewportOnNode(nodeId);
   }
 
   function closeDrawer() {
     state.ui.selectedNodeId = null;
-    renderAtlasView();
+    renderAtlasView({ fitViewport: true });
   }
 
   function setCommunity(communityId) {
     state.ui.activeCommunityId = communityId || "all";
-    renderAtlasView();
+    renderAtlasView({ fitViewport: true });
   }
 
   function buildNoteText(node) {
@@ -600,12 +709,77 @@
     if (!searchInput) return;
     searchInput.addEventListener("input", () => {
       state.ui.query = searchInput.value.trim().toLowerCase();
-      renderAtlasView();
+      renderAtlasView({ fitViewport: true });
     });
     searchInput.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       const hit = state.visible && state.visible.nodes[0];
       if (hit) focusNode(hit.id, true);
+    });
+  }
+
+  function isCanvasPanTarget(target) {
+    return !(target && target.closest && target.closest(".node, button, a, input, textarea, summary, details"));
+  }
+
+  function setupViewportInteractions() {
+    atlas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || !isCanvasPanTarget(event.target)) return;
+      panState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        viewport: { x: state.viewport.x, y: state.viewport.y, scale: state.viewport.scale }
+      };
+      atlas.classList.add("is-panning");
+      atlas.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+
+    atlas.addEventListener("pointermove", (event) => {
+      if (!panState || panState.pointerId !== event.pointerId) return;
+      setViewport({
+        x: panState.viewport.x + event.clientX - panState.startX,
+        y: panState.viewport.y + event.clientY - panState.startY,
+        scale: panState.viewport.scale
+      });
+      event.preventDefault();
+    });
+
+    function finishPan(event) {
+      if (!panState || panState.pointerId !== event.pointerId) return;
+      panState = null;
+      atlas.classList.remove("is-panning");
+      if (atlas.hasPointerCapture && atlas.hasPointerCapture(event.pointerId)) {
+        atlas.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    atlas.addEventListener("pointerup", finishPan);
+    atlas.addEventListener("pointercancel", finishPan);
+    atlas.addEventListener("wheel", (event) => {
+      if (!isCanvasPanTarget(event.target) && !(event.target && event.target.closest && event.target.closest(".node"))) return;
+      const rect = atlas.getBoundingClientRect();
+      const factor = Math.exp(-event.deltaY * 0.0012);
+      setViewport(zoomAtlasViewport(state.viewport, factor, {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      }, currentViewportSize(), viewportOptions()));
+      event.preventDefault();
+    }, { passive: false });
+  }
+
+  function setupMinimapNavigation() {
+    if (!minimapSvg) return;
+    minimapSvg.addEventListener("click", (event) => {
+      const matrix = minimapSvg.getScreenCTM && minimapSvg.getScreenCTM();
+      if (!matrix) return;
+      const point = minimapSvg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      const local = point.matrixTransform(matrix.inverse());
+      const atlasPoint = minimapPointToAtlasPoint({ x: local.x, y: local.y });
+      setViewport(centerAtlasViewportOnPoint(atlasPoint, currentViewportSize(), state.viewport.scale, viewportOptions()), true);
     });
   }
 
@@ -616,7 +790,7 @@
         document.querySelectorAll("[data-focus]").forEach((item) => {
           item.setAttribute("aria-pressed", item === button ? "true" : "false");
         });
-        renderAtlasView();
+        renderAtlasView({ fitViewport: true });
       });
     });
 
@@ -654,7 +828,7 @@
         document.querySelectorAll(".state-button[data-mode]").forEach((item) => {
           item.setAttribute("aria-pressed", item.dataset.mode === "normal" ? "true" : "false");
         });
-        renderAtlasView();
+        renderAtlasView({ fitViewport: true });
       });
     }
 
@@ -709,8 +883,11 @@
   }
 
   setupSearch();
+  setupViewportInteractions();
+  setupMinimapNavigation();
   setupControls();
   setupNeighborToggle();
   applyMinimapCollapsed(false);
-  renderAtlasView();
+  window.addEventListener("resize", () => renderAtlasView({ fitViewport: true }));
+  renderAtlasView({ fitViewport: true });
 })();

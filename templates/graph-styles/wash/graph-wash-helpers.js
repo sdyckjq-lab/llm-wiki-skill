@@ -8,6 +8,11 @@
   var LABEL_MAX_WIDTH = 180;
   var LABEL_ELLIPSIS = "…";
   var LABEL_ELLIPSIS_WIDTH = 8;
+  var ATLAS_WORLD_WIDTH = 1000;
+  var ATLAS_WORLD_HEIGHT = 680;
+  var ATLAS_MIN_SCALE = 0.62;
+  var ATLAS_MAX_SCALE = 3.2;
+  var MINIMAP_VIEWBOX = { x: 5, y: 3, width: 150, height: 48 };
 
   var labelSegmenter =
     typeof Intl !== "undefined" && Intl.Segmenter
@@ -618,6 +623,215 @@
     return numeric;
   }
 
+  function normalizeAtlasViewportSize(size) {
+    var safe = size && typeof size === "object" ? size : {};
+    return {
+      width: clampAtlasNumber(safe.width, ATLAS_WORLD_WIDTH, 1, 100000),
+      height: clampAtlasNumber(safe.height, ATLAS_WORLD_HEIGHT, 1, 100000)
+    };
+  }
+
+  function normalizeAtlasViewport(viewport) {
+    var safe = viewport && typeof viewport === "object" ? viewport : {};
+    return {
+      x: clampAtlasNumber(safe.x, 0, -1000000, 1000000),
+      y: clampAtlasNumber(safe.y, 0, -1000000, 1000000),
+      scale: clampAtlasNumber(safe.scale, 1, ATLAS_MIN_SCALE, ATLAS_MAX_SCALE)
+    };
+  }
+
+  function atlasNodePoint(node) {
+    var safe = node && typeof node === "object" ? node : {};
+    return {
+      x: clampAtlasNumber(safe.x, 50, 0, 100) / 100 * ATLAS_WORLD_WIDTH,
+      y: clampAtlasNumber(safe.y, 50, 0, 100) / 100 * ATLAS_WORLD_HEIGHT
+    };
+  }
+
+  function getAtlasModelBounds(nodes, padding) {
+    var list = Array.isArray(nodes) ? nodes : [];
+    var pad = Number.isFinite(Number(padding)) ? Math.max(0, Number(padding)) : 48;
+    if (!list.length) {
+      return {
+        x: 0,
+        y: 0,
+        width: ATLAS_WORLD_WIDTH,
+        height: ATLAS_WORLD_HEIGHT,
+        minX: 0,
+        minY: 0,
+        maxX: ATLAS_WORLD_WIDTH,
+        maxY: ATLAS_WORLD_HEIGHT
+      };
+    }
+
+    var minX = ATLAS_WORLD_WIDTH;
+    var minY = ATLAS_WORLD_HEIGHT;
+    var maxX = 0;
+    var maxY = 0;
+    list.forEach(function (node) {
+      var point = atlasNodePoint(node);
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+
+    minX = clampAtlasNumber(minX - pad, 0, 0, ATLAS_WORLD_WIDTH);
+    minY = clampAtlasNumber(minY - pad, 0, 0, ATLAS_WORLD_HEIGHT);
+    maxX = clampAtlasNumber(maxX + pad, ATLAS_WORLD_WIDTH, 0, ATLAS_WORLD_WIDTH);
+    maxY = clampAtlasNumber(maxY + pad, ATLAS_WORLD_HEIGHT, 0, ATLAS_WORLD_HEIGHT);
+
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+      minX: minX,
+      minY: minY,
+      maxX: maxX,
+      maxY: maxY
+    };
+  }
+
+  function clampAtlasViewport(viewport, viewportSize, options) {
+    var size = normalizeAtlasViewportSize(viewportSize);
+    var safe = normalizeAtlasViewport(viewport);
+    var opts = options && typeof options === "object" ? options : {};
+    var minScale = clampAtlasNumber(opts.minScale, ATLAS_MIN_SCALE, 0.1, ATLAS_MAX_SCALE);
+    var maxScale = clampAtlasNumber(opts.maxScale, ATLAS_MAX_SCALE, minScale, 10);
+    var marginX = clampAtlasNumber(opts.marginX, size.width * 0.38, 0, size.width);
+    var marginY = clampAtlasNumber(opts.marginY, size.height * 0.38, 0, size.height);
+    var scale = clampAtlasNumber(safe.scale, 1, minScale, maxScale);
+    var scaledWidth = size.width * scale;
+    var scaledHeight = size.height * scale;
+    var minX = size.width - scaledWidth - marginX;
+    var maxX = marginX;
+    var minY = size.height - scaledHeight - marginY;
+    var maxY = marginY;
+
+    if (scaledWidth <= size.width) {
+      var centerX = (size.width - scaledWidth) / 2;
+      minX = centerX - marginX;
+      maxX = centerX + marginX;
+    }
+    if (scaledHeight <= size.height) {
+      var centerY = (size.height - scaledHeight) / 2;
+      minY = centerY - marginY;
+      maxY = centerY + marginY;
+    }
+
+    return {
+      x: clampAtlasNumber(safe.x, 0, minX, maxX),
+      y: clampAtlasNumber(safe.y, 0, minY, maxY),
+      scale: scale
+    };
+  }
+
+  function fitAtlasViewport(bounds, viewportSize, options) {
+    var safeBounds = bounds && typeof bounds === "object" ? bounds : getAtlasModelBounds([]);
+    var size = normalizeAtlasViewportSize(viewportSize);
+    var opts = options && typeof options === "object" ? options : {};
+    var padding = clampAtlasNumber(opts.padding, 0.84, 0.2, 1);
+    var minScale = clampAtlasNumber(opts.minScale, ATLAS_MIN_SCALE, 0.1, ATLAS_MAX_SCALE);
+    var maxScale = clampAtlasNumber(opts.maxScale, 2.15, minScale, ATLAS_MAX_SCALE);
+    var widthScale = ATLAS_WORLD_WIDTH * padding / Math.max(1, safeBounds.width || 1);
+    var heightScale = ATLAS_WORLD_HEIGHT * padding / Math.max(1, safeBounds.height || 1);
+    var scale = clampAtlasNumber(Math.min(widthScale, heightScale), 1, minScale, maxScale);
+    var centerX = (safeBounds.minX != null && safeBounds.maxX != null)
+      ? (safeBounds.minX + safeBounds.maxX) / 2
+      : (safeBounds.x || 0) + (safeBounds.width || ATLAS_WORLD_WIDTH) / 2;
+    var centerY = (safeBounds.minY != null && safeBounds.maxY != null)
+      ? (safeBounds.minY + safeBounds.maxY) / 2
+      : (safeBounds.y || 0) + (safeBounds.height || ATLAS_WORLD_HEIGHT) / 2;
+
+    return clampAtlasViewport({
+      x: size.width / 2 - scale * (centerX / ATLAS_WORLD_WIDTH * size.width),
+      y: size.height / 2 - scale * (centerY / ATLAS_WORLD_HEIGHT * size.height),
+      scale: scale
+    }, size, opts);
+  }
+
+  function centerAtlasViewportOnPoint(point, viewportSize, scale, options) {
+    var safePoint = point && typeof point === "object" ? point : { x: ATLAS_WORLD_WIDTH / 2, y: ATLAS_WORLD_HEIGHT / 2 };
+    var size = normalizeAtlasViewportSize(viewportSize);
+    var viewportScale = clampAtlasNumber(scale, 1, ATLAS_MIN_SCALE, ATLAS_MAX_SCALE);
+    return clampAtlasViewport({
+      x: size.width / 2 - viewportScale * (safePoint.x / ATLAS_WORLD_WIDTH * size.width),
+      y: size.height / 2 - viewportScale * (safePoint.y / ATLAS_WORLD_HEIGHT * size.height),
+      scale: viewportScale
+    }, size, options);
+  }
+
+  function zoomAtlasViewport(viewport, factor, screenPoint, viewportSize, options) {
+    var size = normalizeAtlasViewportSize(viewportSize);
+    var safe = normalizeAtlasViewport(viewport);
+    var point = screenPoint && typeof screenPoint === "object"
+      ? { x: clampAtlasNumber(screenPoint.x, size.width / 2, 0, size.width), y: clampAtlasNumber(screenPoint.y, size.height / 2, 0, size.height) }
+      : { x: size.width / 2, y: size.height / 2 };
+    var zoomFactor = clampAtlasNumber(factor, 1, 0.2, 5);
+    var opts = options && typeof options === "object" ? options : {};
+    var minScale = clampAtlasNumber(opts.minScale, ATLAS_MIN_SCALE, 0.1, ATLAS_MAX_SCALE);
+    var maxScale = clampAtlasNumber(opts.maxScale, ATLAS_MAX_SCALE, minScale, 10);
+    var nextScale = clampAtlasNumber(safe.scale * zoomFactor, safe.scale, minScale, maxScale);
+    var ratio = nextScale / safe.scale;
+    return clampAtlasViewport({
+      x: point.x - (point.x - safe.x) * ratio,
+      y: point.y - (point.y - safe.y) * ratio,
+      scale: nextScale
+    }, size, opts);
+  }
+
+  function atlasViewportRect(viewport, viewportSize) {
+    var size = normalizeAtlasViewportSize(viewportSize);
+    var safe = normalizeAtlasViewport(viewport);
+    var x = (0 - safe.x) / safe.scale / size.width * ATLAS_WORLD_WIDTH;
+    var y = (0 - safe.y) / safe.scale / size.height * ATLAS_WORLD_HEIGHT;
+    var width = size.width / safe.scale / size.width * ATLAS_WORLD_WIDTH;
+    var height = size.height / safe.scale / size.height * ATLAS_WORLD_HEIGHT;
+    var minX = clampAtlasNumber(x, 0, 0, ATLAS_WORLD_WIDTH);
+    var minY = clampAtlasNumber(y, 0, 0, ATLAS_WORLD_HEIGHT);
+    var maxX = clampAtlasNumber(x + width, ATLAS_WORLD_WIDTH, 0, ATLAS_WORLD_WIDTH);
+    var maxY = clampAtlasNumber(y + height, ATLAS_WORLD_HEIGHT, 0, ATLAS_WORLD_HEIGHT);
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+      minX: minX,
+      minY: minY,
+      maxX: maxX,
+      maxY: maxY
+    };
+  }
+
+  function atlasPointToMinimap(point) {
+    var safePoint = point && typeof point === "object" ? point : { x: 0, y: 0 };
+    return {
+      x: MINIMAP_VIEWBOX.x + clampAtlasNumber(safePoint.x, 0, 0, ATLAS_WORLD_WIDTH) / ATLAS_WORLD_WIDTH * MINIMAP_VIEWBOX.width,
+      y: MINIMAP_VIEWBOX.y + clampAtlasNumber(safePoint.y, 0, 0, ATLAS_WORLD_HEIGHT) / ATLAS_WORLD_HEIGHT * MINIMAP_VIEWBOX.height
+    };
+  }
+
+  function minimapPointToAtlasPoint(point) {
+    var safePoint = point && typeof point === "object" ? point : { x: MINIMAP_VIEWBOX.x, y: MINIMAP_VIEWBOX.y };
+    return {
+      x: clampAtlasNumber((safePoint.x - MINIMAP_VIEWBOX.x) / MINIMAP_VIEWBOX.width * ATLAS_WORLD_WIDTH, 0, 0, ATLAS_WORLD_WIDTH),
+      y: clampAtlasNumber((safePoint.y - MINIMAP_VIEWBOX.y) / MINIMAP_VIEWBOX.height * ATLAS_WORLD_HEIGHT, 0, 0, ATLAS_WORLD_HEIGHT)
+    };
+  }
+
+  function atlasViewportToMinimapRect(viewport, viewportSize) {
+    var rect = atlasViewportRect(viewport, viewportSize);
+    var topLeft = atlasPointToMinimap({ x: rect.x, y: rect.y });
+    var bottomRight = atlasPointToMinimap({ x: rect.x + rect.width, y: rect.y + rect.height });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: Math.max(2, bottomRight.x - topLeft.x),
+      height: Math.max(2, bottomRight.y - topLeft.y)
+    };
+  }
+
   function atlasEndpointId(value) {
     if (value && typeof value === "object" && value.id != null) return String(value.id);
     return value == null ? "" : String(value);
@@ -1062,6 +1276,17 @@
     resolveAtlasVisibleSnapshot: resolveAtlasVisibleSnapshot,
     resolveAtlasSelectedNodeId: resolveAtlasSelectedNodeId,
     getAtlasDensityMode: getAtlasDensityMode,
+    normalizeAtlasViewport: normalizeAtlasViewport,
+    atlasNodePoint: atlasNodePoint,
+    getAtlasModelBounds: getAtlasModelBounds,
+    clampAtlasViewport: clampAtlasViewport,
+    fitAtlasViewport: fitAtlasViewport,
+    centerAtlasViewportOnPoint: centerAtlasViewportOnPoint,
+    zoomAtlasViewport: zoomAtlasViewport,
+    atlasViewportRect: atlasViewportRect,
+    atlasPointToMinimap: atlasPointToMinimap,
+    minimapPointToAtlasPoint: minimapPointToAtlasPoint,
+    atlasViewportToMinimapRect: atlasViewportToMinimapRect,
     atlasConfidenceLabel: atlasConfidenceLabel,
     atlasTypeLabel: atlasTypeLabel,
     atlasNodeKind: atlasNodeKind,

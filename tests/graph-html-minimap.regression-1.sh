@@ -43,7 +43,8 @@ test_graph_html_has_minimap_markup() {
     assert_file_contains "$html" 'data-collapsed="0"'
     assert_file_contains "$html" 'id="mini-map-svg"'
     assert_file_contains "$html" "小地图"
-    assert_file_contains "$html" "缩略图"
+    assert_file_contains "$html" "方位图"
+    assert_file_contains "$html" "mini-map-viewport"
 
     rm -rf "$tmp_dir"
 }
@@ -56,8 +57,10 @@ test_graph_html_minimap_runtime_renders_nodes() {
     build_graph_html_fixture "$tmp_dir"
 
     assert_file_contains "$output_dir/graph-wash.js" "function renderMinimap()"
+    assert_file_contains "$output_dir/graph-wash.js" "function setupMinimapNavigation()"
     assert_file_contains "$output_dir/graph-wash.js" 'getElementById("mini-map-svg")'
-    assert_file_contains "$output_dir/graph-wash.js" 'visible.nodes.slice(0, 60)'
+    assert_file_contains "$output_dir/graph-wash.js" 'atlasViewportToMinimapRect'
+    assert_file_contains "$output_dir/graph-wash.js" 'minimapPointToAtlasPoint'
 
     rm -rf "$tmp_dir"
 }

@@ -42,8 +42,14 @@ test_graph_html_has_truncate_label_markup_hooks() {
 
     assert_file_contains "$output_dir/graph-wash.js" "button.title = node.label;"
     assert_file_contains "$output_dir/graph-wash.js" "dataset.densityMode"
+    assert_file_contains "$output_dir/graph-wash.js" "queue-item"
     assert_file_contains "$html" ".node-name {"
+    assert_file_contains "$html" ".queue-item__copy strong"
+    assert_file_contains "$html" ".knowledge-card pre"
+    assert_file_contains "$html" ".drawer-subtitle"
     assert_file_contains "$html" "text-overflow: ellipsis;"
+    assert_file_contains "$html" "overflow-wrap: anywhere;"
+    assert_file_contains "$html" "word-break: break-word;"
 
     # helpers file copied to output
     [ -f "$output_dir/graph-wash-helpers.js" ] || fail "helpers file should be copied to output"

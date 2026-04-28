@@ -60,6 +60,10 @@ test_graph_html_has_toolbar_runtime_hooks() {
     assert_file_contains "$html" '.canvas-actions,'
     assert_file_contains "$tmp_dir/wiki/graph-wash.js" 'getElementById("fit-view")'
     assert_file_contains "$tmp_dir/wiki/graph-wash.js" 'getElementById("toggle-dim")'
+    assert_file_contains "$tmp_dir/wiki/graph-wash.js" "function setupViewportInteractions()"
+    assert_file_contains "$tmp_dir/wiki/graph-wash.js" "function fitVisibleViewport()"
+    assert_file_contains "$tmp_dir/wiki/graph-wash-helpers.js" "function zoomAtlasViewport(viewport, factor, screenPoint, viewportSize, options)"
+    assert_file_contains "$tmp_dir/wiki/graph-wash-helpers.js" "function atlasViewportRect(viewport, viewportSize)"
 
     rm -rf "$tmp_dir"
 }

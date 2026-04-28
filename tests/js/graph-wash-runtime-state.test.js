@@ -6,7 +6,16 @@ const {
   deriveAtlasLayout,
   resolveAtlasVisibleSnapshot,
   resolveAtlasSelectedNodeId,
-  getAtlasDensityMode
+  getAtlasDensityMode,
+  atlasNodePoint,
+  getAtlasModelBounds,
+  fitAtlasViewport,
+  centerAtlasViewportOnPoint,
+  zoomAtlasViewport,
+  atlasViewportRect,
+  atlasPointToMinimap,
+  minimapPointToAtlasPoint,
+  atlasViewportToMinimapRect
 } = require("../../templates/graph-styles/wash/graph-wash-helpers");
 
 describe("resolveVisibleSnapshot", () => {
@@ -190,5 +199,50 @@ describe("atlas state contract", () => {
     assert.equal(getAtlasDensityMode(120), "compact-card");
     assert.equal(getAtlasDensityMode(300), "point-plus-focus");
     assert.equal(getAtlasDensityMode(800), "overview");
+  });
+
+  it("derives one model coordinate space for nodes and bounds", () => {
+    const model = buildAtlasModel(rawGraph);
+    deriveAtlasLayout(model);
+    const point = atlasNodePoint(model.byId.a);
+    const bounds = getAtlasModelBounds(model.nodes, 0);
+
+    assert.equal(point.x, model.byId.a.x * 10);
+    assert.equal(point.y, model.byId.a.y * 6.8);
+    assert.ok(bounds.width > 0);
+    assert.ok(bounds.height > 0);
+    assert.ok(bounds.minX <= point.x && point.x <= bounds.maxX);
+    assert.ok(bounds.minY <= point.y && point.y <= bounds.maxY);
+  });
+
+  it("fits, zooms, and reports the current viewport rectangle", () => {
+    const viewportSize = { width: 1000, height: 680 };
+    const bounds = { minX: 250, minY: 180, maxX: 750, maxY: 500, width: 500, height: 320 };
+    const fitted = fitAtlasViewport(bounds, viewportSize, { padding: 0.8 });
+    const zoomed = zoomAtlasViewport(fitted, 1.5, { x: 500, y: 340 }, viewportSize);
+    const rect = atlasViewportRect(zoomed, viewportSize);
+
+    assert.ok(fitted.scale > 1);
+    assert.ok(zoomed.scale > fitted.scale);
+    assert.ok(rect.width < 1000);
+    assert.ok(rect.height < 680);
+    assert.ok(rect.minX >= 0 && rect.maxX <= 1000);
+    assert.ok(rect.minY >= 0 && rect.maxY <= 680);
+  });
+
+  it("centers viewport on model points and maps minimap clicks back to atlas coordinates", () => {
+    const viewportSize = { width: 800, height: 500 };
+    const point = { x: 250, y: 170 };
+    const centered = centerAtlasViewportOnPoint(point, viewportSize, 1.4);
+    const rect = atlasViewportRect(centered, viewportSize);
+    const miniPoint = atlasPointToMinimap(point);
+    const restored = minimapPointToAtlasPoint(miniPoint);
+    const miniRect = atlasViewportToMinimapRect(centered, viewportSize);
+
+    assert.ok(rect.minX <= point.x && point.x <= rect.maxX);
+    assert.ok(rect.minY <= point.y && point.y <= rect.maxY);
+    assert.deepEqual(restored, point);
+    assert.ok(miniRect.width > 0);
+    assert.ok(miniRect.height > 0);
   });
 });

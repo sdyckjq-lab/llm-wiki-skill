@@ -41,6 +41,8 @@ test_graph_html_has_bounded_neighbor_region() {
 
     assert_file_contains "$html" '.drawer-body {'
     assert_file_contains "$html" 'min-height: 0;'
+    assert_file_contains "$html" 'overflow-x: hidden;'
+    assert_file_contains "$html" '.app[data-reading="1"]'
     assert_file_contains "$html" '.neighbor-section[open] .neighbor-list {'
     assert_file_contains "$html" 'max-height: 168px;'
     assert_file_contains "$html" 'overflow-y: auto;'

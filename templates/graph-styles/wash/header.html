@@ -111,6 +111,10 @@
       padding: 14px 16px 16px 24px;
     }
 
+    .app[data-reading="1"] {
+      grid-template-columns: minmax(226px, 260px) minmax(500px, 1fr) minmax(340px, 430px);
+    }
+
     .topbar {
       grid-column: 1 / -1;
       display: grid;
@@ -502,6 +506,77 @@
       gap: 10px;
     }
 
+    .queue-item {
+      display: grid;
+      grid-template-columns: 4px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      min-width: 0;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(216, 205, 187, .92);
+      background: rgba(255, 253, 247, .72);
+      text-align: left;
+    }
+
+    .queue-item[aria-current="true"] {
+      border-color: rgba(139, 46, 36, .42);
+      background: rgba(255, 253, 247, .94);
+      box-shadow: 0 7px 16px rgba(36, 31, 26, .07);
+    }
+
+    .queue-item__marker {
+      width: 4px;
+      align-self: stretch;
+      border-radius: 99px;
+      background: var(--night);
+    }
+
+    .queue-item[data-kind="note"] .queue-item__marker {
+      background: var(--cinnabar);
+    }
+
+    .queue-item[data-kind="favorite"] .queue-item__marker {
+      background: var(--jade);
+    }
+
+    .queue-item__copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .queue-item__copy strong {
+      min-width: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      color: var(--ink);
+      font-family: var(--font-serif);
+      font-size: 13px;
+      line-height: 1.3;
+    }
+
+    .queue-item__copy span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .queue-item__badge {
+      color: var(--cinnabar);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
     .queue-metrics {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -666,6 +741,12 @@
       z-index: 1;
       min-height: 0;
       overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .atlas.is-panning {
+      cursor: grabbing;
     }
 
     .mist {
@@ -687,6 +768,18 @@
       width: 100%;
       height: 100%;
       overflow: visible;
+    }
+
+    #edge-layer,
+    #node-layer {
+      transform-origin: 0 0;
+    }
+
+    #node-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      will-change: transform;
     }
 
     .edge {
@@ -956,6 +1049,15 @@
       width: 100%;
       height: 54px;
       display: block;
+      cursor: crosshair;
+      touch-action: manipulation;
+    }
+
+    .mini-map .mini-map-viewport {
+      fill: rgba(139, 46, 36, .06);
+      stroke: var(--cinnabar);
+      stroke-width: 1.35;
+      vector-effect: non-scaling-stroke;
     }
 
     .insight strong {
@@ -983,6 +1085,11 @@
       overflow: hidden;
     }
 
+    .drawer,
+    .drawer * {
+      min-width: 0;
+    }
+
     .drawer-header {
       padding: 18px 18px 13px;
       border-bottom: 1px solid rgba(216, 205, 187, .82);
@@ -1002,6 +1109,11 @@
 
     .drawer h2 {
       margin: 9px 0 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
       font-family: var(--font-serif);
       font-size: 25px;
       line-height: 1.16;
@@ -1013,12 +1125,15 @@
       color: var(--muted);
       line-height: 1.55;
       font-size: 13px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .drawer-body {
       min-height: 0;
       padding: 16px 18px;
       overflow-y: auto;
+      overflow-x: hidden;
       display: grid;
       align-content: start;
       gap: 15px;
@@ -1052,6 +1167,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      overflow-wrap: anywhere;
       font-family: var(--font-serif);
       font-size: 14px;
     }
@@ -1076,11 +1192,14 @@
       color: var(--ink);
       line-height: 1.68;
       font-size: 13px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .knowledge-card {
       display: grid;
       gap: 10px;
+      min-width: 0;
       padding: 13px 14px;
       border-radius: 10px;
       border: 1px solid rgba(216, 205, 187, .88);
@@ -1088,10 +1207,67 @@
       color: var(--ink);
       line-height: 1.72;
       font-size: 13px;
+      overflow-x: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .knowledge-card p {
       margin: 0;
+    }
+
+    .knowledge-card h1,
+    .knowledge-card h2,
+    .knowledge-card h3,
+    .knowledge-card h4,
+    .knowledge-card h5,
+    .knowledge-card h6 {
+      margin: 4px 0 0;
+      overflow-wrap: anywhere;
+      font-family: var(--font-serif);
+      line-height: 1.35;
+    }
+
+    .knowledge-card ul,
+    .knowledge-card ol {
+      margin: 0;
+      padding-left: 1.35em;
+    }
+
+    .knowledge-card pre {
+      max-width: 100%;
+      margin: 0;
+      padding: 10px 11px;
+      overflow-x: auto;
+      border-radius: 9px;
+      background: rgba(36, 31, 26, .06);
+      white-space: pre;
+    }
+
+    .knowledge-card code {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-family: var(--font-mono);
+      font-size: .94em;
+    }
+
+    .knowledge-card pre code {
+      overflow-wrap: normal;
+      word-break: normal;
+      white-space: pre;
+    }
+
+    .knowledge-card img,
+    .knowledge-card video {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .knowledge-card table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+      border-collapse: collapse;
     }
 
     .neighbor-section {
@@ -1344,6 +1520,10 @@
         padding: 12px;
       }
 
+      .app[data-reading="1"] {
+        grid-template-columns: 230px minmax(430px, 1fr) minmax(318px, 360px);
+      }
+
       .status-strip .status-pill:nth-child(3) {
         display: none;
       }
@@ -1539,9 +1719,7 @@
             <div class="metric"><span>已批注</span><b>17</b></div>
           </div>
           <div class="queue-list">
-            <span class="chip">上下文工程</span>
-            <span class="chip">知识编译</span>
-            <span class="chip">来源置信度</span>
+            <div class="note-card">选中节点后可加入学习队列。</div>
           </div>
         </div>
       </section>
@@ -1612,14 +1790,14 @@
           </div>
         </div>
         <div class="mini-map" id="minimap" data-collapsed="0">
-          <div class="footer-label"><span>小地图</span><span>缩略图</span></div>
+          <div class="footer-label"><span>小地图</span><span>方位图</span></div>
           <svg id="mini-map-svg" viewBox="0 0 160 54" aria-hidden="true">
             <path d="M8 40 C34 20 54 36 76 22 C98 8 118 24 150 12" fill="none" stroke="#cfc4b1" stroke-width="1.4"></path>
             <circle cx="28" cy="34" r="3" fill="#315f72"></circle>
             <circle cx="58" cy="27" r="3" fill="#8b2e24"></circle>
             <circle cx="90" cy="21" r="3" fill="#4b7564"></circle>
             <circle cx="124" cy="18" r="3" fill="#b7791f"></circle>
-            <rect x="22" y="12" width="76" height="32" rx="5" fill="none" stroke="#8b2e24" stroke-width="1.2"></rect>
+            <rect class="mini-map-viewport" x="22" y="12" width="76" height="32" rx="5"></rect>
           </svg>
         </div>
         <div class="insight">
