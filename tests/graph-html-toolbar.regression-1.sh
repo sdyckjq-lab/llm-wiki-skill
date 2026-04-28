@@ -65,6 +65,16 @@ test_graph_html_has_toolbar_runtime_hooks() {
     assert_file_contains "$tmp_dir/wiki/graph-wash-helpers.js" "function zoomAtlasViewport(viewport, factor, screenPoint, viewportSize, options)"
     assert_file_contains "$tmp_dir/wiki/graph-wash-helpers.js" "function atlasViewportRect(viewport, viewportSize)"
 
+    node - <<'NODE' "$tmp_dir/wiki/graph-wash.js" || exit 1
+const fs = require('fs');
+const source = fs.readFileSync(process.argv[2], 'utf8');
+const readingIndex = source.indexOf('if (app) app.dataset.reading = state.ui.selectedNodeId ? "1" : "0";');
+const fitIndex = source.indexOf('if (opts.fitViewport || !state.viewportReady) fitVisibleViewport();');
+if (readingIndex === -1) throw new Error('reading state sync is missing');
+if (fitIndex === -1) throw new Error('viewport fit call is missing');
+if (readingIndex > fitIndex) throw new Error('reading layout must settle before viewport fit');
+NODE
+
     rm -rf "$tmp_dir"
 }
 

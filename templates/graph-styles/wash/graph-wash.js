@@ -649,6 +649,7 @@
   function renderAtlasView(options) {
     const opts = options && typeof options === "object" ? options : {};
     refreshVisibleSnapshot();
+    if (app) app.dataset.reading = state.ui.selectedNodeId ? "1" : "0";
     if (opts.fitViewport || !state.viewportReady) fitVisibleViewport();
     renderTopbar();
     renderSidebar();
