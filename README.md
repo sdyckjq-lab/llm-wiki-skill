@@ -261,3 +261,9 @@ Windows 上 Python 通常安装为 `python.exe` 而非 `python3.exe`（Microsoft
 ## License
 
 MIT
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=sdyckjq-lab/llm-wiki-skill&type=date)](https://www.star-history.com/?repos=sdyckjq-lab%2Fllm-wiki-skill&type=date)
