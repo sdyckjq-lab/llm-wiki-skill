@@ -189,7 +189,7 @@ describe("atlas state contract", () => {
     assert.equal(snapshot.labelNodeIds.a, true);
   });
 
-  it("moves selection into the current visible atlas range", () => {
+  it("preserves only explicit selections inside the current visible atlas range", () => {
     const model = buildAtlasModel(rawGraph);
     const layout = deriveAtlasLayout(model);
     const methodSnapshot = resolveAtlasVisibleSnapshot(model, layout, {
@@ -207,9 +207,24 @@ describe("atlas state contract", () => {
       filters: { EXTRACTED: true, INFERRED: true, AMBIGUOUS: true, UNVERIFIED: true }
     });
 
-    assert.equal(resolveAtlasSelectedNodeId(model, methodSnapshot, "a"), "c");
+    assert.equal(resolveAtlasSelectedNodeId(model, methodSnapshot, "a"), null);
     assert.equal(resolveAtlasSelectedNodeId(model, methodSnapshot, "c"), "c");
     assert.equal(resolveAtlasSelectedNodeId(model, emptySnapshot, "c"), null);
+  });
+
+  it("does not auto-select a recommended start on first open", () => {
+    const model = buildAtlasModel(rawGraph);
+    const layout = deriveAtlasLayout(model);
+    const snapshot = resolveAtlasVisibleSnapshot(model, layout, {
+      activeCommunityId: "all",
+      focusMode: "all",
+      query: "",
+      selectedNodeId: null,
+      filters: { EXTRACTED: true, INFERRED: true, AMBIGUOUS: true, UNVERIFIED: true }
+    });
+
+    assert.equal(snapshot.starts[0].node.id, "a");
+    assert.equal(resolveAtlasSelectedNodeId(model, snapshot, null), null);
   });
 
   it("selects density mode by visible node budget", () => {

@@ -1267,10 +1267,7 @@
     if (selected && safeModel.byId && safeModel.byId[selected] && (!visible || visibleIds[selected])) {
       return selected;
     }
-    if (visible) {
-      return visible.nodes && visible.nodes[0] ? visible.nodes[0].id : null;
-    }
-    return safeModel.nodes && safeModel.nodes[0] ? safeModel.nodes[0].id : null;
+    return null;
   }
 
   var helpers = {

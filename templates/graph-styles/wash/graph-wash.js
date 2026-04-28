@@ -173,6 +173,20 @@
     return selectedNodeId ? state.atlasModel.byId[selectedNodeId] || null : null;
   }
 
+  function getPreviewStartEntry(visibleSnapshot) {
+    if (state.ui.selectedNodeId) return null;
+    const visible = visibleSnapshot || state.visible || refreshVisibleSnapshot();
+    const visibleIds = new Set((visible.node_ids || []).map(String));
+    const starts = visible.starts && visible.starts.length
+      ? visible.starts
+      : state.atlasModel.starts.filter((entry) => entry && entry.node && visibleIds.has(entry.node.id));
+    if (starts.length) return starts[0];
+    const fallback = (visible.nodes || []).slice().filter((node) => {
+      return node && (node.summary || node.content || node.source_path);
+    }).sort((left, right) => (right.priority || 0) - (left.priority || 0))[0];
+    return fallback ? { node: fallback, reason: "当前范围 · 推荐预览" } : null;
+  }
+
   function refreshVisibleSnapshot() {
     state.visible = resolveAtlasVisibleSnapshot(state.atlasModel, state.atlasLayout, state.ui);
     state.ui.selectedNodeId = resolveAtlasSelectedNodeId(state.atlasModel, state.visible, state.ui.selectedNodeId);
@@ -286,20 +300,22 @@
     return !!(node && state.visible && state.visible.importantNodeIds && state.visible.importantNodeIds[node.id]);
   }
 
-  function nodeVisualRole(node, displayMode) {
+  function nodeVisualRole(node, displayMode, previewNodeId) {
     if (!node) return "landmark";
     if (node.id === state.ui.selectedNodeId) return "cinnabar-note";
     if (displayMode === "point" || displayMode === "overview") return "map-pin";
     if (state.visible && state.visible.matchedNodeIds[node.id]) return "index-slip";
+    if (previewNodeId && node.id === previewNodeId) return "index-slip";
     if (isNodeImportant(node)) return "index-slip";
     return "landmark";
   }
 
-  function nodeDisplayMode(node) {
+  function nodeDisplayMode(node, previewNodeId) {
     const mode = currentDensityMode();
     if (!node) return "card";
     if (node.id === state.ui.selectedNodeId) return "card";
     if (state.visible && state.visible.matchedNodeIds[node.id]) return "card";
+    if (previewNodeId && node.id === previewNodeId && (mode === "overview" || mode === "point-plus-focus")) return "compact-card";
     if (isNodeImportant(node) && (mode === "overview" || mode === "point-plus-focus")) return "compact-card";
     if (mode === "overview") return state.visible.labelNodeIds[node.id] ? "compact-card" : "overview";
     if (mode === "point-plus-focus") return state.visible.labelNodeIds[node.id] ? "compact-card" : "point";
@@ -346,12 +362,15 @@
     });
 
     startList.innerHTML = "";
+    const previewEntry = getPreviewStartEntry(visible);
+    const previewNodeId = previewEntry && previewEntry.node ? previewEntry.node.id : null;
     const starts = visible.starts.length ? visible.starts : state.atlasModel.starts;
     starts.slice(0, 4).forEach((entry) => {
       const node = entry.node;
       const button = document.createElement("button");
       button.className = "start-card";
       button.type = "button";
+      button.dataset.previewStart = node.id === previewNodeId ? "true" : "false";
       button.innerHTML = `<span class="card-copy"><strong>${escapeHtml(node.label)}</strong><span>${escapeHtml(entry.reason || atlasTypeLabel(node.type))}</span></span>`;
       button.addEventListener("click", () => focusNode(node.id, true));
       startList.appendChild(button);
@@ -419,9 +438,11 @@
     });
 
     nodeLayer.innerHTML = "";
+    const previewEntry = getPreviewStartEntry(visible);
+    const previewNodeId = previewEntry && previewEntry.node ? previewEntry.node.id : null;
     visible.nodes.forEach((node) => {
-      const displayMode = nodeDisplayMode(node);
-      const visualRole = nodeVisualRole(node, displayMode);
+      const displayMode = nodeDisplayMode(node, previewNodeId);
+      const visualRole = nodeVisualRole(node, displayMode, previewNodeId);
       const button = document.createElement("button");
       button.className = "node";
       if (node.unavailable) button.classList.add("is-disabled");
@@ -431,6 +452,7 @@
       if (visualRole === "index-slip") button.classList.add("is-index-slip");
       if (visualRole === "cinnabar-note") button.classList.add("is-cinnabar-note");
       if (visualRole === "map-pin") button.classList.add("is-map-pin");
+      if (node.id === previewNodeId) button.classList.add("is-preview-start");
       if (state.visible && !state.visible.labelNodeIds[node.id]) button.classList.add("is-label-hidden");
       button.type = "button";
       button.dataset.id = node.id;
@@ -439,6 +461,7 @@
       button.dataset.densityMode = displayMode;
       button.dataset.visualRole = visualRole;
       button.dataset.startNode = state.visible && state.visible.startNodeIds[node.id] ? "true" : "false";
+      button.dataset.previewStart = node.id === previewNodeId ? "true" : "false";
       button.style.left = `${node.x}%`;
       button.style.top = `${node.y}%`;
       button.title = node.label;
@@ -459,11 +482,76 @@
     applyViewportTransform();
   }
 
+  function setDrawerActions(mode, node) {
+    const queueAction = document.getElementById("queue-action");
+    const sourceAction = document.getElementById("source-action");
+    if (queueAction) {
+      queueAction.textContent = mode === "preview" ? "从这里开始" : "加入学习队列";
+      queueAction.disabled = mode === "empty";
+    }
+    if (sourceAction) {
+      sourceAction.textContent = "查看来源";
+      sourceAction.disabled = !(node && node.source_path);
+    }
+  }
+
+  function renderStartPreview(entry) {
+    const node = entry && entry.node;
+    if (!node) return false;
+    const neighbors = getNeighbors(node.id);
+    const community = state.atlasModel.communityById[node.community];
+    const communityLabel = community ? community.label : "未分组";
+    const excerpt = stripAtlasMarkdown(node.content || node.summary || "").slice(0, 220);
+
+    document.getElementById("drawer-kind").innerHTML = `<span class="spark"></span>从这里开始 · 预览`;
+    document.getElementById("drawer-title").textContent = node.label;
+    document.getElementById("drawer-subtitle").textContent = `${entry.reason || atlasTypeLabel(node.type)} · ${communityLabel} · 点击后进入阅读态`;
+    document.getElementById("drawer-summary").textContent = node.summary || excerpt || "这个节点适合作为当前图谱的起点。";
+    document.getElementById("drawer-neighbor-count").textContent = `${neighbors.length} 个`;
+
+    const content = document.getElementById("drawer-content");
+    if (content) {
+      content.innerHTML = `
+        <p>这是一条推荐起点预览。全局图仍保持中立，点击“从这里开始”或左侧推荐起点后，才会进入选中阅读态。</p>
+        <p>${escapeHtml(excerpt || node.summary || "当前节点暂无正文，但可以从相邻节点继续展开。")}</p>
+      `;
+    }
+
+    if (neighborList) {
+      neighborList.innerHTML = "";
+      if (!neighbors.length) {
+        const empty = document.createElement("div");
+        empty.className = "note-card";
+        empty.textContent = "这个起点暂时没有相邻节点。";
+        neighborList.appendChild(empty);
+      }
+      neighbors.slice(0, 4).forEach((entryItem) => {
+        const neighbor = entryItem.node;
+        const button = document.createElement("button");
+        button.className = "neighbor-card";
+        button.type = "button";
+        button.innerHTML = `<span class="card-copy"><strong>${escapeHtml(neighbor.label)}</strong><span>${atlasTypeLabel(neighbor.type)} · ${atlasConfidenceLabel(entryItem.edge.type)}</span></span>`;
+        button.addEventListener("click", () => focusNode(neighbor.id, true));
+        neighborList.appendChild(button);
+      });
+    }
+
+    setDrawerActions("preview", node);
+    return true;
+  }
+
   function renderDrawer() {
     const selected = getSelectedNode();
     if (!drawer) return;
-    if (app) app.dataset.reading = selected ? "1" : "0";
+    const previewEntry = getPreviewStartEntry();
+    if (app) {
+      app.dataset.reading = selected ? "1" : "0";
+      app.dataset.startPreview = !selected && previewEntry ? "1" : "0";
+    }
+    drawer.dataset.state = selected ? "reading" : (previewEntry ? "start-preview" : "empty");
+    if (!selected && previewEntry && renderStartPreview(previewEntry)) return;
     if (!selected) {
+      setDrawerActions("empty", null);
       document.getElementById("drawer-kind").innerHTML = `<span class="spark"></span>当前范围`;
       document.getElementById("drawer-title").textContent = "没有匹配节点";
       document.getElementById("drawer-subtitle").textContent = "调整搜索或筛选后查看知识内容";
@@ -481,6 +569,7 @@
       return;
     }
     state.ui.selectedNodeId = selected.id;
+    setDrawerActions("reading", selected);
 
     const neighbors = getNeighbors(selected.id);
     const community = state.atlasModel.communityById[selected.community];
@@ -712,7 +801,11 @@
 
   function handleQueueAction() {
     const node = getSelectedNode();
-    if (!node) return;
+    if (!node) {
+      const previewEntry = getPreviewStartEntry();
+      if (previewEntry && previewEntry.node) focusNode(previewEntry.node.id, true);
+      return;
+    }
     state.queue = toggleQueueFavorite(state.queue, node.id);
     state.queue = appendQueueNote(state.queue, {
       id: `${node.id}:${Date.now()}`,
@@ -840,6 +933,7 @@
         state.ui.activeCommunityId = "all";
         state.ui.focusMode = "all";
         state.ui.query = "";
+        state.ui.selectedNodeId = null;
         state.ui.dataMode = "normal";
         if (searchInput) searchInput.value = "";
         document.querySelectorAll("[data-focus]").forEach((item) => {
@@ -858,7 +952,8 @@
     const sourceAction = document.getElementById("source-action");
     if (sourceAction) {
       sourceAction.addEventListener("click", () => {
-        const node = getSelectedNode();
+        const previewEntry = getPreviewStartEntry();
+        const node = getSelectedNode() || (previewEntry && previewEntry.node);
         if (node && node.source_path) window.location.href = node.source_path;
       });
     }

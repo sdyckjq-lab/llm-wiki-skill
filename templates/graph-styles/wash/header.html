@@ -420,6 +420,12 @@
       text-align: left;
     }
 
+    .start-card[data-preview-start="true"] {
+      border-color: rgba(139, 46, 36, .42);
+      background: rgba(248, 241, 228, .78);
+      box-shadow: inset 3px 0 0 rgba(139, 46, 36, .56);
+    }
+
     .nav-item {
       display: grid;
       grid-template-columns: 10px 1fr auto;
@@ -1518,6 +1524,11 @@
       box-shadow: 0 14px 26px rgba(139, 46, 36, .11), inset 0 0 0 1px rgba(255, 253, 247, .82);
     }
 
+    .node.is-preview-start {
+      border-color: rgba(139, 46, 36, .48);
+      box-shadow: 0 14px 26px rgba(139, 46, 36, .12), 0 0 0 3px rgba(139, 46, 36, .07);
+    }
+
     .node.is-compact[data-visual-role="index-slip"] {
       min-height: 34px;
       max-width: 138px;
@@ -1602,6 +1613,22 @@
     .knowledge-card a.wikilink--dead {
       color: var(--muted);
       text-decoration-style: dotted;
+    }
+
+    .drawer[data-state="start-preview"] .summary-card {
+      border-left-color: var(--night);
+      background: rgba(248, 241, 228, .72);
+    }
+
+    .drawer[data-state="start-preview"] .knowledge-card {
+      border-style: dashed;
+      background: rgba(255, 253, 247, .62);
+    }
+
+    .drawer[data-state="start-preview"] #queue-action {
+      background: var(--cinnabar);
+      color: var(--surface);
+      border-color: var(--cinnabar);
     }
 
     @keyframes drift {
