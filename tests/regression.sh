@@ -1711,6 +1711,7 @@ bash "$REPO_ROOT/tests/graph-html-styles.regression-1.sh" || fail "graph-html-st
 bash "$REPO_ROOT/tests/graph-html-search.regression-1.sh" || fail "graph-html-search.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-mobile.regression-1.sh" || fail "graph-html-mobile.regression-1.sh 测试失败"
 bash "$REPO_ROOT/tests/graph-html-oriental-atlas-contract.regression-1.sh" || fail "graph-html-oriental-atlas-contract.regression-1.sh 测试失败"
+bash "$REPO_ROOT/tests/graph-html-oriental-design-contract.regression-1.sh" || fail "graph-html-oriental-design-contract.regression-1.sh 测试失败"
 test_graph_data_dead_links_are_ignored
 test_graph_data_self_links_are_ignored
 test_graph_data_exits_without_jq

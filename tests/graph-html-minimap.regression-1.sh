@@ -61,6 +61,7 @@ test_graph_html_minimap_runtime_renders_nodes() {
     assert_file_contains "$output_dir/graph-wash.js" 'getElementById("mini-map-svg")'
     assert_file_contains "$output_dir/graph-wash.js" 'atlasViewportToMinimapRect'
     assert_file_contains "$output_dir/graph-wash.js" 'minimapPointToAtlasPoint'
+    assert_file_contains "$output_dir/graph-wash.js" 'circle.classList.add("is-selected")'
 
     rm -rf "$tmp_dir"
 }
