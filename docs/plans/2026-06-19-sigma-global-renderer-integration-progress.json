@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-7",
-    "task": "7.2",
+    "task": "7.3",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 7, Task 7.2: update Sigma integration result docs and release notes as required."
+    "next_allowed_action": "Advance to Phase 7, Task 7.3: rerun final acceptance, produce final production artifact, and close progress."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -159,6 +159,13 @@
       "decision": "Rename the ambiguous DOM/SVG global fallback boundary to dom-svg-small-fallback and keep it reachable only after Sigma is unavailable for graphs below the large-graph safety threshold.",
       "reason": "Task 7.1 requires removing old DOM/SVG global main-path branching while preserving small-graph emergency fallback, community reading, and large-graph aggregation safety fallback. The explicit route/factory names and targeted tests prevent the fallback from being mistaken for a second global main renderer.",
       "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/test/facade.test.ts"
+    },
+    {
+      "id": "D20",
+      "status": "recorded",
+      "decision": "Record the Sigma production integration result in a new docs/graph/performance result document and update user-facing release wording from future-route language to current-route language.",
+      "reason": "Task 7.2 requires result documentation to match the implemented route and progress state, including Phase 0 evidence, final route, fallback boundary, artifact paths, residual risk, and no misstatement of vis-network or aggregation as current main routes.",
+      "source": "docs/graph/performance/2026-06-19-sigma-global-production-integration-result.md; README.md; CHANGELOG.md"
     }
   ],
   "phases": [
@@ -638,9 +645,12 @@
         "Task 7.1 complete: targeted route tests prove normal global route creates Sigma without DOM/SVG small fallback or aggregation fallback.",
         "Task 7.1 complete: DOM/SVG route is explicitly named dom-svg-community for community reading and dom-svg-small-fallback only for small Sigma-unavailable graphs.",
         "Task 7.1 complete: known-large Sigma failures route to aggregation-safety-fallback and do not create DOM/SVG small fallback.",
-        "Task 7.1 complete: static check found no global-fallback/createGlobalFallback or renderer comparison/rollback switch names in graph-engine src/test."
+        "Task 7.1 complete: static check found no global-fallback/createGlobalFallback or renderer comparison/rollback switch names in graph-engine src/test.",
+        "Task 7.2 complete: Sigma production integration result doc added under docs/graph/performance with Phase 0 result, final route, fallback boundary, residual risk, and artifact paths.",
+        "Task 7.2 complete: README and CHANGELOG updated from future Sigma route wording to current production Sigma global route wording.",
+        "Task 7.2 complete: result doc manually checked so vis-network remains historical rejected comparison evidence and aggregation remains safety fallback, not a second global main product."
       ],
-      "residual_risk": "Phase 7 is not closed yet: result docs and final acceptance still remain in Tasks 7.2 and 7.3.",
+      "residual_risk": "Phase 7 is not closed yet: final acceptance rerun and final production artifact remain for Task 7.3.",
       "tasks": [
         {
           "id": "7.1",
@@ -659,10 +669,17 @@
         {
           "id": "7.2",
           "title": "Update result docs and release notes",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "Baseline before implementation: git log --oneline -15 inspected; npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail).",
+            "Added docs/graph/performance/2026-06-19-sigma-global-production-integration-result.md with Phase 0 gate, final route, fallback boundary, residual risk, and production artifact evidence.",
+            "Updated README.md and CHANGELOG.md to reflect current Sigma/Graphology global route instead of future-route wording.",
+            "rg -n \"TB[D]|TO[D]O|待[定]|占[位]|FIXM[E]\" docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md docs/plans/2026-06-19-sigma-global-renderer-integration-progress.json => no output.",
+            "Manual doc check: the new result document says vis-network is a rejected historical comparison route and aggregation is a safety fallback, not a second global main product.",
+            "git diff --check => exit 0."
+          ],
+          "evidence": "New result doc: docs/graph/performance/2026-06-19-sigma-global-production-integration-result.md. It records production artifact /tmp/llm-wiki-sigma-global-production-task-6-2/sigma-global-production-results.json with 110 records, 11 shapes, production_path=true, 0 failed records, required schema/threshold/browser/build/loading-state fields present, wheel min fps 60.2, drag min fps 60.3, wheel/drag frame p95 max 17.6ms, repeated-cycle memory max 6.4MB. README and CHANGELOG now describe Sigma/Graphology as the current global route and DOM/SVG as community/detail/small abnormal fallback.",
+          "residual_risk": "The document uses the Phase 6.2 production artifact as current evidence. Task 7.3 must still rerun the complete final acceptance command list and record the final production-path artifact."
         },
         {
           "id": "7.3",
@@ -859,6 +876,14 @@
       "action": "Removed the ambiguous old DOM/SVG global fallback route name, replaced it with an explicit small-graph Sigma-unavailable fallback boundary, and added targeted route assertions for normal Sigma, DOM/SVG community, small fallback, aggregation safety fallback, and absence of renderer comparison switches.",
       "result": "phase-7 task 7.1 complete; graph-engine test/typecheck pass; advancing to task 7.2.",
       "at": "2026-06-19T23:25:00+08:00"
+    },
+    {
+      "turn": 24,
+      "task": "7.2",
+      "phase": "phase-7",
+      "action": "Added the Sigma production integration result document and updated README/CHANGELOG wording to reflect Sigma as the current global route while keeping DOM/SVG and aggregation documented only as bounded fallback/community/detail paths.",
+      "result": "phase-7 task 7.2 complete; documentation checks pass; advancing to task 7.3.",
+      "at": "2026-06-19T23:45:00+08:00"
     }
   ],
   "final": {
