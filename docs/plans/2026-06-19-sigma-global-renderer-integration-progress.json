@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-4",
-    "task": "4.4",
+    "phase": "phase-5",
+    "task": "5.1",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 4, Task 4.4: keep the workbench GraphPanel boundary stable without adding a user-visible renderer switch."
+    "next_allowed_action": "Advance to Phase 5, Task 5.1: preserve node, community, search, filter, and pin semantics through automated interaction tests."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -138,6 +138,13 @@
       "decision": "Use layered Sigma failure fallback: small graphs fall back to DOM/SVG, while graphs above 2000 nodes, 4000 edges, or 500 nodes in any community go to the aggregation safety view; retry is explicit and known-failed global returns do not repeatedly recreate Sigma.",
       "reason": "Task 4.3 requires WebGL/Sigma/runtime failures to remain usable without sending known-large graphs back to the old DOM/SVG global path, and requires repeated retry behavior to be controlled by the route layer rather than exposed as a user-visible renderer switch.",
       "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/test/facade.test.ts; packages/graph-engine/test/aggregation-fallback-trial-adapter.test.ts"
+    },
+    {
+      "id": "D17",
+      "status": "recorded",
+      "decision": "Keep renderer route details inside graph-engine/facade; workbench GraphPanel continues to use createGraphEngine, persisted pins, selection/open-page callbacks, and visibility callbacks without a user-visible renderer selector.",
+      "reason": "Task 4.4 requires workbench's public graph boundary to stay stable while the global route changes underneath the graph-engine facade.",
+      "source": "workbench/web/src/components/GraphPanel.tsx; npm run test --workspace=@llm-wiki-agent/web; npm run typecheck --workspace=@llm-wiki-agent/web"
     }
   ],
   "phases": [
@@ -382,7 +389,7 @@
       "id": "phase-4",
       "title": "Global/community routing and fallback",
       "goal": "Route global views to Sigma, community reading to DOM/SVG, and failures to tested fallback paths.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Global route uses Sigma in normal operation",
         "Community reading route uses DOM/SVG",
@@ -392,8 +399,14 @@
         "Fallback tests cover WebGL unavailable, Sigma initialization failure, canvas/runtime abnormal failure, retry, and known-failed no-retry behavior",
         "Workbench GraphPanel public boundary remains stable"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 4.1 through 4.4 complete with evidence.",
+        "Global route uses Sigma in normal operation; community reading route uses DOM/SVG; Sigma -> community DOM/SVG -> return-global preserves selection/search/filter/pins in facade tests.",
+        "Small Sigma failures route to DOM/SVG global fallback; large failures route to aggregation safety fallback when nodes > 2000, edges > 4000, or max community size > 500.",
+        "Fallback tests cover WebGL unavailable, Sigma initialization failure, canvas/runtime abnormal failure, retry, and known-failed no-retry behavior.",
+        "Workbench GraphPanel boundary is stable: web tests and typecheck pass; static renderer-detail check in GraphPanel has no output."
+      ],
+      "residual_risk": "Phase 4 proves routing and workbench boundary behavior with unit/static/web checks. Browser interaction and production performance hard gates remain for Phases 5, 6, and 7.",
       "tasks": [
         {
           "id": "4.1",
@@ -434,10 +447,14 @@
         {
           "id": "4.4",
           "title": "Keep the workbench GraphPanel boundary stable",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "npm run test --workspace=@llm-wiki-agent/web => exit 0 (42 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki-agent/web => exit 0.",
+            "rg -n \"Sigma|sigma|graphology|rendererRoute|renderer route\" workbench/web/src/components/GraphPanel.tsx => no output."
+          ],
+          "evidence": "GraphPanel continues to create the graph through createGraphEngine with graph-engine workbench capabilities, persisted pins, selection callbacks, open-page callbacks, visibility notifications, graph data refresh, focus path, and diff animation handling. No Sigma/Graphology/renderer route detail or user-visible renderer switch is present in GraphPanel.",
+          "residual_risk": "No workbench production browser run in Task 4.4 scope; Phase 5 and Phase 6 include browser interaction and release regressions."
         }
       ]
     },
@@ -688,6 +705,14 @@
       "action": "Implemented layered Sigma failure fallback with small-graph DOM/SVG fallback, large-graph aggregation safety view thresholds, explicit retry, and known-failed no-retry behavior.",
       "result": "phase-4 task 4.3 complete; fallback, lifecycle, build, and full graph-engine tests pass; advancing to task 4.4.",
       "at": "2026-06-19T21:49:00+08:00"
+    },
+    {
+      "turn": 15,
+      "task": "4.4",
+      "phase": "phase-4",
+      "action": "Verified the workbench GraphPanel public boundary stayed on createGraphEngine, persisted pins, selection/open-page callbacks, and visibility callbacks without renderer route leakage.",
+      "result": "phase-4 task 4.4 complete and phase-4 acceptance met; web tests, web typecheck, GraphPanel static check, and graph-engine baseline pass; advancing to phase 5 task 5.1.",
+      "at": "2026-06-19T21:50:00+08:00"
     }
   ],
   "final": {
