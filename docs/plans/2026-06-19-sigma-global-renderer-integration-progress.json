@@ -1,0 +1,377 @@
+{
+  "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
+  "created_at": "2026-06-19",
+  "status": {
+    "phase": "phase-0",
+    "task": "0.1",
+    "state": "pending",
+    "next_allowed_action": "Create or switch to the implementation branch, run the baseline smoke check, record evidence, and make the clean-start commit for task 0.1"
+  },
+  "execution_rules": {
+    "branch": "codex/sigma-global-renderer-integration",
+    "smoke_check": "npm run test --workspace=@llm-wiki/graph-engine",
+    "commit_each_verified_task": true,
+    "progress_update_in_same_commit": true,
+    "no_commit_on_failed_verification": true,
+    "never_push_merge_or_amend": true,
+    "advance_after_verified_phase": true,
+    "no_user_confirmation_between_phases": true,
+    "only_flip_status_fields": true,
+    "ignore_untracked_superpowers_directory": true
+  },
+  "decision_log": [
+    {
+      "id": "D0",
+      "status": "recorded",
+      "decision": "Use a phased L-level ledger for Sigma/Graphology global renderer integration.",
+      "reason": "The work spans harness hardening, graph-engine renderer boundaries, production Sigma integration, route switching, workbench verification, browser performance regression, and cleanup.",
+      "source": "docs/spark/2026-06-19-sigma-global-graph-renderer-design.md"
+    },
+    {
+      "id": "D1",
+      "status": "recorded",
+      "decision": "Treat Phase 0 as a start gate, not a new technology selection phase.",
+      "reason": "The design names Sigma/Graphology as the preferred formal global renderer route, while requiring final evidence before production integration starts.",
+      "source": "docs/spark/2026-06-19-sigma-global-graph-renderer-design.md"
+    }
+  ],
+  "phases": [
+    {
+      "id": "phase-0",
+      "title": "Execution start and baseline",
+      "goal": "Start from a dedicated implementation branch and record a reproducible baseline.",
+      "status": "pending",
+      "acceptance": [
+        "git branch --show-current outputs codex/sigma-global-renderer-integration",
+        "npm run test --workspace=@llm-wiki/graph-engine exits 0",
+        "git log --oneline -15 includes a clean-start commit with [task 0.1]"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "0.1",
+          "title": "Create implementation branch and clean-start baseline",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-1",
+      "title": "Phase 0 start gate and harness hardening",
+      "goal": "Prove the Sigma route is safe to start by hardening the trial harness and running the required 11-shape gate.",
+      "status": "pending",
+      "acceptance": [
+        "Task 1.1 through 1.3 are complete",
+        "Full Sigma trial exits 0 for all 11 shapes",
+        "No trial record has pass=false or a non-empty failure_class",
+        "5000 and 10000 repeated cycle memory records exist",
+        "wheel/drag fps records are >= 45"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "1.1",
+          "title": "Raise trial validation standards and artifact schema",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "1.2",
+          "title": "Make Sigma trial use adapter-controlled render data",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "1.3",
+          "title": "Add representative drawer/overlay load and large memory cycles",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "title": "Renderer boundary decoupling",
+      "goal": "Constrain DOM/SVG assumptions behind renderer boundaries so Sigma can be integrated without duplicating semantics.",
+      "status": "pending",
+      "acceptance": [
+        "Controller no longer directly depends on per-node DOM focus/classList operations unless a retained case is documented and tested",
+        "renderer root, pipeline, and controls boundaries are explicit",
+        "basic keyboard and focus tests pass",
+        "graph-engine test and typecheck pass"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "2.1",
+          "title": "Define renderer-neutral surface and command boundary",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "2.2",
+          "title": "Separate root, pipeline, and controls DOM/SVG boundaries",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "2.3",
+          "title": "Preserve basic keyboard and focus semantics",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "title": "Production Sigma global renderer",
+      "goal": "Build a production Sigma global renderer that uses graph-engine adapter output and owns no product semantics.",
+      "status": "pending",
+      "acceptance": [
+        "Sigma production module typechecks and builds",
+        "Sigma renderer uses adapter-controlled render data",
+        "Sigma hit projection and lifecycle tests pass",
+        "Sigma module contains no drawer-summary or community-entry business decisions"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "3.1",
+          "title": "Establish Sigma production module and dependency boundary",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "3.2",
+          "title": "Build Graphology graph from adapter output",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "3.3",
+          "title": "Implement Sigma hit projection and community-region hit testing",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "3.4",
+          "title": "Complete Sigma lifecycle and error reporting",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "title": "Global/community routing and fallback",
+      "goal": "Route global views to Sigma, community reading to DOM/SVG, and failures to tested fallback paths.",
+      "status": "pending",
+      "acceptance": [
+        "Global route uses Sigma in normal operation",
+        "Community reading route uses DOM/SVG",
+        "Small Sigma failure falls back to DOM/SVG",
+        "Large Sigma failure falls back to aggregation safety view",
+        "Workbench GraphPanel public boundary remains stable"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "4.1",
+          "title": "Implement renderer route manager",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "4.2",
+          "title": "Synchronize selection, search, filters, pins, and temporary objects across routes",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "4.3",
+          "title": "Implement layered failure fallback",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "4.4",
+          "title": "Keep the workbench GraphPanel boundary stable",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-5",
+      "title": "Interaction semantics and UX regression",
+      "goal": "Prove Sigma global interactions preserve the product rules for node, community, search, filter, pin, reader, and fallback flows.",
+      "status": "pending",
+      "acceptance": [
+        "Node, community, search, filter, pin, community entry, and return-global semantics pass automated tests",
+        "Workbench and offline browser regressions pass",
+        "Basic keyboard and focus checks pass",
+        "Fallback prompt is tested as a non-blocking hint"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "5.1",
+          "title": "Preserve node, community, search, filter, and pin semantics",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "5.2",
+          "title": "Preserve community reading, open-detail, and return-global flows",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "5.3",
+          "title": "Preserve basic keyboard, focus, and accessibility state",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "5.4",
+          "title": "Verify visual states and fallback hint behavior",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-6",
+      "title": "Performance and release regression",
+      "goal": "Prove the integrated production path meets the 11-shape behavior and performance requirements.",
+      "status": "pending",
+      "acceptance": [
+        "Production path large-graph browser regression exists",
+        "All 11 shapes record required actions",
+        "No failed records exist",
+        "wheel/drag fps records are >= 45",
+        "graph-engine and web test/typecheck/build commands pass",
+        "workbench, offline, community, and stage-4.5 browser regressions pass"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "6.1",
+          "title": "Establish production-path large graph regression",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "6.2",
+          "title": "Run full 11-shape performance regression",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "6.3",
+          "title": "Run full workbench and offline release regression",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    },
+    {
+      "id": "phase-7",
+      "title": "Global main-path cleanup and closure",
+      "goal": "Remove long-term dual-maintenance risk and record final evidence.",
+      "status": "pending",
+      "acceptance": [
+        "Old DOM/SVG global main route is removed from normal operation",
+        "DOM/SVG remains tested for small fallback, community reading, and details",
+        "Result docs match the final implementation and artifacts",
+        "Final progress status and residual risk are recorded"
+      ],
+      "verification": [],
+      "residual_risk": "",
+      "tasks": [
+        {
+          "id": "7.1",
+          "title": "Remove old DOM/SVG global main-path branch",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "7.2",
+          "title": "Update result docs and release notes",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        },
+        {
+          "id": "7.3",
+          "title": "Run final acceptance and close progress",
+          "status": "pending",
+          "verification": [],
+          "evidence": "",
+          "residual_risk": ""
+        }
+      ]
+    }
+  ],
+  "turn_log": [],
+  "final": {
+    "status": "pending",
+    "evidence": [],
+    "residual_risk": ""
+  }
+}
