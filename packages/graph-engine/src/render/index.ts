@@ -139,6 +139,8 @@ export type {
 } from "./gestures";
 export { resolveGraphSearchState, resolveNextGraphSearchFocus, resolvePreviousGraphSearchFocus } from "./search";
 export type { GraphSearchFocus, GraphSearchNodeState, GraphSearchNodeView, GraphSearchState } from "./search";
+export { createDomSvgRendererSurface } from "./renderer-surface";
+export type { GraphRendererSurface } from "./renderer-surface";
 export { classifyGraphKeyboardIntent, isTextEditingElement } from "./keyboard";
 export type { GraphKeyboardIntent, GraphKeyboardIntentInput } from "./keyboard";
 export { buildHoverPreview, firstUsefulParagraph, previewSummary } from "./preview";

@@ -40,6 +40,7 @@ import {
   type GraphRenderPipeline
 } from "./render-pipeline";
 import { createGraphOverlaysPresenter, type GraphOverlaysPresenter } from "./overlays-presenter";
+import { createDomSvgRendererSurface } from "./renderer-surface";
 
 // 聚焦单个社区时，子集包围盒常很小；用默认 4× fit 会把少量节点放大成糊屏巨卡。
 // 聚焦 fit 限制到适度放大，让节点保持可读、社区居中留白（镜头推进而非贴脸）。
@@ -148,6 +149,10 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
     previewTimer: null,
     pathCache,
     root,
+    rendererSurface: createDomSvgRendererSurface({
+      root,
+      dom: () => context.dom
+    }),
     toolbarContainer,
     hasExternalToolbarContainer,
     ownerDocument,

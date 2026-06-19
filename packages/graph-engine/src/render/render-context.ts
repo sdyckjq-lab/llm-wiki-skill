@@ -4,6 +4,7 @@ import type { GraphHitTargetResolver } from "./hit-testing";
 import type { GraphGestureController, GraphGestureStateMachine } from "./gestures";
 import type { DensityMode, RenderableGraph, RenderPathCache } from "./model";
 import type { resolveGraphSearchState } from "./search";
+import type { GraphRendererSurface } from "./renderer-surface";
 import type { GraphRuntimeState } from "./state";
 import type { GraphToolbarPanelState } from "./toolbar";
 import type { createViewportFrameCommitter } from "./viewport";
@@ -59,6 +60,7 @@ export interface GraphRenderContext {
   previewTimer: ReturnType<typeof setTimeout> | null;
   pathCache: RenderPathCache;
   root: HTMLElement;
+  rendererSurface: GraphRendererSurface;
   toolbarContainer: HTMLElement;
   hasExternalToolbarContainer: boolean;
   ownerDocument: Document;

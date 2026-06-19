@@ -84,7 +84,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
         ), { lightweight: true });
       },
       onPointerDown: (_event, decision) => {
-        if (decision.intent !== "node-drag-candidate") context.root.focus({ preventScroll: true });
+        if (decision.intent !== "node-drag-candidate") context.rendererSurface.focusRoot({ preventScroll: true });
         delegates.setViewportAnimating(false);
         delegates.setInteractionDegraded(true, { restoreDelayMs: 200 });
       },
@@ -153,7 +153,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     for (const intent of intents) {
       switch (intent.kind) {
         case "node-click":
-          if (intent.nodeId) context.dom.nodeElements.get(intent.nodeId)?.focus({ preventScroll: true });
+          if (intent.nodeId) context.rendererSurface.focusNode(intent.nodeId, { preventScroll: true });
           if (intent.nodeId) handleNodeClick(intent.nodeId, intent.additive);
           break;
         case "node-drag-start":
@@ -181,11 +181,11 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
           handleBlankClick();
           break;
         case "blank-pan-start":
-          context.root.dataset.viewportDragging = "true";
+          context.rendererSurface.setViewportDragging(true);
           delegates.setInteractionDegraded(true, { restoreDelayMs: 220 });
           break;
         case "blank-pan-move":
-          context.root.dataset.viewportDragging = "true";
+          context.rendererSurface.setViewportDragging(true);
           delegates.setInteractionDegraded(true, { restoreDelayMs: 220 });
           context.viewportCommitter.schedule(panRendererViewport(
             context.runtimeState.snapshot().viewport,
@@ -196,7 +196,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
           break;
         case "blank-pan-end":
         case "blank-pan-cancel":
-          delete context.root.dataset.viewportDragging;
+          context.rendererSurface.setViewportDragging(false);
           delegates.setInteractionDegraded(true, { restoreDelayMs: 160 });
           break;
       }
@@ -231,7 +231,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
   }
 
   function focusRenderedNode(id: NodeId): void {
-    context.dom.nodeElements.get(id)?.focus({ preventScroll: true });
+    context.rendererSurface.focusNode(id, { preventScroll: true });
   }
 
   function handleNodeDragStart(id: NodeId, screenPoint: { x: number; y: number }): void {
@@ -242,10 +242,10 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     const active = context.runtimeState.snapshot().activeGesture;
     if (active?.kind !== "node-drag" || active.nodeId !== id) return;
     const grabOffset = active.grabOffset;
-    context.dom.nodeElements.get(id)?.classList.add("is-dragging");
+    context.rendererSurface.setNodeDragging(id, true);
     context.simulation.beginDrag(id);
     context.simulation.dragTo(id, nodeDragTargetFromScreenPoint(screenPoint, grabOffset));
-    context.root.dataset.dragging = id;
+    context.rendererSurface.setDragTarget(id);
     context.callbacks.onDragActiveChange?.(true);
   }
 
@@ -266,8 +266,8 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     delegates.applyMotionFrame(result.positions);
     delegates.markPinnedNodes(result.pinnedNodeIds);
     context.callbacks.onPinsChanged?.(result.pins);
-    context.dom.nodeElements.get(id)?.classList.remove("is-dragging");
-    delete context.root.dataset.dragging;
+    context.rendererSurface.setNodeDragging(id, false);
+    context.rendererSurface.setDragTarget(null);
     context.runtimeState.setActiveGesture(null);
     context.callbacks.onDragActiveChange?.(false);
   }
@@ -279,14 +279,14 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     context.runtimeState.setPins(result.pins);
     delegates.applyMotionFrame(result.positions);
     delegates.markPinnedNodes(result.pinnedNodeIds);
-    context.dom.nodeElements.get(id)?.classList.remove("is-dragging");
-    delete context.root.dataset.dragging;
+    context.rendererSurface.setNodeDragging(id, false);
+    context.rendererSurface.setDragTarget(null);
     context.runtimeState.setActiveGesture(null);
     context.callbacks.onDragActiveChange?.(false);
   }
 
   function handleBlankClick(): void {
-    delete context.root.dataset.viewportDragging;
+    context.rendererSurface.setViewportDragging(false);
     // True blank clicks close toolbar popovers before clearing selection; drag-pan never reaches this path.
     if (shouldBlankClickCloseToolbar(context.toolbarPanelState)) {
       closeToolbarPanel();
@@ -300,7 +300,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     clearSearchAndPreviewState();
     delegates.setGraphHover(null);
     context.runtimeState.setSelection(null);
-    delete context.root.dataset.focus;
+    context.rendererSurface.setFocusDataset(false);
     context.callbacks.onSelectionClearRequested?.();
     delegates.render();
   }
@@ -316,17 +316,17 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
   function clearInteractionState(): void {
     clearSearchAndPreviewState();
     context.runtimeState.clearInteraction();
-    delete context.root.dataset.focus;
+    context.rendererSurface.setFocusDataset(false);
     context.callbacks.onSelectionClearRequested?.();
     delegates.render();
   }
 
   function clearTransientInteractionForDataRefresh(): void {
     clearSearchAndPreviewState();
-    for (const node of context.dom.nodeElements.values()) node.classList.remove("is-dragging");
-    delete context.root.dataset.dragging;
-    delete context.root.dataset.viewportDragging;
-    delete context.root.dataset.focus;
+    context.rendererSurface.clearNodeDragging();
+    context.rendererSurface.setDragTarget(null);
+    context.rendererSurface.setViewportDragging(false);
+    context.rendererSurface.setFocusDataset(false);
     context.simulation?.endDrag();
     context.gestureMachine.escape();
     context.runtimeState.clearInteraction();
@@ -352,8 +352,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
 
   function openSearch(): void {
     context.searchOpen = true;
-    context.root.dataset.searchOpen = "true";
-    if (context.dom.searchElement) context.dom.searchElement.dataset.state = "open";
+    context.rendererSurface.setSearchOpen(true);
     if (context.dom.searchInput) {
       context.dom.searchInput.focus();
       context.dom.searchInput.select();
@@ -366,17 +365,12 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     delegates.setInteractionDegraded(Boolean(query), { restoreDelayMs: 180 });
     const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex);
     context.searchIndex = state.searchIndex;
-    context.root.dataset.searchActive = state.query ? "true" : "false";
-    context.root.dataset.searchQuery = state.query;
     if (!state.matchIds.includes(context.searchFocusedNodeId || "")) context.searchFocusedNodeId = null;
-    for (const node of state.nodes) {
-      const element = context.dom.nodeElements.get(node.id);
-      if (!element) continue;
-      element.dataset.searchState = node.searchState;
-      element.dataset.searchFocus = node.id === context.searchFocusedNodeId ? "true" : "false";
-      element.dataset.searchBoost = node.searchState === "match" || node.id === context.searchFocusedNodeId ? "true" : "false";
-      element.dataset.traceable = element.dataset.coreAnchor === "true" || element.dataset.temporaryBoost === "true" || element.dataset.searchBoost === "true" || element.dataset.pinned === "true" || element.getAttribute("aria-pressed") === "true" ? "true" : "false";
-    }
+    context.rendererSurface.setSearchState({
+      query: state.query,
+      focusedNodeId: context.searchFocusedNodeId,
+      nodes: state.nodes
+    });
     if (context.dom.searchInput && context.dom.searchInput.value !== context.searchQuery) context.dom.searchInput.value = context.searchQuery;
     if (context.dom.searchStatusElement) {
       const focusedIndex = context.searchFocusedNodeId ? state.matchIds.indexOf(context.searchFocusedNodeId) : -1;
@@ -444,11 +438,10 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
   function closeSearch(): void {
     context.searchOpen = false;
     context.searchFocusedNodeId = null;
-    if (context.dom.searchElement) context.dom.searchElement.dataset.state = "closed";
-    context.root.dataset.searchOpen = "false";
+    context.rendererSurface.setSearchOpen(false);
     delegates.setInteractionDegraded(false);
     applySearchQuery("");
-    context.root.focus({ preventScroll: true });
+    context.rendererSurface.focusRoot({ preventScroll: true });
   }
 
   function closeToolbarPanel(): void {
@@ -489,7 +482,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     delegates.setGraphHover(null);
     context.runtimeState.setFocus(null);
     context.runtimeState.setActiveGesture(null);
-    delete context.root.dataset.focus;
+    context.rendererSurface.setFocusDataset(false);
     context.callbacks.onViewReset?.();
     delegates.render();
     delegates.setViewportAnimating(true);
@@ -504,7 +497,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     context.searchFocusedNodeId = null;
     delegates.setGraphHover(null);
     context.runtimeState.setSelection(null);
-    delete context.root.dataset.focus;
+    context.rendererSurface.setFocusDataset(false);
     context.callbacks.onSelectionClearRequested?.();
     delegates.render();
   }
