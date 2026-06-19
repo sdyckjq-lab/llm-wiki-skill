@@ -10,10 +10,13 @@ import {
 } from "../src";
 import {
   createGraphFacadeFromRenderer,
+  createGraphFacadeRouteManager,
   createGraphOfflineCapabilities,
   createGraphStandaloneCapabilities,
   createGraphWorkbenchCapabilities,
-  type GraphFacadeRenderer
+  type GraphFacadeRenderer,
+  type GraphFacadeRouteRendererFactoryInput,
+  type GraphFacadeState
 } from "../src/facade";
 
 const DATA: GraphData = {
@@ -228,6 +231,124 @@ describe("GraphFacade", () => {
     assert.equal(standalone.capabilities, undefined);
     await offline.capabilities?.persistPins?.({});
   });
+
+  it("routes global Sigma to DOM/SVG community reading and back to global Sigma with facade state", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: { "wiki/a.md": { x: 10, y: 20, coordinateSpace: "world" } },
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: { topic: true, source: true },
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const communityInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const fallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return trackRenderer(renderers, "sigma");
+        },
+        createDomSvgCommunity: (input) => {
+          communityInputs.push(input);
+          return trackRenderer(renderers, "dom-community");
+        },
+        createGlobalFallback: (input) => {
+          fallbackInputs.push(input);
+          return trackRenderer(renderers, "fallback");
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(sigmaInputs.length, 1);
+
+    manager.select({ kind: "node", id: "a" });
+    manager.setTypeFilters({ topic: true, source: false });
+    manager.setPins({ "wiki/b.md": { x: 30, y: 40, coordinateSpace: "world" } });
+    manager.focusCommunity("c1");
+
+    assert.equal(manager.routeId, "dom-svg-community");
+    assert.equal(communityInputs.length, 1);
+    assert.deepEqual(communityInputs[0].options.focus, { kind: "community", id: "c1" });
+    assert.deepEqual(communityInputs[0].options.selection, { kind: "node", id: "a" });
+    assert.deepEqual(communityInputs[0].options.typeFilters, { topic: true, source: false });
+    assert.deepEqual(Object.keys(communityInputs[0].options.pins), ["wiki/b.md"]);
+
+    communityInputs[0].options.callbacks.onVisibilityStateChange?.({
+      searchQuery: "Alpha",
+      searchResultIds: ["a"],
+      typeFilters: { topic: true, source: false },
+      temporaryObject: null
+    });
+    manager.resetView();
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(sigmaInputs.length, 2);
+    assert.equal(fallbackInputs.length, 0);
+    assert.deepEqual(sigmaInputs[1].options.focus, null);
+    assert.deepEqual(sigmaInputs[1].options.selection, { kind: "node", id: "a" });
+    assert.deepEqual(sigmaInputs[1].options.searchResultIds, ["a"]);
+    assert.deepEqual(sigmaInputs[1].options.typeFilters, { topic: true, source: false });
+    assert.deepEqual(Object.keys(sigmaInputs[1].options.pins), ["wiki/b.md"]);
+    assert.deepEqual(renderers.map((renderer) => renderer.calls.find((call) => call[0] === "destroy")?.[0]).filter(Boolean), [
+      "destroy",
+      "destroy"
+    ]);
+  });
+
+  it("returns global to fallback without retrying a known unavailable Sigma instance", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let sigmaCreateCount = 0;
+    const fallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          sigmaCreateCount += 1;
+          throw new Error("WebGL unavailable");
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createGlobalFallback: (input) => {
+          fallbackInputs.push(input);
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.sigmaKnownUnavailable, true);
+    assert.equal(manager.sigmaAttemptCount, 1);
+    assert.equal(sigmaCreateCount, 1);
+
+    manager.focusCommunity("c1");
+    assert.equal(manager.routeId, "dom-svg-community");
+    manager.resetView();
+
+    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.sigmaKnownUnavailable, true);
+    assert.equal(manager.sigmaAttemptCount, 1);
+    assert.equal(sigmaCreateCount, 1);
+    assert.equal(fallbackInputs.length, 2);
+  });
 });
 
 function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
@@ -244,6 +365,9 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
     setData(data: GraphData, pins?: PinMap) {
       calls.push(["setData", data, pins]);
     },
+    setAggregationMarkers(markers) {
+      calls.push(["setAggregationMarkers", markers]);
+    },
     focusNode(path: string) {
       calls.push(["focusNode", path]);
     },
@@ -255,6 +379,12 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
     },
     setTypeFilters(filters: GraphTypeFilters) {
       calls.push(["setTypeFilters", filters]);
+    },
+    showTemporaryObject(object) {
+      calls.push(["showTemporaryObject", object]);
+    },
+    clearTemporaryObjectDisplay() {
+      calls.push(["clearTemporaryObjectDisplay"]);
     },
     resetView() {
       calls.push(["resetView"]);
@@ -285,4 +415,14 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
       calls.push(["destroy"]);
     }
   };
+}
+
+function trackRenderer(
+  renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }>,
+  route: string
+): GraphFacadeRenderer & { calls: unknown[][] } {
+  const renderer = createFakeRenderer();
+  renderer.calls.push(["create", route]);
+  renderers.push(renderer);
+  return renderer;
 }

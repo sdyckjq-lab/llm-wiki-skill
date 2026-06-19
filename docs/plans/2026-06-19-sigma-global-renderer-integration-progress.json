@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-4",
-    "task": "4.1",
+    "task": "4.2",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 4, Task 4.1: implement the facade-owned renderer route manager using the recorded Sigma global, DOM/SVG community, and fallback route boundaries."
+    "next_allowed_action": "Advance to Phase 4, Task 4.2: synchronize selection, search, filters, pins, and temporary object state across the facade-owned Sigma/global and DOM/SVG community routes."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -117,6 +117,13 @@
       "decision": "Use a rebuild-Graphology-graph/preserve-camera update strategy for production Sigma lifecycle updates, and report initialization or unrecoverable update/destroy failures only through onFatalError.",
       "reason": "Task 3.4 requires explicit update behavior, stale-event suppression, update-after-destroy handling, camera/state preservation, and route-layer-owned fallback decisions. Rebuilding keeps Graphology render-only while preserving Sigma camera state across adapter-driven selection/search/Pin/theme updates.",
       "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/test/sigma-global-renderer.test.ts"
+    },
+    {
+      "id": "D14",
+      "status": "recorded",
+      "decision": "Own route switching in the facade route manager: global views select the async Sigma global renderer, community reading selects DOM/SVG, and a known unavailable Sigma route returns global through fallback without repeated retry.",
+      "reason": "Task 4.1 requires the facade to enforce the already-recorded route ownership and prove Sigma global -> DOM/SVG community -> Sigma global return behavior while preserving facade state and avoiding a user-visible renderer switch.",
+      "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/test/facade.test.ts"
     }
   ],
   "phases": [
@@ -377,10 +384,14 @@
         {
           "id": "4.1",
           "title": "Implement renderer route manager",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/facade.test.ts packages/graph-engine/test/renderer-lifecycle.test.ts => exit 0 (25 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (340 tests, 0 fail).",
+            "npm run build --workspace=@llm-wiki/graph-engine => exit 0."
+          ],
+          "evidence": "createGraphFacade now mounts a facade-owned route manager. The normal global route creates the async Sigma global renderer from adapter data; focusCommunity switches to DOM/SVG community reading; resetView returns global through Sigma unless Sigma is already marked unavailable, in which case it uses global fallback without incrementing the Sigma attempt count. facade.test covers state preservation for selection/search/filter/pins across Sigma -> community DOM/SVG -> Sigma and covers known-unavailable no-retry fallback.",
+          "residual_risk": "Task 4.1 only establishes route ownership and known-unavailable fallback routing. Full cross-route state synchronization edge cases remain in Task 4.2, and layered small/large fallback thresholds plus retry UI remain in Task 4.3."
         },
         {
           "id": "4.2",
@@ -631,6 +642,14 @@
       "action": "Implemented Sigma lifecycle create/update/destroy, camera-preserving Graphology rebuild updates, stale-event suppression, update-after-destroy guard, and route-layer error reporting.",
       "result": "phase-3 task 3.4 complete and phase-3 acceptance met; Sigma tests, full graph-engine test, typecheck, build, and semantic static check pass; advancing to phase 4 task 4.1.",
       "at": "2026-06-19T21:14:25+08:00"
+    },
+    {
+      "turn": 12,
+      "task": "4.1",
+      "phase": "phase-4",
+      "action": "Implemented the facade-owned renderer route manager, wired production global Sigma creation through the lazy runtime boundary, routed community reading to DOM/SVG, and added fallback no-retry behavior for known unavailable Sigma.",
+      "result": "phase-4 task 4.1 complete; required facade/lifecycle tests, full graph-engine test, and graph-engine build pass; advancing to task 4.2.",
+      "at": "2026-06-19T21:31:00+08:00"
     }
   ],
   "final": {

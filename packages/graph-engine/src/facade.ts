@@ -7,11 +7,20 @@ import type {
   GraphOpenPagePayload,
   GraphSummaryObjectRef,
   GraphSummaryOptions,
+  GraphVisibilityState,
   Selection,
   SelectionInput,
   ThemeId
 } from "./types";
-import { createGraphRenderer } from "./render";
+import {
+  buildGraphRendererAdapterData,
+  createGraphRenderer,
+  createSigmaGlobalRenderer,
+  sigmaGlobalRendererRuntimeBoundary,
+  type GraphRendererAdapterData,
+  type SigmaGlobalRendererRuntime
+} from "./render";
+import type { GraphRendererSurface } from "./render/renderer-surface";
 import { resolveSelectionForCapabilities } from "./select";
 import { graphNodeTypeLabel, wikiPathForGraphNode } from "./graph-node";
 import {
@@ -88,13 +97,63 @@ export interface GraphFacadeRenderer {
   destroy(): void;
 }
 
+export type GraphFacadeRendererRouteId = "sigma-global" | "dom-svg-community" | "global-fallback";
+
+export interface GraphFacadeRouteManager extends GraphFacadeRenderer {
+  readonly routeId: GraphFacadeRendererRouteId;
+  readonly sigmaKnownUnavailable: boolean;
+  readonly sigmaAttemptCount: number;
+}
+
+export interface GraphFacadeRouteRendererOptions {
+  data: GraphData;
+  pins: NonNullable<GraphEngineOptions["pins"]>;
+  theme: ThemeId;
+  focus: GraphEngineOptions["focus"];
+  typeFilters: NonNullable<GraphEngineOptions["typeFilters"]>;
+  aggregationMarkers: NonNullable<GraphEngineOptions["aggregationMarkers"]>;
+  selection: SelectionInput | null;
+  searchResultIds: string[];
+  temporaryObject: GraphSummaryObjectRef | null;
+  callbacks: GraphFacadeRendererCallbacks;
+}
+
+export interface GraphFacadeRouteRendererFactoryInput {
+  container: HTMLElement;
+  options: GraphFacadeRouteRendererOptions;
+  onSigmaUnavailable?: (error: unknown) => void;
+}
+
+export interface GraphFacadeRouteRendererFactories {
+  createSigmaGlobal: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
+  createDomSvgCommunity: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
+  createGlobalFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
+}
+
+export interface GraphFacadeRendererCallbacks {
+  onNodeOpen?: (nodeId: string) => void;
+  onSelectionInput?: (selection: SelectionInput) => void;
+  onPinsChanged?: (pins: NonNullable<GraphEngineOptions["pins"]>) => void;
+  onSelectionClearRequested?: () => void;
+  onViewReset?: () => void;
+  onDragActiveChange?: (dragging: boolean) => void;
+  onVisibilityStateChange?: (state: GraphVisibilityState) => void;
+}
+
 interface GraphFacadeContainer {
   dataset: Record<string, string | undefined>;
 }
 
-interface GraphFacadeState {
+export interface GraphFacadeState {
   data: GraphData;
   pins: NonNullable<GraphEngineOptions["pins"]>;
+  theme?: ThemeId;
+  focus?: GraphEngineOptions["focus"];
+  typeFilters?: NonNullable<GraphEngineOptions["typeFilters"]>;
+  aggregationMarkers?: NonNullable<GraphEngineOptions["aggregationMarkers"]>;
+  selection?: SelectionInput | null;
+  searchResultIds?: string[];
+  temporaryObject?: GraphSummaryObjectRef | null;
 }
 
 export function createGraphFacade(container: HTMLElement, options: GraphEngineOptions): GraphEngine {
@@ -103,15 +162,18 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
   }
 
   const capabilities = options.capabilities;
-  const facadeState: GraphFacadeState = { data: options.data, pins: options.pins || {} };
-  const renderer = createGraphRenderer(container, {
+  const facadeState: GraphFacadeState = {
     data: options.data,
     pins: options.pins || {},
     theme: options.theme,
-    toolbarContainer: options.toolbarContainer,
-    focus: options.focus,
-    typeFilters: options.typeFilters,
-    aggregationMarkers: options.aggregationMarkers,
+    focus: options.focus || null,
+    typeFilters: options.typeFilters || {},
+    aggregationMarkers: options.aggregationMarkers || [],
+    selection: null,
+    searchResultIds: [],
+    temporaryObject: null
+  };
+  const rendererCallbacks: GraphFacadeRendererCallbacks = {
     onNodeOpen: capabilities?.onOpenPage
       ? (nodeId) => capabilities.onOpenPage?.(openPagePayloadForNode(facadeState.data, nodeId))
       : undefined,
@@ -134,10 +196,404 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
       capabilities?.onViewReset?.();
     },
     onDragActiveChange: capabilities?.onDragStateChange,
-    onVisibilityStateChange: capabilities?.onVisibilityStateChange
+    onVisibilityStateChange: (visibility) => {
+      facadeState.searchResultIds = visibility.searchResultIds;
+      facadeState.typeFilters = visibility.typeFilters;
+      facadeState.temporaryObject = visibility.temporaryObject;
+      capabilities?.onVisibilityStateChange?.(visibility);
+    }
+  };
+  const renderer = createGraphFacadeRouteManager(container, {
+    state: facadeState,
+    toolbarContainer: options.toolbarContainer,
+    callbacks: rendererCallbacks
   });
 
   return createGraphFacadeFromRenderer(container, renderer, options, facadeState);
+}
+
+export function createGraphFacadeRouteManager(
+  container: HTMLElement,
+  options: {
+    state: GraphFacadeState;
+    toolbarContainer?: HTMLElement | null;
+    callbacks?: GraphFacadeRendererCallbacks;
+    factories?: Partial<GraphFacadeRouteRendererFactories>;
+  }
+): GraphFacadeRouteManager {
+  const state = options.state;
+  state.theme = state.theme || "shan-shui";
+  state.focus = state.focus || null;
+  state.typeFilters = state.typeFilters || {};
+  state.aggregationMarkers = state.aggregationMarkers || [];
+  state.selection = state.selection || null;
+  state.searchResultIds = state.searchResultIds || [];
+  state.temporaryObject = state.temporaryObject || null;
+
+  const factories: GraphFacadeRouteRendererFactories = {
+    createSigmaGlobal: options.factories?.createSigmaGlobal || createSigmaGlobalFacadeRenderer,
+    createDomSvgCommunity: options.factories?.createDomSvgCommunity || ((input) =>
+      createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
+    createGlobalFallback: options.factories?.createGlobalFallback || ((input) =>
+      createDomSvgFacadeRenderer(input, options.toolbarContainer, true))
+  };
+  let routeId: GraphFacadeRendererRouteId = "sigma-global";
+  let sigmaKnownUnavailable = false;
+  let sigmaAttemptCount = 0;
+  let destroyed = false;
+  let active: GraphFacadeRenderer | undefined;
+  active = activateGlobalRoute();
+
+  const manager: GraphFacadeRouteManager = {
+    get routeId() {
+      return routeId;
+    },
+    get sigmaKnownUnavailable() {
+      return sigmaKnownUnavailable;
+    },
+    get sigmaAttemptCount() {
+      return sigmaAttemptCount;
+    },
+    applyDiff(diff, animationOptions) {
+      assertActive();
+      return currentRenderer().applyDiff(diff, animationOptions);
+    },
+    isDragging() {
+      assertActive();
+      return currentRenderer().isDragging();
+    },
+    setData(data, pins) {
+      assertActive();
+      state.data = data;
+      if (pins) state.pins = pins;
+      currentRenderer().setData(data, pins);
+    },
+    setAggregationMarkers(markers) {
+      assertActive();
+      state.aggregationMarkers = markers;
+      currentRenderer().setAggregationMarkers(markers);
+    },
+    focusNode(path) {
+      assertActive();
+      currentRenderer().focusNode(path);
+    },
+    focusCommunity(id) {
+      assertActive();
+      state.focus = { kind: "community", id };
+      switchRoute("dom-svg-community", () => factories.createDomSvgCommunity(factoryInput()));
+      currentRenderer().focusCommunity(id);
+    },
+    setTypeFilters(filters) {
+      assertActive();
+      state.typeFilters = filters;
+      currentRenderer().setTypeFilters(filters);
+    },
+    showTemporaryObject(object) {
+      assertActive();
+      state.temporaryObject = object;
+      currentRenderer().showTemporaryObject(object);
+    },
+    clearTemporaryObjectDisplay() {
+      assertActive();
+      state.temporaryObject = null;
+      currentRenderer().clearTemporaryObjectDisplay();
+    },
+    resetView() {
+      assertActive();
+      state.focus = null;
+      switchToGlobalRoute();
+      currentRenderer().resetView();
+    },
+    select(selection) {
+      assertActive();
+      state.selection = selection;
+      currentRenderer().select(selection);
+    },
+    previewNode(id) {
+      assertActive();
+      currentRenderer().previewNode(id);
+    },
+    clearSelection() {
+      assertActive();
+      state.selection = null;
+      currentRenderer().clearSelection();
+    },
+    clearInteraction() {
+      assertActive();
+      state.focus = null;
+      state.selection = null;
+      state.temporaryObject = null;
+      currentRenderer().clearInteraction();
+    },
+    setNodeFixed(id, mode) {
+      assertActive();
+      return currentRenderer().setNodeFixed(id, mode);
+    },
+    setTheme(theme) {
+      assertActive();
+      state.theme = theme;
+      currentRenderer().setTheme(theme);
+    },
+    setPins(pins) {
+      assertActive();
+      state.pins = pins;
+      currentRenderer().setPins(pins);
+    },
+    resetLayout() {
+      assertActive();
+      currentRenderer().resetLayout();
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      active?.destroy();
+    }
+  };
+
+  return manager;
+
+  function switchToGlobalRoute(): void {
+    switchRoute(sigmaKnownUnavailable ? "global-fallback" : "sigma-global", activateGlobalRoute);
+  }
+
+  function activateGlobalRoute(): GraphFacadeRenderer {
+    if (sigmaKnownUnavailable) {
+      routeId = "global-fallback";
+      return factories.createGlobalFallback(factoryInput());
+    }
+    sigmaAttemptCount += 1;
+    routeId = "sigma-global";
+    try {
+      return factories.createSigmaGlobal(factoryInput((error) => {
+        markSigmaUnavailable(error);
+      }));
+    } catch (error) {
+      sigmaKnownUnavailable = true;
+      routeId = "global-fallback";
+      return factories.createGlobalFallback(factoryInput());
+    }
+  }
+
+  function markSigmaUnavailable(_error: unknown): void {
+    if (destroyed || sigmaKnownUnavailable) return;
+    sigmaKnownUnavailable = true;
+    if (routeId !== "sigma-global") return;
+    switchRoute("global-fallback", () => factories.createGlobalFallback(factoryInput()));
+  }
+
+  function switchRoute(nextRouteId: GraphFacadeRendererRouteId, createNext: () => GraphFacadeRenderer): void {
+    if (destroyed) return;
+    if (routeId === nextRouteId && active) return;
+    const previous = active;
+    routeId = nextRouteId;
+    active = createNext();
+    previous?.destroy();
+  }
+
+  function factoryInput(onSigmaUnavailable?: (error: unknown) => void): GraphFacadeRouteRendererFactoryInput {
+    return {
+      container,
+      options: {
+        data: state.data,
+        pins: state.pins,
+        theme: state.theme || "shan-shui",
+        focus: state.focus || null,
+        typeFilters: state.typeFilters || {},
+        aggregationMarkers: state.aggregationMarkers || [],
+        selection: state.selection || null,
+        searchResultIds: state.searchResultIds || [],
+        temporaryObject: state.temporaryObject || null,
+        callbacks: {
+          ...(options.callbacks || {}),
+          onVisibilityStateChange: (visibility) => {
+            state.searchResultIds = visibility.searchResultIds;
+            state.typeFilters = visibility.typeFilters;
+            state.temporaryObject = visibility.temporaryObject;
+            options.callbacks?.onVisibilityStateChange?.(visibility);
+          }
+        }
+      },
+      onSigmaUnavailable
+    };
+  }
+
+  function assertActive(): void {
+    if (destroyed) {
+      throw new Error("Graph facade route manager has been destroyed");
+    }
+  }
+
+  function currentRenderer(): GraphFacadeRenderer {
+    if (!active) {
+      throw new Error("Graph facade route manager has no active renderer");
+    }
+    return active;
+  }
+}
+
+function createDomSvgFacadeRenderer(
+  input: GraphFacadeRouteRendererFactoryInput,
+  toolbarContainer: HTMLElement | null | undefined,
+  live: boolean
+): GraphFacadeRenderer {
+  const renderer = createGraphRenderer(input.container, {
+    data: input.options.data,
+    pins: input.options.pins,
+    theme: input.options.theme,
+    toolbarContainer,
+    focus: input.options.focus || undefined,
+    typeFilters: input.options.typeFilters,
+    aggregationMarkers: input.options.aggregationMarkers,
+    live,
+    onNodeOpen: input.options.callbacks.onNodeOpen,
+    onSelectionInput: input.options.callbacks.onSelectionInput,
+    onPinsChanged: input.options.callbacks.onPinsChanged,
+    onSelectionClearRequested: input.options.callbacks.onSelectionClearRequested,
+    onViewReset: input.options.callbacks.onViewReset,
+    onDragActiveChange: input.options.callbacks.onDragActiveChange,
+    onVisibilityStateChange: input.options.callbacks.onVisibilityStateChange
+  });
+  if (input.options.selection) renderer.select(input.options.selection);
+  if (input.options.temporaryObject) renderer.showTemporaryObject(input.options.temporaryObject);
+  return renderer;
+}
+
+function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {
+  let options = input.options;
+  let destroyed = false;
+  let renderer: ReturnType<typeof createSigmaGlobalRenderer> | null = null;
+  const shell = input.container.ownerDocument.createElement("div");
+  shell.className = "sigma-global-route";
+  shell.dataset.route = "sigma-global";
+  input.container.append(shell);
+
+  void sigmaGlobalRendererRuntimeBoundary()
+    .then((runtime) => {
+      if (destroyed) return;
+      try {
+        renderer = createSigmaGlobalRenderer({
+          container: shell,
+          surface: createNoopRendererSurface(),
+          adapterData: adapterDataForSigmaRoute(options),
+          theme: options.theme,
+          runtime: runtime as unknown as SigmaGlobalRendererRuntime,
+          onFatalError: (error) => input.onSigmaUnavailable?.(error)
+        });
+      } catch (error) {
+        input.onSigmaUnavailable?.(error);
+      }
+    })
+    .catch((error) => input.onSigmaUnavailable?.(error));
+
+  return {
+    applyDiff() {
+      return Promise.resolve();
+    },
+    isDragging() {
+      return false;
+    },
+    setData(data, pins) {
+      options = { ...options, data, pins: pins || options.pins };
+      updateSigmaRenderer();
+    },
+    setAggregationMarkers(markers) {
+      options = { ...options, aggregationMarkers: markers };
+      updateSigmaRenderer();
+    },
+    focusNode(path) {
+      const node = options.data.nodes.find((item) => item.id === path || wikiPathForGraphNode(item) === path);
+      options = { ...options, selection: node ? { kind: "node", id: node.id } : null };
+      updateSigmaRenderer();
+    },
+    focusCommunity() {
+      updateSigmaRenderer();
+    },
+    setTypeFilters(filters) {
+      options = { ...options, typeFilters: filters };
+      updateSigmaRenderer();
+    },
+    showTemporaryObject(object) {
+      options = { ...options, temporaryObject: object };
+      updateSigmaRenderer();
+    },
+    clearTemporaryObjectDisplay() {
+      options = { ...options, temporaryObject: null };
+      updateSigmaRenderer();
+    },
+    resetView() {
+      options = { ...options, focus: null };
+      updateSigmaRenderer();
+    },
+    select(selection) {
+      options = { ...options, selection };
+      updateSigmaRenderer();
+    },
+    previewNode() {},
+    clearSelection() {
+      options = { ...options, selection: null };
+      updateSigmaRenderer();
+    },
+    clearInteraction() {
+      options = { ...options, focus: null, selection: null, temporaryObject: null };
+      updateSigmaRenderer();
+    },
+    setNodeFixed() {
+      return false;
+    },
+    setTheme(theme) {
+      options = { ...options, theme };
+      updateSigmaRenderer();
+    },
+    setPins(pins) {
+      options = { ...options, pins };
+      updateSigmaRenderer();
+    },
+    resetLayout() {
+      options = { ...options, pins: {} };
+      updateSigmaRenderer();
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      renderer?.destroy();
+      renderer = null;
+      shell.remove();
+    }
+  };
+
+  function updateSigmaRenderer(): void {
+    if (!renderer || destroyed) return;
+    renderer.update({
+      adapterData: adapterDataForSigmaRoute(options),
+      theme: options.theme
+    });
+  }
+}
+
+function adapterDataForSigmaRoute(options: GraphFacadeRouteRendererOptions): GraphRendererAdapterData {
+  return buildGraphRendererAdapterData(options.data, {
+    theme: options.theme,
+    pins: options.pins,
+    selection: options.selection,
+    searchResultIds: options.searchResultIds,
+    aggregationMarkers: options.aggregationMarkers,
+    focus: null,
+    typeFilters: options.typeFilters
+  });
+}
+
+function createNoopRendererSurface(): GraphRendererSurface {
+  return {
+    focusRoot() {},
+    focusNode() {},
+    setNodeDragging() {},
+    clearNodeDragging() {},
+    setViewportDragging() {},
+    setDragTarget() {},
+    setFocusDataset() {},
+    setSearchOpen() {},
+    setSearchState() {}
+  };
 }
 
 export function createGraphFacadeFromRenderer(
