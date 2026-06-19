@@ -247,7 +247,8 @@ describe("GraphFacade", () => {
     };
     const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
     const communityInputs: GraphFacadeRouteRendererFactoryInput[] = [];
-    const fallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const smallFallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    let aggregationFallbackCount = 0;
     const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
@@ -260,15 +261,22 @@ describe("GraphFacade", () => {
           communityInputs.push(input);
           return trackRenderer(renderers, "dom-community");
         },
-        createGlobalFallback: (input) => {
-          fallbackInputs.push(input);
-          return trackRenderer(renderers, "fallback");
+        createDomSvgSmallFallback: (input) => {
+          smallFallbackInputs.push(input);
+          return trackRenderer(renderers, "small-fallback");
+        },
+        createAggregationSafetyFallback: () => {
+          aggregationFallbackCount += 1;
+          return trackRenderer(renderers, "aggregation-fallback");
         }
       }
     });
 
     assert.equal(manager.routeId, "sigma-global");
     assert.equal(sigmaInputs.length, 1);
+    assert.equal(communityInputs.length, 0);
+    assert.equal(smallFallbackInputs.length, 0);
+    assert.equal(aggregationFallbackCount, 0);
 
     manager.select({ kind: "node", id: "a" });
     manager.setTypeFilters({ topic: true, source: false });
@@ -292,7 +300,8 @@ describe("GraphFacade", () => {
 
     assert.equal(manager.routeId, "sigma-global");
     assert.equal(sigmaInputs.length, 2);
-    assert.equal(fallbackInputs.length, 0);
+    assert.equal(smallFallbackInputs.length, 0);
+    assert.equal(aggregationFallbackCount, 0);
     assert.deepEqual(sigmaInputs[1].options.focus, null);
     assert.deepEqual(sigmaInputs[1].options.selection, { kind: "node", id: "a" });
     assert.deepEqual(sigmaInputs[1].options.searchResultIds, ["a"]);
@@ -304,7 +313,7 @@ describe("GraphFacade", () => {
     ]);
   });
 
-  it("returns global to fallback without retrying a known unavailable Sigma instance", () => {
+  it("returns global to DOM/SVG small fallback without retrying a known unavailable Sigma instance", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {
       data: DATA,
@@ -318,7 +327,8 @@ describe("GraphFacade", () => {
       temporaryObject: null
     };
     let sigmaCreateCount = 0;
-    const fallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const smallFallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    let aggregationFallbackCount = 0;
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
       factories: {
@@ -327,27 +337,35 @@ describe("GraphFacade", () => {
           throw new Error("WebGL unavailable");
         },
         createDomSvgCommunity: () => createFakeRenderer(),
-        createGlobalFallback: (input) => {
-          fallbackInputs.push(input);
+        createDomSvgSmallFallback: (input) => {
+          smallFallbackInputs.push(input);
+          assert.ok(input.options.data.nodes.length <= 2000);
+          return createFakeRenderer();
+        },
+        createAggregationSafetyFallback: () => {
+          aggregationFallbackCount += 1;
           return createFakeRenderer();
         }
       }
     });
 
-    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(manager.sigmaKnownUnavailable, true);
     assert.equal(manager.sigmaAttemptCount, 1);
     assert.equal(sigmaCreateCount, 1);
+    assert.equal(smallFallbackInputs.length, 1);
+    assert.equal(aggregationFallbackCount, 0);
 
     manager.focusCommunity("c1");
     assert.equal(manager.routeId, "dom-svg-community");
     manager.resetView();
 
-    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(manager.sigmaKnownUnavailable, true);
     assert.equal(manager.sigmaAttemptCount, 1);
     assert.equal(sigmaCreateCount, 1);
-    assert.equal(fallbackInputs.length, 2);
+    assert.equal(smallFallbackInputs.length, 2);
+    assert.equal(aggregationFallbackCount, 0);
   });
 
   it("routes known-large Sigma failures to aggregation safety fallback instead of DOM/SVG", () => {
@@ -372,7 +390,7 @@ describe("GraphFacade", () => {
           throw new Error("WebGL unavailable");
         },
         createDomSvgCommunity: () => createFakeRenderer(),
-        createGlobalFallback: () => {
+        createDomSvgSmallFallback: () => {
           domFallbackCount += 1;
           return createFakeRenderer();
         },
@@ -388,7 +406,7 @@ describe("GraphFacade", () => {
     assert.equal(aggregationFallbackCount, 1);
   });
 
-  it("routes abnormal Sigma runtime failures to fallback and retries Sigma only on request", () => {
+  it("routes abnormal Sigma runtime failures to DOM/SVG small fallback and retries Sigma only on request", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {
       data: DATA,
@@ -402,7 +420,8 @@ describe("GraphFacade", () => {
       temporaryObject: null
     };
     let sigmaCreateCount = 0;
-    let fallbackCount = 0;
+    let smallFallbackCount = 0;
+    let aggregationFallbackCount = 0;
     const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
@@ -413,26 +432,31 @@ describe("GraphFacade", () => {
           return createFakeRenderer();
         },
         createDomSvgCommunity: () => createFakeRenderer(),
-        createGlobalFallback: () => {
-          fallbackCount += 1;
+        createDomSvgSmallFallback: () => {
+          smallFallbackCount += 1;
           return createFakeRenderer();
         },
-        createAggregationSafetyFallback: () => createFakeRenderer()
+        createAggregationSafetyFallback: () => {
+          aggregationFallbackCount += 1;
+          return createFakeRenderer();
+        }
       }
     });
 
     assert.equal(manager.routeId, "sigma-global");
     sigmaInputs[0].onSigmaUnavailable?.(new Error("canvas runtime abnormal failure"));
 
-    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(manager.sigmaKnownUnavailable, true);
-    assert.equal(fallbackCount, 1);
+    assert.equal(smallFallbackCount, 1);
+    assert.equal(aggregationFallbackCount, 0);
     assert.equal(sigmaCreateCount, 1);
 
     manager.resetView();
-    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(sigmaCreateCount, 1);
-    assert.equal(fallbackCount, 1);
+    assert.equal(smallFallbackCount, 1);
+    assert.equal(aggregationFallbackCount, 0);
 
     manager.retrySigma();
     assert.equal(manager.routeId, "sigma-global");

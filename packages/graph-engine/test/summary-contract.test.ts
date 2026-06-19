@@ -286,7 +286,7 @@ describe("graph summary contract", () => {
           communityInputs.push(input);
           return createFakeRenderer();
         },
-        createGlobalFallback: () => createFakeRenderer()
+        createDomSvgSmallFallback: () => createFakeRenderer()
       }
     });
 

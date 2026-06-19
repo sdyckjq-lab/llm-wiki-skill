@@ -98,7 +98,11 @@ export interface GraphFacadeRenderer {
   destroy(): void;
 }
 
-export type GraphFacadeRendererRouteId = "sigma-global" | "dom-svg-community" | "global-fallback" | "aggregation-safety-fallback";
+export type GraphFacadeRendererRouteId =
+  | "sigma-global"
+  | "dom-svg-community"
+  | "dom-svg-small-fallback"
+  | "aggregation-safety-fallback";
 
 export const GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS = {
   maxDomSvgFallbackNodes: 2000,
@@ -137,7 +141,7 @@ export interface GraphFacadeRouteRendererFactoryInput {
 export interface GraphFacadeRouteRendererFactories {
   createSigmaGlobal: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
   createDomSvgCommunity: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
-  createGlobalFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
+  createDomSvgSmallFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
   createAggregationSafetyFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
 }
 
@@ -249,7 +253,7 @@ export function createGraphFacadeRouteManager(
     createSigmaGlobal: options.factories?.createSigmaGlobal || createSigmaGlobalFacadeRenderer,
     createDomSvgCommunity: options.factories?.createDomSvgCommunity || ((input) =>
       createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
-    createGlobalFallback: options.factories?.createGlobalFallback || ((input) =>
+    createDomSvgSmallFallback: options.factories?.createDomSvgSmallFallback || ((input) =>
       createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
     createAggregationSafetyFallback: options.factories?.createAggregationSafetyFallback || createAggregationSafetyFallbackRenderer
   };
@@ -413,7 +417,7 @@ export function createGraphFacadeRouteManager(
     routeId = fallbackRouteIdForData(state.data);
     return routeId === "aggregation-safety-fallback"
       ? factories.createAggregationSafetyFallback(factoryInput(undefined, () => manager.retrySigma()))
-      : factories.createGlobalFallback(factoryInput(undefined, () => manager.retrySigma()));
+      : factories.createDomSvgSmallFallback(factoryInput(undefined, () => manager.retrySigma()));
   }
 
   function switchRoute(nextRouteId: GraphFacadeRendererRouteId, createNext: () => GraphFacadeRenderer): void {
@@ -511,8 +515,8 @@ export function graphRequiresAggregationSafetyFallback(data: GraphData): boolean
     maxCommunitySize > GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackCommunitySize;
 }
 
-function fallbackRouteIdForData(data: GraphData): Extract<GraphFacadeRendererRouteId, "global-fallback" | "aggregation-safety-fallback"> {
-  return graphRequiresAggregationSafetyFallback(data) ? "aggregation-safety-fallback" : "global-fallback";
+function fallbackRouteIdForData(data: GraphData): Extract<GraphFacadeRendererRouteId, "dom-svg-small-fallback" | "aggregation-safety-fallback"> {
+  return graphRequiresAggregationSafetyFallback(data) ? "aggregation-safety-fallback" : "dom-svg-small-fallback";
 }
 
 function createAggregationSafetyFallbackRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {

@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-7",
-    "task": "7.1",
+    "task": "7.2",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 7, Task 7.1: remove old DOM/SVG global main-path branching while preserving documented fallback/community/detail paths."
+    "next_allowed_action": "Advance to Phase 7, Task 7.2: update Sigma integration result docs and release notes as required."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -152,6 +152,13 @@
       "decision": "Store business node type as graphNodeType in the production Sigma Graphology graph and use Sigma's supported circle node program for the renderer type field.",
       "reason": "Task 6.1 production-path browser regression exposed that passing business types such as source/topic/entity into Sigma's type field makes Sigma fail initialization and route to fallback. The renderer type field is a Sigma drawing-program selector, not product semantics.",
       "source": "tests/browser/graph-sigma-global-production.ts single-shape smoke; packages/graph-engine/src/render/sigma-global-renderer.ts"
+    },
+    {
+      "id": "D19",
+      "status": "recorded",
+      "decision": "Rename the ambiguous DOM/SVG global fallback boundary to dom-svg-small-fallback and keep it reachable only after Sigma is unavailable for graphs below the large-graph safety threshold.",
+      "reason": "Task 7.1 requires removing old DOM/SVG global main-path branching while preserving small-graph emergency fallback, community reading, and large-graph aggregation safety fallback. The explicit route/factory names and targeted tests prevent the fallback from being mistaken for a second global main renderer.",
+      "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/test/facade.test.ts"
     }
   ],
   "phases": [
@@ -617,7 +624,7 @@
       "id": "phase-7",
       "title": "Global main-path cleanup and closure",
       "goal": "Remove long-term dual-maintenance risk and record final evidence.",
-      "status": "pending",
+      "status": "in_progress",
       "acceptance": [
         "Targeted tests or static checks prove Sigma is the normal global route",
         "Old DOM/SVG global main route is removed from normal operation",
@@ -627,16 +634,27 @@
         "Final acceptance command list exits 0 and the final production artifact proves all hard performance gates for all 11 shapes",
         "Final progress status and residual risk are recorded"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 7.1 complete: targeted route tests prove normal global route creates Sigma without DOM/SVG small fallback or aggregation fallback.",
+        "Task 7.1 complete: DOM/SVG route is explicitly named dom-svg-community for community reading and dom-svg-small-fallback only for small Sigma-unavailable graphs.",
+        "Task 7.1 complete: known-large Sigma failures route to aggregation-safety-fallback and do not create DOM/SVG small fallback.",
+        "Task 7.1 complete: static check found no global-fallback/createGlobalFallback or renderer comparison/rollback switch names in graph-engine src/test."
+      ],
+      "residual_risk": "Phase 7 is not closed yet: result docs and final acceptance still remain in Tasks 7.2 and 7.3.",
       "tasks": [
         {
           "id": "7.1",
           "title": "Remove old DOM/SVG global main-path branch",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "Baseline before implementation: git log --oneline -15 inspected; npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail).",
+            "node --import tsx --test packages/graph-engine/test/facade.test.ts packages/graph-engine/test/summary-contract.test.ts packages/graph-engine/test/renderer-lifecycle.test.ts => exit 0 (36 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "rg -n \"global-fallback|createGlobalFallback|renderer switch|old renderer|comparison switch|rollback switch|useOldRenderer|useNewRenderer|enable.*renderer|renderer.*flag\" packages/graph-engine/src packages/graph-engine/test => no output."
+          ],
+          "evidence": "GraphFacadeRendererRouteId now exposes sigma-global, dom-svg-community, dom-svg-small-fallback, and aggregation-safety-fallback. createDomSvgSmallFallback replaced the ambiguous createGlobalFallback boundary. Facade route tests assert the normal global route creates Sigma only, community reading uses DOM/SVG, small Sigma-unavailable graphs use DOM/SVG small fallback, and known-large Sigma failures use aggregation safety fallback instead of DOM/SVG. No user-visible old/new renderer switch or temporary comparison switch remains in graph-engine src/test.",
+          "residual_risk": "Cleanup is route-boundary focused. Final docs and full production-path acceptance remain for Tasks 7.2 and 7.3."
         },
         {
           "id": "7.2",
@@ -833,6 +851,14 @@
       "action": "Ran graph-engine and web test/typecheck/build plus workbench, offline, community wash, stage-4.5 offline, and HTML accessibility browser regressions.",
       "result": "phase-6 task 6.3 complete and phase-6 acceptance met; advancing to phase 7 task 7.1.",
       "at": "2026-06-19T23:05:00+08:00"
+    },
+    {
+      "turn": 23,
+      "task": "7.1",
+      "phase": "phase-7",
+      "action": "Removed the ambiguous old DOM/SVG global fallback route name, replaced it with an explicit small-graph Sigma-unavailable fallback boundary, and added targeted route assertions for normal Sigma, DOM/SVG community, small fallback, aggregation safety fallback, and absence of renderer comparison switches.",
+      "result": "phase-7 task 7.1 complete; graph-engine test/typecheck pass; advancing to task 7.2.",
+      "at": "2026-06-19T23:25:00+08:00"
     }
   ],
   "final": {
