@@ -408,11 +408,16 @@ describe("graph renderer lifecycle", () => {
     });
 
     renderer.root.focus();
+    assert.equal(renderer.root.tabIndex, 0);
+    assert.equal(ownerDocument.activeElement, renderer.root);
     ownerDocument.dispatch("keydown", { key: "f", metaKey: true });
     assert.equal(renderer.root.dataset.searchOpen, "true");
+    const searchInput = findByClass(renderer.root as unknown as FakeElement, "graph-search-input")[0];
+    assert.equal(ownerDocument.activeElement, searchInput);
 
     ownerDocument.dispatch("keydown", { key: "Escape" });
     assert.equal(renderer.root.dataset.searchOpen, "false");
+    assert.equal(ownerDocument.activeElement, renderer.root);
     assert.deepEqual(viewResets, []);
     assert.deepEqual(pinsChanged, []);
     assert.equal(nodeElement(renderer, "a")?.dataset.pinned, "true");

@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-2",
-    "task": "2.2",
+    "task": "2.3",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 2, Task 2.3: preserve basic keyboard and focus semantics after renderer boundary decoupling."
+    "next_allowed_action": "Phase 2 acceptance met. Advance to Phase 3, Task 3.1: establish Sigma production module and dependency/bundle/offline boundary."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -192,15 +192,22 @@
       "id": "phase-2",
       "title": "Renderer boundary decoupling",
       "goal": "Constrain DOM/SVG assumptions behind renderer boundaries so Sigma can be integrated without duplicating semantics.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Controller no longer directly depends on per-node DOM focus/classList operations unless a retained case is documented and tested",
         "renderer root, pipeline, and controls boundaries are explicit",
         "basic keyboard and focus tests pass",
         "graph-engine test and typecheck pass"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 2.1, 2.2, and 2.3 complete with evidence.",
+        "Controller no longer directly depends on per-node DOM focus/classList operations; required static rg check has no output.",
+        "DOM/SVG renderer root/content boundary is explicit via renderer-surface.ts and dom-svg-renderer.ts; render-pipeline delegates graph content drawing through paintDomSvgGraph and keeps command/control orchestration.",
+        "Basic keyboard and focus checks pass: keyboard + interaction-contract tests pass; lifecycle test asserts graph root is focusable, search opens focus the input, and closing search returns focus to root.",
+        "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (326 tests, 0 fail).",
+        "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0."
+      ],
+      "residual_risk": "Phase 2 preserves the current DOM/SVG path while creating enough renderer boundary for Sigma production work. The next phase still needs the actual Sigma renderer, route ownership, and fallback integration.",
       "tasks": [
         {
           "id": "2.1",
@@ -230,10 +237,16 @@
         {
           "id": "2.3",
           "title": "Preserve basic keyboard and focus semantics",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/keyboard.test.ts packages/graph-engine/test/interaction-contract.test.ts => exit 0 (8 tests, 0 fail).",
+            "node --import tsx --test packages/graph-engine/test/renderer-lifecycle.test.ts => exit 0 (18 tests, 0 fail), including focus assertions for root/search input/root-return.",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (326 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "rg -n \"context\\.dom\\.(nodeElements|edgeElements|aggregationContainerElements).*\\.(focus|classList)\" packages/graph-engine/src/render/controller.ts => no output."
+          ],
+          "evidence": "renderer-lifecycle.test now asserts root.tabIndex=0, root focus before keyboard search, search input focus after opening search via keyboard, and focus returning to root after Escape closes search. Existing keyboard ownership and interaction contract tests pass, proving search open/close, selection clear, and return-global behavior survived the renderer boundary split.",
+          "residual_risk": "No full keyboard roaming was added, per plan scope. Future Sigma canvas still needs its own focusable container and status hint during production integration."
         }
       ]
     },
@@ -519,6 +532,14 @@
       "phase": "phase-2",
       "action": "Extracted DOM/SVG graph-content creation from render-pipeline into dom-svg-renderer and added boundary tests proving pipeline delegates graph drawing through paintDomSvgGraph.",
       "result": "phase-2 task 2.2 complete; graph-engine test/typecheck and lifecycle/boundary checks pass; advancing to task 2.3.",
+      "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 7,
+      "task": "2.3",
+      "phase": "phase-2",
+      "action": "Added lifecycle focus assertions for root/search input/root-return and reran keyboard, interaction contract, full graph-engine test, typecheck, and controller static boundary checks.",
+      "result": "phase-2 task 2.3 complete and phase-2 acceptance met; advancing to phase 3 task 3.1.",
       "at": "2026-06-19T00:00:00+08:00"
     }
   ],
