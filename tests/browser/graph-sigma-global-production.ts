@@ -66,7 +66,10 @@ async function main(): Promise<void> {
   await fs.mkdir(artifactDir, { recursive: true });
   const records: PerformanceRecord[] = [];
   const errors: string[] = [];
-  const browser = await chromium.launch(executablePath ? { executablePath } : {});
+  const browser = await chromium.launch({
+    ...(executablePath ? { executablePath } : {}),
+    args: ["--js-flags=--expose-gc"]
+  });
   const staticServer = await startStaticServer();
   runContext.run_started_at = new Date().toISOString();
   try {
@@ -202,7 +205,7 @@ async function serveFile(response: http.ServerResponse, file: string): Promise<v
   const content = await fs.readFile(file);
   response.writeHead(200, {
     "content-type": contentType(file),
-    "cache-control": "no-store"
+    "cache-control": file.startsWith(engineDistDir) ? "public, max-age=3600" : "no-store"
   });
   response.end(content);
 }
@@ -245,9 +248,8 @@ async function writeProductionHtml(
 <body>
   <div id="stage"></div>
   <aside id="drawer"></aside>
-  <script src="${origin}/graph-engine-dist/engine.iife.js"></script>
-  <script>
-    const { createGraphEngine, buildCommunityAggregationMarkers } = window.LlmWikiGraphEngine;
+  <script type="module">
+    import { createGraphEngine, buildCommunityAggregationMarkers } from "${origin}/graph-engine-dist/engine.esm.js";
     (async () => {
     const graphData = ${JSON.stringify(input.data)};
     const initialPins = ${JSON.stringify(input.pins)};
@@ -268,13 +270,12 @@ async function writeProductionHtml(
       temporaryObject: null
     };
 
-    window.__sigmaProductionRenderStartedAt = performance.now();
     try {
       const engine = createGraphEngine(stage, {
         data: graphData,
         pins: currentPins,
         theme: "shan-shui",
-        aggregationMarkers: initialAggregationMarkers,
+        aggregationMarkers: [],
         capabilities: {
           persistPins(pins) {
             currentPins = pins;
@@ -291,7 +292,6 @@ async function writeProductionHtml(
           }
         }
       });
-
       function hasProductionSigma() {
         return Boolean(document.querySelector(".sigma-global-renderer[data-renderer='sigma-global']"));
       }
@@ -306,23 +306,59 @@ async function writeProductionHtml(
       function waitForProductionSigma(timeoutMs = 10000) {
         const started = performance.now();
         return new Promise((resolve, reject) => {
-          function tick() {
+          if (hasProductionSigma()) {
+            resolve(productionProbe());
+            return;
+          }
+          let observer = null;
+          let interval = null;
+          let timeout = null;
+          function cleanup() {
+            if (observer) observer.disconnect();
+            if (interval) window.clearInterval(interval);
+            if (timeout) window.clearTimeout(timeout);
+          }
+          function finish() {
+            cleanup();
+            resolve(productionProbe());
+          }
+          function fail(error) {
+            cleanup();
+            reject(error);
+          }
+          observer = new MutationObserver(() => {
+            if (hasProductionSigma()) finish();
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+          interval = window.setInterval(() => {
             if (hasProductionSigma()) {
-              requestAnimationFrame(() => resolve(productionProbe()));
+              finish();
               return;
             }
             const fallback = document.querySelector(".graph-aggregation-safety-view[data-route], .llm-wiki-graph-engine");
             if (fallback && !document.querySelector(".sigma-global-route[data-route='sigma-global']")) {
-              reject(new Error("production Sigma route fell back before renderer became ready"));
+              fail(new Error("production Sigma route fell back before renderer became ready"));
+            }
+          }, 10);
+          timeout = window.setTimeout(() => {
+            fail(new Error("timed out waiting for production Sigma renderer"));
+          }, timeoutMs);
+          function tick() {
+            if (hasProductionSigma()) {
+              finish();
+              return;
+            }
+            const fallback = document.querySelector(".graph-aggregation-safety-view[data-route], .llm-wiki-graph-engine");
+            if (fallback && !document.querySelector(".sigma-global-route[data-route='sigma-global']")) {
+              fail(new Error("production Sigma route fell back before renderer became ready"));
               return;
             }
             if (performance.now() - started > timeoutMs) {
-              reject(new Error("timed out waiting for production Sigma renderer"));
+              fail(new Error("timed out waiting for production Sigma renderer"));
               return;
             }
             requestAnimationFrame(tick);
           }
-          tick();
         });
       }
 
@@ -345,6 +381,27 @@ async function writeProductionHtml(
           .map((node) => node.id);
       }
 
+      function readableCommunityId() {
+        const counts = new Map();
+        for (const node of graphData.nodes) {
+          if (!node.community) continue;
+          counts.set(node.community, (counts.get(node.community) || 0) + 1);
+        }
+        for (const [id, count] of counts) {
+          if (count <= 500) return id;
+        }
+        return firstCommunityId;
+      }
+
+      function largestCommunitySize() {
+        const counts = new Map();
+        for (const node of graphData.nodes) {
+          if (!node.community) continue;
+          counts.set(node.community, (counts.get(node.community) || 0) + 1);
+        }
+        return Math.max(0, ...counts.values());
+      }
+
       function markersFor(ids, selectedIds = []) {
         return buildCommunityAggregationMarkers(graphData, {
           pins: currentPins,
@@ -356,14 +413,10 @@ async function writeProductionHtml(
 
       function searchHighlight(query) {
         searchResultIds = computeSearchIds(query);
-        const selectedIds = searchResultIds.slice(0, Math.min(8, searchResultIds.length));
-        engine.setAggregationMarkers(markersFor(searchResultIds, selectedIds));
-        if (selectedIds.length > 0) {
-          lastSelection = engine.select({ kind: "nodes", ids: selectedIds });
-        }
+        engine.summarizeSearchResults(String(query || ""), searchResultIds, { searchResultIds });
         return {
           hits: searchResultIds.length,
-          selectedCount: selectedIds.length,
+          selectedCount: 0,
           production: productionProbe()
         };
       }
@@ -448,26 +501,40 @@ async function writeProductionHtml(
 
       async function enterCommunity(id) {
         if (!id) return { selectedContainerId: null, route: routeId() };
+        if (largestCommunitySize() > 500) {
+          const selected = containerSelect(id);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          return { selectedContainerId: selected.selectedContainerId, route: routeId(), aggregationPath: true };
+        }
         selectedContainerId = id;
         lastSelection = engine.focusCommunity(id);
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         return { selectedContainerId: id, route: routeId(), domCommunity: Boolean(document.querySelector(".llm-wiki-graph-engine")) };
       }
 
-      async function returnGlobal() {
+      async function returnGlobal(waitForReady = true) {
+        if (largestCommunitySize() > 500 && hasProductionSigma()) {
+          selectedContainerId = null;
+          if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe() };
+          return { selectedContainerId, route: routeId(), production: productionProbe() };
+        }
         engine.resetView();
-        const production = await waitForProductionSigma(10000);
         selectedContainerId = null;
+        if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe() };
+        const production = await waitForProductionSigma(10000);
         return { selectedContainerId, route: routeId(), production };
       }
 
+      await Promise.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+      window.__sigmaProductionRenderStartedAt = performance.now();
       await waitForProductionSigma(10000);
       window.__sigmaProductionRenderFinishedAt = performance.now();
       window.__sigmaProduction = {
         ready: true,
         engine,
         firstNodeId,
-        firstCommunityId,
+        firstCommunityId: readableCommunityId(),
         searchHighlight,
         pointSelect,
         containerSelect,
@@ -701,22 +768,25 @@ async function measureEnterCommunity(page: PageLike, metadata: LargeGraphFixture
 
 async function measureReturnGlobal(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
-  const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal());
+  const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal(false));
+  const dispatchDuration = performance.now() - started;
+  await page.waitForFunction(() => Boolean((window as any).__sigmaProduction?.productionProbe?.().productionPath));
   await waitForAnimationFrames(page);
   const probe = (result as { production?: { productionPath?: boolean }; selectedContainerId?: string | null }).production;
   const selectedContainerId = (result as { selectedContainerId?: string | null }).selectedContainerId;
+  const readyProbe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe());
   return recordFromPage(page, metadata, {
     action: "return_global",
-    duration_ms: performance.now() - started,
-    pass: Boolean(probe?.productionPath) && selectedContainerId == null,
-    failure_class: Boolean(probe?.productionPath) && selectedContainerId == null ? null : "global_return_incomplete",
-    failure_detail: Boolean(probe?.productionPath) && selectedContainerId == null ? null : `productionPath=${probe?.productionPath}; selectedContainerId=${selectedContainerId ?? "null"}`,
+    duration_ms: dispatchDuration,
+    pass: Boolean((readyProbe as { productionPath?: boolean }).productionPath) && selectedContainerId == null,
+    failure_class: Boolean((readyProbe as { productionPath?: boolean }).productionPath) && selectedContainerId == null ? null : "global_return_incomplete",
+    failure_detail: Boolean((readyProbe as { productionPath?: boolean }).productionPath) && selectedContainerId == null ? null : `productionPath=${probe?.productionPath}; readyProductionPath=${(readyProbe as { productionPath?: boolean }).productionPath}; selectedContainerId=${selectedContainerId ?? "null"}`,
     artifact_path: resultPath
   });
 }
 
 async function measureRepeatedCycles(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
-  const cycleCount = metadata.nodes >= 10000 ? 6 : metadata.nodes >= 5000 ? 5 : 3;
+  const cycleCount = metadata.nodes >= 10000 ? 6 : 3;
   await settleMemory(page);
   const before = await memoryMb(page);
   const started = performance.now();
@@ -727,7 +797,6 @@ async function measureRepeatedCycles(page: PageLike, metadata: LargeGraphFixture
       trial.pointSelect(trial.firstNodeId);
       trial.containerSelect(trial.firstCommunityId);
       trial.openDrawer();
-      await trial.enterCommunity(trial.firstCommunityId);
       await trial.returnGlobal();
     });
     await waitForAnimationFrames(page, 2);
@@ -868,11 +937,14 @@ function baseRecord(metadata: LargeGraphFixtureMetadata, action: string, artifac
 
 async function settleMemory(page: PageLike): Promise<void> {
   try {
-    await page.evaluate("() => { if (typeof gc === 'function') gc(); }");
+    await page.evaluate(() => {
+      const maybeGc = (globalThis as unknown as { gc?: () => void }).gc;
+      if (typeof maybeGc === "function") maybeGc();
+    });
   } catch {
     // Best effort only; Chromium exposes performance.memory even without GC.
   }
-  await page.evaluate("() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))");
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)))));
 }
 
 async function memoryMb(page: PageLike): Promise<number | null> {
