@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-5",
-    "task": "5.2",
+    "task": "5.3",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 5, Task 5.2: preserve community reading, open-detail, and return-global flows across workbench and offline regressions."
+    "next_allowed_action": "Advance to Phase 5, Task 5.3: preserve basic keyboard, focus, and accessibility state."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -486,10 +486,15 @@
         {
           "id": "5.2",
           "title": "Preserve community reading, open-detail, and return-global flows",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "npm run test --workspace=@llm-wiki-agent/web => exit 0 (42 tests, 0 fail).",
+            "bash tests/graph-workbench-interactions.regression-1.sh => exit 0 (PASS: graph workbench interaction regression).",
+            "bash tests/graph-offline-phase-6.regression-1.sh => exit 0 (PASS: phase 6 offline graph regression).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail)."
+          ],
+          "evidence": "Workbench regression proves detail/read opens a reader with the node selected, return-global preserves search/filter/Pin/selection context, community entry opens community summary without a full reader, and excluded-object temporary display can be shown and cleared without clearing filters. Offline regression proves standalone HTML reader, drag/pin persistence, theme, dense, and multi-community flows still pass without host drawer assumptions.",
+          "residual_risk": "Task 5.2 covers workbench/offline flow regressions but not the dedicated keyboard/a11y script or visual fallback hint checks; those remain Tasks 5.3 and 5.4."
         },
         {
           "id": "5.3",
@@ -724,6 +729,14 @@
       "action": "Verified node, community, search, filter, and Pin semantics through interaction, search/legend, summary-contract, and full graph-engine tests.",
       "result": "phase-5 task 5.1 complete; graph-engine interaction semantics remain stable; advancing to task 5.2.",
       "at": "2026-06-19T21:51:00+08:00"
+    },
+    {
+      "turn": 17,
+      "task": "5.2",
+      "phase": "phase-5",
+      "action": "Ran web tests plus workbench and offline browser regressions for community reading, open-detail/read, return-global, selected/excluded state, and standalone HTML flows.",
+      "result": "phase-5 task 5.2 complete; workbench and offline regressions pass; advancing to task 5.3.",
+      "at": "2026-06-19T21:52:00+08:00"
     }
   ],
   "final": {
