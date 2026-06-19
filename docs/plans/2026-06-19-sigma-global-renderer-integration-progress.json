@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-7",
-    "task": "7.3",
-    "state": "pending",
-    "next_allowed_action": "Advance to Phase 7, Task 7.3: rerun final acceptance, produce final production artifact, and close progress."
+    "phase": "complete",
+    "task": "complete",
+    "state": "done",
+    "next_allowed_action": "Plan complete. Do not push, merge, or amend from this goal."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -166,6 +166,13 @@
       "decision": "Record the Sigma production integration result in a new docs/graph/performance result document and update user-facing release wording from future-route language to current-route language.",
       "reason": "Task 7.2 requires result documentation to match the implemented route and progress state, including Phase 0 evidence, final route, fallback boundary, artifact paths, residual risk, and no misstatement of vis-network or aggregation as current main routes.",
       "source": "docs/graph/performance/2026-06-19-sigma-global-production-integration-result.md; README.md; CHANGELOG.md"
+    },
+    {
+      "id": "D21",
+      "status": "recorded",
+      "decision": "Close the Sigma global renderer integration plan after sequential final acceptance and final production artifact proof.",
+      "reason": "Every task is done, all acceptance commands passed, and the final production artifact proves 11 graph shapes satisfy the performance hard gates with no failed records.",
+      "source": "/tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json; docs/plans/2026-06-19-sigma-global-renderer-integration-progress.json"
     }
   ],
   "phases": [
@@ -631,7 +638,7 @@
       "id": "phase-7",
       "title": "Global main-path cleanup and closure",
       "goal": "Remove long-term dual-maintenance risk and record final evidence.",
-      "status": "in_progress",
+      "status": "done",
       "acceptance": [
         "Targeted tests or static checks prove Sigma is the normal global route",
         "Old DOM/SVG global main route is removed from normal operation",
@@ -648,9 +655,12 @@
         "Task 7.1 complete: static check found no global-fallback/createGlobalFallback or renderer comparison/rollback switch names in graph-engine src/test.",
         "Task 7.2 complete: Sigma production integration result doc added under docs/graph/performance with Phase 0 result, final route, fallback boundary, residual risk, and artifact paths.",
         "Task 7.2 complete: README and CHANGELOG updated from future Sigma route wording to current production Sigma global route wording.",
-        "Task 7.2 complete: result doc manually checked so vis-network remains historical rejected comparison evidence and aggregation remains safety fallback, not a second global main product."
+        "Task 7.2 complete: result doc manually checked so vis-network remains historical rejected comparison evidence and aggregation remains safety fallback, not a second global main product.",
+        "Task 7.3 complete: full final acceptance command list passed sequentially.",
+        "Task 7.3 complete: final production artifact /tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json exists and proves 110 records across 11 shapes with production_path=true and 0 failures.",
+        "Task 7.3 complete: final artifact proves wheel min fps 60.1, drag min fps 60.2, wheel p95 max 17.3ms, drag p95 max 17.4ms, action durations within thresholds, repeated-cycle memory growth max 3.4MB, loading-state fields present, schema/threshold fields present, and no failed records."
       ],
-      "residual_risk": "Phase 7 is not closed yet: final acceptance rerun and final production artifact remain for Task 7.3.",
+      "residual_risk": "Final evidence is local-machine Chromium/Playwright evidence. Runtime behavior still depends on the user environment supporting WebGL/Sigma; if unavailable, the implemented fallback policy keeps small graphs on DOM/SVG emergency fallback and large graphs on aggregation safety fallback. No user-visible old/new renderer switch remains.",
       "tasks": [
         {
           "id": "7.1",
@@ -684,10 +694,17 @@
         {
           "id": "7.3",
           "title": "Run final acceptance and close progress",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "Opening gate: progress read, Task 7.3 plan read, GSTACK REVIEW REPORT confirmed ending with NO UNRESOLVED DECISIONS, git log --oneline -15 inspected, and npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail).",
+            "Final acceptance command list passed sequentially: npm run test/typecheck/build --workspace=@llm-wiki/graph-engine; npm run test/typecheck/build --workspace=@llm-wiki-agent/web; node --import tsx --check tests/browser/graph-sigma-global-production.ts; Sigma isolated trial; Sigma production trial; workbench/offline/community/stage-4.5/a11y browser regressions.",
+            "GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-final bash tests/graph-sigma-graphology-trial.regression-1.sh => exit 0 (110 records, 11 shapes).",
+            "GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-production-final bash tests/graph-sigma-global-production.regression-1.sh => exit 0 (110 records, 11 shapes).",
+            "Final production artifact validation summary: records=110, shapes=11, failures=0, missing_required_fields=0, production_path=true, wheel_min_fps=60.1, drag_min_fps=60.2, wheel_max_frame_p95_ms=17.3, drag_max_frame_p95_ms=17.4, repeated_cycle_max_memory_growth_mb=3.4.",
+            "git status --short --branch checked after progress update; only planned progress change plus ignored untracked .superpowers/ expected before commit."
+          ],
+          "evidence": "{\"artifact\":\"/tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json\",\"schema_version\":\"1.0.0\",\"renderer\":\"sigma-global-production\",\"production_path\":true,\"browser\":\"148.0.7778.96\",\"build_commit\":\"7296bd3\",\"records\":110,\"shapes\":11,\"failures\":0,\"missing_required_fields\":0,\"wheel_min_fps\":60.1,\"drag_min_fps\":60.2,\"wheel_max_frame_p95_ms\":17.3,\"drag_max_frame_p95_ms\":17.4,\"initial_max_duration_ms\":0.2,\"search_max_duration_ms\":32.5,\"drawer_max_duration_ms\":87.3,\"return_global_max_duration_ms\":71.2,\"repeated_cycle_max_memory_growth_mb\":3.4,\"loading_states\":[\"sigma-global-not-ready\",\"sigma-global-ready\"]}",
+          "residual_risk": "Final artifact and acceptance commands passed on this local Chromium/Playwright environment. Field deployment can still encounter WebGL/Sigma unavailability; implemented fallback routes cover that case. The temporary parallel command run caused one transient stage-4.5 failure due to dependency/browser contention, then the failing command passed alone and the complete final list passed sequentially."
         }
       ]
     }
@@ -884,12 +901,26 @@
       "action": "Added the Sigma production integration result document and updated README/CHANGELOG wording to reflect Sigma as the current global route while keeping DOM/SVG and aggregation documented only as bounded fallback/community/detail paths.",
       "result": "phase-7 task 7.2 complete; documentation checks pass; advancing to task 7.3.",
       "at": "2026-06-19T23:45:00+08:00"
+    },
+    {
+      "turn": 25,
+      "task": "7.3",
+      "phase": "phase-7",
+      "action": "Ran the complete final acceptance command list sequentially, generated the final Sigma production artifact, validated hard-gate metrics, and closed the progress ledger.",
+      "result": "plan complete; final artifact has 110 records across 11 shapes, production_path=true, 0 failures, all hard gates satisfied.",
+      "at": "2026-06-19T23:59:00+08:00"
     }
   ],
   "final": {
-    "status": "pending",
-    "evidence": [],
-    "residual_risk": ""
+    "status": "complete",
+    "evidence": [
+      "All tasks in the plan are done.",
+      "All phase acceptance checks are recorded in progress.",
+      "Full final acceptance command list passed sequentially.",
+      "Final production artifact: /tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json",
+      "Final artifact proves all 11 graph shapes satisfy hard gates: fps >=45, frame p95 <=22.3ms for wheel/drag, action durations within recorded thresholds, memory growth within threshold, loading-state/schema/threshold fields present, production_path=true, and 0 failed records."
+    ],
+    "residual_risk": "Evidence is from local Chromium/Playwright runs. WebGL/Sigma availability can vary by user environment, so the implemented fallback policy remains necessary: small abnormal graphs use DOM/SVG emergency fallback and large abnormal graphs use aggregation safety fallback. No known unresolved product decision remains."
   },
   "baseline": {
     "branch": "codex/sigma-global-renderer-integration",
