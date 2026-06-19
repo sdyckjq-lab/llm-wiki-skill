@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-5",
-    "task": "5.4",
+    "phase": "phase-6",
+    "task": "6.1",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 5, Task 5.4: verify visual states and fallback hint behavior."
+    "next_allowed_action": "Advance to Phase 6, Task 6.1: establish the production-path large graph browser regression and single-shape artifact proof."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -462,15 +462,22 @@
       "id": "phase-5",
       "title": "Interaction semantics and UX regression",
       "goal": "Prove Sigma global interactions preserve the product rules for node, community, search, filter, pin, reader, and fallback flows.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Node, community, search, filter, pin, community entry, and return-global semantics pass automated tests",
         "Workbench and offline browser regressions pass",
         "Basic keyboard, focus, and accessibility checks pass",
         "Fallback prompt is tested as a non-blocking hint"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 5.1 through 5.4 complete with evidence.",
+        "Core graph-engine interaction tests pass for node/community/search/filter/Pin semantics.",
+        "Workbench and offline browser regressions pass for community reading, open-detail/read, return-global, selected/excluded state, and standalone HTML flows.",
+        "Keyboard and accessibility checks pass.",
+        "Visual/browser checks pass: community wash interactions, stage 4.5 offline browser regression, and web tests all exit 0.",
+        "Required state evidence recorded: normal global state via stage 4.5 offline browser regression; community reading/summary state via community wash and workbench regressions; fallback state via graph-engine aggregation safety fallback test in the full graph-engine suite."
+      ],
+      "residual_risk": "Phase 5 proves interaction semantics and browser regressions, but not the final production-path 11-shape performance hard gates. Phase 6 must add and run the production-path performance regression.",
       "tasks": [
         {
           "id": "5.1",
@@ -511,10 +518,15 @@
         {
           "id": "5.4",
           "title": "Verify visual states and fallback hint behavior",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "bash tests/graph-community-wash-interactions.regression-1.sh => exit 0 (PASS: graph community wash interaction regression).",
+            "bash tests/graph-browser-stage-4-5.regression-1.sh --target offline => exit 0 (PASS: stage 4.5 browser regression (offline)).",
+            "npm run test --workspace=@llm-wiki-agent/web => exit 0 (42 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail)."
+          ],
+          "evidence": "Community wash regression proves global/community visual states stay distinct: wheel over wash zooms, community click keeps global nodes visible while selecting community nodes, threshold movement cancels community click, and dragging a node outside the wash pins it without leaving drag state stuck. Stage 4.5 offline browser regression proves normal offline global behavior. Full graph-engine test includes the aggregation safety fallback view and non-blocking fallback notice coverage from renderer-lifecycle.",
+          "residual_risk": "Task 5.4 validates visual/fallback behavior through existing browser and unit coverage. Production Sigma performance artifacts are still deferred to Phase 6."
         }
       ]
     },
@@ -749,6 +761,14 @@
       "action": "Ran keyboard ownership tests, HTML accessibility regression, and full graph-engine tests for focus/search/Escape behavior.",
       "result": "phase-5 task 5.3 complete; keyboard and accessibility checks pass; advancing to task 5.4.",
       "at": "2026-06-19T21:53:00+08:00"
+    },
+    {
+      "turn": 19,
+      "task": "5.4",
+      "phase": "phase-5",
+      "action": "Ran community wash visual interaction regression, stage 4.5 offline browser regression, web tests, and full graph-engine tests including fallback notice coverage.",
+      "result": "phase-5 task 5.4 complete and phase-5 acceptance met; normal global, community reading/summary, and fallback state evidence recorded; advancing to phase 6 task 6.1.",
+      "at": "2026-06-19T21:54:00+08:00"
     }
   ],
   "final": {
