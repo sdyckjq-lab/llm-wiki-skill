@@ -26,6 +26,7 @@ deps/baoyu-url-to-markdown/scripts/bun.lock
 .gstack/
 .playwright-cli/
 .omx/
+.superpowers/
 .codex
 .codex-review-stamp
 
