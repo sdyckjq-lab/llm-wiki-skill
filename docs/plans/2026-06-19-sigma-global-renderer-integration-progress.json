@@ -4,8 +4,8 @@
   "status": {
     "phase": "phase-0",
     "task": "0.1",
-    "state": "pending",
-    "next_allowed_action": "Create or switch to the implementation branch, run the baseline smoke check, record evidence, and make the clean-start commit for task 0.1"
+    "state": "done",
+    "next_allowed_action": "Advance to Phase 1, Task 1.1: raise Sigma trial validation standards and artifact schema (fps>=45, frame p95, action duration, memory growth, schema, thresholds, browser, build commit, mandatory-metric and failed-record blockers)."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -33,6 +33,13 @@
       "decision": "Treat Phase 0 as a start gate, not a new technology selection phase.",
       "reason": "The design names Sigma/Graphology as the preferred formal global renderer route, while requiring final evidence before production integration starts.",
       "source": "docs/spark/2026-06-19-sigma-global-graph-renderer-design.md"
+    },
+    {
+      "id": "D2",
+      "status": "recorded",
+      "decision": "Start implementation on codex/sigma-global-renderer-integration with a clean-start baseline that includes the eng-review plan amendments.",
+      "reason": "The plan GSTACK REVIEW REPORT ends with NO UNRESOLVED DECISIONS, eng review is cleared after amendments, and the baseline smoke check (324 tests, 0 fail) is green. The eng-review amendments to the plan and progress files are part of this ledger, not unrelated changes.",
+      "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (GSTACK REVIEW REPORT)"
     }
   ],
   "phases": [
@@ -40,21 +47,29 @@
       "id": "phase-0",
       "title": "Execution start and baseline",
       "goal": "Start from a dedicated implementation branch and record a reproducible baseline.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "git branch --show-current outputs codex/sigma-global-renderer-integration",
         "npm run test --workspace=@llm-wiki/graph-engine exits 0",
         "git log --oneline -15 includes a clean-start commit with [task 0.1]"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "git branch --show-current => codex/sigma-global-renderer-integration",
+        "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (324 tests, 0 fail)",
+        "git log --oneline -15 includes clean-start commit with [task 0.1]"
+      ],
+      "residual_risk": "Baseline only; no production renderer changes yet. Plan/progress eng-review amendments are committed as the clean-start baseline.",
       "tasks": [
         {
           "id": "0.1",
           "title": "Create implementation branch and clean-start baseline",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
+          "status": "done",
+          "verification": [
+            "Switched to codex/sigma-global-renderer-integration carrying plan/progress eng-review amendments.",
+            "Baseline smoke check: npm run test --workspace=@llm-wiki/graph-engine => exit 0, 324 tests, 0 fail.",
+            "Clean-start commit staged with [task 0.1]."
+          ],
+          "evidence": "branch=codex/sigma-global-renderer-integration; smoke=324 pass / 0 fail; clean-start commit on implementation branch.",
           "residual_risk": ""
         }
       ]
@@ -67,9 +82,10 @@
       "acceptance": [
         "Task 1.1 through 1.3 are complete",
         "Full Sigma trial exits 0 for all 11 shapes",
+        "Trial artifacts include required schema, thresholds, browser, build, action duration, frame_p95_ms, and memory fields",
         "No trial record has pass=false or a non-empty failure_class",
-        "5000 and 10000 repeated cycle memory records exist",
-        "wheel/drag fps records are >= 45"
+        "5000 and 10000 repeated cycle memory records exist and meet the plan's memory ceilings",
+        "wheel/drag fps records are >= 45 and wheel/drag frame_p95_ms records are <= 22.3"
       ],
       "verification": [],
       "residual_risk": "",
@@ -147,8 +163,9 @@
       "status": "pending",
       "acceptance": [
         "Sigma production module typechecks and builds",
-        "Sigma renderer uses adapter-controlled render data",
-        "Sigma hit projection and lifecycle tests pass",
+        "Route manager ownership and Sigma/Graphology bundle/offline boundary are recorded with evidence",
+        "Sigma renderer uses GraphRendererAdapterData and does not decide budgets from raw GraphData",
+        "Sigma hit projection and lifecycle tests pass, including stale events, update-after-destroy, and camera/state preservation",
         "Sigma module contains no drawer-summary or community-entry business decisions"
       ],
       "verification": [],
@@ -196,8 +213,10 @@
       "acceptance": [
         "Global route uses Sigma in normal operation",
         "Community reading route uses DOM/SVG",
+        "Global Sigma to community DOM/SVG to return-global preserves selection, search, filters, and pins",
         "Small Sigma failure falls back to DOM/SVG",
-        "Large Sigma failure falls back to aggregation safety view",
+        "Large Sigma failure falls back to aggregation safety view and known-large graphs are not sent to DOM/SVG",
+        "Fallback tests cover WebGL unavailable, Sigma initialization failure, canvas/runtime abnormal failure, retry, and known-failed no-retry behavior",
         "Workbench GraphPanel public boundary remains stable"
       ],
       "verification": [],
@@ -245,7 +264,7 @@
       "acceptance": [
         "Node, community, search, filter, pin, community entry, and return-global semantics pass automated tests",
         "Workbench and offline browser regressions pass",
-        "Basic keyboard and focus checks pass",
+        "Basic keyboard, focus, and accessibility checks pass",
         "Fallback prompt is tested as a non-blocking hint"
       ],
       "verification": [],
@@ -291,12 +310,13 @@
       "goal": "Prove the integrated production path meets the 11-shape behavior and performance requirements.",
       "status": "pending",
       "acceptance": [
-        "Production path large-graph browser regression exists",
-        "All 11 shapes record required actions",
-        "No failed records exist",
-        "wheel/drag fps records are >= 45",
+        "Production path large-graph browser regression exists and a single-shape production smoke run passes",
+        "Full trial and production-path 11-shape regressions pass",
+        "All 11 shapes record required actions with schema, thresholds, browser, build, production_path, fps, frame_p95_ms, duration, and memory fields",
+        "No failed records exist and no mandatory metric is missing",
+        "wheel/drag fps, frame p95, initial render, search, drawer, return-global, loading state, and memory all satisfy the plan's hard gates",
         "graph-engine and web test/typecheck/build commands pass",
-        "workbench, offline, community, and stage-4.5 browser regressions pass"
+        "workbench, offline, community, stage-4.5, and accessibility browser regressions pass"
       ],
       "verification": [],
       "residual_risk": "",
@@ -333,9 +353,12 @@
       "goal": "Remove long-term dual-maintenance risk and record final evidence.",
       "status": "pending",
       "acceptance": [
+        "Targeted tests or static checks prove Sigma is the normal global route",
         "Old DOM/SVG global main route is removed from normal operation",
         "DOM/SVG remains tested for small fallback, community reading, and details",
+        "Temporary comparison switches are removed or a non-user-facing emergency boundary is documented",
         "Result docs match the final implementation and artifacts",
+        "Final acceptance command list exits 0 and the final production artifact proves all hard performance gates for all 11 shapes",
         "Final progress status and residual risk are recorded"
       ],
       "verification": [],
@@ -368,10 +391,28 @@
       ]
     }
   ],
-  "turn_log": [],
+  "turn_log": [
+    {
+      "turn": 1,
+      "task": "0.1",
+      "phase": "phase-0",
+      "action": "Created implementation branch, ran baseline smoke check, recorded baseline, made clean-start commit.",
+      "result": "phase-0 complete; baseline 324 tests / 0 fail recorded; advanced to phase-1 task 1.1.",
+      "at": "2026-06-19T00:00:00+08:00"
+    }
+  ],
   "final": {
     "status": "pending",
     "evidence": [],
     "residual_risk": ""
+  },
+  "baseline": {
+    "branch": "codex/sigma-global-renderer-integration",
+    "smoke_check": "npm run test --workspace=@llm-wiki/graph-engine",
+    "result": "exit 0",
+    "tests": 324,
+    "pass": 324,
+    "fail": 0,
+    "recorded_at": "2026-06-19T00:00:00+08:00"
   }
 }

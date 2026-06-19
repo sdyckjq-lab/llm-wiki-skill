@@ -99,14 +99,56 @@ npm run test --workspace=@llm-wiki-agent/web
 npm run typecheck --workspace=@llm-wiki-agent/web
 npm run build --workspace=@llm-wiki-agent/web
 node --import tsx --check tests/browser/graph-sigma-graphology-trial.ts
+node --import tsx --check tests/browser/graph-sigma-global-production.ts
 GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-final bash tests/graph-sigma-graphology-trial.regression-1.sh
+GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-production-final bash tests/graph-sigma-global-production.regression-1.sh
 bash tests/graph-workbench-interactions.regression-1.sh
 bash tests/graph-offline-phase-6.regression-1.sh
 bash tests/graph-community-wash-interactions.regression-1.sh
 bash tests/graph-browser-stage-4-5.regression-1.sh --target offline
+bash tests/graph-html-a11y.regression-1.sh
 ```
 
 若浏览器回归因环境缺少 Chrome、端口占用或 sandbox 限制无法运行，不能标记通过；progress 记录 blocked 和具体原因。
+
+## 性能验收硬门槛
+
+这些门槛同时适用于 Phase 1 的隔离 trial 和 Phase 6/7 的生产路径回归。若某项指标为必测但 artifact 缺失、为 `null`、为 `not run`，或超过阈值，本任务不能标记通过。
+
+### Artifact schema
+
+每条性能记录必须包含：
+
+- `schema_version`
+- `renderer`
+- `production_path`
+- `graph_shape`
+- `action`
+- `pass`
+- `fps`
+- `frame_p95_ms`
+- `duration_ms`
+- `memory_growth_mb`
+- `failure_class`
+- `failure_detail`
+- `thresholds`
+- `artifact_path`
+- `browser`
+- `build_commit`
+- `run_started_at`
+- `run_finished_at`
+
+其中 `thresholds` 至少记录本次 action 使用的 fps、frame p95、duration 和 memory 上限；生产路径 artifact 的 `production_path` 必须为 `true`。
+
+### Thresholds
+
+| Scale | Initial render | Search highlight | Drawer open | Return global | Wheel/drag FPS | Wheel/drag frame p95 | Memory growth |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1000 nodes | <= 500 ms | <= 200 ms | <= 200 ms | <= 250 ms | >= 45 | <= 22.3 ms | <= 50 MB |
+| 5000 nodes | <= 1200 ms | <= 400 ms | <= 400 ms | <= 500 ms | >= 45 | <= 22.3 ms | <= 75 MB |
+| 10000 nodes | <= 2000 ms | <= 700 ms | <= 500 ms | <= 800 ms | >= 45 | <= 22.3 ms | <= 100 MB |
+
+10000 节点首次进入全局图时，250 ms 内必须出现明确加载状态，不能长时间空白。浏览器性能脚本要记录 warmup 后至少 3 次重复运行：median 必须通过，worst run 必须写入 artifact；任何 failed record、缺失 action、缺失 shape、缺失 mandatory metric 都阻止进入下一阶段。
 
 ## 实现面地图
 
@@ -242,6 +284,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 - 更新 `tests/browser/graph-renderer-trial-shared.ts`、`tests/browser/graph-sigma-graphology-trial.ts`、`tests/browser/validate-graph-trial-result.mjs` 或对应 wrapper。
 - 把 Sigma wheel/drag 判定提升到本文档要求的 45 FPS 目标。
+- 按“性能验收硬门槛”校验 `frame_p95_ms`、action duration、memory growth、schema version、thresholds、browser、build commit 和 mandatory metric。
 - 确保失败记录、缺失 action、缺失 shape、空 artifact 都会导致命令失败。
 - 让结果 JSON 记录 `fps`、`frame_p95_ms`、`duration_ms`、`memory_growth_mb`、`failure_class`、`failure_detail` 和 artifact 路径。
 
@@ -249,7 +292,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 - `node --import tsx --check tests/browser/graph-sigma-graphology-trial.ts` exits 0。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
-- 使用单一轻量 shape 运行 `GRAPH_SIGMA_TRIAL_SHAPES=nodes-1000-sparse GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-task-1-1 bash tests/graph-sigma-graphology-trial.regression-1.sh` exits 0，并产生包含上述字段的 JSON。
+- 使用单一轻量 shape 运行 `GRAPH_SIGMA_TRIAL_SHAPES=nodes-1000-sparse GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-task-1-1 bash tests/graph-sigma-graphology-trial.regression-1.sh` exits 0，并产生包含上述字段、schema、thresholds 和 browser/build 信息的 JSON。
 
 ### Task 1.2 — 让 Sigma trial 使用适配层受控数据
 
@@ -352,6 +395,8 @@ Sigma unavailable -> small graph DOM/SVG fallback
 范围：
 
 - 将 `sigma`、`graphology` 放到生产运行所需的包边界。
+- 在本任务明确 route manager 归属：优先放在 facade 内部，由 facade 管理全局 Sigma、社区 DOM/SVG 和 fallback renderer；若实现发现必须放到 render root，必须在 progress 记录原因和边界。
+- 明确 Sigma/Graphology 的打包方式：是否进入 `engine.iife.js`、是否拆成单独 entry/lazy load、离线单文件 HTML 是否加载它，以及对应构建体积和离线加载证据。
 - 新增 Sigma global renderer 模块骨架和导出。
 - 保持 DOM/SVG renderer 可独立构建。
 
@@ -360,6 +405,8 @@ Sigma unavailable -> small graph DOM/SVG fallback
 - `npm run typecheck --workspace=@llm-wiki/graph-engine` exits 0。
 - `npm run build --workspace=@llm-wiki/graph-engine` exits 0。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
+- progress 记录 route manager 归属、Sigma/Graphology 包边界、offline HTML 是否加载 Sigma，以及对应证据。
+- 若 Sigma/Graphology 被打进 `engine.iife.js`，必须记录打包体积变化；若拆分或 lazy load，必须记录 workbench 和 offline 两条路径如何加载。
 
 ### Task 3.2 — 用适配层输出构建 Graphology 图
 
@@ -372,6 +419,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 验收：
 
 - 新增或更新 Sigma renderer 单元测试，证明它不直接遍历原始 `GraphData` 决定预算。
+- 新增或更新生产 Sigma adapter-boundary 测试或静态检查，证明生产 renderer 消费 `GraphRendererAdapterData`，不从原始 `GraphData` 自行决定节点、边、标签、聚合预算。
 - `node --import tsx --test packages/graph-engine/test/renderer-adapter-contract.test.ts packages/graph-engine/test/sigma-trial-adapter.test.ts` exits 0。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
 
@@ -394,12 +442,13 @@ Sigma unavailable -> small graph DOM/SVG fallback
 范围：
 
 - 支持 create、update data、update pins、update theme、update selection/search/filter、destroy。
+- 明确 Graphology 更新策略：哪些变更增量更新，哪些变更重建 graph；更新时必须保留合理 camera/viewport 状态。
 - 捕获 WebGL/Sigma 初始化失败和运行时不可恢复错误。
 - 错误只进入 route/fallback 层，不由 Sigma 自己决定用户看到什么。
 
 验收：
 
-- 新增或更新 lifecycle 测试，覆盖 destroy 后不再响应事件、重复 setData 不泄漏旧实例、初始化失败可被上层捕获。
+- 新增或更新 lifecycle 测试，覆盖 destroy 后不再响应事件、重复 setData 不泄漏旧实例、初始化失败可被上层捕获、stale Sigma/Graphology 事件不能修改新 renderer、update data 后 camera/selection/search/pin 状态按设计保留。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
 - `npm run typecheck --workspace=@llm-wiki/graph-engine` exits 0。
 
@@ -420,7 +469,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 范围：
 
-- 明确 route manager 位于 facade 内部还是 render root 内部。
+- 实现 Task 3.1 已记录的 route manager 归属，不在本任务重新做架构选择。
 - 全局视角创建 Sigma global renderer。
 - 进入社区时切到 DOM/SVG 社区阅读路径。
 - 返回全局时回到 Sigma；若当前环境已判定 Sigma 不可用，回到对应兜底。
@@ -430,6 +479,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 - `node --import tsx --test packages/graph-engine/test/facade.test.ts packages/graph-engine/test/renderer-lifecycle.test.ts` exits 0。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
 - 测试证明 `focusCommunity` 进入社区阅读路径，`resetView` 或返回全局不创建用户可见第二套主路径。
+- 测试证明全局 Sigma -> 社区 DOM/SVG -> 返回全局 Sigma 的路径保留 selection、search、filters、pins；若 Sigma 已知不可用，返回全局进入对应 fallback 且不反复重试已知失败实例。
 
 ### Task 4.2 — 同步选择、搜索、筛选、Pin 和临时对象状态
 
@@ -449,6 +499,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 范围：
 
 - 定义小图/大图兜底阈值，初始判断使用节点数、边数和社区规模。
+- 阈值必须证明不会把已知会卡死的大图退回 DOM/SVG；progress 记录阈值、依据和测试 fixture。
 - 小图 Sigma 失败退回现有 DOM/SVG 全局图。
 - 大图 Sigma 失败进入最低可用聚合安全视图。
 - 聚合安全视图只支持：社区摘要、搜索/Pin/选中列表、进入社区阅读、清除选择、重试 Sigma。
@@ -456,7 +507,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 验收：
 
-- 新增或更新 fallback 测试，覆盖 Sigma 初始化失败、小图 fallback、大图 aggregation safety view、返回全局继续使用兜底。
+- 新增或更新 fallback 测试，覆盖 WebGL unavailable、Sigma 初始化失败、canvas/runtime abnormal failure、小图 fallback、大图 aggregation safety view、阈值 guard、返回全局继续使用兜底、retry Sigma、已知失败实例不被反复重试。
 - `node --import tsx --test packages/graph-engine/test/aggregation-fallback-trial-adapter.test.ts packages/graph-engine/test/facade.test.ts packages/graph-engine/test/renderer-lifecycle.test.ts` exits 0。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
 
@@ -561,13 +612,17 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 范围：
 
-- 让浏览器性能回归覆盖生产 Sigma 全局路径，而不是只覆盖隔离 trial。
+- 新增或更新 `tests/browser/graph-sigma-global-production.ts` 和 `tests/graph-sigma-global-production.regression-1.sh`，让浏览器性能回归覆盖生产 Sigma 全局路径，而不是只覆盖隔离 trial。
 - 记录 11 类 shape 的首次渲染、拖动、缩放、搜索、点选、社区/聚合、抽屉、进入社区、返回全局、重复循环。
 - artifact 写入 `/tmp/llm-wiki-sigma-global-production-*` 或明确路径。
+- 按“性能验收硬门槛”写入 schema、thresholds、browser、build commit、production_path、fps、frame p95、duration、memory 和 failure fields。
 
 验收：
 
 - 新增或更新生产路径浏览器回归脚本，并可用单一 shape 快速运行。
+- `node --import tsx --check tests/browser/graph-sigma-global-production.ts` exits 0。
+- `GRAPH_SIGMA_PRODUCTION_SHAPES=nodes-1000-sparse GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-production-task-6-1 bash tests/graph-sigma-global-production.regression-1.sh` exits 0。
+- `/tmp/llm-wiki-sigma-global-production-task-6-1/sigma-global-production-results.json` 或本任务记录的等价 artifact 存在，且 `production_path=true`、schema/thresholds 字段完整。
 - `node --import tsx --check tests/browser/graph-sigma-graphology-trial.ts` exits 0。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
 
@@ -582,8 +637,9 @@ Sigma unavailable -> small graph DOM/SVG fallback
 验收：
 
 - `GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-task-6-2 bash tests/graph-sigma-graphology-trial.regression-1.sh` exits 0。
-- 生产路径 11 类回归命令 exits 0，命令名和 artifact 路径写入 progress。
-- 11 类 shape 的 wheel/drag fps 记录均不低于 45，且无 failed record。
+- `GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-production-task-6-2 bash tests/graph-sigma-global-production.regression-1.sh` exits 0。
+- 生产路径 11 类回归命令和 artifact 路径写入 progress。
+- 11 类 shape 的 wheel/drag fps 记录均不低于 45，frame p95、initial render、search、drawer、return global、memory growth 均满足“性能验收硬门槛”，且无 failed record。
 
 ### Task 6.3 — 跑完整工作台和离线回归
 
@@ -604,11 +660,12 @@ Sigma unavailable -> small graph DOM/SVG fallback
 - `bash tests/graph-offline-phase-6.regression-1.sh` exits 0。
 - `bash tests/graph-community-wash-interactions.regression-1.sh` exits 0。
 - `bash tests/graph-browser-stage-4-5.regression-1.sh --target offline` exits 0。
+- `bash tests/graph-html-a11y.regression-1.sh` exits 0。
 
 阶段验收：
 
 - 所有发布前命令通过并记录。
-- fps >= 45 和无 failed record 有 artifact 证据。
+- 生产路径 artifact 证明 fps、frame p95、duration、memory、loading state、no failed record 全部满足“性能验收硬门槛”。
 
 自动推进：阶段验收通过后进入 Phase 7。
 
@@ -624,11 +681,12 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 - 清理用户可见或常规代码路径上的旧全局主 renderer 分叉。
 - 保留小图异常兜底、社区阅读和详情 DOM/SVG 路径。
-- 删除临时开发对比开关，除非已另行记录线上应急开关边界。
+- 删除临时开发对比开关，除非已记录非用户可见应急开关边界：owner、触发条件、谁能开启、用户会看到什么、何时关闭、何时删除。
 
 验收：
 
-- `rg -n "candidate-global|dom-svg|aggregation-fallback|sigma" packages/graph-engine/src packages/graph-engine/test` 输出与设计一致：Sigma 是全局主路径，DOM/SVG 只出现在社区/详情/小图异常兜底，aggregation 只出现在大图安全兜底。
+- 用测试或 targeted static checks 证明 Sigma 是常规全局主路径；DOM/SVG 只出现在社区/详情/小图异常兜底；aggregation 只出现在大图安全兜底。不要使用会误伤合法 route enum、测试名或 fallback 名称的宽泛 grep 作为唯一验收。
+- 若保留非用户可见应急开关，progress 记录 owner、触发条件、启用方式、用户可见影响、关闭规则和删除计划；否则确认所有临时对比开关已删除。
 - `npm run test --workspace=@llm-wiki/graph-engine` exits 0。
 - `npm run typecheck --workspace=@llm-wiki/graph-engine` exits 0。
 
@@ -658,6 +716,7 @@ Sigma unavailable -> small graph DOM/SVG fallback
 验收：
 
 - 完整验收命令全部 exits 0。
+- `/tmp/llm-wiki-sigma-global-production-final` 或 progress 记录的最终生产路径 artifact 存在，且证明 11 类 shape 全部满足“性能验收硬门槛”。
 - progress 文件 `status.phase` 为 `complete`，`status.task` 为 `complete`。
 - progress 文件记录最终 residual risk。
 - `git status --short --branch` 仅允许本任务提交后的干净状态或明确无关的 `.superpowers/` 未跟踪目录。
@@ -708,12 +767,52 @@ Sigma unavailable -> small graph DOM/SVG fallback
 
 Each turn:
 1. Read docs/plans/2026-06-19-sigma-global-renderer-integration-progress.json, then the current task in the plan.
-2. Run `git log --oneline -15` and `npm run test --workspace=@llm-wiki/graph-engine`; repair a broken state before starting new work.
-3. Work only on the current work unit.
-4. After verification passes: update the progress file (status, evidence, and log fields only) and commit the code change and that update together in one commit, with the task id in the message. Never commit on failed verification. Never push, merge, or amend.
-5. When a phase's acceptance checks all pass, record it and continue to the next phase without asking for approval.
+2. Before implementation, confirm the plan's GSTACK REVIEW REPORT ends with `NO UNRESOLVED DECISIONS`; if not, amend the plan before touching production code.
+3. Run `git log --oneline -15` and `npm run test --workspace=@llm-wiki/graph-engine`; repair a broken state before starting new work.
+4. Work only on the current work unit. Do not shrink scope into an MVP, do not add a user-visible old/new renderer switch, and do not change product behavior beyond the planned global renderer replacement.
+5. After verification passes: update the progress file (status, baseline when relevant, verification/evidence, decision_log, turn_log, and residual_risk when relevant) and commit the code change and that update together in one commit, with the task id in the message. Never commit on failed verification. Never push, merge, or amend.
+6. When a phase's acceptance checks all pass, record it and continue to the next phase without asking for approval.
 
-Done when every item in the plan is complete, every acceptance check is proven, fps >= 45, and the progress file records final status and residual risk.
+Done when every item in the plan is complete, every acceptance check is proven, the full acceptance command list passes, and the final production-path artifact proves all 11 graph shapes satisfy the performance hard gates: fps >= 45, frame p95, action duration, memory growth, loading state, schema/threshold fields, and no failed records. The progress file must record final status and residual risk.
 
 Stop and report if a product decision is missing, the plan conflicts with the latest direction, or the worktree holds unrelated changes that cannot be safely separated.
 ```
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | not run | Optional; current eng review found no reason to shrink scope. |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | addressed in plan body | Codex CLI was rate-limited; fallback adversarial document review found issues now folded into the ledger. |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | cleared after amendments | 8 amendments were folded into the plan body; no scope reduction was made. |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | not run | Optional; current plan keeps the agreed product direction and adds verification gates. |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | Optional; command and artifact expectations are now explicit in the ledger. |
+
+**AMENDMENT STATUS:** ENG CLEARED AFTER PLAN AMENDMENTS.
+
+**SCOPE CHALLENGE:** Scope remains accepted as-is. This is intentionally a complete, non-MVP integration plan. The amendments harden verification; they do not shrink the Sigma/Graphology global renderer rollout.
+
+**AMENDMENT AUDIT**
+
+| Original issue | Plan body resolution |
+|---|---|
+| Final gate could pass without production Sigma browser regression. | Complete acceptance commands now include `tests/browser/graph-sigma-global-production.ts` check and `tests/graph-sigma-global-production.regression-1.sh`; Task 7.3 requires final production artifact proof. |
+| Performance gates only named fps and did not fail on jank or missing metrics. | Added "性能验收硬门槛" with schema fields, p95 frame time, action duration, memory ceilings, loading-state requirement, warmup/repeated runs, and failed/missing metric blockers. |
+| Task 6.1 created a production regression but did not prove it could run. | Task 6.1 now requires a single-shape production-path smoke command and artifact validation before the full 11-shape run. |
+| Route manager ownership was decided too late. | Task 3.1 now records route manager ownership before production Sigma lifecycle work; Task 4.1 implements that recorded decision. |
+| Sigma/Graphology package and offline loading boundary were implicit. | Task 3.1 now requires package boundary, offline loading choice, and build-size or load-path evidence. |
+| Fallback tests missed WebGL unavailable, canvas/runtime abnormal state, large-graph threshold guard, and repeated retry behavior. | Task 4.3 now requires all of those fallback cases and proof that known-large graphs are not sent back to DOM/SVG. |
+| Production Sigma adapter boundary and Graphology update behavior were under-specified. | Task 3.2 now requires production adapter-boundary checks; Task 3.4 now requires explicit Graphology update strategy, stale-event suppression, and camera/state preservation tests. |
+| Internal rollback/comparison switch and cleanup checks were vague. | Task 7.1 now requires a documented non-user-facing emergency boundary if retained, or removal confirmation, plus targeted assertions instead of broad grep-only cleanup. |
+
+**REVIEW EVIDENCE**
+
+- `npm run test --workspace=@llm-wiki/graph-engine` passed during review: 324 tests, 0 failures.
+- Feasibility, testing, performance, and adversarial document review lanes were used.
+- Codex CLI outside review was attempted but hit upstream 429; fallback adversarial document review completed.
+- Test plan artifact: `~/.gstack/projects/sdyckjq-lab-llm-wiki-skill/kangjiaqi-codex-pr52-sigma-global-renderer-design-eng-review-test-plan-20260619-164122.md`
+- Task artifact: `~/.gstack/projects/sdyckjq-lab-llm-wiki-skill/tasks-eng-review-20260619-164122.jsonl`
+
+**EXECUTION RECOMMENDATION:** Start implementation from Task 0.1 on `codex/sigma-global-renderer-integration`, then proceed sequentially through boundary, route ownership, production Sigma, fallback, browser performance, and final cleanup. Parallel work is only safe after the route API stabilizes.
+
+NO UNRESOLVED DECISIONS
