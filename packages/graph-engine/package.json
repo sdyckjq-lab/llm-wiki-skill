@@ -23,8 +23,6 @@
   },
   "devDependencies": {
     "@types/d3-force": "^3.0.10",
-    "graphology": "^0.26.0",
-    "sigma": "^3.0.3",
     "tsx": "^4.19.0",
     "typescript": "~6.0.2",
     "vis-network": "^10.1.0",
@@ -32,6 +30,8 @@
   },
   "dependencies": {
     "d3-force": "^3.0.0",
-    "d3-quadtree": "^3.0.1"
+    "d3-quadtree": "^3.0.1",
+    "graphology": "^0.26.0",
+    "sigma": "^3.0.3"
   }
 }

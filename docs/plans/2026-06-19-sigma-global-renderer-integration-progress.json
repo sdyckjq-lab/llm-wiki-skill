@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-2",
-    "task": "2.3",
+    "phase": "phase-3",
+    "task": "3.1",
     "state": "done",
-    "next_allowed_action": "Phase 2 acceptance met. Advance to Phase 3, Task 3.1: establish Sigma production module and dependency/bundle/offline boundary."
+    "next_allowed_action": "Advance to Phase 3, Task 3.2: build the Graphology graph from GraphRendererAdapterData without using raw GraphData for budget decisions."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -89,6 +89,13 @@
       "decision": "Move DOM/SVG graph-content creation behind paintDomSvgGraph in dom-svg-renderer.ts while keeping pipeline responsible for orchestration, control mounting, and command wiring.",
       "reason": "Task 2.2 requires root, pipeline, and controls boundaries to be explicit. The pipeline now calls a DOM/SVG renderer interface instead of directly creating node buttons, SVG edges, community washes, aggregation containers, minimap, reader, selection, preview, and quality notice DOM.",
       "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (Task 2.2)"
+    },
+    {
+      "id": "D10",
+      "status": "recorded",
+      "decision": "Keep route manager ownership in the facade and establish the Sigma runtime as an explicit graph-engine boundary: ESM workbench path loads Sigma/Graphology via lazy chunks when selected, while offline IIFE bundles the runtime in engine.iife.js.",
+      "reason": "Task 3.1 requires route ownership and bundle/offline boundaries before lifecycle work. Direct static importing Sigma into normal Node tests fails because Sigma references WebGL2RenderingContext, so the production skeleton uses an async runtime boundary instead of loading WebGL code during ordinary DOM/SVG tests.",
+      "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/vite.config.ts; npm run build --workspace=@llm-wiki/graph-engine"
     }
   ],
   "phases": [
@@ -268,10 +275,16 @@
         {
           "id": "3.1",
           "title": "Establish Sigma production module and dependency boundary",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/sigma-global-renderer.test.ts => exit 0 (3 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "npm run build --workspace=@llm-wiki/graph-engine => exit 0.",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (329 tests, 0 fail).",
+            "package.json/package-lock.json place sigma ^3.0.3 and graphology ^0.26.0 in @llm-wiki/graph-engine dependencies, not devDependencies."
+          ],
+          "evidence": "Added packages/graph-engine/src/render/sigma-global-renderer.ts skeleton and exports. Route manager owner recorded as facade. Runtime boundary is async sigmaGlobalRendererRuntimeBoundary(), so normal DOM/SVG imports do not load WebGL runtime in Node. Build evidence: before Task 3.1 engine.iife.js=216,767 bytes and engine.esm.js=265,280 bytes; after Task 3.1 engine.iife.js=376,332 bytes (+159,565, bundles Sigma/Graphology for offline single-file path), engine.esm.js=266,275 bytes (+995) plus lazy ESM chunks events-jz1JNobw.js=8.24kB, graphology-CxGlL2fi.js=73.22kB, sigma.esm-D09ll5rr.js=113.20kB.",
+          "residual_risk": "Task 3.1 intentionally does not activate the Sigma lifecycle or user route. Offline IIFE size grows by ~160kB because IIFE cannot split dynamic imports; this is recorded for later release tradeoff review. Production lifecycle, adapter graph construction, hit projection, and error/fallback behavior remain for Tasks 3.2-4.3."
         },
         {
           "id": "3.2",
@@ -540,6 +553,14 @@
       "phase": "phase-2",
       "action": "Added lifecycle focus assertions for root/search input/root-return and reran keyboard, interaction contract, full graph-engine test, typecheck, and controller static boundary checks.",
       "result": "phase-2 task 2.3 complete and phase-2 acceptance met; advancing to phase 3 task 3.1.",
+      "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 8,
+      "task": "3.1",
+      "phase": "phase-3",
+      "action": "Moved Sigma/Graphology into graph-engine runtime dependencies, added Sigma global renderer skeleton/runtime boundary, exported route/bundle constants, and recorded build-size/offline evidence.",
+      "result": "phase-3 task 3.1 complete; typecheck/build/test and boundary tests pass; advancing to task 3.2.",
       "at": "2026-06-19T00:00:00+08:00"
     }
   ],

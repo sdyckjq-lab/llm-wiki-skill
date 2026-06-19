@@ -141,6 +141,19 @@ export { resolveGraphSearchState, resolveNextGraphSearchFocus, resolvePreviousGr
 export type { GraphSearchFocus, GraphSearchNodeState, GraphSearchNodeView, GraphSearchState } from "./search";
 export { createDomSvgRendererSurface } from "./renderer-surface";
 export type { GraphRendererSurface } from "./renderer-surface";
+export {
+  SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY,
+  SIGMA_GLOBAL_RENDERER_ID,
+  SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
+  createSigmaGlobalRenderer,
+  sigmaGlobalRendererRuntimeBoundary
+} from "./sigma-global-renderer";
+export type {
+  SigmaGlobalRenderer,
+  SigmaGlobalRendererCreateOptions,
+  SigmaGlobalRendererRuntimeBoundary,
+  SigmaGlobalRendererUpdateOptions
+} from "./sigma-global-renderer";
 export { classifyGraphKeyboardIntent, isTextEditingElement } from "./keyboard";
 export type { GraphKeyboardIntent, GraphKeyboardIntentInput } from "./keyboard";
 export { buildHoverPreview, firstUsefulParagraph, previewSummary } from "./preview";
