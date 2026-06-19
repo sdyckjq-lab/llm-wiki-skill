@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-2",
-    "task": "2.1",
+    "task": "2.2",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 2, Task 2.2: separate root, pipeline, and controls DOM/SVG boundaries while preserving current DOM/SVG behavior."
+    "next_allowed_action": "Advance to Phase 2, Task 2.3: preserve basic keyboard and focus semantics after renderer boundary decoupling."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -82,6 +82,13 @@
       "decision": "Introduce GraphRendererSurface as the controller command boundary for DOM/SVG focus, drag, search, selection-focus dataset, viewport-dragging, and root focus commands.",
       "reason": "Task 2.1 requires controller intent to be expressed through a renderer-neutral surface instead of assuming every rendered node is a DOM button. The DOM/SVG implementation remains local to renderer-surface.ts, and controller no longer directly calls per-node focus/classList APIs.",
       "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (Task 2.1)"
+    },
+    {
+      "id": "D9",
+      "status": "recorded",
+      "decision": "Move DOM/SVG graph-content creation behind paintDomSvgGraph in dom-svg-renderer.ts while keeping pipeline responsible for orchestration, control mounting, and command wiring.",
+      "reason": "Task 2.2 requires root, pipeline, and controls boundaries to be explicit. The pipeline now calls a DOM/SVG renderer interface instead of directly creating node buttons, SVG edges, community washes, aggregation containers, minimap, reader, selection, preview, and quality notice DOM.",
+      "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (Task 2.2)"
     }
   ],
   "phases": [
@@ -211,10 +218,14 @@
         {
           "id": "2.2",
           "title": "Separate root, pipeline, and controls DOM/SVG boundaries",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (326 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "node --import tsx --test packages/graph-engine/test/renderer-lifecycle.test.ts packages/graph-engine/test/renderer-boundary.test.ts => exit 0 (33 tests, 0 fail)."
+          ],
+          "evidence": "Added packages/graph-engine/src/render/dom-svg-renderer.ts as the DOM/SVG graph-content boundary. render-pipeline.ts now calls paintDomSvgGraph(...) for root graph content and no longer directly imports or calls createGraphNodeElement, createGraphEdgeElement, createCommunityWashElement, createGraphAggregationContainerElement, or createGraphMinimap. renderer-boundary.test now statically proves this split while existing lifecycle tests prove DOM/SVG behavior remains intact.",
+          "residual_risk": "Controls are still mounted by render-pipeline.ts because they wire command callbacks and toolbar/legend state. Their element construction remains in controls.ts, and Task 2.2 records this as the intended boundary rather than moving command ownership into controls."
         },
         {
           "id": "2.3",
@@ -500,6 +511,14 @@
       "phase": "phase-2",
       "action": "Introduced renderer surface command boundary and routed controller node focus, drag class, search-state, viewport-dragging, and root focus commands through it.",
       "result": "phase-2 task 2.1 complete; graph-engine test/typecheck and renderer boundary static checks pass; advancing to task 2.2.",
+      "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 6,
+      "task": "2.2",
+      "phase": "phase-2",
+      "action": "Extracted DOM/SVG graph-content creation from render-pipeline into dom-svg-renderer and added boundary tests proving pipeline delegates graph drawing through paintDomSvgGraph.",
+      "result": "phase-2 task 2.2 complete; graph-engine test/typecheck and lifecycle/boundary checks pass; advancing to task 2.3.",
       "at": "2026-06-19T00:00:00+08:00"
     }
   ],

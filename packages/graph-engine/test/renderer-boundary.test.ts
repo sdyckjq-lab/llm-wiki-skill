@@ -293,6 +293,21 @@ describe("renderer and facade boundary contract", () => {
     assert.match(pipelineText, /options\.commands\.resetViewState\(\)/);
   });
 
+  it("keeps DOM/SVG graph drawing behind the dom-svg renderer boundary", async () => {
+    const pipelineText = await readFile(join(SRC, "render/render-pipeline.ts"), "utf8");
+    const domSvgText = await readFile(join(SRC, "render/dom-svg-renderer.ts"), "utf8");
+
+    assert.match(pipelineText, /paintDomSvgGraph\(\{/);
+    assert.doesNotMatch(pipelineText, /\bcreateGraphNodeElement\b/);
+    assert.doesNotMatch(pipelineText, /\bcreateGraphEdgeElement\b/);
+    assert.doesNotMatch(pipelineText, /\bcreateCommunityWashElement\b/);
+    assert.doesNotMatch(pipelineText, /\bcreateGraphMinimap\b/);
+    assert.match(domSvgText, /\bcreateGraphNodeElement\b/);
+    assert.match(domSvgText, /\bcreateGraphEdgeElement\b/);
+    assert.match(domSvgText, /\bcreateCommunityWashElement\b/);
+    assert.match(domSvgText, /\bcreateGraphMinimap\b/);
+  });
+
   it("keeps lifecycle teardown ownership explicit in the renderer root", async () => {
     const rootText = await readFile(join(SRC, "render/graph-renderer-root.ts"), "utf8");
     const pipelineText = await readFile(join(SRC, "render/render-pipeline.ts"), "utf8");
