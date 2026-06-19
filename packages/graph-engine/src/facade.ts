@@ -113,6 +113,7 @@ export interface GraphFacadeRouteRendererOptions {
   typeFilters: NonNullable<GraphEngineOptions["typeFilters"]>;
   aggregationMarkers: NonNullable<GraphEngineOptions["aggregationMarkers"]>;
   selection: SelectionInput | null;
+  searchQuery: string;
   searchResultIds: string[];
   temporaryObject: GraphSummaryObjectRef | null;
   callbacks: GraphFacadeRendererCallbacks;
@@ -152,6 +153,7 @@ export interface GraphFacadeState {
   typeFilters?: NonNullable<GraphEngineOptions["typeFilters"]>;
   aggregationMarkers?: NonNullable<GraphEngineOptions["aggregationMarkers"]>;
   selection?: SelectionInput | null;
+  searchQuery?: string;
   searchResultIds?: string[];
   temporaryObject?: GraphSummaryObjectRef | null;
 }
@@ -170,6 +172,7 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
     typeFilters: options.typeFilters || {},
     aggregationMarkers: options.aggregationMarkers || [],
     selection: null,
+    searchQuery: "",
     searchResultIds: [],
     temporaryObject: null
   };
@@ -197,6 +200,7 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
     },
     onDragActiveChange: capabilities?.onDragStateChange,
     onVisibilityStateChange: (visibility) => {
+      facadeState.searchQuery = visibility.searchQuery;
       facadeState.searchResultIds = visibility.searchResultIds;
       facadeState.typeFilters = visibility.typeFilters;
       facadeState.temporaryObject = visibility.temporaryObject;
@@ -227,6 +231,7 @@ export function createGraphFacadeRouteManager(
   state.typeFilters = state.typeFilters || {};
   state.aggregationMarkers = state.aggregationMarkers || [];
   state.selection = state.selection || null;
+  state.searchQuery = state.searchQuery || "";
   state.searchResultIds = state.searchResultIds || [];
   state.temporaryObject = state.temporaryObject || null;
 
@@ -401,11 +406,13 @@ export function createGraphFacadeRouteManager(
         typeFilters: state.typeFilters || {},
         aggregationMarkers: state.aggregationMarkers || [],
         selection: state.selection || null,
+        searchQuery: state.searchQuery || "",
         searchResultIds: state.searchResultIds || [],
         temporaryObject: state.temporaryObject || null,
         callbacks: {
           ...(options.callbacks || {}),
           onVisibilityStateChange: (visibility) => {
+            state.searchQuery = visibility.searchQuery;
             state.searchResultIds = visibility.searchResultIds;
             state.typeFilters = visibility.typeFilters;
             state.temporaryObject = visibility.temporaryObject;
@@ -444,6 +451,7 @@ function createDomSvgFacadeRenderer(
     focus: input.options.focus || undefined,
     typeFilters: input.options.typeFilters,
     aggregationMarkers: input.options.aggregationMarkers,
+    searchQuery: input.options.searchQuery,
     live,
     onNodeOpen: input.options.callbacks.onNodeOpen,
     onSelectionInput: input.options.callbacks.onSelectionInput,
@@ -632,46 +640,56 @@ export function createGraphFacadeFromRenderer(
 
     setAggregationMarkers(markers): void {
       assertActive();
+      facadeState.aggregationMarkers = markers;
       renderer.setAggregationMarkers(markers);
     },
 
     focusNode(path: string): void {
       assertActive();
       container.dataset.llmWikiGraphFocus = path;
+      const node = facadeState.data.nodes.find((item) => item.id === path || wikiPathForGraphNode(item) === path);
+      facadeState.selection = node ? { kind: "node", id: node.id } : null;
       renderer.focusNode(path);
     },
 
     focusCommunity(id): Selection {
       assertActive();
       container.dataset.llmWikiGraphFocus = `community:${id}`;
+      facadeState.focus = { kind: "community", id };
+      facadeState.selection = { kind: "community", id };
       renderer.focusCommunity(id);
       return resolveForHostCapabilities({ kind: "community", id });
     },
 
     setTypeFilters(filters): void {
       assertActive();
+      facadeState.typeFilters = filters;
       renderer.setTypeFilters(filters);
     },
 
     showTemporaryObject(object): void {
       assertActive();
+      facadeState.temporaryObject = object;
       renderer.showTemporaryObject(object);
     },
 
     clearTemporaryObjectDisplay(): void {
       assertActive();
+      facadeState.temporaryObject = null;
       renderer.clearTemporaryObjectDisplay();
     },
 
     resetView(): void {
       assertActive();
       delete container.dataset.llmWikiGraphFocus;
+      facadeState.focus = null;
       renderer.resetView();
       capabilities?.onViewReset?.();
     },
 
     select(selector: SelectionInput): Selection {
       assertActive();
+      facadeState.selection = selector;
       renderer.select(selector);
       return resolveForHostCapabilities(selector);
     },
@@ -683,22 +701,22 @@ export function createGraphFacadeFromRenderer(
 
     summarizeNode(id, summaryOptions) {
       assertActive();
-      return summarizeGraphNode(facadeState.data, id, summaryOptionsWithPins(facadeState, summaryOptions));
+      return summarizeGraphNode(facadeState.data, id, summaryOptionsWithFacadeState(facadeState, summaryOptions));
     },
 
     summarizeCommunity(id, summaryOptions) {
       assertActive();
-      return summarizeGraphCommunity(facadeState.data, id, summaryOptionsWithPins(facadeState, summaryOptions));
+      return summarizeGraphCommunity(facadeState.data, id, summaryOptionsWithFacadeState(facadeState, summaryOptions));
     },
 
     summarizeGlobal(summaryOptions) {
       assertActive();
-      return summarizeGraphGlobal(facadeState.data, summaryOptionsWithPins(facadeState, summaryOptions));
+      return summarizeGraphGlobal(facadeState.data, summaryOptionsWithFacadeState(facadeState, summaryOptions));
     },
 
     summarizeSearchResults(query, resultIds, summaryOptions) {
       assertActive();
-      return summarizeGraphSearchResults(facadeState.data, query, resultIds, summaryOptionsWithPins(facadeState, summaryOptions));
+      return summarizeGraphSearchResults(facadeState.data, query, resultIds, summaryOptionsWithFacadeState(facadeState, summaryOptions));
     },
 
     summarizeExcludedObject(
@@ -707,7 +725,7 @@ export function createGraphFacadeFromRenderer(
       summaryOptions?: GraphSummaryOptions
     ) {
       assertActive();
-      return summarizeExcludedGraphObject(facadeState.data, object, reason, summaryOptionsWithPins(facadeState, summaryOptions));
+      return summarizeExcludedGraphObject(facadeState.data, object, reason, summaryOptionsWithFacadeState(facadeState, summaryOptions));
     },
 
     summarizeUnavailableObject(
@@ -716,11 +734,12 @@ export function createGraphFacadeFromRenderer(
       summaryOptions?: GraphSummaryOptions
     ) {
       assertActive();
-      return summarizeUnavailableGraphObject(facadeState.data, object, reason, summaryOptionsWithPins(facadeState, summaryOptions));
+      return summarizeUnavailableGraphObject(facadeState.data, object, reason, summaryOptionsWithFacadeState(facadeState, summaryOptions));
     },
 
     clearSelection(): void {
       assertActive();
+      facadeState.selection = null;
       renderer.clearSelection();
     },
 
@@ -728,6 +747,9 @@ export function createGraphFacadeFromRenderer(
       assertActive();
       renderer.clearInteraction();
       delete container.dataset.llmWikiGraphFocus;
+      facadeState.focus = null;
+      facadeState.selection = null;
+      facadeState.temporaryObject = null;
     },
 
     setNodeFixed(id: string, mode: "fix" | "unfix"): boolean {
@@ -750,6 +772,7 @@ export function createGraphFacadeFromRenderer(
 
     resetLayout(): void {
       assertActive();
+      facadeState.pins = {};
       renderer.resetLayout();
     },
 
@@ -770,10 +793,14 @@ export function createGraphFacadeFromRenderer(
   }
 }
 
-function summaryOptionsWithPins(state: GraphFacadeState, options: GraphSummaryOptions = {}): GraphSummaryOptions {
+function summaryOptionsWithFacadeState(state: GraphFacadeState, options: GraphSummaryOptions = {}): GraphSummaryOptions {
   return {
     ...options,
-    pins: options.pins ?? state.pins
+    selection: options.selection ?? state.selection ?? null,
+    searchResultIds: options.searchResultIds ?? state.searchResultIds ?? [],
+    pins: options.pins ?? state.pins,
+    aggregationMarkers: options.aggregationMarkers ?? state.aggregationMarkers ?? [],
+    temporaryObject: options.temporaryObject ?? state.temporaryObject ?? null
   };
 }
 

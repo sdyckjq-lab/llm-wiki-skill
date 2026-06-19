@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-4",
-    "task": "4.2",
+    "task": "4.3",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 4, Task 4.2: synchronize selection, search, filters, pins, and temporary object state across the facade-owned Sigma/global and DOM/SVG community routes."
+    "next_allowed_action": "Advance to Phase 4, Task 4.3: implement layered failure fallback with small-graph DOM/SVG fallback, large-graph aggregation safety view, thresholds, retry, and known-failed no-retry coverage."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -124,6 +124,13 @@
       "decision": "Own route switching in the facade route manager: global views select the async Sigma global renderer, community reading selects DOM/SVG, and a known unavailable Sigma route returns global through fallback without repeated retry.",
       "reason": "Task 4.1 requires the facade to enforce the already-recorded route ownership and prove Sigma global -> DOM/SVG community -> Sigma global return behavior while preserving facade state and avoiding a user-visible renderer switch.",
       "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/test/facade.test.ts"
+    },
+    {
+      "id": "D15",
+      "status": "recorded",
+      "decision": "Keep cross-route interaction state in the facade route state, including selection, focus, search query/results, type filters, pins, aggregation markers, and temporary object payloads; facade summaries default to that state unless callers override options.",
+      "reason": "Task 4.2 requires route switches not to clear current selection and requires filtered/excluded object drawers to retain enough state to render excluded payloads consistently across Sigma and DOM/SVG routes.",
+      "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/src/render/graph-renderer-root.ts; packages/graph-engine/test/summary-contract.test.ts"
     }
   ],
   "phases": [
@@ -396,10 +403,14 @@
         {
           "id": "4.2",
           "title": "Synchronize selection, search, filters, pins, and temporary objects across routes",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/state.test.ts packages/graph-engine/test/search-and-legend.test.ts packages/graph-engine/test/select.test.ts packages/graph-engine/test/summary-contract.test.ts => exit 0 (29 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (342 tests, 0 fail).",
+            "npm run build --workspace=@llm-wiki/graph-engine => exit 0."
+          ],
+          "evidence": "Facade route state now carries selection, focus, searchQuery/searchResultIds, typeFilters, pins, aggregationMarkers, and temporaryObject. DOM/SVG renderer accepts an initial searchQuery so route-created community readers can restore query/highlight state. Facade summaries now default to the current facade route state, so selected/search/pinned/aggregation/excluded payloads survive route switches and filters unless callers explicitly override summary options.",
+          "residual_risk": "Task 4.2 preserves and exposes shared state, but it does not define the small/large failure thresholds, aggregation safety view, or retry behavior; those remain Task 4.3."
         },
         {
           "id": "4.3",
@@ -650,6 +661,14 @@
       "action": "Implemented the facade-owned renderer route manager, wired production global Sigma creation through the lazy runtime boundary, routed community reading to DOM/SVG, and added fallback no-retry behavior for known unavailable Sigma.",
       "result": "phase-4 task 4.1 complete; required facade/lifecycle tests, full graph-engine test, and graph-engine build pass; advancing to task 4.2.",
       "at": "2026-06-19T21:31:00+08:00"
+    },
+    {
+      "turn": 13,
+      "task": "4.2",
+      "phase": "phase-4",
+      "action": "Synchronized route state for selection, focus, search query/results, type filters, pins, aggregation markers, and temporary objects; wired DOM/SVG initial search query and facade summary defaults to current route state.",
+      "result": "phase-4 task 4.2 complete; required state/search/select/summary tests, full graph-engine test, and graph-engine build pass; advancing to task 4.3.",
+      "at": "2026-06-19T21:48:00+08:00"
     }
   ],
   "final": {

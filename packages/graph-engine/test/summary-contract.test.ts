@@ -10,7 +10,14 @@ import {
   summarizeGraphSearchResults,
   summarizeUnavailableGraphObject
 } from "../src/summary";
-import type { GraphAggregationMarker, GraphData, GraphSummaryCommand, PinMap } from "../src/types";
+import {
+  createGraphFacadeFromRenderer,
+  createGraphFacadeRouteManager,
+  type GraphFacadeRenderer,
+  type GraphFacadeRouteRendererFactoryInput,
+  type GraphFacadeState
+} from "../src/facade";
+import type { GraphAggregationMarker, GraphData, GraphSummaryCommand, GraphSummaryObjectRef, GraphTypeFilters, PinMap, SelectionInput, ThemeId } from "../src/types";
 
 describe("graph summary contract", () => {
   it("preserves node identity, selection, search hits, Pin hints, relations, and aggregation markers", () => {
@@ -214,6 +221,89 @@ describe("graph summary contract", () => {
     assert.deepEqual(unavailable.searchResultIds, ["missing"]);
     assert.deepEqual(unavailable.selection.selectedNodeIds, ["c"]);
   });
+
+  it("facade summaries inherit current route selection, search, pins, aggregation, and temporary object state", () => {
+    const data = graphFixture();
+    const renderer = createFakeRenderer();
+    const state: GraphFacadeState = {
+      data,
+      pins: {
+        "wiki/beta/d.md": { x: 8, y: 9, coordinateSpace: "world" }
+      },
+      selection: { kind: "node", id: "d" },
+      searchQuery: "delta",
+      searchResultIds: ["d"],
+      typeFilters: { topic: true, entity: true, source: false },
+      aggregationMarkers: [
+        { id: "agg-beta", communityId: "beta", nodeIds: ["c", "d"], selectedNodeIds: ["d"], searchResultIds: ["d"], pinnedNodeIds: ["d"] }
+      ],
+      temporaryObject: { kind: "node", nodeId: "d" }
+    };
+    const engine = createGraphFacadeFromRenderer({ dataset: {} }, renderer, { data, theme: "shan-shui" }, state);
+
+    engine.setTypeFilters({ topic: true, entity: true, source: false });
+    const global = engine.summarizeGlobal();
+    const excluded = engine.summarizeExcludedObject({ kind: "node", nodeId: "d" }, "filter");
+
+    assert.deepEqual(global.selection.selectedNodeIds, ["d"]);
+    assert.deepEqual(global.searchResultIds, ["d"]);
+    assert.deepEqual(global.pinHints.map((hint) => hint.nodeId), ["d"]);
+    assert.deepEqual(global.aggregationMarkers.map((marker) => marker.id), ["agg-beta"]);
+    assert.equal(excluded.reason, "filter");
+    assert.deepEqual(excluded.selection.selectedNodeIds, ["d"]);
+    assert.deepEqual(excluded.searchResultIds, ["d"]);
+    assert.deepEqual(excluded.pinHints.map((hint) => hint.nodeId), ["d"]);
+    assert.deepEqual(commandKinds(excluded.commands), ["show-this-object", "clear-temporary-object-display"]);
+
+    engine.clearSelection();
+    assert.deepEqual(engine.summarizeGlobal().selection.selectedNodeIds, []);
+  });
+
+  it("route manager carries search query and temporary object state when switching renderers", () => {
+    const data = graphFixture();
+    const state: GraphFacadeState = {
+      data,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: { kind: "node", id: "c" },
+      searchQuery: "",
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const communityInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const manager = createGraphFacadeRouteManager({ dataset: {} } as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: (input) => {
+          communityInputs.push(input);
+          return createFakeRenderer();
+        },
+        createGlobalFallback: () => createFakeRenderer()
+      }
+    });
+
+    sigmaInputs[0].options.callbacks.onVisibilityStateChange?.({
+      searchQuery: "delta",
+      searchResultIds: ["d"],
+      typeFilters: { topic: true, entity: true, source: false },
+      temporaryObject: { kind: "node", nodeId: "d" }
+    });
+    manager.focusCommunity("beta");
+
+    assert.equal(communityInputs[0].options.searchQuery, "delta");
+    assert.deepEqual(communityInputs[0].options.searchResultIds, ["d"]);
+    assert.deepEqual(communityInputs[0].options.temporaryObject, { kind: "node", nodeId: "d" });
+    assert.deepEqual(communityInputs[0].options.selection, { kind: "node", id: "c" });
+    assert.deepEqual(communityInputs[0].options.typeFilters, { topic: true, entity: true, source: false });
+  });
 });
 
 function commandKinds(commands: GraphSummaryCommand[]): string[] {
@@ -222,6 +312,71 @@ function commandKinds(commands: GraphSummaryCommand[]): string[] {
 
 function fixedPositionCommands(commands: GraphSummaryCommand[]): GraphSummaryCommand[] {
   return commands.filter((command) => command.kind === "set-fixed-position");
+}
+
+function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
+  const calls: unknown[][] = [];
+  return {
+    calls,
+    async applyDiff(diff, options) {
+      calls.push(["applyDiff", diff, options]);
+    },
+    isDragging() {
+      return false;
+    },
+    setData(data: GraphData, pins?: PinMap) {
+      calls.push(["setData", data, pins]);
+    },
+    setAggregationMarkers(markers: GraphAggregationMarker[]) {
+      calls.push(["setAggregationMarkers", markers]);
+    },
+    focusNode(path: string) {
+      calls.push(["focusNode", path]);
+    },
+    focusCommunity(id: string) {
+      calls.push(["focusCommunity", id]);
+    },
+    setTypeFilters(filters: GraphTypeFilters) {
+      calls.push(["setTypeFilters", filters]);
+    },
+    showTemporaryObject(object: GraphSummaryObjectRef) {
+      calls.push(["showTemporaryObject", object]);
+    },
+    clearTemporaryObjectDisplay() {
+      calls.push(["clearTemporaryObjectDisplay"]);
+    },
+    resetView() {
+      calls.push(["resetView"]);
+    },
+    select(selection: SelectionInput) {
+      calls.push(["select", selection]);
+    },
+    previewNode(id: string | null) {
+      calls.push(["previewNode", id]);
+    },
+    clearSelection() {
+      calls.push(["clearSelection"]);
+    },
+    clearInteraction() {
+      calls.push(["clearInteraction"]);
+    },
+    setNodeFixed(id: string, mode: "fix" | "unfix") {
+      calls.push(["setNodeFixed", id, mode]);
+      return true;
+    },
+    setTheme(theme: ThemeId) {
+      calls.push(["setTheme", theme]);
+    },
+    setPins(pins: PinMap) {
+      calls.push(["setPins", pins]);
+    },
+    resetLayout() {
+      calls.push(["resetLayout"]);
+    },
+    destroy() {
+      calls.push(["destroy"]);
+    }
+  };
 }
 
 function graphFixture(): GraphData {

@@ -62,6 +62,7 @@ export interface GraphRendererOptions {
   focus?: GraphFocusInput;
   typeFilters?: GraphTypeFilters;
   aggregationMarkers?: GraphAggregationMarker[];
+  searchQuery?: string;
   live?: boolean;
 }
 
@@ -138,7 +139,7 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
     dom: emptyPaintedDom(),
     activeDiff: null,
     searchOpen: false,
-    searchQuery: "",
+    searchQuery: options.searchQuery || "",
     searchFocusedNodeId: null,
     typeFilters: options.typeFilters || {},
     aggregationMarkers: options.aggregationMarkers || [],
