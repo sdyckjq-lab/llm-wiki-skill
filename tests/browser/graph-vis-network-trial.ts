@@ -86,7 +86,8 @@ async function main(): Promise<void> {
     requestedShapes,
     records,
     errors,
-    resultPath
+    resultPath,
+    requireSchema: false
   });
   console.log(`Wrote ${records.length} vis-network trial records to ${resultPath}`);
 }

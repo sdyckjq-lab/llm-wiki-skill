@@ -81,7 +81,8 @@ async function main(): Promise<void> {
     requestedShapes,
     records,
     errors,
-    resultPath
+    resultPath,
+    requireSchema: false
   });
   console.log(`Wrote ${records.length} aggregation fallback trial records to ${resultPath}`);
 }

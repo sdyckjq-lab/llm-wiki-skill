@@ -10,7 +10,7 @@ if (!resultPath) {
 const requiredActions = [
   "initial_render",
   "wheel_zoom",
-  "pan",
+  "drag",
   "search_highlight",
   "point_select",
   "container_select",
@@ -19,6 +19,11 @@ const requiredActions = [
   "return_global",
   "repeated_search_community_drawer_cycles"
 ];
+
+// Actions where fps + frame p95 are mandatory (wheel/drag), and the hard gates.
+const FRAME_SAMPLED_ACTIONS = new Set(["wheel_zoom", "drag"]);
+const FPS_FLOOR = 45;
+const FRAME_P95_CEILING_MS = 22.3;
 
 const data = JSON.parse(fs.readFileSync(resultPath, "utf8"));
 const records = Array.isArray(data.records) ? data.records : [];
@@ -40,6 +45,23 @@ for (const shape of shapes) {
     if (!shapeRecords.some((record) => record.action === action)) {
       failures.push(`${shape}: missing action ${action}`);
     }
+  }
+}
+
+for (const record of records) {
+  const shapeAction = `${record.graph_shape}/${record.action}`;
+  if (!record.schema_version) failures.push(`${shapeAction}: missing schema_version`);
+  if (typeof record.production_path !== "boolean") failures.push(`${shapeAction}: missing production_path`);
+  if (!record.thresholds) failures.push(`${shapeAction}: missing thresholds`);
+  if (!record.browser) failures.push(`${shapeAction}: missing browser`);
+  if (!record.build_commit) failures.push(`${shapeAction}: missing build_commit`);
+  if (!record.run_started_at) failures.push(`${shapeAction}: missing run_started_at`);
+  if (!record.run_finished_at) failures.push(`${shapeAction}: missing run_finished_at`);
+  if (FRAME_SAMPLED_ACTIONS.has(record.action)) {
+    if (record.fps == null) failures.push(`${shapeAction}: fps_missing`);
+    else if (record.fps < FPS_FLOOR) failures.push(`${shapeAction}: fps_below_floor; fps=${record.fps}; floor=${FPS_FLOOR}`);
+    if (record.frame_p95_ms == null) failures.push(`${shapeAction}: frame_p95_missing`);
+    else if (record.frame_p95_ms > FRAME_P95_CEILING_MS) failures.push(`${shapeAction}: frame_p95_above_ceiling; frame_p95_ms=${record.frame_p95_ms}; ceiling=${FRAME_P95_CEILING_MS}`);
   }
 }
 

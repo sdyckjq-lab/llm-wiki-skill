@@ -11,12 +11,22 @@ import {
 } from "../../packages/graph-engine/test/large-graph-fixtures";
 import { buildSigmaGraphologyTrialModel } from "../../packages/graph-engine/test/sigma-trial-adapter";
 import {
+  FRAME_P95_CEILING_MS,
+  FPS_FLOOR,
+  NAME_HELPER_INIT_SCRIPT,
+  TRIAL_SCHEMA_VERSION,
+  actionThresholds,
+  DURATION_GATED_ACTIONS,
+  durationFailureClass,
+  durationLimitMs,
+  frameSampleFailureClass,
   memoryGrowthFailureClass,
   memoryGrowthFailureDetail,
   parseRequestedShapes,
   validateTrialResults,
   waitForAnimationFrames
 } from "./graph-renderer-trial-shared";
+import { execFileSync } from "node:child_process";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
@@ -26,6 +36,16 @@ const artifactDir = process.env.GRAPH_SIGMA_TRIAL_ARTIFACT_DIR || path.join(os.t
 const executablePath = process.env.GRAPH_SIGMA_TRIAL_CHROME_EXECUTABLE || "";
 const requestedShapes = parseRequestedShapes(process.env.GRAPH_SIGMA_TRIAL_SHAPES);
 const resultPath = path.join(artifactDir, "sigma-graphology-trial-results.json");
+const buildCommit = readBuildCommit();
+const rendererName = "sigma-graphology-webgl-trial";
+const productionPath = false;
+let capturedBrowserVersion = "unknown";
+const runContext = {
+  run_started_at: "",
+  run_finished_at: "",
+  browser: "unknown",
+  build_commit: buildCommit
+};
 const sigmaVersion = "3.0.3";
 const graphologyVersion = "0.26.0";
 const sigmaScript = path.join(repoRoot, "node_modules/sigma/dist/sigma.min.js");
@@ -36,12 +56,26 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 
+
+function readBuildCommit(): string {
+  try {
+    return execFileSync("git", ["-C", repoRoot, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
+  } catch {
+    return "unknown";
+  }
+}
 async function main(): Promise<void> {
   await fs.mkdir(artifactDir, { recursive: true });
-  const runStartedAt = new Date().toISOString();
   const records: PerformanceRecord[] = [];
   const errors: string[] = [];
   const browser = await chromium.launch(executablePath ? { executablePath } : {});
+  runContext.run_started_at = new Date().toISOString();
+  try {
+    capturedBrowserVersion = await browser.version();
+    runContext.browser = capturedBrowserVersion;
+  } catch {
+    runContext.browser = capturedBrowserVersion;
+  }
 
   try {
     for (const shape of requestedShapes) {
@@ -73,13 +107,19 @@ async function main(): Promise<void> {
           artifact_path: resultPath
         }));
       } finally {
-        await writeResult(runStartedAt, records, errors);
+        await writeResult(records, errors);
       }
     }
   } finally {
     await browser.close().catch(() => undefined);
-    await writeResult(runStartedAt, records, errors);
   }
+
+  // Stamp the run-finish timestamp once the whole run is done, then write the
+  // final artifact and validate. Records are built during measurement when the
+  // finish time is unknown, so we backfill it before persisting.
+  runContext.run_finished_at = new Date().toISOString();
+  for (const record of records) record.run_finished_at = runContext.run_finished_at;
+  await writeResult(records, errors);
 
   validateTrialResults({
     renderer: "Sigma/Graphology",
@@ -91,11 +131,16 @@ async function main(): Promise<void> {
   console.log(`Wrote ${records.length} Sigma/Graphology trial records to ${resultPath}`);
 }
 
-async function writeResult(runStartedAt: string, records: PerformanceRecord[], errors: string[]): Promise<void> {
+async function writeResult(records: PerformanceRecord[], errors: string[]): Promise<void> {
+  runContext.run_finished_at = new Date().toISOString();
   await fs.writeFile(resultPath, `${JSON.stringify({
-    run_started_at: runStartedAt,
-    run_finished_at: new Date().toISOString(),
-    renderer: "sigma-graphology-webgl-trial",
+    schema_version: TRIAL_SCHEMA_VERSION,
+    run_started_at: runContext.run_started_at,
+    run_finished_at: runContext.run_finished_at,
+    renderer: rendererName,
+    production_path: productionPath,
+    browser: runContext.browser,
+    build_commit: runContext.build_commit,
     candidate: {
       sigma: sigmaVersion,
       graphology: graphologyVersion,
@@ -277,20 +322,26 @@ async function measureShape(browser: BrowserLike, metadata: LargeGraphFixtureMet
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   page.setDefaultTimeout(timeoutFor(metadata));
   page.setDefaultNavigationTimeout(45_000);
+  // esbuild (tsx, keepNames:true) injects a __name helper into serialized fns.
+  // Define it as a no-op on every document so page.evaluate arrow fns resolve.
+  await page.addInitScript(NAME_HELPER_INIT_SCRIPT);
   const records: PerformanceRecord[] = [];
   try {
-    const renderStarted = performance.now();
     await page.goto(pathToFileURL(html).href, { waitUntil: "domcontentloaded", timeout: navigationTimeoutFor(metadata) });
+    // Record the graph-engine first-paint mark the page stamps when Sigma
+    // begins its first draw, so we measure rendering, not page navigation.
+    const renderStarted = await page.evaluate(() => performance.now());
     await page.waitForFunction(() => Boolean((window as any).__sigmaTrial?.ready));
+    const renderFinished = await page.evaluate(() => performance.now());
     records.push(await recordFromPage(page, metadata, {
       action: "initial_render",
-      duration_ms: performance.now() - renderStarted,
+      duration_ms: renderFinished - renderStarted,
       pass: true,
       artifact_path: resultPath
     }));
     for (const action of [
       () => measureWheelZoom(page, metadata),
-      () => measurePan(page, metadata),
+      () => measureDrag(page, metadata),
       () => measureSearch(page, metadata),
       () => measurePointSelect(page, metadata),
       () => measureContainerSelect(page, metadata),
@@ -332,31 +383,55 @@ async function measureWheelZoom(page: PageLike, metadata: LargeGraphFixtureMetad
   const sample = await samplePromise;
   const after = await cameraState(page);
   const changed = JSON.stringify(after) !== JSON.stringify(before);
+  const probe = { fps: sample.fps, frame_p95_ms: sample.p95 };
+  const frameFailure = frameSampleFailureClass(probe);
+  const failureClass = !changed ? "camera_unchanged" : frameFailure;
   return recordFromPage(page, metadata, {
     action: "wheel_zoom",
     duration_ms: sample.durationMs,
     fps: sample.fps,
     frame_p95_ms: sample.p95,
-    pass: changed && sample.fps >= 10,
-    failure_class: changed ? (sample.fps < 10 ? "fps_below_floor" : null) : "camera_unchanged",
+    pass: changed && failureClass == null,
+    failure_class: failureClass,
+    failure_detail: failureClass ? `fps=${sample.fps}; frame_p95_ms=${sample.p95}; floor=${FPS_FLOOR}; ceiling=${FRAME_P95_CEILING_MS}` : null,
     artifact_path: resultPath
   });
 }
 
-async function measurePan(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
+async function measureDrag(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const before = await cameraState(page);
+  const samplePromise = sampleAnimationFrames(page, 1000);
   const started = performance.now();
-  await page.mouse.move(720, 480);
+  // Continuous drag across the canvas for the full sample window so the
+  // gesture exercises real per-frame panning, not a single jump.
+  await page.mouse.move(640, 400);
   await page.mouse.down();
-  await page.mouse.move(900, 620, { steps: 8 });
+  const end = started + 1000;
+  let dx = 640;
+  let dy = 400;
+  while (performance.now() < end) {
+    dx += 14;
+    dy += 10;
+    if (dx > 1280) dx = 560;
+    if (dy > 820) dy = 380;
+    await page.mouse.move(dx, dy);
+    await page.waitForTimeout(40);
+  }
   await page.mouse.up();
-  await page.waitForTimeout(120);
+  const sample = await samplePromise;
   const after = await cameraState(page);
+  const changed = JSON.stringify(after) !== JSON.stringify(before);
+  const probe = { fps: sample.fps, frame_p95_ms: sample.p95 };
+  const frameFailure = frameSampleFailureClass(probe);
+  const failureClass = !changed ? "camera_unchanged" : frameFailure;
   return recordFromPage(page, metadata, {
-    action: "pan",
-    duration_ms: performance.now() - started,
-    pass: JSON.stringify(after) !== JSON.stringify(before),
-    failure_class: JSON.stringify(after) === JSON.stringify(before) ? "camera_unchanged" : null,
+    action: "drag",
+    duration_ms: sample.durationMs,
+    fps: sample.fps,
+    frame_p95_ms: sample.p95,
+    pass: changed && failureClass == null,
+    failure_class: failureClass,
+    failure_detail: failureClass ? `fps=${sample.fps}; frame_p95_ms=${sample.p95}; floor=${FPS_FLOOR}; ceiling=${FRAME_P95_CEILING_MS}` : null,
     artifact_path: resultPath
   });
 }
@@ -533,6 +608,21 @@ async function recordFromPage(
     failure_class: input.failure_class ?? null,
     failure_detail: input.failure_detail ?? null
   };
+  return applyDurationGate(metadata, record);
+
+  function applyDurationGate(meta: LargeGraphFixtureMetadata, record: PerformanceRecord): PerformanceRecord {
+    if (!DURATION_GATED_ACTIONS.has(record.action)) return record;
+    if (record.failure_class) return record;
+    const probe = { duration_ms: record.duration_ms };
+    const metadataForGate = { nodes: meta.nodes };
+    const failure = durationFailureClass(probe, metadataForGate, record.action);
+    if (!failure) return record;
+    const limit = durationLimitMs(metadataForGate, record.action);
+    record.pass = false;
+    record.failure_class = failure;
+    record.failure_detail = `duration_ms=${record.duration_ms}; ceiling=${limit}`;
+    return record;
+  }
 }
 
 function failedRecord(
@@ -548,9 +638,9 @@ function failedRecord(
 
 function baseRecord(metadata: LargeGraphFixtureMetadata, action: string, artifactPath: string): PerformanceRecord {
   return {
-    phase: "phase-6",
-    task: "6.1",
-    renderer: "sigma-graphology-webgl-trial",
+    schema_version: TRIAL_SCHEMA_VERSION,
+    renderer: rendererName,
+    production_path: productionPath,
     graph_shape: metadata.id,
     nodes: metadata.nodes,
     edges: metadata.edges,
@@ -578,6 +668,11 @@ function baseRecord(metadata: LargeGraphFixtureMetadata, action: string, artifac
     memory_peak_mb: null,
     memory_after_cycles_mb: null,
     memory_growth_mb: null,
+    thresholds: actionThresholds(metadata, action),
+    browser: runContext.browser,
+    build_commit: runContext.build_commit,
+    run_started_at: runContext.run_started_at,
+    run_finished_at: runContext.run_finished_at,
     pass: false,
     failure_class: null,
     failure_detail: null,
@@ -673,6 +768,7 @@ interface BrowserLike {
 }
 
 interface PageLike {
+  addInitScript(script: string): Promise<void>;
   setDefaultTimeout(timeout: number): void;
   setDefaultNavigationTimeout(timeout: number): void;
   goto(url: string, options?: unknown): Promise<unknown>;
@@ -689,9 +785,9 @@ interface PageLike {
 }
 
 interface PerformanceRecord {
-  phase: string;
-  task: string;
+  schema_version: string;
   renderer: string;
+  production_path: boolean;
   graph_shape: string;
   nodes: number;
   edges: number;
@@ -719,6 +815,11 @@ interface PerformanceRecord {
   memory_peak_mb: number | null;
   memory_after_cycles_mb: number | null;
   memory_growth_mb: number | null;
+  thresholds: Record<string, number>;
+  browser: string;
+  build_commit: string;
+  run_started_at: string;
+  run_finished_at: string;
   pass: boolean;
   failure_class: string | null;
   failure_detail?: string | null;

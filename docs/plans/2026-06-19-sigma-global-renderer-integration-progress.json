@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-0",
-    "task": "0.1",
+    "phase": "phase-1",
+    "task": "1.1",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 1, Task 1.1: raise Sigma trial validation standards and artifact schema (fps>=45, frame p95, action duration, memory growth, schema, thresholds, browser, build commit, mandatory-metric and failed-record blockers)."
+    "next_allowed_action": "Advance to Phase 1, Task 1.2: make the Sigma trial model consume adapter-controlled render data (buildGraphRendererAdapterData) and forbid the trial path from deciding display budgets by traversing raw data.nodes/data.edges."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -40,6 +40,27 @@
       "decision": "Start implementation on codex/sigma-global-renderer-integration with a clean-start baseline that includes the eng-review plan amendments.",
       "reason": "The plan GSTACK REVIEW REPORT ends with NO UNRESOLVED DECISIONS, eng review is cleared after amendments, and the baseline smoke check (324 tests, 0 fail) is green. The eng-review amendments to the plan and progress files are part of this ledger, not unrelated changes.",
       "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (GSTACK REVIEW REPORT)"
+    },
+    {
+      "id": "D3",
+      "status": "recorded",
+      "decision": "Raise the Sigma trial hard gate to fps>=45 and frame_p95<=22.3ms for both wheel_zoom and a new sampled drag action, and require the full performance-record schema on every trial record.",
+      "reason": "Task 1.1 requires the trial to enforce the plan's hard-gate table, not the prior fps>=10 floor, and to record schema_version/production_path/thresholds/browser/build_commit/run timestamps plus mandatory fps/frame_p95/duration/memory metrics so a future false pass is blocked.",
+      "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (性能验收硬门槛, Task 1.1)"
+    },
+    {
+      "id": "D4",
+      "status": "recorded",
+      "decision": "Fix the tsx/esbuild __name regression by injecting a no-op window.__name init script on every trial page, rather than disabling tsx keepNames globally.",
+      "reason": "tsx compiles with esbuild keepNames:true, injecting a __name helper into functions serialized via page.evaluate, which is undefined in the browser and broke every interaction measurement. A page-level no-op shim is the smallest change that restores the trial without weakening the build pipeline.",
+      "source": "baseline probe: nodes-1000-sparse search/point_select/container_select/drawer_open/enter_community/return_global/repeated_cycles all failed with ReferenceError: __name is not defined"
+    },
+    {
+      "id": "D5",
+      "status": "recorded",
+      "decision": "Make the shared trial validator's schema/metric enforcement opt-in via requireSchema (default true); sibling vis-network and aggregation trials opt out until their own upgrade phase.",
+      "reason": "The shared validator is consumed by three trials. Hardening the schema must not break the two out-of-scope trials; opting them out keeps Task 1.1 scoped to Sigma while leaving a clear upgrade path.",
+      "source": "tests/browser/graph-aggregation-fallback-trial.ts, tests/browser/graph-vis-network-trial.ts import validateTrialResults"
     }
   ],
   "phases": [
@@ -93,10 +114,15 @@
         {
           "id": "1.1",
           "title": "Raise trial validation standards and artifact schema",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --check tests/browser/graph-sigma-graphology-trial.ts => exit 0.",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (324 tests, 0 fail).",
+            "GRAPH_SIGMA_TRIAL_SHAPES=nodes-1000-sparse GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-task-1-1 bash tests/graph-sigma-graphology-trial.regression-1.sh => exit 0; artifact carries schema_version=1.0.0, production_path=false, per-action thresholds, browser=145.0.7632.6, build_commit, run timestamps.",
+            "Negative probes prove the gate is live: fps=30 -> fps_below_floor (floor 45); missing thresholds -> schema failure; drag frame_p95=30 -> frame_p95_above_ceiling (ceiling 22.3)."
+          ],
+          "evidence": "wheel_zoom fps=60.9 p95=17.1; drag fps=60.9 p95=17.2 (new sampled drag action); initial_render 9.2ms (<=500, navigation excluded); search 35.5ms (<=200); drawer 55.4ms (<=200); return_global 31.8ms (<=250); repeated cycles memory_growth 0MB (<=50). Schema/thresholds/browser/build/run-timestamps present on every record.",
+          "residual_risk": "Trial-side only; no production renderer changed. Sibling vis-network/aggregation trials opt out of the new schema gate (requireSchema:false) until their own upgrade; their behavior is otherwise unchanged. Wheel/drag gate raised from fps>=10 to fps>=45 + frame_p95<=22.3ms; measured headroom on this machine is ~15fps / ~5ms."
         },
         {
           "id": "1.2",
@@ -398,6 +424,14 @@
       "phase": "phase-0",
       "action": "Created implementation branch, ran baseline smoke check, recorded baseline, made clean-start commit.",
       "result": "phase-0 complete; baseline 324 tests / 0 fail recorded; advanced to phase-1 task 1.1.",
+      "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 2,
+      "task": "1.1",
+      "phase": "phase-1",
+      "action": "Raised Sigma trial validation standards and artifact schema; fixed tsx __name regression; added sampled drag action; made sibling trials opt out of the new schema gate.",
+      "result": "phase-1 task 1.1 complete; single-shape smoke passes with full schema and hard-gate metrics; advanced to task 1.2.",
       "at": "2026-06-19T00:00:00+08:00"
     }
   ],
