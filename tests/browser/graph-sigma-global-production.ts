@@ -383,15 +383,48 @@ async function writeProductionHtml(
         });
       }
 
-      function productionProbe() {
+      function productionProbe(options = {}) {
+        const includeCanvasSignal = options.canvasSignal === true;
         const sigmaRoot = document.querySelector(".sigma-global-renderer[data-renderer='sigma-global']");
+        const canvasSignal = sigmaRoot && includeCanvasSignal ? sigmaCanvasSignal(sigmaRoot) : { nonblank: null, sampleCount: 0 };
+        const hitTargetCount = document.querySelectorAll(".sigma-global-node-hit-target, .sigma-global-community-wash, .sigma-global-aggregation-container").length;
         return {
           productionPath: Boolean(sigmaRoot),
           route: routeId(),
           canvasCount: sigmaRoot ? sigmaRoot.querySelectorAll("canvas").length : 0,
+          canvasNonBlank: canvasSignal.nonblank,
+          canvasPixelSampleCount: canvasSignal.sampleCount,
+          visibleSignal: Boolean(sigmaRoot) && hitTargetCount > 0,
+          hitTargetCount,
           sigmaRendererCount: document.querySelectorAll(".sigma-global-renderer[data-renderer='sigma-global']").length,
           fallbackCount: document.querySelectorAll(".graph-aggregation-safety-view, .llm-wiki-graph-engine").length
         };
+      }
+
+      function sigmaCanvasSignal(root) {
+        let sampleCount = 0;
+        for (const canvas of Array.from(root.querySelectorAll("canvas"))) {
+          if (!canvas.width || !canvas.height) continue;
+          try {
+            const sampleSize = 16;
+            const sampler = document.createElement("canvas");
+            sampler.width = sampleSize;
+            sampler.height = sampleSize;
+            const context = sampler.getContext("2d", { willReadFrequently: true });
+            if (!context) continue;
+            context.drawImage(canvas, 0, 0, sampleSize, sampleSize);
+            const data = context.getImageData(0, 0, sampleSize, sampleSize).data;
+            for (let index = 0; index < data.length; index += 4) {
+              const alpha = data[index + 3];
+              const luminance = data[index] + data[index + 1] + data[index + 2];
+              if (alpha > 0 && luminance > 0) sampleCount += 1;
+            }
+            if (sampleCount > 0) return { nonblank: true, sampleCount };
+          } catch {
+            continue;
+          }
+        }
+        return { nonblank: false, sampleCount };
       }
 
       function firstSearchHitId() {
@@ -454,7 +487,7 @@ async function writeProductionHtml(
           selectedCount: 0,
           inputValue: input.value,
           visibilityHits: lastVisibility.searchResultIds?.length || 0,
-          production: productionProbe()
+          production: productionProbe({ canvasSignal: false })
         };
       }
 
@@ -531,7 +564,7 @@ async function writeProductionHtml(
           kind: payload.kind,
           facts: facts.children.length,
           items: drawer.querySelectorAll(".summary-item").length,
-          production: productionProbe()
+          production: productionProbe({ canvasSignal: false })
         };
       }
 
@@ -563,15 +596,15 @@ async function writeProductionHtml(
           lastSelection = null;
           lastSelectionKind = null;
           engine.clearSelection();
-          if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe() };
-          return { selectedContainerId, route: routeId(), production: productionProbe() };
+          if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe({ canvasSignal: false }) };
+          return { selectedContainerId, route: routeId(), production: productionProbe({ canvasSignal: false }) };
         }
         engine.resetView();
         selectedContainerId = null;
         selectedNodeId = null;
         lastSelection = null;
         lastSelectionKind = null;
-        if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe() };
+        if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe({ canvasSignal: false }) };
         const production = await waitForProductionSigma(10000);
         return { selectedContainerId, route: routeId(), production };
       }
@@ -595,8 +628,8 @@ async function writeProductionHtml(
         enterCommunity,
         returnGlobal,
         productionProbe,
-        counts() {
-          const probe = productionProbe();
+        counts(options = {}) {
+          const probe = productionProbe({ canvasSignal: options.canvasSignal === true });
           return {
             nodes: graphData.nodes.length,
             edges: graphData.edges.length,
@@ -614,6 +647,10 @@ async function writeProductionHtml(
             productionPath: probe.productionPath,
             topLevelProductionPath: probe.productionPath && probe.route === "sigma-global" && probe.sigmaRendererCount === 1 && probe.fallbackCount === 0,
             canvasCount: probe.canvasCount,
+            canvasNonBlank: probe.canvasNonBlank,
+            canvasPixelSampleCount: probe.canvasPixelSampleCount,
+            visibleSignal: probe.visibleSignal,
+            hitTargetCount: probe.hitTargetCount,
             sigmaRendererCount: probe.sigmaRendererCount,
             loadingState: stage.dataset.loadingState || "",
             loadingStateSeenAtMs
@@ -867,12 +904,12 @@ async function measureEnterCommunity(page: PageLike, metadata: LargeGraphFixture
 async function measureReturnGlobal(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
   const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal(false));
-  await page.waitForFunction(() => Boolean((window as any).__sigmaProduction?.productionProbe?.().productionPath));
+  await page.waitForFunction(() => Boolean((window as any).__sigmaProduction?.productionProbe?.({ canvasSignal: false }).productionPath));
   await waitForAnimationFrames(page);
   const duration = performance.now() - started;
   const probe = (result as { production?: { productionPath?: boolean }; selectedContainerId?: string | null }).production;
   const selectedContainerId = (result as { selectedContainerId?: string | null }).selectedContainerId;
-  const readyProbe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe());
+  const readyProbe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe({ canvasSignal: false }));
   return recordFromPage(page, metadata, {
     action: "return_global",
     duration_ms: duration,
@@ -955,7 +992,7 @@ async function recordFromPage(
 ): Promise<PerformanceRecord> {
   const counts = await page.evaluate(() => {
     const trial = (window as any).__sigmaProduction;
-    const trialCounts = trial?.counts?.() ?? {};
+    const trialCounts = trial?.counts?.({ canvasSignal: true }) ?? {};
     return {
       dom_node_count: trialCounts.domNodeCount ?? document.querySelectorAll("*").length,
       visible_node_count: trialCounts.nodes ?? null,
@@ -975,7 +1012,11 @@ async function recordFromPage(
       loading_state: trialCounts.loadingState || (trialCounts.productionPath ? "sigma-global-ready" : "sigma-global-not-ready"),
       loading_state_seen_at_ms: typeof trialCounts.loadingStateSeenAtMs === "number" ? Math.round(trialCounts.loadingStateSeenAtMs * 10) / 10 : null,
       production_path: Boolean(trialCounts.topLevelProductionPath),
-      sigma_canvas_count: trialCounts.canvasCount ?? 0
+      sigma_canvas_count: trialCounts.canvasCount ?? 0,
+      sigma_canvas_nonblank: trialCounts.canvasNonBlank ?? false,
+      sigma_canvas_pixel_sample_count: trialCounts.canvasPixelSampleCount ?? 0,
+      sigma_visible_signal: trialCounts.visibleSignal ?? false,
+      sigma_hit_target_count: trialCounts.hitTargetCount ?? 0
     };
   });
   const record: PerformanceRecord = {
@@ -994,9 +1035,27 @@ async function recordFromPage(
   if (!record.production_path && !record.failure_class && !allowsNonSigmaRouteForAction(record.action)) {
     record.pass = false;
     record.failure_class = "production_path_missing";
-    record.failure_detail = `route=${record.production_route ?? "unknown"}; sigma_canvas_count=${record.sigma_canvas_count ?? "null"}`;
+    record.failure_detail = productionSignalFailureDetail(record);
+  }
+  if (record.production_path && !record.failure_class && !allowsNonSigmaRouteForAction(record.action)) {
+    const signalFailure = productionSignalFailureClass(record);
+    if (signalFailure) {
+      record.pass = false;
+      record.failure_class = signalFailure;
+      record.failure_detail = productionSignalFailureDetail(record);
+    }
   }
   return applyDurationGate(metadata, record);
+}
+
+function productionSignalFailureClass(record: PerformanceRecord): string | null {
+  if ((record.sigma_canvas_count ?? 0) < 1) return "sigma_canvas_missing";
+  if (record.sigma_canvas_nonblank !== true && record.sigma_visible_signal !== true) return "sigma_canvas_blank";
+  return null;
+}
+
+function productionSignalFailureDetail(record: PerformanceRecord): string {
+  return `route=${record.production_route ?? "unknown"}; sigma_canvas_count=${record.sigma_canvas_count ?? "null"}; sigma_canvas_nonblank=${String(record.sigma_canvas_nonblank)}; sigma_visible_signal=${String(record.sigma_visible_signal)}; sigma_hit_target_count=${record.sigma_hit_target_count ?? "null"}`;
 }
 
 function applyDurationGate(metadata: LargeGraphFixtureMetadata, record: PerformanceRecord): PerformanceRecord {
@@ -1067,6 +1126,10 @@ function baseRecord(metadata: LargeGraphFixtureMetadata, action: string, artifac
     loading_state: null,
     loading_state_seen_at_ms: null,
     sigma_canvas_count: null,
+    sigma_canvas_nonblank: null,
+    sigma_canvas_pixel_sample_count: null,
+    sigma_visible_signal: null,
+    sigma_hit_target_count: null,
     warmup_runs: undefined,
     median_fps: undefined,
     worst_run_fps: undefined,
@@ -1140,7 +1203,7 @@ async function frameSampleRecord(
   const fps = median(byFps, "fps");
   const p95 = median(byP95, "p95");
   const worst = byFps[0];
-  const probe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe());
+  const probe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe({ canvasSignal: false }));
   const frameFailure = frameSampleFailureClass({ fps, frame_p95_ms: p95 });
   const productionFailure = (probe as { productionPath?: boolean }).productionPath ? null : "production_path_missing";
   const failureClass = productionFailure || frameFailure;
@@ -1302,6 +1365,10 @@ interface PerformanceRecord {
   loading_state: string | null;
   loading_state_seen_at_ms: number | null;
   sigma_canvas_count: number | null;
+  sigma_canvas_nonblank: boolean | null;
+  sigma_canvas_pixel_sample_count: number | null;
+  sigma_visible_signal: boolean | null;
+  sigma_hit_target_count: number | null;
   warmup_runs?: number;
   median_fps?: number | null;
   worst_run_fps?: number | null;

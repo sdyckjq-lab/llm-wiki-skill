@@ -180,6 +180,13 @@
       "decision": "Address post-review production-path evidence gaps by driving the browser regression through the real Sigma route, real search input, and real pointer selection paths, while keeping the plan closed.",
       "reason": "The review found the production regression could pass with fake callbacks, incomplete global controls, hidden fallback, and missing loading/duration/memory hard-gate enforcement. The fix makes the regression prove the actual production route and strengthens validation without adding a user-visible old/new renderer switch.",
       "source": "tests/browser/graph-sigma-global-production.ts; tests/browser/validate-graph-trial-result.mjs; /tmp/llm-wiki-sigma-review-fix-full/sigma-global-production-results.json"
+    },
+    {
+      "id": "D23",
+      "status": "recorded",
+      "decision": "Close ship-review blockers by hardening the real production-path validation and fixing route-state edge cases before PR creation.",
+      "reason": "The ship review found remaining correctness and evidence gaps: route fallback could retain stale data, renderer callbacks could leave facade selection stale, stale metadata could choose the wrong fallback, Sigma fixed-position commands returned false, public exports exposed Sigma internals, and production regression could pass without proving a rendered canvas or visible Sigma signal.",
+      "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/src/render/index.ts; tests/browser/graph-sigma-global-production.ts; tests/browser/validate-graph-trial-result.mjs; /tmp/llm-wiki-sigma-ship-final-3/sigma-global-production-results.json"
     }
   ],
   "phases": [
@@ -929,6 +936,14 @@
       "action": "Fixed post-review production-path gaps by routing the browser regression through real Sigma production controls and interactions, strengthening hard-gate validation, and rerunning targeted plus full production regressions.",
       "result": "post-review production artifact has 110 records across 11 shapes, production_path=true, 0 failures, all required fields present, min fps 60.3, max frame p95 17.6ms, max memory growth 6MB, and loading-state evidence recorded.",
       "at": "2026-06-20T00:57:06+08:00"
+    },
+    {
+      "turn": 27,
+      "task": "7.3-ship-review",
+      "phase": "phase-7",
+      "action": "Fixed ship-review blockers in route manager state synchronization, stale fallback data refresh, stale metadata fallback thresholds, Sigma fixed-position commands, public Sigma export boundaries, and production regression canvas/visible-signal hard gates.",
+      "result": "ship-review production artifact has 110 records across 11 shapes, production_path=true, 0 failures, min fps 60.2, max frame p95 17.7ms, max memory growth 5.9MB, loading_state_seen_at_ms max 0.1ms, min Sigma canvas count 7, and every production record has a nonblank canvas or visible Sigma signal.",
+      "at": "2026-06-20T01:42:00+08:00"
     }
   ],
   "final": {
@@ -940,9 +955,11 @@
       "Final production artifact: /tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json",
       "Final artifact proves all 11 graph shapes satisfy hard gates: fps >=45, frame p95 <=22.3ms for wheel/drag, action durations within recorded thresholds, memory growth within threshold, loading-state/schema/threshold fields present, production_path=true, and 0 failed records.",
       "Post-review production artifact: /tmp/llm-wiki-sigma-review-fix-full/sigma-global-production-results.json",
-      "Post-review artifact proves the real production path across all 11 graph shapes: 110 records, production_path=true, 0 failures, required schema/threshold/loading fields present, min fps 60.3, max frame p95 17.6ms, max memory growth 6MB, loading_state_seen_at_ms max 0ms, and no failed records."
+      "Post-review artifact proves the real production path across all 11 graph shapes: 110 records, production_path=true, 0 failures, required schema/threshold/loading fields present, min fps 60.3, max frame p95 17.6ms, max memory growth 6MB, loading_state_seen_at_ms max 0ms, and no failed records.",
+      "Ship-review production artifact: /tmp/llm-wiki-sigma-ship-final-3/sigma-global-production-results.json",
+      "Ship-review artifact proves the hardened production path across all 11 graph shapes: 110 records, production_path=true, 0 failures, min fps 60.2, max frame p95 17.7ms, max memory growth 5.9MB, loading_state_seen_at_ms max 0.1ms, min Sigma canvas count 7, and every production record has a nonblank canvas or visible Sigma signal."
     ],
-    "residual_risk": "Evidence is from local Chromium/Playwright runs. WebGL/Sigma availability can vary by user environment, so the implemented fallback policy remains necessary: small abnormal graphs use DOM/SVG emergency fallback and large abnormal graphs use aggregation safety fallback. Post-review checks now prove the real production path instead of fake callbacks, but browser/WebGL availability remains environment-dependent. No known unresolved product decision remains."
+    "residual_risk": "Evidence is from local Chromium/Playwright runs. WebGL/Sigma availability can vary by user environment, so the implemented fallback policy remains necessary: small abnormal graphs use DOM/SVG emergency fallback and large abnormal graphs use aggregation safety fallback. Ship-review checks now prove the real production path with canvas count and rendered/visible Sigma signals, but browser/WebGL availability remains environment-dependent. No known unresolved product decision remains."
   },
   "baseline": {
     "branch": "codex/sigma-global-renderer-integration",

@@ -8,6 +8,7 @@ import type {
   GraphSummaryObjectRef,
   GraphSummaryOptions,
   GraphVisibilityState,
+  PinMap,
   Selection,
   SelectionInput,
   ThemeId
@@ -16,12 +17,12 @@ import {
   buildGraphRendererAdapterData,
   createGraphRenderer,
   type GraphRendererAdapterData,
-  type GraphGestureTarget,
-  type SigmaGlobalRendererRuntime
+  type GraphGestureTarget
 } from "./render";
 import {
   createSigmaGlobalRenderer,
-  sigmaGlobalRendererRuntimeBoundary
+  sigmaGlobalRendererRuntimeBoundary,
+  type SigmaGlobalRendererRuntime
 } from "./render/sigma-global-renderer";
 import { buildCommunityLegend, nextToolbarPanelState, resolveGraphSearchState, readToolbarPanelState, writeToolbarPanelState } from "./render";
 import { createCommunityLegend, createGraphToolbar, createSearchControl } from "./render/controls";
@@ -267,7 +268,6 @@ export function createGraphFacadeRouteManager(
   let sigmaAttemptCount = 0;
   let destroyed = false;
   let active: GraphFacadeRenderer | undefined;
-  active = activateGlobalRoute();
 
   const manager: GraphFacadeRouteManager = {
     get routeId() {
@@ -297,7 +297,12 @@ export function createGraphFacadeRouteManager(
       state.data = data;
       if (pins) state.pins = pins;
       if (sigmaKnownUnavailable) {
-        switchToFallbackRoute();
+        const nextRouteId = fallbackRouteIdForData(state.data);
+        if (routeId === nextRouteId && active) {
+          currentRenderer().setData(data, pins);
+        } else {
+          switchToFallbackRoute();
+        }
         return;
       }
       currentRenderer().setData(data, pins);
@@ -361,7 +366,17 @@ export function createGraphFacadeRouteManager(
     },
     setNodeFixed(id, mode) {
       assertActive();
-      return currentRenderer().setNodeFixed(id, mode);
+      const changed = currentRenderer().setNodeFixed(id, mode);
+      if (changed && mode === "unfix") {
+        const node = state.data.nodes.find((item) => item.id === id);
+        const path = node ? wikiPathForGraphNode(node) : id;
+        if (state.pins[path]) {
+          const nextPins = { ...state.pins };
+          delete nextPins[path];
+          state.pins = nextPins;
+        }
+      }
+      return changed;
     },
     setTheme(theme) {
       assertActive();
@@ -383,6 +398,8 @@ export function createGraphFacadeRouteManager(
       active?.destroy();
     }
   };
+
+  active = activateGlobalRoute();
 
   return manager;
 
@@ -454,6 +471,19 @@ export function createGraphFacadeRouteManager(
         temporaryObject: state.temporaryObject || null,
         callbacks: {
           ...(options.callbacks || {}),
+          onSelectionInput: (selection) => {
+            state.selection = selection;
+            options.callbacks?.onSelectionInput?.(selection);
+          },
+          onSelectionClearRequested: () => {
+            state.selection = null;
+            state.temporaryObject = null;
+            options.callbacks?.onSelectionClearRequested?.();
+          },
+          onPinsChanged: (pins) => {
+            state.pins = pins;
+            options.callbacks?.onPinsChanged?.(pins);
+          },
           onVisibilityStateChange: (visibility) => {
             state.searchQuery = visibility.searchQuery;
             state.searchResultIds = visibility.searchResultIds;
@@ -511,8 +541,8 @@ function createDomSvgFacadeRenderer(
 }
 
 export function graphRequiresAggregationSafetyFallback(data: GraphData): boolean {
-  const nodeCount = data.meta.total_nodes || data.nodes.length;
-  const edgeCount = data.meta.total_edges || data.edges.length;
+  const nodeCount = Math.max(data.meta.total_nodes || 0, data.nodes.length);
+  const edgeCount = Math.max(data.meta.total_edges || 0, data.edges.length);
   const communitySizes = new Map<string, number>();
   for (const node of data.nodes) {
     if (!node.community) continue;
@@ -780,8 +810,25 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       options = { ...options, focus: null, selection: null, temporaryObject: null };
       updateSigmaRenderer();
     },
-    setNodeFixed() {
-      return false;
+    setNodeFixed(id, mode) {
+      const node = options.data.nodes.find((item) => item.id === id);
+      if (!node) return false;
+      const path = wikiPathForGraphNode(node);
+      const nextPins: PinMap = { ...options.pins };
+      if (mode === "fix") {
+        const adapterNode = adapterDataForSigmaRoute(options).nodes.find((item) => item.id === id);
+        nextPins[path] = {
+          x: adapterNode?.point.x ?? numericNodeCoordinate(node.x),
+          y: adapterNode?.point.y ?? numericNodeCoordinate(node.y),
+          coordinateSpace: "world"
+        };
+      } else {
+        delete nextPins[path];
+      }
+      options = { ...options, pins: nextPins };
+      input.options.callbacks.onPinsChanged?.(nextPins);
+      updateSigmaRenderer();
+      return true;
     },
     setTheme(theme) {
       options = { ...options, theme };
@@ -957,6 +1004,11 @@ function adapterDataForSigmaRoute(options: GraphFacadeRouteRendererOptions): Gra
     focus: null,
     typeFilters: options.typeFilters
   });
+}
+
+function numericNodeCoordinate(value: GraphNode["x"] | GraphNode["y"]): number {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
 export function createGraphFacadeFromRenderer(

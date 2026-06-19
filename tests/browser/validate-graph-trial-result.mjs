@@ -82,6 +82,14 @@ for (const record of records) {
     else if (record.loading_state_seen_at_ms > 250) failures.push(`${shapeAction}: loading_state_late; loading_state_seen_at_ms=${record.loading_state_seen_at_ms}; ceiling=250`);
   }
   if (requireProductionPath && (!record.loading_state || record.loading_state === "not-run")) failures.push(`${shapeAction}: loading_state_missing`);
+  if (requireProductionPath && !allowsNonSigmaRouteForAction(record.action)) {
+    if ((Number(record.sigma_canvas_count) || 0) < 1) {
+      failures.push(`${shapeAction}: sigma_canvas_missing`);
+    }
+    if (record.sigma_canvas_nonblank !== true && record.sigma_visible_signal !== true) {
+      failures.push(`${shapeAction}: sigma_canvas_blank; nonblank=${String(record.sigma_canvas_nonblank)}; visible_signal=${String(record.sigma_visible_signal)}`);
+    }
+  }
 }
 
 for (const record of records) {
@@ -134,4 +142,8 @@ function memoryGrowthLimitMb(record) {
   if (nodes >= 10000) return 100;
   if (nodes >= 5000) return 75;
   return 50;
+}
+
+function allowsNonSigmaRouteForAction(action) {
+  return action === "enter_community";
 }

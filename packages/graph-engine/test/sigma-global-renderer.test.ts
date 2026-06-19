@@ -7,16 +7,14 @@ import {
   SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY,
   SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
   buildSigmaGlobalGraphologyGraph,
-  createSigmaGlobalHitProjector
-} from "../src/render";
-import {
-  createSigmaGlobalRenderer
+  createSigmaGlobalHitProjector,
+  createSigmaGlobalRenderer,
+  type SigmaGlobalGraphologyGraph,
+  type SigmaGlobalRendererRuntime,
+  type SigmaGlobalSigmaLike
 } from "../src/render/sigma-global-renderer";
 import type {
-  GraphRendererAdapterData,
-  SigmaGlobalGraphologyGraph,
-  SigmaGlobalRendererRuntime,
-  SigmaGlobalSigmaLike
+  GraphRendererAdapterData
 } from "../src";
 
 describe("Sigma global renderer production boundary", () => {

@@ -368,6 +368,44 @@ describe("GraphFacade", () => {
     assert.equal(aggregationFallbackCount, 0);
   });
 
+  it("updates the current fallback renderer when Sigma is known unavailable and the route stays the same", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const smallFallbackRenderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          throw new Error("WebGL unavailable");
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => trackRenderer(smallFallbackRenderers, "small-fallback"),
+        createAggregationSafetyFallback: () => createFakeRenderer()
+      }
+    });
+    const nextData = {
+      ...DATA,
+      meta: { ...DATA.meta, wiki_title: "Facade test graph refreshed" }
+    };
+
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+    manager.setData(nextData);
+
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+    assert.equal(smallFallbackRenderers.length, 1);
+    assert.deepEqual(smallFallbackRenderers[0].calls.at(-1), ["setData", nextData, undefined]);
+  });
+
   it("re-routes known-unavailable Sigma fallback when refreshed data crosses the large-graph threshold", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {
@@ -407,6 +445,87 @@ describe("GraphFacade", () => {
     assert.equal(manager.routeId, "aggregation-safety-fallback");
     assert.equal(smallFallbackCount, 1);
     assert.equal(aggregationFallbackCount, 1);
+  });
+
+  it("treats stale small metadata as large when actual graph arrays exceed fallback thresholds", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const staleLargeData = largeGraphData(2101, 4101, 600);
+    staleLargeData.meta.total_nodes = 1;
+    staleLargeData.meta.total_edges = 1;
+    const state: GraphFacadeState = {
+      data: staleLargeData,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let domFallbackCount = 0;
+    let aggregationFallbackCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          throw new Error("WebGL unavailable");
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => {
+          domFallbackCount += 1;
+          return createFakeRenderer();
+        },
+        createAggregationSafetyFallback: () => {
+          aggregationFallbackCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "aggregation-safety-fallback");
+    assert.equal(domFallbackCount, 0);
+    assert.equal(aggregationFallbackCount, 1);
+  });
+
+  it("keeps route manager selection state synchronized with renderer callbacks", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: { kind: "node", nodeId: "a" }
+    };
+    const selections: SelectionInput[] = [];
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      callbacks: {
+        onSelectionInput: (selection) => selections.push(selection)
+      },
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createAggregationSafetyFallback: () => createFakeRenderer()
+      }
+    });
+
+    sigmaInputs[0].options.callbacks.onSelectionInput?.({ kind: "node", id: "a" });
+    assert.deepEqual(state.selection, { kind: "node", id: "a" });
+    assert.deepEqual(selections, [{ kind: "node", id: "a" }]);
+
+    sigmaInputs[0].options.callbacks.onSelectionClearRequested?.();
+    assert.equal(state.selection, null);
+    assert.equal(state.temporaryObject, null);
   });
 
   it("routes known-large Sigma failures to aggregation safety fallback instead of DOM/SVG", () => {
