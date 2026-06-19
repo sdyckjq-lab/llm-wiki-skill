@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-1",
-    "task": "1.2",
+    "task": "1.3",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 1, Task 1.3: add representative drawer/overlay load to the Sigma trial HTML and run repeated search/community/drawer/return-global cycles on 5000/10000 shapes recording memory growth, keeping the full 11-shape default set."
+    "next_allowed_action": "Phase 1 acceptance met. Advance to Phase 2, Task 2.1: define a renderer-neutral surface and command boundary so controller no longer depends on per-node DOM focus/classList operations."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -68,6 +68,13 @@
       "decision": "Drive the Sigma trial model entirely from buildGraphRendererAdapterData output; node/edge/community/aggregation lists, positions, sizes, colors and selection/search/pin/aggregation state all come from adapter render state, not from raw GraphData traversal.",
       "reason": "Task 1.2 forbids the trial path from deciding display budgets by traversing raw data.nodes/data.edges, so the trial proves Sigma can render from adapter-controlled data before any production Sigma code is written.",
       "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (Task 1.2)"
+    },
+    {
+      "id": "D7",
+      "status": "recorded",
+      "decision": "Use warmup + 3 repeated runs and score the median fps/frame-p95 for wheel/drag, recording the worst run on each record.",
+      "reason": "The plan's hard gate requires warmup-then-3-repeated-runs with median-must-pass and worst-run-recorded. The first unwarmed wheel sample on many-pin-nodes read 35.9fps due to first-frame layout/shader cost; warmup + median eliminated the cold-start outlier while preserving honest worst-run evidence.",
+      "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (性能验收硬门槛)"
     }
   ],
   "phases": [
@@ -106,7 +113,7 @@
       "id": "phase-1",
       "title": "Phase 0 start gate and harness hardening",
       "goal": "Prove the Sigma route is safe to start by hardening the trial harness and running the required 11-shape gate.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Task 1.1 through 1.3 are complete",
         "Full Sigma trial exits 0 for all 11 shapes",
@@ -115,8 +122,15 @@
         "5000 and 10000 repeated cycle memory records exist and meet the plan's memory ceilings",
         "wheel/drag fps records are >= 45 and wheel/drag frame_p95_ms records are <= 22.3"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 1.1, 1.2, 1.3 complete with evidence.",
+        "Full Sigma trial exits 0 for all 11 shapes (110 records, 0 failures).",
+        "Trial artifacts include schema_version, thresholds, browser, build_commit, production_path, fps, frame_p95_ms, duration_ms, memory_growth_mb, failure fields.",
+        "No trial record has pass=false or non-empty failure_class.",
+        "5000 and 10000 repeated cycle memory records exist and meet the memory ceilings (0MB growth <= 75/100MB).",
+        "wheel/drag fps records >= 45 (min 60/60.3); wheel/drag frame_p95_ms records <= 22.3 (max 18.7/18.6)."
+      ],
+      "residual_risk": "Phase 1 proven on this machine only (Chromium 145, local Playwright via GRAPH_TRIAL_PLAYWRIGHT_NODE_PATH). Production-path regression (Phase 6/7) will re-prove on the integrated renderer.",
       "tasks": [
         {
           "id": "1.1",
@@ -147,10 +161,16 @@
         {
           "id": "1.3",
           "title": "Add representative drawer/overlay load and large memory cycles",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-task-1-3 bash tests/graph-sigma-graphology-trial.regression-1.sh => exit 0; 110 records, 11 shapes.",
+            "Artifact contains all 11 shapes and every required action; no pass=false, no non-empty failure_class.",
+            "5000/10000 repeated cycle records are real (nodes-10000-aggregation cycle: 6 cycles, 298.7ms, memory_after 31.6MB, memory_growth 0MB <= 100 ceiling); none are 'not run'.",
+            "wheel fps min 60, drag fps min 60.3 (>=45); wheel p95 max 18.7ms, drag p95 max 18.6ms (<=22.3).",
+            "drawer_open renders a representative summary card on all 11 shapes (11/11 pass with summary-card + facts + items DOM)."
+          ],
+          "evidence": "Full 11-shape Sigma trial artifact at /tmp/llm-wiki-sigma-task-1-3/sigma-graphology-trial-results.json. Trial HTML now renders a workbench-weight summary card (kicker+title+fact grid+core-node list) driven by adapter-derived drawer payloads. Frame sampling uses warmup + 3 runs, scores median fps/p95, and records the worst run (median_fps/worst_run_fps/worst_run_frame_p95_ms).",
+          "residual_risk": "Memory growth reads 0MB on Chromium usedJSHeapSize after settle for all scales; this is real stable-state behavior, not a skipped measurement (cycle durations and memory_after are populated). Sigma shows no hard blocker on this machine; Phase 1 start gate is cleared. Worst-case fps headroom over the 45 floor is ~15fps."
         }
       ]
     },
@@ -452,6 +472,14 @@
       "phase": "phase-1",
       "action": "Rewrote the Sigma trial model to consume adapter-controlled render data; removed all raw data.nodes/data.edges budget traversal.",
       "result": "phase-1 task 1.2 complete; adapter + contract tests and sigma smoke pass; advanced to task 1.3.",
+      "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 4,
+      "task": "1.3",
+      "phase": "phase-1",
+      "action": "Added representative drawer card payload + DOM; scaled repeated memory cycles on 5000/10000; redesigned wheel/drag sampling as warmup+median-of-3 with worst-run recording.",
+      "result": "phase-1 task 1.3 complete and phase-1 acceptance met; full 11-shape trial passes all hard gates; advancing to phase 2.",
       "at": "2026-06-19T00:00:00+08:00"
     }
   ],

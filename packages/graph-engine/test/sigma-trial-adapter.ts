@@ -23,11 +23,34 @@ export interface SigmaTrialOptions {
   typeFilters?: GraphTypeFilters;
 }
 
+export interface SigmaTrialDrawerItem {
+  id: string;
+  label: string;
+  meta: string;
+}
+
+export interface SigmaTrialDrawerPayload {
+  kind: "node" | "community" | "global";
+  title: string;
+  kicker: string;
+  // Representative workbench-like drawer facts (counts the React drawer shows).
+  facts: { label: string; value: string }[];
+  // Representative list rows (core nodes / pinned nodes / search hits), capped.
+  items: SigmaTrialDrawerItem[];
+}
+
 export interface SigmaTrialModel {
   nodes: SigmaTrialNode[];
   edges: SigmaTrialEdge[];
   communities: SigmaTrialCommunity[];
   aggregations: SigmaTrialAggregation[];
+  // Pre-computed drawer payloads so the trial HTML renders a workbench-weight
+  // summary card instead of a single text node.
+  drawer: {
+    global: SigmaTrialDrawerPayload;
+    nodes: Record<string, SigmaTrialDrawerPayload>;
+    communities: Record<string, SigmaTrialDrawerPayload>;
+  };
   behavior: GraphRendererBehaviorContract;
 }
 
@@ -141,13 +164,77 @@ export function buildSigmaGraphologyTrialModel(data: GraphData, options: SigmaTr
     totalCount: aggregation.totalCount
   }));
 
+  const drawer = buildTrialDrawer(adapter);
+
   return {
     nodes,
     edges,
     communities,
     aggregations,
+    drawer,
     behavior: buildGraphRendererBehaviorContract(adapter, "candidate-global")
   };
+}
+
+// Representative workbench-weight drawer payloads derived only from adapter
+// render data. The trial HTML renders these as a real summary card + list so the
+// drawer/overlay DOM cost is comparable to the production GraphSummaryDrawer.
+function buildTrialDrawer(adapter: ReturnType<typeof buildGraphRendererAdapterData>): SigmaTrialModel["drawer"] {
+  const adjacency = new Map<string, number>();
+  for (const edge of adapter.edges) {
+    adjacency.set(edge.sourceNodeId, (adjacency.get(edge.sourceNodeId) ?? 0) + 1);
+    adjacency.set(edge.targetNodeId, (adjacency.get(edge.targetNodeId) ?? 0) + 1);
+  }
+  const trim = (values: string[]): string[] => values.slice(0, 8);
+
+  const nodePayloads: Record<string, SigmaTrialDrawerPayload> = {};
+  for (const node of adapter.nodes) {
+    const meta = node.type ? String(node.type) : "node";
+    nodePayloads[node.id] = {
+      kind: "node",
+      kicker: "节点",
+      title: node.label || node.id,
+      facts: [
+        { label: "类型", value: meta },
+        { label: "连接", value: String(adjacency.get(node.id) ?? 0) },
+        { label: "社区", value: node.communityId == null ? "—" : String(node.communityId) }
+      ],
+      items: trim(node.aggregationIds).map((id) => ({ id, label: id, meta: "aggregation" }))
+    };
+  }
+
+  const communityPayloads: Record<string, SigmaTrialDrawerPayload> = {};
+  for (const community of adapter.communities) {
+    const labelById = new Map(adapter.nodes.map((node) => [node.id, node.label || node.id]));
+    const coreNodes = community.nodeIds
+      .map((id) => ({ id, label: labelById.get(id) ?? id, degree: adjacency.get(id) ?? 0 }))
+      .sort((a, b) => b.degree - a.degree);
+    communityPayloads[community.id] = {
+      kind: "community",
+      kicker: "社区",
+      title: community.label || community.id,
+      facts: [
+        { label: "节点数", value: String(community.nodeCount) },
+        { label: "命中", value: String(community.searchResultIds.length) },
+        { label: "置顶", value: String(community.pinHints.length) }
+      ],
+      items: trim(coreNodes.map((node) => ({ id: node.id, label: node.label, meta: "core" })))
+    };
+  }
+
+  const globalPayload: SigmaTrialDrawerPayload = {
+    kind: "global",
+    kicker: "全局",
+    title: "全局图谱概览",
+    facts: [
+      { label: "节点", value: String(adapter.counts.nodes) },
+      { label: "边", value: String(adapter.counts.edges) },
+      { label: "社区", value: String(adapter.communities.length) }
+    ],
+    items: trim(adapter.communities.map((community) => ({ id: community.id, label: community.label || community.id, meta: "community" })))
+  };
+
+  return { global: globalPayload, nodes: nodePayloads, communities: communityPayloads };
 }
 
 // Visual budget for a trial node, derived only from adapter render state.
