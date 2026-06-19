@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-4",
-    "task": "4.3",
+    "task": "4.4",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 4, Task 4.3: implement layered failure fallback with small-graph DOM/SVG fallback, large-graph aggregation safety view, thresholds, retry, and known-failed no-retry coverage."
+    "next_allowed_action": "Advance to Phase 4, Task 4.4: keep the workbench GraphPanel boundary stable without adding a user-visible renderer switch."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -131,6 +131,13 @@
       "decision": "Keep cross-route interaction state in the facade route state, including selection, focus, search query/results, type filters, pins, aggregation markers, and temporary object payloads; facade summaries default to that state unless callers override options.",
       "reason": "Task 4.2 requires route switches not to clear current selection and requires filtered/excluded object drawers to retain enough state to render excluded payloads consistently across Sigma and DOM/SVG routes.",
       "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/src/render/graph-renderer-root.ts; packages/graph-engine/test/summary-contract.test.ts"
+    },
+    {
+      "id": "D16",
+      "status": "recorded",
+      "decision": "Use layered Sigma failure fallback: small graphs fall back to DOM/SVG, while graphs above 2000 nodes, 4000 edges, or 500 nodes in any community go to the aggregation safety view; retry is explicit and known-failed global returns do not repeatedly recreate Sigma.",
+      "reason": "Task 4.3 requires WebGL/Sigma/runtime failures to remain usable without sending known-large graphs back to the old DOM/SVG global path, and requires repeated retry behavior to be controlled by the route layer rather than exposed as a user-visible renderer switch.",
+      "source": "packages/graph-engine/src/facade.ts; packages/graph-engine/test/facade.test.ts; packages/graph-engine/test/aggregation-fallback-trial-adapter.test.ts"
     }
   ],
   "phases": [
@@ -415,10 +422,14 @@
         {
           "id": "4.3",
           "title": "Implement layered failure fallback",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/aggregation-fallback-trial-adapter.test.ts packages/graph-engine/test/facade.test.ts packages/graph-engine/test/renderer-lifecycle.test.ts => exit 0 (30 tests, 0 fail).",
+            "npm run build --workspace=@llm-wiki/graph-engine => exit 0.",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail)."
+          ],
+          "evidence": "Layered Sigma failure fallback is now facade-owned. Small Sigma failures route to DOM/SVG global fallback; large or known-risk graphs route to aggregation safety fallback when nodes > 2000, edges > 4000, or any community size > 500. Guard fixtures prove 2101 nodes, 4101 edges, and a 600-node community avoid DOM/SVG and render the safety view. Tests cover WebGL unavailable, synchronous Sigma initialization failure, canvas/runtime abnormal failure via onSigmaUnavailable, explicit retrySigma retry, return-global known-failed no-retry behavior, and the default aggregation safety view hint/actions.",
+          "residual_risk": "Task 4.4 still needs to prove the workbench GraphPanel boundary remains stable and does not expose renderer selection. Production-path browser performance hard gates remain deferred to Phase 6/7."
         },
         {
           "id": "4.4",
@@ -669,6 +680,14 @@
       "action": "Synchronized route state for selection, focus, search query/results, type filters, pins, aggregation markers, and temporary objects; wired DOM/SVG initial search query and facade summary defaults to current route state.",
       "result": "phase-4 task 4.2 complete; required state/search/select/summary tests, full graph-engine test, and graph-engine build pass; advancing to task 4.3.",
       "at": "2026-06-19T21:48:00+08:00"
+    },
+    {
+      "turn": 14,
+      "task": "4.3",
+      "phase": "phase-4",
+      "action": "Implemented layered Sigma failure fallback with small-graph DOM/SVG fallback, large-graph aggregation safety view thresholds, explicit retry, and known-failed no-retry behavior.",
+      "result": "phase-4 task 4.3 complete; fallback, lifecycle, build, and full graph-engine tests pass; advancing to task 4.4.",
+      "at": "2026-06-19T21:49:00+08:00"
     }
   ],
   "final": {

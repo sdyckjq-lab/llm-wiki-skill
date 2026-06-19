@@ -3,8 +3,51 @@ import assert from "node:assert/strict";
 
 import type { GraphData, GraphDiff, SelectionInput } from "../src";
 import { createGraphRenderer } from "../src/render";
+import { createGraphFacadeRouteManager } from "../src/facade";
 
 describe("graph renderer lifecycle", () => {
+  it("renders a light aggregation safety view for known-large Sigma failures", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    let sigmaAttempts = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state: {
+        data: largeFallbackGraphData(),
+        pins: {},
+        theme: "shan-shui",
+        focus: null,
+        typeFilters: {},
+        aggregationMarkers: [],
+        selection: null,
+        searchResultIds: [],
+        temporaryObject: null
+      },
+      factories: {
+        createSigmaGlobal: () => {
+          sigmaAttempts += 1;
+          throw new Error("WebGL unavailable");
+        }
+      }
+    });
+    const safetyView = findByClass(container, "graph-aggregation-safety-view")[0];
+    const notice = findByClass(container, "graph-aggregation-safety-notice")[0];
+    const containers = findByClass(container, "graph-aggregation-safety-container");
+    const retry = findByDataset(container, "action", "retry-sigma");
+    const clear = findByDataset(container, "action", "clear-selection");
+
+    assert.equal(manager.routeId, "aggregation-safety-fallback");
+    assert.equal(safetyView?.dataset.notice, "sigma-unavailable-large-graph");
+    assert.equal(notice?.dataset.role, "fallback-notice");
+    assert.ok(containers.length > 0);
+    assert.ok(retry);
+    assert.ok(clear);
+
+    retry?.dispatch("click");
+
+    assert.equal(sigmaAttempts, 2);
+    assert.equal(manager.routeId, "aggregation-safety-fallback");
+  });
+
   it("routes a community click to lightweight selection instead of focusing the community", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
@@ -679,6 +722,33 @@ function graphDataForReturnGlobal(): GraphData {
     edges: [
       { id: "a-b", from: "a", to: "b", type: "EXTRACTED" }
     ]
+  };
+}
+
+function largeFallbackGraphData(): GraphData {
+  const nodes = Array.from({ length: 2101 }, (_, index) => ({
+    id: `large-${index}`,
+    label: `Large ${index}`,
+    type: "topic",
+    community: index < 600 ? "large-community" : `community-${index}`,
+    source_path: `wiki/large/${index}.md`,
+    content: `Large ${index}`
+  }));
+  const edges = Array.from({ length: 4101 }, (_, index) => ({
+    id: `large-edge-${index}`,
+    from: nodes[index % nodes.length].id,
+    to: nodes[(index + 1) % nodes.length].id,
+    type: "EXTRACTED"
+  }));
+  return {
+    meta: {
+      build_date: "2026-06-19",
+      wiki_title: "Large fallback graph",
+      total_nodes: nodes.length,
+      total_edges: edges.length
+    },
+    nodes,
+    edges
   };
 }
 

@@ -29,7 +29,8 @@ import {
   summarizeGraphGlobal,
   summarizeGraphNode,
   summarizeGraphSearchResults,
-  summarizeUnavailableGraphObject
+  summarizeUnavailableGraphObject,
+  buildCommunityAggregationMarkers
 } from "./summary";
 
 export type GraphFacadeHostMode = "workbench" | "offline" | "standalone";
@@ -97,12 +98,19 @@ export interface GraphFacadeRenderer {
   destroy(): void;
 }
 
-export type GraphFacadeRendererRouteId = "sigma-global" | "dom-svg-community" | "global-fallback";
+export type GraphFacadeRendererRouteId = "sigma-global" | "dom-svg-community" | "global-fallback" | "aggregation-safety-fallback";
+
+export const GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS = {
+  maxDomSvgFallbackNodes: 2000,
+  maxDomSvgFallbackEdges: 4000,
+  maxDomSvgFallbackCommunitySize: 500
+} as const;
 
 export interface GraphFacadeRouteManager extends GraphFacadeRenderer {
   readonly routeId: GraphFacadeRendererRouteId;
   readonly sigmaKnownUnavailable: boolean;
   readonly sigmaAttemptCount: number;
+  retrySigma(): void;
 }
 
 export interface GraphFacadeRouteRendererOptions {
@@ -123,12 +131,14 @@ export interface GraphFacadeRouteRendererFactoryInput {
   container: HTMLElement;
   options: GraphFacadeRouteRendererOptions;
   onSigmaUnavailable?: (error: unknown) => void;
+  onRetrySigma?: () => void;
 }
 
 export interface GraphFacadeRouteRendererFactories {
   createSigmaGlobal: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
   createDomSvgCommunity: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
   createGlobalFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
+  createAggregationSafetyFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
 }
 
 export interface GraphFacadeRendererCallbacks {
@@ -240,7 +250,8 @@ export function createGraphFacadeRouteManager(
     createDomSvgCommunity: options.factories?.createDomSvgCommunity || ((input) =>
       createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
     createGlobalFallback: options.factories?.createGlobalFallback || ((input) =>
-      createDomSvgFacadeRenderer(input, options.toolbarContainer, true))
+      createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
+    createAggregationSafetyFallback: options.factories?.createAggregationSafetyFallback || createAggregationSafetyFallbackRenderer
   };
   let routeId: GraphFacadeRendererRouteId = "sigma-global";
   let sigmaKnownUnavailable = false;
@@ -258,6 +269,11 @@ export function createGraphFacadeRouteManager(
     },
     get sigmaAttemptCount() {
       return sigmaAttemptCount;
+    },
+    retrySigma() {
+      assertActive();
+      sigmaKnownUnavailable = false;
+      switchRoute("sigma-global", activateGlobalRoute);
     },
     applyDiff(diff, animationOptions) {
       assertActive();
@@ -358,13 +374,16 @@ export function createGraphFacadeRouteManager(
   return manager;
 
   function switchToGlobalRoute(): void {
-    switchRoute(sigmaKnownUnavailable ? "global-fallback" : "sigma-global", activateGlobalRoute);
+    if (sigmaKnownUnavailable) {
+      switchToFallbackRoute();
+      return;
+    }
+    switchRoute("sigma-global", activateGlobalRoute);
   }
 
   function activateGlobalRoute(): GraphFacadeRenderer {
     if (sigmaKnownUnavailable) {
-      routeId = "global-fallback";
-      return factories.createGlobalFallback(factoryInput());
+      return activateFallbackRoute();
     }
     sigmaAttemptCount += 1;
     routeId = "sigma-global";
@@ -374,8 +393,7 @@ export function createGraphFacadeRouteManager(
       }));
     } catch (error) {
       sigmaKnownUnavailable = true;
-      routeId = "global-fallback";
-      return factories.createGlobalFallback(factoryInput());
+      return activateFallbackRoute();
     }
   }
 
@@ -383,7 +401,19 @@ export function createGraphFacadeRouteManager(
     if (destroyed || sigmaKnownUnavailable) return;
     sigmaKnownUnavailable = true;
     if (routeId !== "sigma-global") return;
-    switchRoute("global-fallback", () => factories.createGlobalFallback(factoryInput()));
+    switchToFallbackRoute();
+  }
+
+  function switchToFallbackRoute(): void {
+    const nextRouteId = fallbackRouteIdForData(state.data);
+    switchRoute(nextRouteId, () => activateFallbackRoute());
+  }
+
+  function activateFallbackRoute(): GraphFacadeRenderer {
+    routeId = fallbackRouteIdForData(state.data);
+    return routeId === "aggregation-safety-fallback"
+      ? factories.createAggregationSafetyFallback(factoryInput(undefined, () => manager.retrySigma()))
+      : factories.createGlobalFallback(factoryInput(undefined, () => manager.retrySigma()));
   }
 
   function switchRoute(nextRouteId: GraphFacadeRendererRouteId, createNext: () => GraphFacadeRenderer): void {
@@ -395,7 +425,7 @@ export function createGraphFacadeRouteManager(
     previous?.destroy();
   }
 
-  function factoryInput(onSigmaUnavailable?: (error: unknown) => void): GraphFacadeRouteRendererFactoryInput {
+  function factoryInput(onSigmaUnavailable?: (error: unknown) => void, onRetrySigma?: () => void): GraphFacadeRouteRendererFactoryInput {
     return {
       container,
       options: {
@@ -420,7 +450,8 @@ export function createGraphFacadeRouteManager(
           }
         }
       },
-      onSigmaUnavailable
+      onSigmaUnavailable,
+      onRetrySigma
     };
   }
 
@@ -464,6 +495,185 @@ function createDomSvgFacadeRenderer(
   if (input.options.selection) renderer.select(input.options.selection);
   if (input.options.temporaryObject) renderer.showTemporaryObject(input.options.temporaryObject);
   return renderer;
+}
+
+export function graphRequiresAggregationSafetyFallback(data: GraphData): boolean {
+  const nodeCount = data.meta.total_nodes || data.nodes.length;
+  const edgeCount = data.meta.total_edges || data.edges.length;
+  const communitySizes = new Map<string, number>();
+  for (const node of data.nodes) {
+    if (!node.community) continue;
+    communitySizes.set(node.community, (communitySizes.get(node.community) || 0) + 1);
+  }
+  const maxCommunitySize = Math.max(0, ...communitySizes.values());
+  return nodeCount > GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackNodes ||
+    edgeCount > GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackEdges ||
+    maxCommunitySize > GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackCommunitySize;
+}
+
+function fallbackRouteIdForData(data: GraphData): Extract<GraphFacadeRendererRouteId, "global-fallback" | "aggregation-safety-fallback"> {
+  return graphRequiresAggregationSafetyFallback(data) ? "aggregation-safety-fallback" : "global-fallback";
+}
+
+function createAggregationSafetyFallbackRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {
+  let options = input.options;
+  let destroyed = false;
+  const ownerDocument = input.container.ownerDocument;
+  if (!ownerDocument) {
+    throw new Error("aggregation safety fallback requires a DOM container");
+  }
+  const root = ownerDocument.createElement("div");
+  root.className = "graph-aggregation-safety-view";
+  root.dataset.route = "aggregation-safety-fallback";
+  root.dataset.notice = "sigma-unavailable-large-graph";
+  input.container.append(root);
+  render();
+
+  return {
+    applyDiff() {
+      return Promise.resolve();
+    },
+    isDragging() {
+      return false;
+    },
+    setData(data, pins) {
+      options = { ...options, data, pins: pins || options.pins };
+      render();
+    },
+    setAggregationMarkers(markers) {
+      options = { ...options, aggregationMarkers: markers };
+      render();
+    },
+    focusNode(path) {
+      const node = options.data.nodes.find((item) => item.id === path || wikiPathForGraphNode(item) === path);
+      options = { ...options, selection: node ? { kind: "node", id: node.id } : options.selection };
+      render();
+    },
+    focusCommunity(id) {
+      options = { ...options, focus: { kind: "community", id } };
+      render();
+    },
+    setTypeFilters(filters) {
+      options = { ...options, typeFilters: filters };
+      render();
+    },
+    showTemporaryObject(object) {
+      options = { ...options, temporaryObject: object };
+      render();
+    },
+    clearTemporaryObjectDisplay() {
+      options = { ...options, temporaryObject: null };
+      render();
+    },
+    resetView() {
+      options = { ...options, focus: null };
+      render();
+    },
+    select(selection) {
+      options = { ...options, selection };
+      render();
+    },
+    previewNode() {},
+    clearSelection() {
+      options = { ...options, selection: null };
+      input.options.callbacks.onSelectionClearRequested?.();
+      render();
+    },
+    clearInteraction() {
+      options = { ...options, focus: null, selection: null, temporaryObject: null };
+      render();
+    },
+    setNodeFixed() {
+      return false;
+    },
+    setTheme(theme) {
+      options = { ...options, theme };
+      render();
+    },
+    setPins(pins) {
+      options = { ...options, pins };
+      render();
+    },
+    resetLayout() {
+      options = { ...options, pins: {} };
+      render();
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      root.remove();
+    }
+  };
+
+  function render(): void {
+    if (destroyed) return;
+    const selectedNodeIds = options.selection
+      ? resolveSelectionForCapabilities(options.data, options.selection, { canAsk: false }).nodeIds
+      : [];
+    const markers = options.aggregationMarkers.length > 0
+      ? options.aggregationMarkers
+      : buildCommunityAggregationMarkers(options.data, {
+          pins: options.pins,
+          minCommunitySize: 1
+        }).map((marker) => ({
+          ...marker,
+          selectedNodeIds: marker.nodeIds.filter((id) => selectedNodeIds.includes(id)),
+          searchResultIds: marker.nodeIds.filter((id) => options.searchResultIds.includes(id))
+        }));
+    root.replaceChildren();
+    root.dataset.nodeCount = String(options.data.meta.total_nodes || options.data.nodes.length);
+    root.dataset.edgeCount = String(options.data.meta.total_edges || options.data.edges.length);
+    root.dataset.containerCount = String(markers.length);
+    root.dataset.searchResultCount = String(options.searchResultIds.length);
+    root.dataset.selectedCount = String(selectedNodeIds.length);
+    root.dataset.pinnedCount = String(Object.keys(options.pins).length);
+    root.dataset.temporaryObject = options.temporaryObject ? options.temporaryObject.kind : "";
+
+    const notice = ownerDocument.createElement("div");
+    notice.className = "graph-aggregation-safety-notice";
+    notice.dataset.role = "fallback-notice";
+    notice.textContent = "全局图暂时使用安全视图";
+    root.append(notice);
+
+    const actions = ownerDocument.createElement("div");
+    actions.className = "graph-aggregation-safety-actions";
+    root.append(actions);
+    actions.append(button("retry-sigma", "重试全局图", () => input.onRetrySigma?.()));
+    actions.append(button("clear-selection", "清除选择", () => {
+      options = { ...options, selection: null };
+      input.options.callbacks.onSelectionClearRequested?.();
+      render();
+    }));
+
+    const list = ownerDocument.createElement("div");
+    list.className = "graph-aggregation-safety-containers";
+    root.append(list);
+    for (const marker of markers) {
+      const item = ownerDocument.createElement("button");
+      item.type = "button";
+      item.className = "graph-aggregation-safety-container";
+      item.dataset.aggregationId = marker.id;
+      item.dataset.communityId = marker.communityId || "";
+      item.dataset.nodeCount = String(marker.totalCount ?? marker.nodeIds.length);
+      item.dataset.searchHitCount = String((marker.searchResultIds || []).length);
+      item.dataset.selectedCount = String((marker.selectedNodeIds || []).length);
+      item.dataset.pinnedCount = String((marker.pinnedNodeIds || []).length);
+      item.textContent = marker.label || marker.communityId || marker.id;
+      item.addEventListener("click", () => {
+        if (marker.communityId) input.options.callbacks.onSelectionInput?.({ kind: "community", id: marker.communityId });
+      });
+      list.append(item);
+    }
+  }
+
+  function button(action: string, label: string, onClick: () => void): HTMLButtonElement {
+    const element = ownerDocument.createElement("button");
+    element.type = "button";
+    element.dataset.action = action;
+    element.textContent = label;
+    element.addEventListener("click", onClick);
+    return element;
+  }
 }
 
 function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { buildCommunityAggregationMarkers } from "../src";
 import type { GraphData, PinMap } from "../src/types";
 import { buildAggregationFallbackTrialModel } from "./aggregation-fallback-trial-adapter";
+import { GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS, graphRequiresAggregationSafetyFallback } from "../src/facade";
 
 describe("aggregation fallback trial adapter", () => {
   it("preserves container semantics and internal selected/search/Pin markers", () => {
@@ -35,6 +36,18 @@ describe("aggregation fallback trial adapter", () => {
     assert.ok(model.behavior.containerSelect.some((item) => item.containerId === "alpha" || item.containerId === model.containers[0]?.id));
     assert.deepEqual(model.behavior.pinInsideAggregation[0]?.pinnedNodeIds, ["a"]);
     assert.deepEqual(model.behavior.selectedObjectInsideAggregation[0]?.selectedNodeIds, ["a"]);
+  });
+
+  it("keeps known-large graphs out of DOM/SVG fallback by threshold", () => {
+    assert.equal(graphRequiresAggregationSafetyFallback(graphFixture()), false);
+
+    const large = largeGraphFixture(
+      GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackNodes + 1,
+      GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackEdges + 1,
+      GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackCommunitySize + 1
+    );
+
+    assert.equal(graphRequiresAggregationSafetyFallback(large), true);
   });
 });
 
@@ -72,5 +85,31 @@ function graphFixture(): GraphData {
         { id: "beta", label: "Beta", node_count: 1 }
       ]
     }
+  };
+}
+
+function largeGraphFixture(nodeCount: number, edgeCount: number, communitySize: number): GraphData {
+  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+    id: `n-${index}`,
+    label: `Node ${index}`,
+    type: "topic",
+    community: index < communitySize ? "large-community" : `c-${index}`,
+    source_path: `wiki/${index}.md`
+  }));
+  const edges = Array.from({ length: edgeCount }, (_, index) => ({
+    id: `e-${index}`,
+    from: nodes[index % nodes.length].id,
+    to: nodes[(index + 1) % nodes.length].id,
+    type: "EXTRACTED"
+  }));
+  return {
+    meta: {
+      build_date: "2026-06-19T00:00:00.000Z",
+      wiki_title: "large fallback guard",
+      total_nodes: nodeCount,
+      total_edges: edgeCount
+    },
+    nodes,
+    edges
   };
 }

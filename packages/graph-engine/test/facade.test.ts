@@ -349,6 +349,96 @@ describe("GraphFacade", () => {
     assert.equal(sigmaCreateCount, 1);
     assert.equal(fallbackInputs.length, 2);
   });
+
+  it("routes known-large Sigma failures to aggregation safety fallback instead of DOM/SVG", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: largeGraphData(2101, 4101, 600),
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let domFallbackCount = 0;
+    let aggregationFallbackCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          throw new Error("WebGL unavailable");
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createGlobalFallback: () => {
+          domFallbackCount += 1;
+          return createFakeRenderer();
+        },
+        createAggregationSafetyFallback: () => {
+          aggregationFallbackCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "aggregation-safety-fallback");
+    assert.equal(domFallbackCount, 0);
+    assert.equal(aggregationFallbackCount, 1);
+  });
+
+  it("routes abnormal Sigma runtime failures to fallback and retries Sigma only on request", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let sigmaCreateCount = 0;
+    let fallbackCount = 0;
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaCreateCount += 1;
+          sigmaInputs.push(input);
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createGlobalFallback: () => {
+          fallbackCount += 1;
+          return createFakeRenderer();
+        },
+        createAggregationSafetyFallback: () => createFakeRenderer()
+      }
+    });
+
+    assert.equal(manager.routeId, "sigma-global");
+    sigmaInputs[0].onSigmaUnavailable?.(new Error("canvas runtime abnormal failure"));
+
+    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(manager.sigmaKnownUnavailable, true);
+    assert.equal(fallbackCount, 1);
+    assert.equal(sigmaCreateCount, 1);
+
+    manager.resetView();
+    assert.equal(manager.routeId, "global-fallback");
+    assert.equal(sigmaCreateCount, 1);
+    assert.equal(fallbackCount, 1);
+
+    manager.retrySigma();
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(manager.sigmaKnownUnavailable, false);
+    assert.equal(sigmaCreateCount, 2);
+  });
 });
 
 function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
@@ -425,4 +515,30 @@ function trackRenderer(
   renderer.calls.push(["create", route]);
   renderers.push(renderer);
   return renderer;
+}
+
+function largeGraphData(nodeCount: number, edgeCount: number, communitySize: number): GraphData {
+  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+    id: `large-${index}`,
+    label: `Large ${index}`,
+    type: "topic",
+    community: index < communitySize ? "large-community" : `community-${index}`,
+    source_path: `wiki/large/${index}.md`
+  }));
+  const edges = Array.from({ length: edgeCount }, (_, index) => ({
+    id: `large-edge-${index}`,
+    from: nodes[index % nodes.length].id,
+    to: nodes[(index + 1) % nodes.length].id,
+    type: "EXTRACTED"
+  }));
+  return {
+    meta: {
+      build_date: "2026-06-19",
+      wiki_title: "Large graph",
+      total_nodes: nodeCount,
+      total_edges: edgeCount
+    },
+    nodes,
+    edges
+  };
 }
