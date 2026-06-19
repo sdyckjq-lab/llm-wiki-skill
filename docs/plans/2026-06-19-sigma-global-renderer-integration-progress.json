@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-5",
-    "task": "5.3",
+    "task": "5.4",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 5, Task 5.3: preserve basic keyboard, focus, and accessibility state."
+    "next_allowed_action": "Advance to Phase 5, Task 5.4: verify visual states and fallback hint behavior."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -499,10 +499,14 @@
         {
           "id": "5.3",
           "title": "Preserve basic keyboard, focus, and accessibility state",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/keyboard.test.ts => exit 0 (5 tests, 0 fail).",
+            "bash tests/graph-html-a11y.regression-1.sh => exit 0 (PASS: graph HTML a11y regression coverage).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail)."
+          ],
+          "evidence": "Keyboard tests prove graph search opens only under graph focus, text editing targets keep browser find, Escape is scoped to graph state, active gestures can own Escape, and unrelated keys remain blocked. The HTML a11y regression passes for generated graph HTML coverage.",
+          "residual_risk": "Task 5.3 does not add full keyboard roaming by plan scope. Visual state and fallback hint browser checks remain in Task 5.4."
         },
         {
           "id": "5.4",
@@ -737,6 +741,14 @@
       "action": "Ran web tests plus workbench and offline browser regressions for community reading, open-detail/read, return-global, selected/excluded state, and standalone HTML flows.",
       "result": "phase-5 task 5.2 complete; workbench and offline regressions pass; advancing to task 5.3.",
       "at": "2026-06-19T21:52:00+08:00"
+    },
+    {
+      "turn": 18,
+      "task": "5.3",
+      "phase": "phase-5",
+      "action": "Ran keyboard ownership tests, HTML accessibility regression, and full graph-engine tests for focus/search/Escape behavior.",
+      "result": "phase-5 task 5.3 complete; keyboard and accessibility checks pass; advancing to task 5.4.",
+      "at": "2026-06-19T21:53:00+08:00"
     }
   ],
   "final": {
