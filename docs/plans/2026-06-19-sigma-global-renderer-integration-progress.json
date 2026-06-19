@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-5",
-    "task": "5.1",
+    "task": "5.2",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 5, Task 5.1: preserve node, community, search, filter, and pin semantics through automated interaction tests."
+    "next_allowed_action": "Advance to Phase 5, Task 5.2: preserve community reading, open-detail, and return-global flows across workbench and offline regressions."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -475,10 +475,13 @@
         {
           "id": "5.1",
           "title": "Preserve node, community, search, filter, and pin semantics",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/interaction-contract.test.ts packages/graph-engine/test/search-and-legend.test.ts packages/graph-engine/test/summary-contract.test.ts => exit 0 (17 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail)."
+          ],
+          "evidence": "Interaction contract tests prove graph object intent still comes from the spatial target path with UI blockers separated. Search/legend tests prove search updates highlight/fade/focus state and community legend selection without reinterpreting the graph. Summary contract tests prove node and community lightweight summaries, open-detail/read separation, selected/search/pinned/aggregation markers, and route-carried search/temporary state remain stable.",
+          "residual_risk": "Task 5.1 is graph-engine automated coverage only. Workbench/offline browser flows for opening detail, community reading, return global, focus, accessibility, and visual fallback hints remain in Tasks 5.2 through 5.4."
         },
         {
           "id": "5.2",
@@ -713,6 +716,14 @@
       "action": "Verified the workbench GraphPanel public boundary stayed on createGraphEngine, persisted pins, selection/open-page callbacks, and visibility callbacks without renderer route leakage.",
       "result": "phase-4 task 4.4 complete and phase-4 acceptance met; web tests, web typecheck, GraphPanel static check, and graph-engine baseline pass; advancing to phase 5 task 5.1.",
       "at": "2026-06-19T21:50:00+08:00"
+    },
+    {
+      "turn": 16,
+      "task": "5.1",
+      "phase": "phase-5",
+      "action": "Verified node, community, search, filter, and Pin semantics through interaction, search/legend, summary-contract, and full graph-engine tests.",
+      "result": "phase-5 task 5.1 complete; graph-engine interaction semantics remain stable; advancing to task 5.2.",
+      "at": "2026-06-19T21:51:00+08:00"
     }
   ],
   "final": {
