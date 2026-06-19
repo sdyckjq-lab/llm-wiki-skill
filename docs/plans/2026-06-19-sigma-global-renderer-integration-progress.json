@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-6",
-    "task": "6.1",
+    "task": "6.2",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 6, Task 6.1: establish the production-path large graph browser regression and single-shape artifact proof."
+    "next_allowed_action": "Advance to Phase 6, Task 6.2: run the full 11-shape Sigma trial and production-path performance regression."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -145,6 +145,13 @@
       "decision": "Keep renderer route details inside graph-engine/facade; workbench GraphPanel continues to use createGraphEngine, persisted pins, selection/open-page callbacks, and visibility callbacks without a user-visible renderer selector.",
       "reason": "Task 4.4 requires workbench's public graph boundary to stay stable while the global route changes underneath the graph-engine facade.",
       "source": "workbench/web/src/components/GraphPanel.tsx; npm run test --workspace=@llm-wiki-agent/web; npm run typecheck --workspace=@llm-wiki-agent/web"
+    },
+    {
+      "id": "D18",
+      "status": "recorded",
+      "decision": "Store business node type as graphNodeType in the production Sigma Graphology graph and use Sigma's supported circle node program for the renderer type field.",
+      "reason": "Task 6.1 production-path browser regression exposed that passing business types such as source/topic/entity into Sigma's type field makes Sigma fail initialization and route to fallback. The renderer type field is a Sigma drawing-program selector, not product semantics.",
+      "source": "tests/browser/graph-sigma-global-production.ts single-shape smoke; packages/graph-engine/src/render/sigma-global-renderer.ts"
     }
   ],
   "phases": [
@@ -550,10 +557,17 @@
         {
           "id": "6.1",
           "title": "Establish production-path large graph regression",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --check tests/browser/graph-sigma-global-production.ts => exit 0.",
+            "GRAPH_SIGMA_PRODUCTION_SHAPES=nodes-1000-sparse GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-production-task-6-1 bash tests/graph-sigma-global-production.regression-1.sh => exit 0.",
+            "/tmp/llm-wiki-sigma-global-production-task-6-1/sigma-global-production-results.json exists with production_path=true, schema_version=1.0.0, thresholds/browser/build_commit/loading_state fields, 10 records, and 0 failed records.",
+            "node --import tsx --check tests/browser/graph-sigma-graphology-trial.ts => exit 0.",
+            "node --import tsx --test packages/graph-engine/test/sigma-global-renderer.test.ts => exit 0 (12 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail)."
+          ],
+          "evidence": "Added tests/browser/graph-sigma-global-production.ts and tests/graph-sigma-global-production.regression-1.sh. The production regression builds graph-engine, serves the production IIFE bundle through a local HTTP server, mounts createGraphEngine, waits for .sigma-global-renderer[data-renderer='sigma-global'], then records initial_render, wheel_zoom, drag, search_highlight, point_select, container_select, drawer_open, enter_community, return_global, and repeated_search_community_drawer_cycles. Single-shape artifact path: /tmp/llm-wiki-sigma-global-production-task-6-1/sigma-global-production-results.json.",
+          "residual_risk": "Task 6.1 proves the production-path regression harness and one shape only. Full 11-shape performance proof, including all hard gates across every graph shape, is deferred to Task 6.2."
         },
         {
           "id": "6.2",
@@ -769,6 +783,14 @@
       "action": "Ran community wash visual interaction regression, stage 4.5 offline browser regression, web tests, and full graph-engine tests including fallback notice coverage.",
       "result": "phase-5 task 5.4 complete and phase-5 acceptance met; normal global, community reading/summary, and fallback state evidence recorded; advancing to phase 6 task 6.1.",
       "at": "2026-06-19T21:54:00+08:00"
+    },
+    {
+      "turn": 20,
+      "task": "6.1",
+      "phase": "phase-6",
+      "action": "Added the production-path Sigma global browser regression and shell runner; fixed production Sigma node rendering type so business node types no longer make Sigma initialization fall back.",
+      "result": "phase-6 task 6.1 complete; single-shape production-path artifact proves production_path=true with full schema fields and no failed records; advancing to task 6.2.",
+      "at": "2026-06-19T22:15:00+08:00"
     }
   ],
   "final": {

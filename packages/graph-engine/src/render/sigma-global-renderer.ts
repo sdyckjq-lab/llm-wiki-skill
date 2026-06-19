@@ -68,6 +68,7 @@ export interface SigmaGlobalGraphologyNodeAttributes {
   size: number;
   color: string;
   type: string;
+  graphNodeType: string;
   communityId: string | null;
   sourcePath: string;
   selected: boolean;
@@ -473,7 +474,8 @@ function sigmaGlobalNodeAttributes(
     label: node.render.labelVisible ? node.label : "",
     size: sigmaGlobalNodeSize(node),
     color: sigmaGlobalNodeColor(node, communityColorById),
-    type: node.type,
+    type: "circle",
+    graphNodeType: node.type,
     communityId: node.communityId,
     sourcePath: node.sourcePath,
     selected: node.selected,
