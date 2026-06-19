@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-3",
-    "task": "3.3",
-    "state": "done",
-    "next_allowed_action": "Advance to Phase 3, Task 3.4: complete Sigma lifecycle and error reporting, including update strategy, stale-event suppression, and camera/state preservation tests."
+    "phase": "phase-4",
+    "task": "4.1",
+    "state": "pending",
+    "next_allowed_action": "Advance to Phase 4, Task 4.1: implement the facade-owned renderer route manager using the recorded Sigma global, DOM/SVG community, and fallback route boundaries."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -109,6 +109,13 @@
       "status": "recorded",
       "decision": "Resolve production Sigma hits through a graph-engine bridge: Sigma node ids win first, rendered object ids map to existing graph targets, and screen-point hits project to world coordinates before using the shared spatial index.",
       "reason": "Task 3.3 requires hit priority and community-region semantics to remain owned by graph-engine/adapter logic, not by ad hoc Sigma callback calculations.",
+      "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/test/sigma-global-renderer.test.ts"
+    },
+    {
+      "id": "D13",
+      "status": "recorded",
+      "decision": "Use a rebuild-Graphology-graph/preserve-camera update strategy for production Sigma lifecycle updates, and report initialization or unrecoverable update/destroy failures only through onFatalError.",
+      "reason": "Task 3.4 requires explicit update behavior, stale-event suppression, update-after-destroy handling, camera/state preservation, and route-layer-owned fallback decisions. Rebuilding keeps Graphology render-only while preserving Sigma camera state across adapter-driven selection/search/Pin/theme updates.",
       "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/test/sigma-global-renderer.test.ts"
     }
   ],
@@ -275,7 +282,7 @@
       "id": "phase-3",
       "title": "Production Sigma global renderer",
       "goal": "Build a production Sigma global renderer that uses graph-engine adapter output and owns no product semantics.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Sigma production module typechecks and builds",
         "Route manager ownership and Sigma/Graphology bundle/offline boundary are recorded with evidence",
@@ -283,8 +290,15 @@
         "Sigma hit projection and lifecycle tests pass, including stale events, update-after-destroy, and camera/state preservation",
         "Sigma module contains no drawer-summary or community-entry business decisions"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 3.1 through 3.4 are complete with evidence.",
+        "node --import tsx --test packages/graph-engine/test/sigma-global-renderer.test.ts => exit 0 (12 tests, 0 fail).",
+        "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+        "npm run build --workspace=@llm-wiki/graph-engine => exit 0.",
+        "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (338 tests, 0 fail).",
+        "rg -n \"summarize|summarizeGraph|enterCommunityCommand|focusCommunity|onNodeOpen|onSelectionInput|showTemporaryObject|clearTemporaryObjectDisplay\" packages/graph-engine/src/render/sigma-global-renderer.ts => no output."
+      ],
+      "residual_risk": "Phase 3 proves the standalone production Sigma module boundary and lifecycle. It is not yet routed from facade in normal product use; Phase 4 must connect global/community/fallback routing and prove state preservation across routes.",
       "tasks": [
         {
           "id": "3.1",
@@ -330,10 +344,16 @@
         {
           "id": "3.4",
           "title": "Complete Sigma lifecycle and error reporting",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/sigma-global-renderer.test.ts => exit 0 (12 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (338 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "npm run build --workspace=@llm-wiki/graph-engine => exit 0.",
+            "rg -n \"summarize|summarizeGraph|enterCommunityCommand|focusCommunity|onNodeOpen|onSelectionInput|showTemporaryObject|clearTemporaryObjectDisplay\" packages/graph-engine/src/render/sigma-global-renderer.ts => no output."
+          ],
+          "evidence": "createSigmaGlobalRenderer now creates a Sigma root, builds a Graphology graph from adapter data, instantiates Sigma through the lazy runtime boundary, binds node/stage events through the graph-engine hit projector, supports update/destroy, reports initialization/update/destroy failures via onFatalError, suppresses stale events after destroy, throws on update-after-destroy, rebuilds Graphology on adapter updates, preserves camera state across updates, and carries adapter-driven selection/search/Pin/theme changes into the new graph.",
+          "residual_risk": "The lifecycle is unit-proven with injected fake Sigma/Graphology runtime and real Graphology graph construction. Real browser WebGL behavior and facade route switching remain for Phase 4 and production browser regression phases."
         }
       ]
     },
@@ -603,6 +623,14 @@
       "action": "Added Sigma hit projection bridge from node ids, rendered object ids, and screen points into existing graph-engine gesture targets and spatial index semantics.",
       "result": "phase-3 task 3.3 complete; Sigma hit tests, spatial/adapter/interaction tests, full graph-engine test, and typecheck pass; advancing to task 3.4.",
       "at": "2026-06-19T21:04:23+08:00"
+    },
+    {
+      "turn": 11,
+      "task": "3.4",
+      "phase": "phase-3",
+      "action": "Implemented Sigma lifecycle create/update/destroy, camera-preserving Graphology rebuild updates, stale-event suppression, update-after-destroy guard, and route-layer error reporting.",
+      "result": "phase-3 task 3.4 complete and phase-3 acceptance met; Sigma tests, full graph-engine test, typecheck, build, and semantic static check pass; advancing to phase 4 task 4.1.",
+      "at": "2026-06-19T21:14:25+08:00"
     }
   ],
   "final": {

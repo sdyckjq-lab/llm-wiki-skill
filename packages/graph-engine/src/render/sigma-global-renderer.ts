@@ -9,7 +9,7 @@ import type {
 } from "./adapter";
 import { screenPointToWorldPoint, type GraphScreenPoint } from "./geometry";
 import { graphSpatialHitToGestureTarget, type GraphGestureTarget } from "./gestures";
-import type { RendererViewport, RendererViewportSize } from "./viewport";
+import { DEFAULT_RENDERER_VIEWPORT, type RendererViewport, type RendererViewportSize } from "./viewport";
 import type { GraphRendererSurface } from "./renderer-surface";
 
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
@@ -30,8 +30,35 @@ export interface SigmaGlobalRendererRuntimeBoundary {
 
 export type SigmaGlobalGraphologyGraph = InstanceType<SigmaGlobalRendererRuntimeBoundary["GraphologyGraph"]>;
 
+export interface SigmaGlobalCameraState {
+  x: number;
+  y: number;
+  angle: number;
+  ratio: number;
+}
+
+export interface SigmaGlobalCameraLike {
+  getState?: () => SigmaGlobalCameraState;
+  setState?: (state: Partial<SigmaGlobalCameraState>) => unknown;
+}
+
+export interface SigmaGlobalSigmaLike {
+  getCamera?: () => SigmaGlobalCameraLike;
+  getGraph?: () => unknown;
+  setGraph?: (graph: SigmaGlobalGraphologyGraph) => unknown;
+  setSetting?: (key: string, value: unknown) => unknown;
+  refresh?: () => unknown;
+  on?: (event: string, listener: (payload?: unknown) => void) => unknown;
+  off?: (event: string, listener: (payload?: unknown) => void) => unknown;
+  kill?: () => unknown;
+}
+
 export interface SigmaGlobalGraphologyRuntime {
   GraphologyGraph: SigmaGlobalRendererRuntimeBoundary["GraphologyGraph"];
+}
+
+export interface SigmaGlobalRendererRuntime extends SigmaGlobalGraphologyRuntime {
+  Sigma: new (graph: SigmaGlobalGraphologyGraph, container: HTMLElement, settings?: Record<string, unknown>) => SigmaGlobalSigmaLike;
 }
 
 export interface SigmaGlobalGraphologyNodeAttributes {
@@ -125,6 +152,9 @@ export interface SigmaGlobalRendererCreateOptions {
   adapterData: GraphRendererAdapterData;
   theme: ThemeId;
   onFatalError?: (error: unknown) => void;
+  runtime?: SigmaGlobalRendererRuntime;
+  viewport?: RendererViewport;
+  viewportSize?: RendererViewportSize;
 }
 
 export interface SigmaGlobalRendererUpdateOptions {
@@ -134,6 +164,10 @@ export interface SigmaGlobalRendererUpdateOptions {
 
 export interface SigmaGlobalRenderer {
   readonly id: typeof SIGMA_GLOBAL_RENDERER_ID;
+  readonly root: HTMLElement;
+  readonly graph: SigmaGlobalGraphologyGraph;
+  readonly updateStrategy: "rebuild-graph-preserve-camera";
+  readonly lastHitTarget: GraphGestureTarget | null;
   update(options: SigmaGlobalRendererUpdateOptions): void;
   destroy(): void;
 }
@@ -211,8 +245,171 @@ export function createSigmaGlobalHitProjector(input: SigmaGlobalHitProjectorInpu
   };
 }
 
-export function createSigmaGlobalRenderer(_options: SigmaGlobalRendererCreateOptions): SigmaGlobalRenderer {
-  throw new Error("Sigma global renderer lifecycle is established in Task 3.4 after adapter and hit projection work land.");
+export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOptions): SigmaGlobalRenderer {
+  if (!options.container) {
+    throw new Error("createSigmaGlobalRenderer requires a container element");
+  }
+  if (!options.runtime) {
+    throw new Error("createSigmaGlobalRenderer requires a loaded Sigma runtime boundary");
+  }
+
+  const runtime = options.runtime;
+  let destroyed = false;
+  let currentTheme = options.theme;
+  let adapterData = options.adapterData;
+  let graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
+  const sigmaRoot = createSigmaRoot(options.container, currentTheme);
+  let projector = createSigmaGlobalHitProjector({
+    adapterData,
+    viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
+    viewportSize: options.viewportSize ?? { width: 1, height: 1 }
+  });
+  let sigma: SigmaGlobalSigmaLike;
+  let generation = 0;
+  let lastHitTarget: GraphGestureTarget | null = null;
+  let eventBindings: Array<{ event: string; listener: (payload?: unknown) => void }> = [];
+
+  try {
+    sigma = new runtime.Sigma(graph, sigmaRoot, sigmaSettingsForTheme(currentTheme));
+    bindSigmaEvents();
+  } catch (error) {
+    options.onFatalError?.(error);
+    sigmaRoot.remove();
+    throw error;
+  }
+
+  const renderer: SigmaGlobalRenderer = {
+    id: SIGMA_GLOBAL_RENDERER_ID,
+    root: sigmaRoot,
+    get graph() {
+      return graph;
+    },
+    updateStrategy: "rebuild-graph-preserve-camera",
+    get lastHitTarget() {
+      return lastHitTarget;
+    },
+    update(updateOptions) {
+      assertActive();
+      const cameraState = readCameraState(sigma);
+      generation += 1;
+      adapterData = updateOptions.adapterData;
+      currentTheme = updateOptions.theme ?? currentTheme;
+      graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
+      projector = createSigmaGlobalHitProjector({
+        adapterData,
+        viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
+        viewportSize: options.viewportSize ?? { width: 1, height: 1 }
+      });
+      try {
+        sigma.setGraph?.(graph);
+        if (updateOptions.theme) {
+          sigmaRoot.dataset.theme = currentTheme;
+          sigma.setSetting?.("labelColor", sigmaLabelColor(currentTheme));
+        }
+        restoreCameraState(sigma, cameraState);
+        sigma.refresh?.();
+      } catch (error) {
+        options.onFatalError?.(error);
+      }
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      generation += 1;
+      unbindSigmaEvents();
+      try {
+        sigma.kill?.();
+      } catch (error) {
+        options.onFatalError?.(error);
+      }
+      sigmaRoot.remove();
+    }
+  };
+
+  return renderer;
+
+  function bindSigmaEvents(): void {
+    const nodeClick = (payload?: unknown): void => handleSigmaHit({ nodeId: sigmaNodeIdFromPayload(payload) });
+    const stageClick = (payload?: unknown): void => handleSigmaHit({ screenPoint: sigmaScreenPointFromPayload(payload) });
+    eventBindings = [
+      { event: "clickNode", listener: nodeClick },
+      { event: "clickStage", listener: stageClick }
+    ];
+    for (const binding of eventBindings) {
+      sigma.on?.(binding.event, binding.listener);
+    }
+  }
+
+  function unbindSigmaEvents(): void {
+    for (const binding of eventBindings) {
+      sigma.off?.(binding.event, binding.listener);
+    }
+    eventBindings = [];
+  }
+
+  function handleSigmaHit(input: SigmaGlobalHitInput): void {
+    if (destroyed) return;
+    const eventGeneration = generation;
+    const target = projector.targetFromSigmaHit(input);
+    if (destroyed || eventGeneration !== generation) return;
+    lastHitTarget = target;
+  }
+
+  function assertActive(): void {
+    if (destroyed) {
+      throw new Error("Sigma global renderer has been destroyed");
+    }
+  }
+}
+
+function createSigmaRoot(container: HTMLElement, theme: ThemeId): HTMLElement {
+  const root = container.ownerDocument.createElement("div");
+  root.className = "sigma-global-renderer";
+  root.dataset.renderer = SIGMA_GLOBAL_RENDERER_ID;
+  root.dataset.theme = theme;
+  root.tabIndex = 0;
+  container.append(root);
+  return root;
+}
+
+function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
+  return {
+    renderEdgeLabels: false,
+    allowInvalidContainer: false,
+    labelColor: sigmaLabelColor(theme)
+  };
+}
+
+function sigmaLabelColor(theme: ThemeId): { color: string } {
+  return { color: theme === "mo-ye" ? "#f8fafc" : "#1f2937" };
+}
+
+function readCameraState(sigma: SigmaGlobalSigmaLike): SigmaGlobalCameraState | null {
+  const state = sigma.getCamera?.().getState?.();
+  if (!state) return null;
+  return {
+    x: finiteNumber(state.x, 0),
+    y: finiteNumber(state.y, 0),
+    angle: finiteNumber(state.angle, 0),
+    ratio: finiteNumber(state.ratio, 1)
+  };
+}
+
+function restoreCameraState(sigma: SigmaGlobalSigmaLike, state: SigmaGlobalCameraState | null): void {
+  if (!state) return;
+  sigma.getCamera?.().setState?.(state);
+}
+
+function sigmaNodeIdFromPayload(payload: unknown): string | null {
+  const candidate = payload as { node?: unknown } | null;
+  return typeof candidate?.node === "string" ? candidate.node : null;
+}
+
+function sigmaScreenPointFromPayload(payload: unknown): GraphScreenPoint | null {
+  const candidate = payload as { event?: { x?: unknown; y?: unknown }; x?: unknown; y?: unknown } | null;
+  const x = candidate?.event?.x ?? candidate?.x;
+  const y = candidate?.event?.y ?? candidate?.y;
+  return typeof x === "number" && typeof y === "number" ? { x, y } : null;
 }
 
 function spatialInputFromAdapterData(adapterData: GraphRendererAdapterData): GraphSpatialIndexInput {

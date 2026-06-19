@@ -159,11 +159,15 @@ export type {
   SigmaGlobalGraphologyGraph,
   SigmaGlobalGraphologyNodeAttributes,
   SigmaGlobalGraphologyRuntime,
+  SigmaGlobalCameraLike,
+  SigmaGlobalCameraState,
   SigmaGlobalHitInput,
   SigmaGlobalHitProjector,
   SigmaGlobalHitProjectorInput,
   SigmaGlobalRenderedObject,
+  SigmaGlobalRendererRuntime,
   SigmaGlobalRendererRuntimeBoundary,
+  SigmaGlobalSigmaLike,
   SigmaGlobalRendererUpdateOptions
 } from "./sigma-global-renderer";
 export { classifyGraphKeyboardIntent, isTextEditingElement } from "./keyboard";

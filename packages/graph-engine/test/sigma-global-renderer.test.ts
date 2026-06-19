@@ -10,7 +10,12 @@ import {
   createSigmaGlobalHitProjector,
   createSigmaGlobalRenderer
 } from "../src/render";
-import type { GraphRendererAdapterData } from "../src";
+import type {
+  GraphRendererAdapterData,
+  SigmaGlobalGraphologyGraph,
+  SigmaGlobalRendererRuntime,
+  SigmaGlobalSigmaLike
+} from "../src";
 
 describe("Sigma global renderer production boundary", () => {
   it("records route ownership and graph-engine bundle boundary", () => {
@@ -31,10 +36,10 @@ describe("Sigma global renderer production boundary", () => {
     assert.equal(manifest.devDependencies.graphology, undefined);
   });
 
-  it("does not silently activate the production lifecycle before later tasks land", () => {
+  it("requires the lazy Sigma runtime boundary before creating the lifecycle", () => {
     assert.throws(
       () => createSigmaGlobalRenderer({} as never),
-      /Task 3\.4/
+      /container|runtime/
     );
   });
 
@@ -202,9 +207,132 @@ describe("Sigma global renderer production boundary", () => {
       { kind: "graph-blank" }
     );
   });
+
+  it("creates, updates, preserves camera state, and destroys the Sigma lifecycle", () => {
+    const container = fakeContainer();
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container,
+      surface: {} as never,
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    assert.equal(renderer.id, "sigma-global");
+    assert.equal(renderer.updateStrategy, "rebuild-graph-preserve-camera");
+    assert.equal(container.children.length, 1);
+    assert.equal(sigma.graph.order, 2);
+
+    sigma.camera.setState({ x: 12, y: 34, angle: 0.25, ratio: 1.8 });
+    const originalGraph = renderer.graph;
+    const nextAdapterData = adapterDataFixture({
+      selectedNodeId: "render-beta",
+      searchResultIds: ["render-alpha"],
+      betaPinned: false
+    });
+    renderer.update({ adapterData: nextAdapterData, theme: "mo-ye" });
+
+    assert.equal(runtime.instances.length, 1);
+    assert.notEqual(originalGraph, renderer.graph);
+    assert.equal(sigma.graph, renderer.graph);
+    assert.equal(sigma.setGraphCalls.length, 1);
+    assert.deepEqual(sigma.camera.getState(), { x: 12, y: 34, angle: 0.25, ratio: 1.8 });
+    assert.equal(renderer.graph.getAttribute("selection").selectedNodeIds[0], "render-beta");
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "searchHit"), true);
+    assert.equal(renderer.graph.getNodeAttribute("render-beta", "pinned"), false);
+    assert.equal(renderer.root.dataset.theme, "mo-ye");
+
+    sigma.emit("clickNode", { node: "render-beta" });
+    assert.deepEqual(renderer.lastHitTarget, { kind: "node", id: "render-beta" });
+
+    renderer.destroy();
+    assert.equal(sigma.killed, true);
+    assert.equal(container.children.length, 0);
+    assert.throws(() => renderer.update({ adapterData: adapterDataFixture() }), /destroyed/);
+
+    sigma.emit("clickNode", { node: "render-alpha" });
+    assert.deepEqual(renderer.lastHitTarget, { kind: "node", id: "render-beta" });
+  });
+
+  it("reports Sigma initialization failure to the route layer", () => {
+    const failure = new Error("webgl unavailable");
+    const errors: unknown[] = [];
+
+    assert.throws(
+      () => createSigmaGlobalRenderer({
+        container: fakeContainer(),
+        surface: {} as never,
+        adapterData: adapterDataFixture(),
+        theme: "shan-shui",
+        runtime: fakeRuntime({ constructError: failure }),
+        onFatalError: (error) => errors.push(error)
+      }),
+      /webgl unavailable/
+    );
+    assert.deepEqual(errors, [failure]);
+  });
+
+  it("suppresses stale events after replacement and update-after-destroy", () => {
+    const firstRuntime = fakeRuntime();
+    const secondRuntime = fakeRuntime();
+    const first = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      surface: {} as never,
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime: firstRuntime
+    });
+    const firstSigma = firstRuntime.instances[0];
+    first.destroy();
+
+    const second = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      surface: {} as never,
+      adapterData: adapterDataFixture({ selectedNodeId: "render-beta" }),
+      theme: "shan-shui",
+      runtime: secondRuntime
+    });
+    const secondSigma = secondRuntime.instances[0];
+
+    firstSigma.emit("clickNode", { node: "render-alpha" });
+    assert.equal(first.lastHitTarget, null);
+    assert.equal(second.lastHitTarget, null);
+
+    secondSigma.emit("clickNode", { node: "render-beta" });
+    assert.deepEqual(second.lastHitTarget, { kind: "node", id: "render-beta" });
+    second.destroy();
+    assert.throws(() => second.update({ adapterData: adapterDataFixture() }), /destroyed/);
+  });
+
+  it("reports unrecoverable update and destroy errors without choosing fallback UI", () => {
+    const errors: unknown[] = [];
+    const runtime = fakeRuntime({ setGraphError: new Error("graph swap failed"), killError: new Error("kill failed") });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      surface: {} as never,
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime,
+      onFatalError: (error) => errors.push(error)
+    });
+
+    renderer.update({ adapterData: adapterDataFixture({ selectedNodeId: "render-beta" }) });
+    renderer.destroy();
+
+    assert.deepEqual(errors.map((error) => String(error)), ["Error: graph swap failed", "Error: kill failed"]);
+  });
 });
 
-function adapterDataFixture(): GraphRendererAdapterData {
+function adapterDataFixture(options: {
+  selectedNodeId?: string;
+  searchResultIds?: string[];
+  betaPinned?: boolean;
+} = {}): GraphRendererAdapterData {
+  const selectedNodeId = options.selectedNodeId ?? "render-alpha";
+  const searchResultIds = options.searchResultIds ?? ["render-beta"];
+  const betaPinned = options.betaPinned ?? true;
   return {
     counts: {
       nodes: 2,
@@ -216,9 +344,9 @@ function adapterDataFixture(): GraphRendererAdapterData {
       aggregationContainers: 1
     },
     selection: {
-      input: { kind: "node", id: "render-alpha" },
-      selectionId: "node:render-alpha",
-      selectedNodeIds: ["render-alpha"],
+      input: { kind: "node", id: selectedNodeId },
+      selectionId: `node:${selectedNodeId}`,
+      selectedNodeIds: [selectedNodeId],
       selectedCommunityIds: ["adapter-community"],
       containsCurrentObject: true
     },
@@ -231,8 +359,8 @@ function adapterDataFixture(): GraphRendererAdapterData {
         communityId: "adapter-community",
         sourcePath: "adapter/alpha.md",
         point: { x: 111, y: 222 },
-        selected: true,
-        searchHit: false,
+        selected: selectedNodeId === "render-alpha",
+        searchHit: searchResultIds.includes("render-alpha"),
         pinHint: { nodeId: "render-alpha", wikiPath: "adapter/alpha.md", pinned: false, position: null },
         aggregationIds: ["adapter-aggregation"],
         drawerTarget: {
@@ -254,13 +382,13 @@ function adapterDataFixture(): GraphRendererAdapterData {
         communityId: "adapter-community",
         sourcePath: "adapter/beta.md",
         point: { x: 333, y: 444 },
-        selected: false,
-        searchHit: true,
+        selected: selectedNodeId === "render-beta",
+        searchHit: searchResultIds.includes("render-beta"),
         pinHint: {
           nodeId: "render-beta",
           wikiPath: "adapter/beta.md",
-          pinned: true,
-          position: { x: 333, y: 444, coordinateSpace: "world" }
+          pinned: betaPinned,
+          position: betaPinned ? { x: 333, y: 444, coordinateSpace: "world" } : null
         },
         aggregationIds: ["adapter-aggregation"],
         drawerTarget: {
@@ -299,15 +427,15 @@ function adapterDataFixture(): GraphRendererAdapterData {
         nodeIds: ["render-alpha", "render-beta"],
         nodeCount: 2,
         selected: true,
-        searchResultIds: ["render-beta"],
-        pinHints: [
+        searchResultIds,
+        pinHints: betaPinned ? [
           {
             nodeId: "render-beta",
             wikiPath: "adapter/beta.md",
             pinned: true,
             position: { x: 333, y: 444, coordinateSpace: "world" }
           }
-        ],
+        ] : [],
         aggregationIds: ["adapter-aggregation"],
         drawerTarget: {
           summaryKind: "community-summary",
@@ -329,18 +457,18 @@ function adapterDataFixture(): GraphRendererAdapterData {
         communityId: "adapter-community",
         nodeIds: ["render-alpha", "render-beta"],
         selectedNodeIds: ["render-alpha"],
-        searchResultIds: ["render-beta"],
-        pinnedNodeIds: ["render-beta"],
+        searchResultIds,
+        pinnedNodeIds: betaPinned ? ["render-beta"] : [],
         totalCount: 17,
         selected: true,
-        pinHints: [
+        pinHints: betaPinned ? [
           {
             nodeId: "render-beta",
             wikiPath: "adapter/beta.md",
             pinned: true,
             position: { x: 333, y: 444, coordinateSpace: "world" }
           }
-        ],
+        ] : [],
         drawerTarget: {
           summaryKind: "community-summary",
           object: { kind: "community", communityId: "adapter-community" }
@@ -381,20 +509,20 @@ function adapterDataFixture(): GraphRendererAdapterData {
           nodeIds: ["render-alpha", "render-beta"],
           nodeCount: 17,
           searchHitCount: 1,
-          pinnedCount: 1,
+          pinnedCount: betaPinned ? 1 : 0,
           selectedCount: 1,
           selected: true,
-          searchResultIds: ["render-beta"],
-          pinnedNodeIds: ["render-beta"],
-          selectedNodeIds: ["render-alpha"],
-          pinHints: [
+          searchResultIds,
+          pinnedNodeIds: betaPinned ? ["render-beta"] : [],
+          selectedNodeIds: [selectedNodeId],
+          pinHints: betaPinned ? [
             {
               nodeId: "render-beta",
               wikiPath: "adapter/beta.md",
               pinned: true,
               position: { x: 333, y: 444, coordinateSpace: "world" }
             }
-          ],
+          ] : [],
           point: { x: 222, y: 333 },
           x: 22,
           y: 33,
@@ -404,11 +532,11 @@ function adapterDataFixture(): GraphRendererAdapterData {
       ],
       minimap: { path: "", nodes: [] },
       relationLegend: [],
-      selectedNodeId: "render-alpha",
+      selectedNodeId,
       selectedCommunityId: "adapter-community",
-      selectedNodeIds: ["render-alpha"],
+      selectedNodeIds: [selectedNodeId],
       hiddenNodeIds: new Set(),
-      searchResultIds: ["render-beta"],
+      searchResultIds,
       worldBounds: { minX: 0, maxX: 500, minY: 0, maxY: 500 },
       budgets: {
         limits: {
@@ -443,4 +571,136 @@ function adapterDataFixture(): GraphRendererAdapterData {
       }
     }
   };
+}
+
+function fakeContainer(): HTMLElement & { children: HTMLElement[] } {
+  const children: HTMLElement[] = [];
+  const container = {
+    ownerDocument: {
+      createElement: (tagName: string) => fakeElement(tagName)
+    },
+    append: (child: HTMLElement) => {
+      children.push(child);
+    },
+    children
+  } as unknown as HTMLElement & { children: HTMLElement[] };
+  containerRegistry.push(container);
+  return container;
+}
+
+function fakeElement(_tagName: string): HTMLElement {
+  const element = {
+    className: "",
+    dataset: {} as Record<string, string>,
+    tabIndex: -1,
+    remove: () => undefined
+  };
+  element.remove = () => {
+    // The fake container owns removal by filtering on object identity below.
+    for (const container of fakeContainersWith(element as unknown as HTMLElement)) {
+      const index = container.children.indexOf(element as unknown as HTMLElement);
+      if (index >= 0) container.children.splice(index, 1);
+    }
+  };
+  return element as unknown as HTMLElement;
+}
+
+const containerRegistry: Array<HTMLElement & { children: HTMLElement[] }> = [];
+
+function fakeContainersWith(child: HTMLElement): Array<HTMLElement & { children: HTMLElement[] }> {
+  return containerRegistry.filter((container) => container.children.includes(child));
+}
+
+function fakeRuntime(options: {
+  constructError?: Error;
+  setGraphError?: Error;
+  killError?: Error;
+} = {}): SigmaGlobalRendererRuntime & { instances: FakeSigma[] } {
+  const instances: FakeSigma[] = [];
+  class RuntimeSigma extends FakeSigma {
+    constructor(graph: SigmaGlobalGraphologyGraph, container: HTMLElement, settings?: Record<string, unknown>) {
+      if (options.constructError) throw options.constructError;
+      super(graph, container, settings, options);
+      instances.push(this);
+    }
+  }
+  return {
+    Sigma: RuntimeSigma,
+    GraphologyGraph,
+    instances
+  };
+}
+
+class FakeSigma implements SigmaGlobalSigmaLike {
+  graph: SigmaGlobalGraphologyGraph;
+  readonly container: HTMLElement;
+  readonly settings: Record<string, unknown>;
+  readonly camera = new FakeCamera();
+  readonly listeners = new Map<string, Set<(payload?: unknown) => void>>();
+  readonly setGraphCalls: SigmaGlobalGraphologyGraph[] = [];
+  killed = false;
+
+  constructor(
+    graph: SigmaGlobalGraphologyGraph,
+    container: HTMLElement,
+    settings: Record<string, unknown> = {},
+    private readonly options: { setGraphError?: Error; killError?: Error } = {}
+  ) {
+    this.graph = graph;
+    this.container = container;
+    this.settings = settings;
+  }
+
+  getCamera(): FakeCamera {
+    return this.camera;
+  }
+
+  getGraph(): SigmaGlobalGraphologyGraph {
+    return this.graph;
+  }
+
+  setGraph(graph: SigmaGlobalGraphologyGraph): void {
+    if (this.options.setGraphError) throw this.options.setGraphError;
+    this.graph = graph;
+    this.setGraphCalls.push(graph);
+  }
+
+  setSetting(key: string, value: unknown): void {
+    this.settings[key] = value;
+  }
+
+  refresh(): void {
+    this.settings.refreshed = true;
+  }
+
+  on(event: string, listener: (payload?: unknown) => void): void {
+    const listeners = this.listeners.get(event) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(event, listeners);
+  }
+
+  off(event: string, listener: (payload?: unknown) => void): void {
+    this.listeners.get(event)?.delete(listener);
+  }
+
+  emit(event: string, payload?: unknown): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(payload);
+  }
+
+  kill(): void {
+    this.killed = true;
+    if (this.options.killError) throw this.options.killError;
+  }
+}
+
+class FakeCamera {
+  private state = { x: 0, y: 0, angle: 0, ratio: 1 };
+
+  getState(): { x: number; y: number; angle: number; ratio: number } {
+    return { ...this.state };
+  }
+
+  setState(state: Partial<{ x: number; y: number; angle: number; ratio: number }>): void {
+    this.state = { ...this.state, ...state };
+  }
 }
