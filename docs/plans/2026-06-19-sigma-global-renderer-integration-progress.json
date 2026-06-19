@@ -2,10 +2,10 @@
   "plan": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md",
   "created_at": "2026-06-19",
   "status": {
-    "phase": "phase-6",
-    "task": "6.3",
+    "phase": "phase-7",
+    "task": "7.1",
     "state": "pending",
-    "next_allowed_action": "Advance to Phase 6, Task 6.3: run the full workbench and offline release regression."
+    "next_allowed_action": "Advance to Phase 7, Task 7.1: remove old DOM/SVG global main-path branching while preserving documented fallback/community/detail paths."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -541,7 +541,7 @@
       "id": "phase-6",
       "title": "Performance and release regression",
       "goal": "Prove the integrated production path meets the 11-shape behavior and performance requirements.",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Production path large-graph browser regression exists and a single-shape production smoke run passes",
         "Full trial and production-path 11-shape regressions pass",
@@ -551,8 +551,15 @@
         "graph-engine and web test/typecheck/build commands pass",
         "workbench, offline, community, stage-4.5, and accessibility browser regressions pass"
       ],
-      "verification": [],
-      "residual_risk": "",
+      "verification": [
+        "Task 6.1, 6.2, and 6.3 complete with evidence.",
+        "Production-path single-shape smoke and full 11-shape regression pass.",
+        "Production artifact /tmp/llm-wiki-sigma-global-production-task-6-2/sigma-global-production-results.json has 11 shapes, 110 records, production_path=true, loading_state fields, and 0 failed records.",
+        "Production wheel/drag fps >=45 and p95 <=22.3ms; duration and memory gates pass for all records.",
+        "graph-engine and web test/typecheck/build commands pass.",
+        "workbench, offline, community wash, stage-4.5 offline, and HTML a11y browser regressions pass."
+      ],
+      "residual_risk": "Phase 6 is proven on the local Chromium/browser environment. Phase 7 cleanup still needs to remove or document old global-main-path branches and then rerun final acceptance.",
       "tasks": [
         {
           "id": "6.1",
@@ -587,10 +594,22 @@
         {
           "id": "6.3",
           "title": "Run full workbench and offline release regression",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (346 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "npm run build --workspace=@llm-wiki/graph-engine => exit 0.",
+            "npm run test --workspace=@llm-wiki-agent/web => exit 0 (42 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki-agent/web => exit 0.",
+            "npm run build --workspace=@llm-wiki-agent/web => exit 0.",
+            "bash tests/graph-workbench-interactions.regression-1.sh => exit 0 (PASS: graph workbench interaction regression).",
+            "bash tests/graph-offline-phase-6.regression-1.sh => exit 0 (PASS: phase 6 offline graph regression).",
+            "bash tests/graph-community-wash-interactions.regression-1.sh => exit 0 (PASS: graph community wash interaction regression).",
+            "bash tests/graph-browser-stage-4-5.regression-1.sh --target offline => exit 0 (PASS: stage 4.5 browser regression (offline)).",
+            "bash tests/graph-html-a11y.regression-1.sh => exit 0 (PASS: graph HTML a11y regression coverage)."
+          ],
+          "evidence": "All Phase 6 release commands passed. Browser regressions covered workbench interactions, offline graph behavior, community wash interactions, stage 4.5 offline behavior, and HTML accessibility coverage after the production Sigma performance artifacts passed in Task 6.2.",
+          "residual_risk": "No Phase 6 verification risk remains. Phase 7 cleanup and final acceptance are still pending."
         }
       ]
     },
@@ -806,6 +825,14 @@
       "action": "Ran the full 11-shape isolated Sigma trial and production Sigma global regression; tuned the production regression harness to measure the production global path without counting test-page setup, repeated DOM/SVG route reconstruction, or uncollected transient heap.",
       "result": "phase-6 task 6.2 complete; isolated and production artifacts each have 110 records across 11 shapes, 0 failed records, and all hard-gate metrics within threshold; advancing to task 6.3.",
       "at": "2026-06-19T22:45:00+08:00"
+    },
+    {
+      "turn": 22,
+      "task": "6.3",
+      "phase": "phase-6",
+      "action": "Ran graph-engine and web test/typecheck/build plus workbench, offline, community wash, stage-4.5 offline, and HTML accessibility browser regressions.",
+      "result": "phase-6 task 6.3 complete and phase-6 acceptance met; advancing to phase 7 task 7.1.",
+      "at": "2026-06-19T23:05:00+08:00"
     }
   ],
   "final": {
