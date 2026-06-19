@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-1",
-    "task": "1.1",
+    "task": "1.2",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 1, Task 1.2: make the Sigma trial model consume adapter-controlled render data (buildGraphRendererAdapterData) and forbid the trial path from deciding display budgets by traversing raw data.nodes/data.edges."
+    "next_allowed_action": "Advance to Phase 1, Task 1.3: add representative drawer/overlay load to the Sigma trial HTML and run repeated search/community/drawer/return-global cycles on 5000/10000 shapes recording memory growth, keeping the full 11-shape default set."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -61,6 +61,13 @@
       "decision": "Make the shared trial validator's schema/metric enforcement opt-in via requireSchema (default true); sibling vis-network and aggregation trials opt out until their own upgrade phase.",
       "reason": "The shared validator is consumed by three trials. Hardening the schema must not break the two out-of-scope trials; opting them out keeps Task 1.1 scoped to Sigma while leaving a clear upgrade path.",
       "source": "tests/browser/graph-aggregation-fallback-trial.ts, tests/browser/graph-vis-network-trial.ts import validateTrialResults"
+    },
+    {
+      "id": "D6",
+      "status": "recorded",
+      "decision": "Drive the Sigma trial model entirely from buildGraphRendererAdapterData output; node/edge/community/aggregation lists, positions, sizes, colors and selection/search/pin/aggregation state all come from adapter render state, not from raw GraphData traversal.",
+      "reason": "Task 1.2 forbids the trial path from deciding display budgets by traversing raw data.nodes/data.edges, so the trial proves Sigma can render from adapter-controlled data before any production Sigma code is written.",
+      "source": "docs/plans/2026-06-19-sigma-global-renderer-integration-phased-plan.md (Task 1.2)"
     }
   ],
   "phases": [
@@ -127,10 +134,15 @@
         {
           "id": "1.2",
           "title": "Make Sigma trial use adapter-controlled render data",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/sigma-trial-adapter.test.ts packages/graph-engine/test/renderer-adapter-contract.test.ts => exit 0 (4 tests, 0 fail).",
+            "rg -n \"data\\.nodes\\.map|data\\.edges\\s*\\.\" packages/graph-engine/test/sigma-trial-adapter.ts => no output (no raw-data draw-path hits).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (324 tests, 0 fail).",
+            "Sigma single-shape smoke still exits 0 after the adapter-driven model rewrite, proving node/edge/community/aggregation consumers still work."
+          ],
+          "evidence": "buildSigmaGraphologyTrialModel now derives nodes/edges/communities/aggregations from adapter.nodes/adapter.edges/adapter.communities/adapter.aggregations; sizes/colors from adapter render state; positions from adapter node.point; raw data.nodes/data.edges no longer traversed for budget decisions. Test still asserts order [a,b,c], 2 edges, selection/search/pin/aggregation semantics.",
+          "residual_risk": "Trial-only change. The production adapter (src/render/adapter.ts) still legitimately walks data.nodes/data.edges to produce the controlled render data; that is the intended boundary and is not in Task 1.2 scope."
         },
         {
           "id": "1.3",
@@ -432,6 +444,14 @@
       "phase": "phase-1",
       "action": "Raised Sigma trial validation standards and artifact schema; fixed tsx __name regression; added sampled drag action; made sibling trials opt out of the new schema gate.",
       "result": "phase-1 task 1.1 complete; single-shape smoke passes with full schema and hard-gate metrics; advanced to task 1.2.",
+      "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 3,
+      "task": "1.2",
+      "phase": "phase-1",
+      "action": "Rewrote the Sigma trial model to consume adapter-controlled render data; removed all raw data.nodes/data.edges budget traversal.",
+      "result": "phase-1 task 1.2 complete; adapter + contract tests and sigma smoke pass; advanced to task 1.3.",
       "at": "2026-06-19T00:00:00+08:00"
     }
   ],

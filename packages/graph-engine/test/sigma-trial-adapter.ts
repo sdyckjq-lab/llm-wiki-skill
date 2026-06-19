@@ -87,62 +87,45 @@ const COMMUNITY_COLORS = [
 ];
 
 export function buildSigmaGraphologyTrialModel(data: GraphData, options: SigmaTrialOptions = {}): SigmaTrialModel {
+  // The trial model must consume adapter-controlled render data only. Node and
+  // edge budgets (which objects exist, their positions, sizes, colors, label
+  // visibility, selection/search/pin/aggregation state) all come from the
+  // adapter output; the raw GraphData is no longer traversed to decide what to
+  // draw. 'data' is still threaded to the adapter for graph semantics.
   const adapter = buildGraphRendererAdapterData(data, options);
-  const adapterNodeById = new Map(adapter.nodes.map((node) => [node.id, node]));
-  const nodeIds = new Set(data.nodes.map((node) => node.id));
-  const communityNodeIds = new Map<string, string[]>();
-  for (const node of data.nodes) {
-    const communityId = String(node.community ?? "_none");
-    const list = communityNodeIds.get(communityId) ?? [];
-    list.push(node.id);
-    communityNodeIds.set(communityId, list);
-  }
 
-  const nodes = data.nodes.map((node, index): SigmaTrialNode => {
-    const adapterNode = adapterNodeById.get(node.id);
-    const communityId = node.community == null ? null : String(node.community);
-    const pinHint = adapterNode?.pinHint ?? {
-      nodeId: node.id,
-      wikiPath: node.source_path ?? node.id,
-      pinned: false,
-      position: null
-    };
+  const nodes = adapter.nodes.map((node): SigmaTrialNode => {
+    const communityId = node.communityId == null ? null : String(node.communityId);
     return {
       id: node.id,
       label: node.label,
-      x: finiteNumber(adapterNode?.point.x, finiteNumber(node.x, index % 100)),
-      y: finiteNumber(adapterNode?.point.y, finiteNumber(node.y, Math.floor(index / 100))),
-      size: pinHint.pinned ? 5 : adapterNode?.selected ? 5 : adapterNode?.searchHit ? 4 : 2,
-      color: adapterNode?.selected
-        ? "#ef4444"
-        : adapterNode?.searchHit
-          ? "#f59e0b"
-          : colorForCommunity(communityId),
+      x: finiteNumber(node.point.x, 0),
+      y: finiteNumber(node.point.y, 0),
+      size: trialNodeSize(node),
+      color: trialNodeColor(node, communityId),
       communityId,
-      sourcePath: adapterNode?.sourcePath ?? node.source_path ?? node.id,
-      selected: adapterNode?.selected ?? false,
-      searchHit: adapterNode?.searchHit ?? false,
-      pinned: pinHint.pinned,
-      pinHint,
-      aggregationIds: adapterNode?.aggregationIds ?? []
+      sourcePath: node.sourcePath,
+      selected: node.selected,
+      searchHit: node.searchHit,
+      pinned: node.pinHint.pinned,
+      pinHint: node.pinHint,
+      aggregationIds: node.aggregationIds
     };
   });
 
-  const edges = data.edges
-    .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
-    .map((edge): SigmaTrialEdge => ({
-      id: edge.id,
-      source: edge.from,
-      target: edge.to,
-      color: "#9ca3af",
-      size: Math.max(0.3, Math.min(2, Number(edge.weight ?? 0.6))),
-      relationType: edge.relation_type ?? edge.type ?? null
-    }));
+  const edges = adapter.edges.map((edge): SigmaTrialEdge => ({
+    id: edge.id,
+    source: edge.sourceNodeId,
+    target: edge.targetNodeId,
+    color: "#9ca3af",
+    size: finiteNumber(edge.render.strokeWidth, 1),
+    relationType: edge.relationType == null ? null : String(edge.relationType)
+  }));
 
   const communities = adapter.communities.map((community): SigmaTrialCommunity => ({
     id: community.id,
     label: community.label,
-    nodeIds: communityNodeIds.get(community.id) ?? community.nodeIds,
+    nodeIds: community.nodeIds,
     selected: community.selected,
     searchResultIds: community.searchResultIds,
     pinnedNodeIds: community.pinHints.map((hint) => hint.nodeId)
@@ -150,7 +133,7 @@ export function buildSigmaGraphologyTrialModel(data: GraphData, options: SigmaTr
 
   const aggregations = adapter.aggregations.map((aggregation): SigmaTrialAggregation => ({
     id: aggregation.id,
-    communityId: aggregation.communityId,
+    communityId: aggregation.communityId == null ? null : String(aggregation.communityId),
     nodeIds: aggregation.nodeIds,
     selectedNodeIds: aggregation.selectedNodeIds,
     searchResultIds: aggregation.searchResultIds,
@@ -165,6 +148,21 @@ export function buildSigmaGraphologyTrialModel(data: GraphData, options: SigmaTr
     aggregations,
     behavior: buildGraphRendererBehaviorContract(adapter, "candidate-global")
   };
+}
+
+// Visual budget for a trial node, derived only from adapter render state.
+function trialNodeSize(node: { pinHint: GraphPinHint; selected: boolean; searchHit: boolean; render: { priority: number } }): number {
+  if (node.pinHint.pinned) return 5;
+  if (node.selected) return 5;
+  if (node.searchHit) return 4;
+  return 2;
+}
+
+// Color budget for a trial node, derived only from adapter render state.
+function trialNodeColor(node: { selected: boolean; searchHit: boolean }, communityId: string | null): string {
+  if (node.selected) return "#ef4444";
+  if (node.searchHit) return "#f59e0b";
+  return colorForCommunity(communityId);
 }
 
 function colorForCommunity(communityId: string | null): string {
