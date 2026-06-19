@@ -42,6 +42,7 @@ const DEFAULT_MIN_RADIUS_X = 54;
 const DEFAULT_MIN_RADIUS_Y = 36;
 const DEFAULT_PADDING_X = 46;
 const DEFAULT_PADDING_Y = 34;
+const COMMUNITY_WASH_CORE_EXACT_LIMIT = 240;
 export const DEFAULT_COMMUNITY_WASH_MAX_RADIUS_X = GRAPH_WORLD_SIZE.width * 0.19;
 export const DEFAULT_COMMUNITY_WASH_MAX_RADIUS_Y = round(GRAPH_WORLD_SIZE.height * 0.21);
 
@@ -81,13 +82,16 @@ function normalizeCommunityWashOptions(options: CommunityWashOptions): Required<
 
 function communityWashCore(points: CommunityWashPoint[]): CommunityWashCore {
   if (points.length <= 3) return { core: points, outliers: [] };
-  const scored = points
+  const scoredPoints = points.length > COMMUNITY_WASH_CORE_EXACT_LIMIT
+    ? representativeWashPoints(points, COMMUNITY_WASH_CORE_EXACT_LIMIT)
+    : points;
+  const scored = scoredPoints
     .map((point) => ({
       point,
-      neighborScore: nearestNeighborScore(point, points)
+      neighborScore: nearestNeighborScore(point, scoredPoints)
     }))
     .sort((left, right) => left.neighborScore - right.neighborScore);
-  const coreCount = Math.max(2, Math.ceil(points.length * 0.75));
+  const coreCount = Math.max(2, Math.ceil(scored.length * 0.75));
   const core = scored.slice(0, coreCount);
   const outliers = scored.slice(coreCount);
   const coreMax = Math.max(...core.map((item) => item.neighborScore));
@@ -99,6 +103,20 @@ function communityWashCore(points: CommunityWashPoint[]): CommunityWashCore {
     core: core.map((item) => item.point),
     outliers: outliers.map((item) => item.point)
   };
+}
+
+function representativeWashPoints(points: CommunityWashPoint[], limit: number): CommunityWashPoint[] {
+  if (points.length <= limit) return points;
+  const lastIndex = points.length - 1;
+  const representatives: CommunityWashPoint[] = [];
+  const seen = new Set<number>();
+  for (let index = 0; index < limit; index += 1) {
+    const sourceIndex = Math.round(index * lastIndex / Math.max(1, limit - 1));
+    if (seen.has(sourceIndex)) continue;
+    seen.add(sourceIndex);
+    representatives.push(points[sourceIndex]);
+  }
+  return representatives;
 }
 
 function paddedBounds(points: CommunityWashPoint[], options: Required<CommunityWashOptions>): CommunityWashBounds {

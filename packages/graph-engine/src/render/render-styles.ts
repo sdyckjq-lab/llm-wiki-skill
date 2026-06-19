@@ -32,6 +32,60 @@ const STATIC_RENDERER_CSS = `
     radial-gradient(ellipse at 76% 38%, color-mix(in srgb, var(--cinnabar) 9%, transparent), transparent 54%),
     var(--bg);
 }
+.sigma-global-route,
+.sigma-global-renderer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.sigma-global-renderer canvas {
+  position: absolute;
+  inset: 0;
+}
+.sigma-global-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.sigma-global-node-hit-target,
+.sigma-global-community-wash,
+.sigma-global-aggregation-container {
+  position: absolute;
+  border: 1px solid currentColor;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.sigma-global-node-hit-target {
+  border-radius: 999px;
+  opacity: 0;
+}
+.sigma-global-node-hit-target:focus-visible {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 2px;
+  opacity: .2;
+}
+.sigma-global-community-wash {
+  border-radius: 999px;
+  opacity: .08;
+}
+.sigma-global-community-wash:hover,
+.sigma-global-community-wash[data-selected="true"] {
+  opacity: .16;
+}
+.sigma-global-aggregation-container {
+  border-width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent);
+  opacity: .78;
+}
+.sigma-global-aggregation-container[data-search-inside="true"],
+.sigma-global-aggregation-container[data-selected="true"] {
+  background: color-mix(in srgb, var(--cinnabar) 18%, transparent);
+  opacity: .92;
+}
 .graph-content-layer {
   position: absolute;
   inset: 0;

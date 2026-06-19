@@ -7,9 +7,11 @@ import {
   SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY,
   SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
   buildSigmaGlobalGraphologyGraph,
-  createSigmaGlobalHitProjector,
-  createSigmaGlobalRenderer
+  createSigmaGlobalHitProjector
 } from "../src/render";
+import {
+  createSigmaGlobalRenderer
+} from "../src/render/sigma-global-renderer";
 import type {
   GraphRendererAdapterData,
   SigmaGlobalGraphologyGraph,
@@ -213,18 +215,21 @@ describe("Sigma global renderer production boundary", () => {
   it("creates, updates, preserves camera state, and destroys the Sigma lifecycle", () => {
     const container = fakeContainer();
     const runtime = fakeRuntime();
+    const hits: unknown[] = [];
     const renderer = createSigmaGlobalRenderer({
       container,
-      surface: {} as never,
       adapterData: adapterDataFixture(),
       theme: "shan-shui",
-      runtime
+      runtime,
+      onHitTarget: (target) => hits.push(target)
     });
     const sigma = runtime.instances[0];
 
     assert.equal(renderer.id, "sigma-global");
     assert.equal(renderer.updateStrategy, "rebuild-graph-preserve-camera");
     assert.equal(container.children.length, 1);
+    assert.equal(renderer.overlayRoot.children.length, 4);
+    assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-node-hit-target").length, 2);
     assert.equal(sigma.graph.order, 2);
 
     sigma.camera.setState({ x: 12, y: 34, angle: 0.25, ratio: 1.8 });
@@ -248,6 +253,7 @@ describe("Sigma global renderer production boundary", () => {
 
     sigma.emit("clickNode", { node: "render-beta" });
     assert.deepEqual(renderer.lastHitTarget, { kind: "node", id: "render-beta" });
+    assert.deepEqual(hits.at(-1), { kind: "node", id: "render-beta" });
 
     renderer.destroy();
     assert.equal(sigma.killed, true);
@@ -265,7 +271,6 @@ describe("Sigma global renderer production boundary", () => {
     assert.throws(
       () => createSigmaGlobalRenderer({
         container: fakeContainer(),
-        surface: {} as never,
         adapterData: adapterDataFixture(),
         theme: "shan-shui",
         runtime: fakeRuntime({ constructError: failure }),
@@ -281,7 +286,6 @@ describe("Sigma global renderer production boundary", () => {
     const secondRuntime = fakeRuntime();
     const first = createSigmaGlobalRenderer({
       container: fakeContainer(),
-      surface: {} as never,
       adapterData: adapterDataFixture(),
       theme: "shan-shui",
       runtime: firstRuntime
@@ -291,7 +295,6 @@ describe("Sigma global renderer production boundary", () => {
 
     const second = createSigmaGlobalRenderer({
       container: fakeContainer(),
-      surface: {} as never,
       adapterData: adapterDataFixture({ selectedNodeId: "render-beta" }),
       theme: "shan-shui",
       runtime: secondRuntime
@@ -313,7 +316,6 @@ describe("Sigma global renderer production boundary", () => {
     const runtime = fakeRuntime({ setGraphError: new Error("graph swap failed"), killError: new Error("kill failed") });
     const renderer = createSigmaGlobalRenderer({
       container: fakeContainer(),
-      surface: {} as never,
       adapterData: adapterDataFixture(),
       theme: "shan-shui",
       runtime,
@@ -591,12 +593,35 @@ function fakeContainer(): HTMLElement & { children: HTMLElement[] } {
 }
 
 function fakeElement(_tagName: string): HTMLElement {
+  const children: HTMLElement[] = [];
   const element = {
     className: "",
     dataset: {} as Record<string, string>,
+    style: {} as Record<string, string>,
+    children,
     tabIndex: -1,
+    ownerDocument: null as unknown as Document,
+    append: (...items: HTMLElement[]) => {
+      children.push(...items);
+    },
+    prepend: (...items: HTMLElement[]) => {
+      children.unshift(...items);
+    },
+    replaceChildren: (...items: HTMLElement[]) => {
+      children.splice(0, children.length, ...items);
+    },
+    addEventListener: () => undefined,
+    setAttribute: () => undefined,
+    querySelector: () => null,
     remove: () => undefined
   };
+  element.ownerDocument = {
+    createElement: (tagName: string) => {
+      const child = fakeElement(tagName);
+      child.ownerDocument = element.ownerDocument;
+      return child;
+    }
+  } as unknown as Document;
   element.remove = () => {
     // The fake container owns removal by filtering on object identity below.
     for (const container of fakeContainersWith(element as unknown as HTMLElement)) {
@@ -673,6 +698,14 @@ class FakeSigma implements SigmaGlobalSigmaLike {
 
   refresh(): void {
     this.settings.refreshed = true;
+  }
+
+  viewportToGraph(point: { x: number; y: number }): { x: number; y: number } {
+    return { x: point.x, y: point.y };
+  }
+
+  graphToViewport(point: { x: number; y: number }): { x: number; y: number } {
+    return { x: point.x, y: point.y };
   }
 
   on(event: string, listener: (payload?: unknown) => void): void {

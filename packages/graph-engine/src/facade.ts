@@ -15,12 +15,17 @@ import type {
 import {
   buildGraphRendererAdapterData,
   createGraphRenderer,
-  createSigmaGlobalRenderer,
-  sigmaGlobalRendererRuntimeBoundary,
   type GraphRendererAdapterData,
+  type GraphGestureTarget,
   type SigmaGlobalRendererRuntime
 } from "./render";
-import type { GraphRendererSurface } from "./render/renderer-surface";
+import {
+  createSigmaGlobalRenderer,
+  sigmaGlobalRendererRuntimeBoundary
+} from "./render/sigma-global-renderer";
+import { buildCommunityLegend, nextToolbarPanelState, resolveGraphSearchState, readToolbarPanelState, writeToolbarPanelState } from "./render";
+import { createCommunityLegend, createGraphToolbar, createSearchControl } from "./render/controls";
+import { ensureGraphRendererStyles } from "./render/render-styles";
 import { resolveSelectionForCapabilities } from "./select";
 import { graphNodeTypeLabel, wikiPathForGraphNode } from "./graph-node";
 import {
@@ -291,6 +296,10 @@ export function createGraphFacadeRouteManager(
       assertActive();
       state.data = data;
       if (pins) state.pins = pins;
+      if (sigmaKnownUnavailable) {
+        switchToFallbackRoute();
+        return;
+      }
       currentRenderer().setData(data, pins);
     },
     setAggregationMarkers(markers) {
@@ -684,10 +693,17 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
   let options = input.options;
   let destroyed = false;
   let renderer: ReturnType<typeof createSigmaGlobalRenderer> | null = null;
+  let searchOpen = Boolean(options.searchQuery);
+  let searchFocusedNodeId: string | null = null;
+  let legendCollapsed = false;
+  let toolbarPanelState = readToolbarPanelState(input.container.ownerDocument.defaultView?.localStorage);
+  let searchStatus: HTMLElement | null = null;
   const shell = input.container.ownerDocument.createElement("div");
   shell.className = "sigma-global-route";
   shell.dataset.route = "sigma-global";
   input.container.append(shell);
+  ensureGraphRendererStyles(input.container.ownerDocument);
+  mountSigmaControls();
 
   void sigmaGlobalRendererRuntimeBoundary()
     .then((runtime) => {
@@ -695,10 +711,10 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       try {
         renderer = createSigmaGlobalRenderer({
           container: shell,
-          surface: createNoopRendererSurface(),
           adapterData: adapterDataForSigmaRoute(options),
           theme: options.theme,
           runtime: runtime as unknown as SigmaGlobalRendererRuntime,
+          onHitTarget: handleSigmaHitTarget,
           onFatalError: (error) => input.onSigmaUnavailable?.(error)
         });
       } catch (error) {
@@ -716,6 +732,8 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     },
     setData(data, pins) {
       options = { ...options, data, pins: pins || options.pins };
+      syncVisibilityState();
+      mountSigmaControls();
       updateSigmaRenderer();
     },
     setAggregationMarkers(markers) {
@@ -732,6 +750,8 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     },
     setTypeFilters(filters) {
       options = { ...options, typeFilters: filters };
+      syncVisibilityState();
+      mountSigmaControls();
       updateSigmaRenderer();
     },
     showTemporaryObject(object) {
@@ -743,7 +763,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       updateSigmaRenderer();
     },
     resetView() {
-      options = { ...options, focus: null };
+      options = { ...options, focus: null, selection: null };
       updateSigmaRenderer();
     },
     select(selection) {
@@ -753,6 +773,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     previewNode() {},
     clearSelection() {
       options = { ...options, selection: null };
+      input.options.callbacks.onSelectionClearRequested?.();
       updateSigmaRenderer();
     },
     clearInteraction() {
@@ -764,6 +785,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     },
     setTheme(theme) {
       options = { ...options, theme };
+      shell.dataset.theme = theme;
       updateSigmaRenderer();
     },
     setPins(pins) {
@@ -790,6 +812,139 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       theme: options.theme
     });
   }
+
+  function handleSigmaHitTarget(target: GraphGestureTarget): void {
+    switch (target.kind) {
+      case "node":
+        if (target.id) selectOnSigma({ kind: "node", id: target.id });
+        break;
+      case "community-wash":
+        if (target.id) selectOnSigma({ kind: "community", id: target.id });
+        break;
+      case "aggregation-container":
+        if (target.communityId) selectOnSigma({ kind: "community", id: target.communityId });
+        break;
+      case "edge":
+        break;
+      case "graph-blank":
+        options = { ...options, selection: null, temporaryObject: null };
+        input.options.callbacks.onSelectionClearRequested?.();
+        updateSigmaRenderer();
+        break;
+    }
+  }
+
+  function selectOnSigma(selection: SelectionInput): void {
+    options = { ...options, selection };
+    input.options.callbacks.onSelectionInput?.(selection);
+    updateSigmaRenderer();
+  }
+
+  function mountSigmaControls(): void {
+    shell.dataset.theme = options.theme;
+    shell.dataset.searchOpen = searchOpen ? "true" : "false";
+    shell.querySelector(".graph-search")?.remove();
+    shell.querySelector(".graph-toolbar")?.remove();
+    const search = createSearchControl(input.container.ownerDocument, {
+      open: searchOpen,
+      query: options.searchQuery,
+      onOpen: () => {
+        searchOpen = true;
+        mountSigmaControls();
+      },
+      onQuery: applySearchQuery,
+      onNext: () => focusSearchResult("next"),
+      onPrevious: () => focusSearchResult("previous"),
+      onActivate: activateSearchResult,
+      onClose: () => {
+        searchOpen = false;
+        searchFocusedNodeId = null;
+        applySearchQuery("");
+      }
+    });
+    shell.prepend(search.element);
+    searchStatus = search.status;
+    updateSearchStatus(search.status);
+
+    const adapterData = adapterDataForSigmaRoute(options);
+    const legendRows = buildCommunityLegend(adapterData.renderable.communities, adapterData.renderable.nodes);
+    const communityLegend = createCommunityLegend(input.container.ownerDocument, {
+      rows: legendRows,
+      collapsed: legendCollapsed,
+      onToggle: () => {
+        legendCollapsed = !legendCollapsed;
+        mountSigmaControls();
+      },
+      onHover: (id) => {
+        shell.dataset.legendHover = id || "";
+      },
+      onSelect: (id) => selectOnSigma({ kind: "community", id })
+    });
+    const toolbar = createGraphToolbar(input.container.ownerDocument, {
+      panelState: toolbarPanelState,
+      typeFilters: options.typeFilters,
+      onPanelToggle: (panel) => {
+        toolbarPanelState = nextToolbarPanelState(toolbarPanelState, panel);
+        writeToolbarPanelState(input.container.ownerDocument.defaultView?.localStorage, toolbarPanelState);
+        mountSigmaControls();
+      },
+      onTypeFilterToggle: (type, enabled) => {
+        options = { ...options, typeFilters: { ...options.typeFilters, [type]: enabled } };
+        syncVisibilityState();
+        mountSigmaControls();
+        updateSigmaRenderer();
+      },
+      onReset: () => {
+        options = { ...options, focus: null, selection: null };
+        updateSigmaRenderer();
+      }
+    });
+    toolbar.filtersPanel.appendChild(communityLegend.element);
+    shell.prepend(toolbar.element);
+  }
+
+  function applySearchQuery(query: string): void {
+    const state = resolveGraphSearchState(options.data.nodes, query);
+    options = { ...options, searchQuery: state.query, searchResultIds: state.matchIds };
+    if (!state.matchIds.includes(searchFocusedNodeId || "")) searchFocusedNodeId = null;
+    syncVisibilityState();
+    if (searchStatus) updateSearchStatus(searchStatus);
+    updateSigmaRenderer();
+  }
+
+  function focusSearchResult(direction: "next" | "previous"): void {
+    const state = resolveGraphSearchState(options.data.nodes, options.searchQuery);
+    const index = searchFocusedNodeId ? state.matchIds.indexOf(searchFocusedNodeId) : -1;
+    if (!state.matchIds.length) return;
+    const nextIndex = direction === "next"
+      ? (index + 1 + state.matchIds.length) % state.matchIds.length
+      : (index - 1 + state.matchIds.length) % state.matchIds.length;
+    searchFocusedNodeId = state.matchIds[nextIndex];
+    mountSigmaControls();
+  }
+
+  function activateSearchResult(): void {
+    const state = resolveGraphSearchState(options.data.nodes, options.searchQuery);
+    const id = searchFocusedNodeId || state.matchIds[0];
+    if (id) selectOnSigma({ kind: "node", id });
+  }
+
+  function syncVisibilityState(): void {
+    input.options.callbacks.onVisibilityStateChange?.({
+      searchQuery: options.searchQuery,
+      searchResultIds: options.searchResultIds,
+      typeFilters: options.typeFilters,
+      temporaryObject: options.temporaryObject
+    });
+  }
+
+  function updateSearchStatus(status: HTMLElement): void {
+    const state = resolveGraphSearchState(options.data.nodes, options.searchQuery);
+    const focusedIndex = searchFocusedNodeId ? state.matchIds.indexOf(searchFocusedNodeId) : -1;
+    status.textContent = state.query
+      ? `${state.matchIds.length} 个结果${focusedIndex >= 0 ? ` · ${focusedIndex + 1}/${state.matchIds.length}` : ""}`
+      : "输入关键词";
+  }
 }
 
 function adapterDataForSigmaRoute(options: GraphFacadeRouteRendererOptions): GraphRendererAdapterData {
@@ -802,20 +957,6 @@ function adapterDataForSigmaRoute(options: GraphFacadeRouteRendererOptions): Gra
     focus: null,
     typeFilters: options.typeFilters
   });
-}
-
-function createNoopRendererSurface(): GraphRendererSurface {
-  return {
-    focusRoot() {},
-    focusNode() {},
-    setNodeDragging() {},
-    clearNodeDragging() {},
-    setViewportDragging() {},
-    setDragTarget() {},
-    setFocusDataset() {},
-    setSearchOpen() {},
-    setSearchState() {}
-  };
 }
 
 export function createGraphFacadeFromRenderer(

@@ -368,6 +368,47 @@ describe("GraphFacade", () => {
     assert.equal(aggregationFallbackCount, 0);
   });
 
+  it("re-routes known-unavailable Sigma fallback when refreshed data crosses the large-graph threshold", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let smallFallbackCount = 0;
+    let aggregationFallbackCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          throw new Error("WebGL unavailable");
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => {
+          smallFallbackCount += 1;
+          return createFakeRenderer();
+        },
+        createAggregationSafetyFallback: () => {
+          aggregationFallbackCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+    manager.setData(largeGraphData(2101, 4101, 600));
+
+    assert.equal(manager.routeId, "aggregation-safety-fallback");
+    assert.equal(smallFallbackCount, 1);
+    assert.equal(aggregationFallbackCount, 1);
+  });
+
   it("routes known-large Sigma failures to aggregation safety fallback instead of DOM/SVG", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {

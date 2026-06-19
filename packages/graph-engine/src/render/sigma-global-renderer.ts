@@ -7,10 +7,9 @@ import type {
   GraphRendererAdapterEdge,
   GraphRendererAdapterNode
 } from "./adapter";
-import { screenPointToWorldPoint, type GraphScreenPoint } from "./geometry";
+import { screenPointToWorldPoint, worldPointToCssPercentPoint, type GraphScreenPoint } from "./geometry";
 import { graphSpatialHitToGestureTarget, type GraphGestureTarget } from "./gestures";
 import { DEFAULT_RENDERER_VIEWPORT, type RendererViewport, type RendererViewportSize } from "./viewport";
-import type { GraphRendererSurface } from "./renderer-surface";
 
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
 
@@ -47,6 +46,8 @@ export interface SigmaGlobalSigmaLike {
   getGraph?: () => unknown;
   setGraph?: (graph: SigmaGlobalGraphologyGraph) => unknown;
   setSetting?: (key: string, value: unknown) => unknown;
+  viewportToGraph?: (point: GraphScreenPoint) => { x: number; y: number };
+  graphToViewport?: (point: { x: number; y: number }) => GraphScreenPoint;
   refresh?: () => unknown;
   on?: (event: string, listener: (payload?: unknown) => void) => unknown;
   off?: (event: string, listener: (payload?: unknown) => void) => unknown;
@@ -140,6 +141,7 @@ export interface SigmaGlobalHitProjectorInput {
   adapterData: GraphRendererAdapterData;
   viewport: RendererViewport;
   viewportSize: RendererViewportSize;
+  screenPointToWorldPoint?: (point: GraphScreenPoint) => { x: number; y: number };
 }
 
 export interface SigmaGlobalHitProjector {
@@ -149,9 +151,9 @@ export interface SigmaGlobalHitProjector {
 
 export interface SigmaGlobalRendererCreateOptions {
   container: HTMLElement;
-  surface: GraphRendererSurface;
   adapterData: GraphRendererAdapterData;
   theme: ThemeId;
+  onHitTarget?: (target: GraphGestureTarget) => void;
   onFatalError?: (error: unknown) => void;
   runtime?: SigmaGlobalRendererRuntime;
   viewport?: RendererViewport;
@@ -166,6 +168,7 @@ export interface SigmaGlobalRendererUpdateOptions {
 export interface SigmaGlobalRenderer {
   readonly id: typeof SIGMA_GLOBAL_RENDERER_ID;
   readonly root: HTMLElement;
+  readonly overlayRoot: HTMLElement;
   readonly graph: SigmaGlobalGraphologyGraph;
   readonly updateStrategy: "rebuild-graph-preserve-camera";
   readonly lastHitTarget: GraphGestureTarget | null;
@@ -229,12 +232,14 @@ export function createSigmaGlobalHitProjector(input: SigmaGlobalHitProjectorInpu
       if (renderedObjectTarget) return renderedObjectTarget;
 
       if (hit.screenPoint) {
-        const worldPoint = screenPointToWorldPoint(
-          hit.screenPoint,
-          input.viewport,
-          input.viewportSize,
-          input.adapterData.renderable.worldBounds
-        );
+        const worldPoint = input.screenPointToWorldPoint
+          ? input.screenPointToWorldPoint(hit.screenPoint)
+          : screenPointToWorldPoint(
+              hit.screenPoint,
+              input.viewport,
+              input.viewportSize,
+              input.adapterData.renderable.worldBounds
+            );
         return graphSpatialHitToGestureTarget(spatialIndex.hitTest(worldPoint));
       }
 
@@ -260,10 +265,12 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let adapterData = options.adapterData;
   let graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
   const sigmaRoot = createSigmaRoot(options.container, currentTheme);
+  const overlayRoot = createSigmaOverlayRoot(sigmaRoot);
   let projector = createSigmaGlobalHitProjector({
     adapterData,
     viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
-    viewportSize: options.viewportSize ?? { width: 1, height: 1 }
+    viewportSize: options.viewportSize ?? { width: 1, height: 1 },
+    screenPointToWorldPoint: (point) => sigmaScreenPointToWorldPoint(sigma, point, options)
   });
   let sigma: SigmaGlobalSigmaLike;
   let generation = 0;
@@ -273,6 +280,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   try {
     sigma = new runtime.Sigma(graph, sigmaRoot, sigmaSettingsForTheme(currentTheme));
     bindSigmaEvents();
+    renderSigmaOverlays();
   } catch (error) {
     options.onFatalError?.(error);
     sigmaRoot.remove();
@@ -282,6 +290,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   const renderer: SigmaGlobalRenderer = {
     id: SIGMA_GLOBAL_RENDERER_ID,
     root: sigmaRoot,
+    overlayRoot,
     get graph() {
       return graph;
     },
@@ -299,7 +308,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       projector = createSigmaGlobalHitProjector({
         adapterData,
         viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
-        viewportSize: options.viewportSize ?? { width: 1, height: 1 }
+        viewportSize: options.viewportSize ?? { width: 1, height: 1 },
+        screenPointToWorldPoint: (point) => sigmaScreenPointToWorldPoint(sigma, point, options)
       });
       try {
         sigma.setGraph?.(graph);
@@ -309,6 +319,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         }
         restoreCameraState(sigma, cameraState);
         sigma.refresh?.();
+        renderSigmaOverlays();
       } catch (error) {
         options.onFatalError?.(error);
       }
@@ -332,9 +343,12 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function bindSigmaEvents(): void {
     const nodeClick = (payload?: unknown): void => handleSigmaHit({ nodeId: sigmaNodeIdFromPayload(payload) });
     const stageClick = (payload?: unknown): void => handleSigmaHit({ screenPoint: sigmaScreenPointFromPayload(payload) });
+    const cameraUpdated = (): void => renderSigmaOverlays();
     eventBindings = [
       { event: "clickNode", listener: nodeClick },
-      { event: "clickStage", listener: stageClick }
+      { event: "clickStage", listener: stageClick },
+      { event: "cameraUpdated", listener: cameraUpdated },
+      { event: "afterRender", listener: cameraUpdated }
     ];
     for (const binding of eventBindings) {
       sigma.on?.(binding.event, binding.listener);
@@ -354,6 +368,85 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     const target = projector.targetFromSigmaHit(input);
     if (destroyed || eventGeneration !== generation) return;
     lastHitTarget = target;
+    options.onHitTarget?.(target);
+  }
+
+  function renderSigmaOverlays(): void {
+    if (destroyed) return;
+    overlayRoot.replaceChildren();
+    for (const node of sigmaOverlayNodes(adapterData.nodes)) {
+      const element = sigmaOverlayButton(overlayRoot.ownerDocument, "node", node.id, node.label || node.id);
+      const size = Math.max(16, sigmaGlobalNodeSize(node) * 3);
+      const center = sigmaWorldPointToScreenPoint(sigma, node.point, options);
+      element.className = "sigma-global-node-hit-target";
+      element.dataset.nodeId = node.id;
+      element.dataset.searchHit = node.searchHit ? "true" : "false";
+      element.dataset.selected = node.selected ? "true" : "false";
+      element.dataset.pinned = node.pinHint.pinned ? "true" : "false";
+      applyOverlayBox(element, {
+        left: center.x - size / 2,
+        top: center.y - size / 2,
+        width: size,
+        height: size
+      });
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        handleSigmaHit({ renderedObject: { kind: "node", id: node.id } });
+      });
+      overlayRoot.append(element);
+    }
+    for (const community of adapterData.renderable.communities) {
+      if (!community.wash) continue;
+      const element = sigmaOverlayButton(overlayRoot.ownerDocument, "community-wash", community.id, community.label || community.id);
+      element.className = "sigma-global-community-wash";
+      element.dataset.communityId = community.id;
+      element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
+      element.style.borderColor = community.color;
+      element.style.background = community.color;
+      const box = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
+      applyOverlayBox(element, box);
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        handleSigmaHit({ screenPoint: { x: event.clientX, y: event.clientY } });
+      });
+      overlayRoot.append(element);
+    }
+    for (const aggregation of adapterData.renderable.aggregationContainers) {
+      const element = sigmaOverlayButton(overlayRoot.ownerDocument, "aggregation-container", aggregation.id, aggregation.label || aggregation.id);
+      element.className = "sigma-global-aggregation-container";
+      element.dataset.aggregationId = aggregation.id;
+      element.dataset.communityId = aggregation.communityId || "";
+      element.dataset.nodeCount = String(aggregation.nodeCount);
+      element.dataset.searchInside = aggregation.searchHitCount > 0 ? "true" : "false";
+      element.dataset.selected = aggregation.selected ? "true" : "false";
+      element.style.borderColor = aggregation.color;
+      const box = overlayBoxFromWorldEllipse(aggregation.point.x, aggregation.point.y, aggregation.radius, aggregation.radius);
+      applyOverlayBox(element, box);
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        handleSigmaHit({
+          renderedObject: {
+            kind: "aggregation-container",
+            id: aggregation.id,
+            communityId: aggregation.communityId
+          }
+        });
+      });
+      overlayRoot.append(element);
+    }
+  }
+
+  function overlayBoxFromWorldEllipse(x: number, y: number, rx: number, ry: number): { left: number; top: number; width: number; height: number } {
+    const topLeft = sigmaWorldPointToScreenPoint(sigma, { x: x - rx, y: y - ry }, options);
+    const bottomRight = sigmaWorldPointToScreenPoint(sigma, { x: x + rx, y: y + ry }, options);
+    const left = Math.min(topLeft.x, bottomRight.x);
+    const top = Math.min(topLeft.y, bottomRight.y);
+    return {
+      left,
+      top,
+      width: Math.max(8, Math.abs(bottomRight.x - topLeft.x)),
+      height: Math.max(8, Math.abs(bottomRight.y - topLeft.y))
+    };
   }
 
   function assertActive(): void {
@@ -371,6 +464,64 @@ function createSigmaRoot(container: HTMLElement, theme: ThemeId): HTMLElement {
   root.tabIndex = 0;
   container.append(root);
   return root;
+}
+
+function createSigmaOverlayRoot(root: HTMLElement): HTMLElement {
+  const overlay = root.ownerDocument.createElement("div");
+  overlay.className = "sigma-global-overlay";
+  overlay.dataset.role = "sigma-global-overlay";
+  root.append(overlay);
+  return overlay;
+}
+
+function sigmaOverlayButton(ownerDocument: Document, kind: string, id: string, label: string): HTMLButtonElement {
+  const element = ownerDocument.createElement("button");
+  element.type = "button";
+  element.dataset.kind = kind;
+  element.dataset.id = id;
+  element.setAttribute("aria-label", label);
+  return element;
+}
+
+function applyOverlayBox(element: HTMLElement, box: { left: number; top: number; width: number; height: number }): void {
+  element.style.left = `${box.left}px`;
+  element.style.top = `${box.top}px`;
+  element.style.width = `${box.width}px`;
+  element.style.height = `${box.height}px`;
+}
+
+function sigmaScreenPointToWorldPoint(
+  sigma: SigmaGlobalSigmaLike,
+  point: GraphScreenPoint,
+  options: Pick<SigmaGlobalRendererCreateOptions, "viewport" | "viewportSize" | "adapterData">
+): { x: number; y: number } {
+  const projected = sigma.viewportToGraph?.(point);
+  if (projected && Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
+    return projected;
+  }
+  return screenPointToWorldPoint(
+    point,
+    options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
+    options.viewportSize ?? { width: 1, height: 1 },
+    options.adapterData.renderable.worldBounds
+  );
+}
+
+function sigmaWorldPointToScreenPoint(
+  sigma: SigmaGlobalSigmaLike,
+  point: { x: number; y: number },
+  options: Pick<SigmaGlobalRendererCreateOptions, "viewport" | "viewportSize" | "adapterData">
+): GraphScreenPoint {
+  const projected = sigma.graphToViewport?.(point);
+  if (projected && Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
+    return projected;
+  }
+  const percent = worldPointToCssPercentPoint(point, options.adapterData.renderable.worldBounds);
+  const size = options.viewportSize ?? { width: 1, height: 1 };
+  return {
+    x: (percent.x / 100) * size.width,
+    y: (percent.y / 100) * size.height
+  };
 }
 
 function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
@@ -552,6 +703,24 @@ function sigmaGlobalNodeSize(node: GraphRendererAdapterNode): number {
   if (node.render.displayMode === "compact-card") return 5;
   if (node.render.displayMode === "overview") return 4;
   return 3;
+}
+
+function sigmaOverlayNodes(nodes: readonly GraphRendererAdapterNode[]): GraphRendererAdapterNode[] {
+  const seen = new Set<string>();
+  const output: GraphRendererAdapterNode[] = [];
+  const append = (candidates: GraphRendererAdapterNode[], limit: number) => {
+    let count = 0;
+    for (const node of candidates) {
+      if (count >= limit || seen.has(node.id)) continue;
+      seen.add(node.id);
+      output.push(node);
+      count += 1;
+    }
+  };
+  append(nodes.filter((node) => node.selected), Number.POSITIVE_INFINITY);
+  append(nodes.filter((node) => node.searchHit), 80);
+  append(nodes.filter((node) => node.pinHint.pinned), 80);
+  return output;
 }
 
 function sigmaGlobalNodeColor(node: GraphRendererAdapterNode, communityColorById: Map<string, string>): string {

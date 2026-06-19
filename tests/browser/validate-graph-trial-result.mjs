@@ -24,11 +24,14 @@ const requiredActions = [
 const FRAME_SAMPLED_ACTIONS = new Set(["wheel_zoom", "drag"]);
 const FPS_FLOOR = 45;
 const FRAME_P95_CEILING_MS = 22.3;
+const DURATION_GATED_ACTIONS = new Set(["initial_render", "search_highlight", "drawer_open", "return_global"]);
+const MEMORY_GATED_ACTION = "repeated_search_community_drawer_cycles";
 
 const data = JSON.parse(fs.readFileSync(resultPath, "utf8"));
 const records = Array.isArray(data.records) ? data.records : [];
 const shapes = Array.isArray(data.shapes) ? data.shapes : [];
 const errors = Array.isArray(data.errors) ? data.errors : [];
+const requireProductionPath = data.production_path === true || String(data.renderer || "").includes("production");
 const failures = [];
 
 for (const error of errors) {
@@ -52,6 +55,7 @@ for (const record of records) {
   const shapeAction = `${record.graph_shape}/${record.action}`;
   if (!record.schema_version) failures.push(`${shapeAction}: missing schema_version`);
   if (typeof record.production_path !== "boolean") failures.push(`${shapeAction}: missing production_path`);
+  else if (requireProductionPath && record.production_path !== true) failures.push(`${shapeAction}: production_path_not_true`);
   if (!record.thresholds) failures.push(`${shapeAction}: missing thresholds`);
   if (!record.browser) failures.push(`${shapeAction}: missing browser`);
   if (!record.build_commit) failures.push(`${shapeAction}: missing build_commit`);
@@ -63,6 +67,21 @@ for (const record of records) {
     if (record.frame_p95_ms == null) failures.push(`${shapeAction}: frame_p95_missing`);
     else if (record.frame_p95_ms > FRAME_P95_CEILING_MS) failures.push(`${shapeAction}: frame_p95_above_ceiling; frame_p95_ms=${record.frame_p95_ms}; ceiling=${FRAME_P95_CEILING_MS}`);
   }
+  if (DURATION_GATED_ACTIONS.has(record.action)) {
+    const limit = durationLimitMs(record);
+    if (record.duration_ms == null) failures.push(`${shapeAction}: duration_missing`);
+    else if (record.duration_ms > limit) failures.push(`${shapeAction}: duration_above_ceiling; duration_ms=${record.duration_ms}; ceiling=${limit}`);
+  }
+  if (record.action === MEMORY_GATED_ACTION) {
+    const limit = memoryGrowthLimitMb(record);
+    if (record.memory_growth_mb == null) failures.push(`${shapeAction}: memory_growth_missing`);
+    else if (record.memory_growth_mb > limit) failures.push(`${shapeAction}: memory_growth_above_ceiling; memory_growth_mb=${record.memory_growth_mb}; ceiling=${limit}`);
+  }
+  if (requireProductionPath && record.action === "initial_render" && Number(record.nodes) >= 10000) {
+    if (record.loading_state_seen_at_ms == null) failures.push(`${shapeAction}: loading_state_seen_missing`);
+    else if (record.loading_state_seen_at_ms > 250) failures.push(`${shapeAction}: loading_state_late; loading_state_seen_at_ms=${record.loading_state_seen_at_ms}; ceiling=250`);
+  }
+  if (requireProductionPath && (!record.loading_state || record.loading_state === "not-run")) failures.push(`${shapeAction}: loading_state_missing`);
 }
 
 for (const record of records) {
@@ -78,3 +97,41 @@ if (failures.length) {
 }
 
 console.log(`PASS: graph trial result validation (${records.length} records, ${shapes.length} shapes)`);
+
+function durationLimitMs(record) {
+  if (record.thresholds && typeof record.thresholds.duration_ms_ceiling === "number") {
+    return record.thresholds.duration_ms_ceiling;
+  }
+  const nodes = Number(record.nodes) || 0;
+  if (record.action === "initial_render") {
+    if (nodes >= 10000) return 2000;
+    if (nodes >= 5000) return 1200;
+    return 500;
+  }
+  if (record.action === "search_highlight") {
+    if (nodes >= 10000) return 700;
+    if (nodes >= 5000) return 400;
+    return 200;
+  }
+  if (record.action === "drawer_open") {
+    if (nodes >= 10000) return 500;
+    if (nodes >= 5000) return 400;
+    return 200;
+  }
+  if (record.action === "return_global") {
+    if (nodes >= 10000) return 800;
+    if (nodes >= 5000) return 500;
+    return 250;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function memoryGrowthLimitMb(record) {
+  if (record.thresholds && typeof record.thresholds.memory_growth_mb_ceiling === "number") {
+    return record.thresholds.memory_growth_mb_ceiling;
+  }
+  const nodes = Number(record.nodes) || 0;
+  if (nodes >= 10000) return 100;
+  if (nodes >= 5000) return 75;
+  return 50;
+}

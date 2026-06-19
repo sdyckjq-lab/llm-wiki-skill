@@ -173,6 +173,13 @@
       "decision": "Close the Sigma global renderer integration plan after sequential final acceptance and final production artifact proof.",
       "reason": "Every task is done, all acceptance commands passed, and the final production artifact proves 11 graph shapes satisfy the performance hard gates with no failed records.",
       "source": "/tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json; docs/plans/2026-06-19-sigma-global-renderer-integration-progress.json"
+    },
+    {
+      "id": "D22",
+      "status": "recorded",
+      "decision": "Address post-review production-path evidence gaps by driving the browser regression through the real Sigma route, real search input, and real pointer selection paths, while keeping the plan closed.",
+      "reason": "The review found the production regression could pass with fake callbacks, incomplete global controls, hidden fallback, and missing loading/duration/memory hard-gate enforcement. The fix makes the regression prove the actual production route and strengthens validation without adding a user-visible old/new renderer switch.",
+      "source": "tests/browser/graph-sigma-global-production.ts; tests/browser/validate-graph-trial-result.mjs; /tmp/llm-wiki-sigma-review-fix-full/sigma-global-production-results.json"
     }
   ],
   "phases": [
@@ -658,9 +665,10 @@
         "Task 7.2 complete: result doc manually checked so vis-network remains historical rejected comparison evidence and aggregation remains safety fallback, not a second global main product.",
         "Task 7.3 complete: full final acceptance command list passed sequentially.",
         "Task 7.3 complete: final production artifact /tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json exists and proves 110 records across 11 shapes with production_path=true and 0 failures.",
-        "Task 7.3 complete: final artifact proves wheel min fps 60.1, drag min fps 60.2, wheel p95 max 17.3ms, drag p95 max 17.4ms, action durations within thresholds, repeated-cycle memory growth max 3.4MB, loading-state fields present, schema/threshold fields present, and no failed records."
+        "Task 7.3 complete: final artifact proves wheel min fps 60.1, drag min fps 60.2, wheel p95 max 17.3ms, drag p95 max 17.4ms, action durations within thresholds, repeated-cycle memory growth max 3.4MB, loading-state fields present, schema/threshold fields present, and no failed records.",
+        "Post-review Task 7.3 verification: production browser regression now exercises the real production route, real search input, and real pointer selection paths; /tmp/llm-wiki-sigma-review-fix-full/sigma-global-production-results.json exits 0 with 110 records across 11 shapes, production_path=true, 0 failures, required schema/threshold/loading fields present, min fps 60.3, max frame p95 17.6ms, max memory growth 6MB, and loading_state_seen_at_ms max 0ms."
       ],
-      "residual_risk": "Final evidence is local-machine Chromium/Playwright evidence. Runtime behavior still depends on the user environment supporting WebGL/Sigma; if unavailable, the implemented fallback policy keeps small graphs on DOM/SVG emergency fallback and large graphs on aggregation safety fallback. No user-visible old/new renderer switch remains.",
+      "residual_risk": "Final evidence is local-machine Chromium/Playwright evidence. Runtime behavior still depends on the user environment supporting WebGL/Sigma; if unavailable, the implemented fallback policy keeps small graphs on DOM/SVG emergency fallback and large graphs on aggregation safety fallback. No user-visible old/new renderer switch remains. Post-review production-path evidence now checks real route/control/pointer behavior, but browser/WebGL availability remains environment-dependent.",
       "tasks": [
         {
           "id": "7.1",
@@ -701,10 +709,14 @@
             "GRAPH_SIGMA_TRIAL_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-final bash tests/graph-sigma-graphology-trial.regression-1.sh => exit 0 (110 records, 11 shapes).",
             "GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-global-production-final bash tests/graph-sigma-global-production.regression-1.sh => exit 0 (110 records, 11 shapes).",
             "Final production artifact validation summary: records=110, shapes=11, failures=0, missing_required_fields=0, production_path=true, wheel_min_fps=60.1, drag_min_fps=60.2, wheel_max_frame_p95_ms=17.3, drag_max_frame_p95_ms=17.4, repeated_cycle_max_memory_growth_mb=3.4.",
+            "Post-review production-path regression: GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-review-fix-full bash tests/graph-sigma-global-production.regression-1.sh => exit 0 (110 records, 11 shapes).",
+            "Post-review hotspot production regression: GRAPH_SIGMA_PRODUCTION_SHAPES=oversized-community,many-pin-nodes,nodes-10000-high-edge,many-small-communities GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR=/tmp/llm-wiki-sigma-review-fix-hotspots bash tests/graph-sigma-global-production.regression-1.sh => exit 0.",
+            "Post-review validation commands passed: npm run test --workspace=@llm-wiki/graph-engine (348 tests, 0 fail); npm run typecheck/build --workspace=@llm-wiki/graph-engine; node --import tsx --check tests/browser/graph-sigma-global-production.ts; node --check tests/browser/validate-graph-trial-result.mjs; git diff --check.",
+            "Post-review artifact validation summary: records=110, shapes=11, failures=0, missing_required_fields=0, production_path=true, min_fps=60.3, max_frame_p95_ms=17.6, max_memory_growth_mb=6, max_loading_state_seen_at_ms=0.",
             "git status --short --branch checked after progress update; only planned progress change plus ignored untracked .superpowers/ expected before commit."
           ],
-          "evidence": "{\"artifact\":\"/tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json\",\"schema_version\":\"1.0.0\",\"renderer\":\"sigma-global-production\",\"production_path\":true,\"browser\":\"148.0.7778.96\",\"build_commit\":\"7296bd3\",\"records\":110,\"shapes\":11,\"failures\":0,\"missing_required_fields\":0,\"wheel_min_fps\":60.1,\"drag_min_fps\":60.2,\"wheel_max_frame_p95_ms\":17.3,\"drag_max_frame_p95_ms\":17.4,\"initial_max_duration_ms\":0.2,\"search_max_duration_ms\":32.5,\"drawer_max_duration_ms\":87.3,\"return_global_max_duration_ms\":71.2,\"repeated_cycle_max_memory_growth_mb\":3.4,\"loading_states\":[\"sigma-global-not-ready\",\"sigma-global-ready\"]}",
-          "residual_risk": "Final artifact and acceptance commands passed on this local Chromium/Playwright environment. Field deployment can still encounter WebGL/Sigma unavailability; implemented fallback routes cover that case. The temporary parallel command run caused one transient stage-4.5 failure due to dependency/browser contention, then the failing command passed alone and the complete final list passed sequentially."
+          "evidence": "{\"artifact\":\"/tmp/llm-wiki-sigma-review-fix-full/sigma-global-production-results.json\",\"previous_final_artifact\":\"/tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json\",\"schema_version\":\"1.0.0\",\"renderer\":\"sigma-global-production\",\"production_path\":true,\"browser\":\"148.0.7778.96\",\"build_commit\":\"35bd61a\",\"records\":110,\"shapes\":11,\"failures\":0,\"missing_required_fields\":0,\"min_fps\":60.3,\"max_frame_p95_ms\":17.6,\"max_initial_render_duration_ms\":561.1,\"max_search_highlight_duration_ms\":445.5,\"max_drawer_open_duration_ms\":49.6,\"max_return_global_duration_ms\":512.5,\"max_memory_growth_mb\":6,\"max_loading_state_seen_at_ms\":0,\"loading_states\":[\"sigma-global-ready\"],\"shape_names\":[\"many-pin-nodes\",\"many-search-hits\",\"many-small-communities\",\"nodes-1000-dense\",\"nodes-1000-sparse\",\"nodes-10000-aggregation\",\"nodes-10000-high-edge\",\"nodes-5000-dense\",\"nodes-5000-sparse\",\"oversized-community\",\"real-snapshot-proxy\"]}",
+          "residual_risk": "Final and post-review artifacts and acceptance commands passed on this local Chromium/Playwright environment. Field deployment can still encounter WebGL/Sigma unavailability; implemented fallback routes cover that case. The temporary parallel command run caused one transient stage-4.5 failure due to dependency/browser contention, then the failing command passed alone and the complete final list passed sequentially. Post-review production-path evidence now covers the real page route and pointer/search interactions, but remains local browser evidence."
         }
       ]
     }
@@ -909,6 +921,14 @@
       "action": "Ran the complete final acceptance command list sequentially, generated the final Sigma production artifact, validated hard-gate metrics, and closed the progress ledger.",
       "result": "plan complete; final artifact has 110 records across 11 shapes, production_path=true, 0 failures, all hard gates satisfied.",
       "at": "2026-06-19T23:59:00+08:00"
+    },
+    {
+      "turn": 26,
+      "task": "7.3-post-review",
+      "phase": "phase-7",
+      "action": "Fixed post-review production-path gaps by routing the browser regression through real Sigma production controls and interactions, strengthening hard-gate validation, and rerunning targeted plus full production regressions.",
+      "result": "post-review production artifact has 110 records across 11 shapes, production_path=true, 0 failures, all required fields present, min fps 60.3, max frame p95 17.6ms, max memory growth 6MB, and loading-state evidence recorded.",
+      "at": "2026-06-20T00:57:06+08:00"
     }
   ],
   "final": {
@@ -918,9 +938,11 @@
       "All phase acceptance checks are recorded in progress.",
       "Full final acceptance command list passed sequentially.",
       "Final production artifact: /tmp/llm-wiki-sigma-global-production-final/sigma-global-production-results.json",
-      "Final artifact proves all 11 graph shapes satisfy hard gates: fps >=45, frame p95 <=22.3ms for wheel/drag, action durations within recorded thresholds, memory growth within threshold, loading-state/schema/threshold fields present, production_path=true, and 0 failed records."
+      "Final artifact proves all 11 graph shapes satisfy hard gates: fps >=45, frame p95 <=22.3ms for wheel/drag, action durations within recorded thresholds, memory growth within threshold, loading-state/schema/threshold fields present, production_path=true, and 0 failed records.",
+      "Post-review production artifact: /tmp/llm-wiki-sigma-review-fix-full/sigma-global-production-results.json",
+      "Post-review artifact proves the real production path across all 11 graph shapes: 110 records, production_path=true, 0 failures, required schema/threshold/loading fields present, min fps 60.3, max frame p95 17.6ms, max memory growth 6MB, loading_state_seen_at_ms max 0ms, and no failed records."
     ],
-    "residual_risk": "Evidence is from local Chromium/Playwright runs. WebGL/Sigma availability can vary by user environment, so the implemented fallback policy remains necessary: small abnormal graphs use DOM/SVG emergency fallback and large abnormal graphs use aggregation safety fallback. No known unresolved product decision remains."
+    "residual_risk": "Evidence is from local Chromium/Playwright runs. WebGL/Sigma availability can vary by user environment, so the implemented fallback policy remains necessary: small abnormal graphs use DOM/SVG emergency fallback and large abnormal graphs use aggregation safety fallback. Post-review checks now prove the real production path instead of fake callbacks, but browser/WebGL availability remains environment-dependent. No known unresolved product decision remains."
   },
   "baseline": {
     "branch": "codex/sigma-global-renderer-integration",

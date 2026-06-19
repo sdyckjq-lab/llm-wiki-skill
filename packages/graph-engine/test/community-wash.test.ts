@@ -79,4 +79,19 @@ describe("community wash geometry", () => {
     assert.ok(extremeOutlier.cx < 440, `wash should stay visually anchored, got cx ${extremeOutlier.cx}`);
     assert.ok(extremeOutlier.cy < 390, `wash should stay visually anchored, got cy ${extremeOutlier.cy}`);
   });
+
+  it("keeps oversized community wash calculation bounded", () => {
+    const nodes = Array.from({ length: 1800 }, (_, index) => node(
+      120 + (index % 60) * 9,
+      90 + Math.floor(index / 60) * 11
+    ));
+    const started = performance.now();
+    const wash = computeCommunityWash(nodes);
+    const duration = performance.now() - started;
+
+    assert.ok(wash);
+    assert.ok(wash.rx <= DEFAULT_COMMUNITY_WASH_MAX_RADIUS_X, `rx should stay capped, got ${wash.rx}`);
+    assert.ok(wash.ry <= DEFAULT_COMMUNITY_WASH_MAX_RADIUS_Y, `ry should stay capped, got ${wash.ry}`);
+    assert.ok(duration < 80, `oversized wash should be bounded, took ${duration}ms`);
+  });
 });

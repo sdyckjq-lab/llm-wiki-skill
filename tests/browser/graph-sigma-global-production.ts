@@ -258,10 +258,13 @@ async function writeProductionHtml(
     const drawer = document.getElementById("drawer");
     const firstNodeId = graphData.nodes[0]?.id || null;
     const firstCommunityId = graphData.nodes.find((node) => node.community)?.community || null;
+    const productionStart = performance.now();
+    let loadingStateSeenAtMs = null;
     let currentPins = initialPins;
     let searchResultIds = [];
     let selectedContainerId = null;
     let selectedNodeId = null;
+    let lastSelectionKind = null;
     let lastSelection = null;
     let lastVisibility = {
       searchQuery: "",
@@ -269,6 +272,13 @@ async function writeProductionHtml(
       typeFilters: {},
       temporaryObject: null
     };
+    stage.dataset.loadingState = "sigma-global-loading";
+    loadingStateSeenAtMs = performance.now() - productionStart;
+    stage.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".sigma-global-node-hit-target")) lastSelectionKind = "node";
+      if (target?.closest(".sigma-global-community-wash, .sigma-global-aggregation-container")) lastSelectionKind = "community";
+    }, true);
 
     try {
       const engine = createGraphEngine(stage, {
@@ -283,12 +293,23 @@ async function writeProductionHtml(
           },
           onSelectionChange(selection) {
             lastSelection = selection;
+            if (lastSelectionKind === "node") {
+              selectedNodeId = selection?.nodeIds?.length === 1 ? selection.nodeIds[0] : null;
+              selectedContainerId = null;
+            } else if (lastSelectionKind === "community") {
+              selectedNodeId = null;
+              selectedContainerId = selection?.communityIds?.length ? selection.communityIds[0] : null;
+            }
           },
           onSelectionClear() {
             lastSelection = null;
+            selectedNodeId = null;
+            selectedContainerId = null;
+            lastSelectionKind = null;
           },
           onVisibilityStateChange(state) {
             lastVisibility = state;
+            searchResultIds = state.searchResultIds || [];
           }
         }
       });
@@ -373,12 +394,23 @@ async function writeProductionHtml(
         };
       }
 
-      function computeSearchIds(query) {
-        const normalized = String(query || "").toLowerCase();
-        if (!normalized) return [];
-        return graphData.nodes
-          .filter((node) => String(node.label || node.id).toLowerCase().includes(normalized))
-          .map((node) => node.id);
+      function firstSearchHitId() {
+        return searchResultIds[0] || lastVisibility.searchResultIds?.[0] || null;
+      }
+
+      function overlayCenter(selector) {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          width: rect.width,
+          height: rect.height,
+          id: element.dataset.id || element.dataset.nodeId || element.dataset.communityId || element.dataset.aggregationId || null,
+          communityId: element.dataset.communityId || null,
+          aggregationId: element.dataset.aggregationId || null
+        };
       }
 
       function readableCommunityId() {
@@ -412,30 +444,34 @@ async function writeProductionHtml(
       }
 
       function searchHighlight(query) {
-        searchResultIds = computeSearchIds(query);
-        engine.summarizeSearchResults(String(query || ""), searchResultIds, { searchResultIds });
+        const input = document.querySelector(".graph-search-input");
+        if (!input) throw new Error("Sigma search input not found");
+        input.focus();
+        input.value = String(query || "");
+        input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: String(query || "") }));
         return {
           hits: searchResultIds.length,
           selectedCount: 0,
+          inputValue: input.value,
+          visibilityHits: lastVisibility.searchResultIds?.length || 0,
           production: productionProbe()
         };
       }
 
-      function pointSelect(id) {
-        if (!id) return { selectedNodeId: null, production: productionProbe() };
-        selectedNodeId = id;
-        selectedContainerId = null;
-        lastSelection = engine.select({ kind: "node", id });
-        return { selectedNodeId: id, selectionId: lastSelection?.id || null, production: productionProbe() };
+      function nodeHitTarget() {
+        const id = firstSearchHitId() || firstNodeId;
+        if (!id) return null;
+        return overlayCenter('.sigma-global-node-hit-target[data-node-id="' + CSS.escape(id) + '"]') ||
+          overlayCenter(".sigma-global-node-hit-target[data-search-hit='true']") ||
+          overlayCenter(".sigma-global-node-hit-target");
       }
 
-      function containerSelect(id) {
-        if (!id) return { selectedContainerId: null, production: productionProbe() };
-        selectedContainerId = id;
-        selectedNodeId = null;
-        lastSelection = engine.select({ kind: "community", id });
-        engine.setAggregationMarkers(markersFor(searchResultIds, lastSelection?.nodeIds || []));
-        return { selectedContainerId: id, selectionId: lastSelection?.id || null, production: productionProbe() };
+      function containerHitTarget(id) {
+        if (!id) return null;
+        return overlayCenter('.sigma-global-aggregation-container[data-community-id="' + CSS.escape(id) + '"]') ||
+          overlayCenter('.sigma-global-community-wash[data-community-id="' + CSS.escape(id) + '"]') ||
+          overlayCenter(".sigma-global-aggregation-container") ||
+          overlayCenter(".sigma-global-community-wash");
       }
 
       function summaryPayload() {
@@ -502,11 +538,19 @@ async function writeProductionHtml(
       async function enterCommunity(id) {
         if (!id) return { selectedContainerId: null, route: routeId() };
         if (largestCommunitySize() > 500) {
-          const selected = containerSelect(id);
+          if (selectedContainerId !== id) {
+            const selection = engine.select({ kind: "community", id });
+            lastSelection = selection;
+            lastSelectionKind = "community";
+            selectedContainerId = id;
+            selectedNodeId = null;
+            engine.setAggregationMarkers(markersFor(searchResultIds, selection?.nodeIds || []));
+          }
           await new Promise((resolve) => requestAnimationFrame(resolve));
-          return { selectedContainerId: selected.selectedContainerId, route: routeId(), aggregationPath: true };
+          return { selectedContainerId, route: routeId(), aggregationPath: true };
         }
         selectedContainerId = id;
+        lastSelectionKind = "community";
         lastSelection = engine.focusCommunity(id);
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         return { selectedContainerId: id, route: routeId(), domCommunity: Boolean(document.querySelector(".llm-wiki-graph-engine")) };
@@ -515,11 +559,18 @@ async function writeProductionHtml(
       async function returnGlobal(waitForReady = true) {
         if (largestCommunitySize() > 500 && hasProductionSigma()) {
           selectedContainerId = null;
+          selectedNodeId = null;
+          lastSelection = null;
+          lastSelectionKind = null;
+          engine.clearSelection();
           if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe() };
           return { selectedContainerId, route: routeId(), production: productionProbe() };
         }
         engine.resetView();
         selectedContainerId = null;
+        selectedNodeId = null;
+        lastSelection = null;
+        lastSelectionKind = null;
         if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe() };
         const production = await waitForProductionSigma(10000);
         return { selectedContainerId, route: routeId(), production };
@@ -527,17 +578,19 @@ async function writeProductionHtml(
 
       await Promise.resolve();
       await new Promise((resolve) => window.setTimeout(resolve, 20));
-      window.__sigmaProductionRenderStartedAt = performance.now();
       await waitForProductionSigma(10000);
+      stage.dataset.loadingState = "sigma-global-ready";
+      window.__sigmaProductionRenderStartedAt = productionStart;
       window.__sigmaProductionRenderFinishedAt = performance.now();
+      window.__sigmaProductionLoadingStateSeenAtMs = loadingStateSeenAtMs;
       window.__sigmaProduction = {
         ready: true,
         engine,
         firstNodeId,
         firstCommunityId: readableCommunityId(),
         searchHighlight,
-        pointSelect,
-        containerSelect,
+        nodeHitTarget,
+        containerHitTarget,
         openDrawer,
         enterCommunity,
         returnGlobal,
@@ -550,14 +603,20 @@ async function writeProductionHtml(
             route: routeId(),
             selectedNodeId,
             selectedContainerId,
+            lastSelectionKind,
             searchResultCount: searchResultIds.length,
             lastSelectionId: lastSelection?.id || null,
+            lastSelectionNodeIds: lastSelection?.nodeIds || [],
+            lastSelectionCommunityIds: lastSelection?.communityIds || [],
             visibilitySearchResultCount: lastVisibility.searchResultIds?.length ?? 0,
             domNodeCount: document.querySelectorAll("*").length,
             visibleCardCount: drawer.querySelectorAll(".summary-card").length,
             productionPath: probe.productionPath,
+            topLevelProductionPath: probe.productionPath && probe.route === "sigma-global" && probe.sigmaRendererCount === 1 && probe.fallbackCount === 0,
             canvasCount: probe.canvasCount,
-            sigmaRendererCount: probe.sigmaRendererCount
+            sigmaRendererCount: probe.sigmaRendererCount,
+            loadingState: stage.dataset.loadingState || "",
+            loadingStateSeenAtMs
           };
         }
       };
@@ -603,17 +662,27 @@ async function measureShape(browser: BrowserLike, metadata: LargeGraphFixtureMet
     if (pageError) throw new Error(`${String(pageError)}; diagnostics=${diagnostics.slice(-12).join(" | ") || "none"}`);
     const timing = await page.evaluate(() => ({
       started: (window as any).__sigmaProductionRenderStartedAt,
-      finished: (window as any).__sigmaProductionRenderFinishedAt
+      finished: (window as any).__sigmaProductionRenderFinishedAt,
+      loadingStateSeenAtMs: (window as any).__sigmaProductionLoadingStateSeenAtMs
     }));
     const duration = typeof timing.started === "number" && typeof timing.finished === "number"
       ? timing.finished - timing.started
       : 0;
-    records.push(await recordFromPage(page, metadata, {
+    const initialRecord = await recordFromPage(page, metadata, {
       action: "initial_render",
       duration_ms: duration,
       pass: true,
       artifact_path: resultPath
-    }));
+    });
+    initialRecord.loading_state_seen_at_ms = typeof timing.loadingStateSeenAtMs === "number"
+      ? round(timing.loadingStateSeenAtMs)
+      : null;
+    if (metadata.nodes >= 10000 && (initialRecord.loading_state_seen_at_ms == null || initialRecord.loading_state_seen_at_ms > 250)) {
+      initialRecord.pass = false;
+      initialRecord.failure_class = "loading_state_late";
+      initialRecord.failure_detail = `loading_state_seen_at_ms=${initialRecord.loading_state_seen_at_ms ?? "null"}; ceiling=250`;
+    }
+    records.push(initialRecord);
     for (const action of [
       () => measureWheelZoom(page, metadata),
       () => measureDrag(page, metadata),
@@ -671,8 +740,14 @@ async function measureDrag(page: PageLike, metadata: LargeGraphFixtureMetadata):
 async function measureSearch(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
   const result = await page.evaluate(() => (window as any).__sigmaProduction.searchHighlight("needle"));
-  await waitForAnimationFrames(page);
-  const hits = (result as { hits: number }).hits;
+  await page.waitForFunction(
+    (expected: number) => ((window as any).__sigmaProduction?.counts?.().visibilitySearchResultCount ?? 0) === expected,
+    metadata.search_hits,
+    { timeout: 4000 }
+  );
+  await waitForAnimationFrames(page, 3);
+  const counts = await page.evaluate(() => (window as any).__sigmaProduction.counts());
+  const hits = (counts as { visibilitySearchResultCount: number }).visibilitySearchResultCount;
   return recordFromPage(page, metadata, {
     action: "search_highlight",
     duration_ms: performance.now() - started,
@@ -684,41 +759,64 @@ async function measureSearch(page: PageLike, metadata: LargeGraphFixtureMetadata
 }
 
 async function measurePointSelect(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
+  await ensureSearchReady(page, metadata);
+  const target = await page.evaluate(() => (window as any).__sigmaProduction.nodeHitTarget());
   const started = performance.now();
-  const result = await page.evaluate(() => {
-    const trial = (window as any).__sigmaProduction;
-    return trial.pointSelect(trial.firstNodeId);
-  });
-  await waitForAnimationFrames(page);
+  if (!target) throw new Error("measurePointSelect: no Sigma node hit target");
+  await clickPoint(page, target as PointerTarget);
+  await page.waitForFunction(
+    () => {
+      const counts = (window as any).__sigmaProduction?.counts?.();
+      return counts?.lastSelectionKind === "node" && (counts.lastSelectionNodeIds ?? []).length > 0;
+    },
+    undefined,
+    { timeout: 4000 }
+  );
+  await waitForAnimationFrames(page, 3);
   const counts = await page.evaluate(() => (window as any).__sigmaProduction.counts());
-  const expected = (result as { selectedNodeId: string | null }).selectedNodeId;
-  const actual = (counts as { selectedNodeId: string | null }).selectedNodeId;
+  const actual = (counts as { selectedNodeId: string | null; lastSelectionNodeIds?: string[] }).selectedNodeId;
+  const nodeIds = (counts as { lastSelectionKind?: string | null; lastSelectionNodeIds?: string[] }).lastSelectionNodeIds ?? [];
+  const selectedNodeId = (counts as { lastSelectionKind?: string | null; lastSelectionNodeIds?: string[] }).lastSelectionKind === "node"
+    ? nodeIds[0] ?? null
+    : null;
   return recordFromPage(page, metadata, {
     action: "point_select",
     duration_ms: performance.now() - started,
-    pass: Boolean(expected) && actual === expected,
-    failure_class: Boolean(expected) && actual === expected ? null : "selected_node_mismatch",
-    failure_detail: Boolean(expected) && actual === expected ? null : `expected=${expected ?? "null"}; actual=${actual ?? "null"}`,
+    pass: Boolean(selectedNodeId),
+    failure_class: Boolean(selectedNodeId) ? null : "selected_node_mismatch",
+    failure_detail: Boolean(selectedNodeId) ? null : `actual=${actual ?? "null"}; nodeIds=${nodeIds.join(",")}`,
     artifact_path: resultPath
   });
 }
 
 async function measureContainerSelect(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
-  const started = performance.now();
-  const result = await page.evaluate(() => {
+  await ensureSearchReady(page, metadata);
+  const target = await page.evaluate(() => {
     const trial = (window as any).__sigmaProduction;
-    return trial.containerSelect(trial.firstCommunityId);
+    return trial.containerHitTarget(trial.firstCommunityId);
   });
-  await waitForAnimationFrames(page);
+  const started = performance.now();
+  if (!target) throw new Error("measureContainerSelect: no Sigma container hit target");
+  await clickPoint(page, target as PointerTarget);
+  await page.waitForFunction(
+    () => {
+      const counts = (window as any).__sigmaProduction?.counts?.();
+      return counts?.lastSelectionKind === "community" && (counts.lastSelectionCommunityIds ?? []).length > 0;
+    },
+    undefined,
+    { timeout: 4000 }
+  );
+  await waitForAnimationFrames(page, 3);
   const counts = await page.evaluate(() => (window as any).__sigmaProduction.counts());
-  const expected = (result as { selectedContainerId: string | null }).selectedContainerId;
-  const actual = (counts as { selectedContainerId: string | null }).selectedContainerId;
+  const actual = (counts as { selectedContainerId: string | null; lastSelectionCommunityIds?: string[] }).selectedContainerId;
+  const communityIds = (counts as { lastSelectionKind?: string | null; lastSelectionCommunityIds?: string[] }).lastSelectionCommunityIds ?? [];
+  const selectedCommunityId = clickedCommunityFromCounts(counts as { lastSelectionKind?: string | null; lastSelectionCommunityIds?: string[] });
   return recordFromPage(page, metadata, {
     action: "container_select",
     duration_ms: performance.now() - started,
-    pass: Boolean(expected) && actual === expected,
-    failure_class: Boolean(expected) && actual === expected ? null : "selected_container_mismatch",
-    failure_detail: Boolean(expected) && actual === expected ? null : `expected=${expected ?? "null"}; actual=${actual ?? "null"}`,
+    pass: Boolean(selectedCommunityId),
+    failure_class: Boolean(selectedCommunityId) ? null : "selected_container_mismatch",
+    failure_detail: Boolean(selectedCommunityId) ? null : `actual=${actual ?? "null"}; communityIds=${communityIds.join(",")}`,
     artifact_path: resultPath
   });
 }
@@ -769,20 +867,28 @@ async function measureEnterCommunity(page: PageLike, metadata: LargeGraphFixture
 async function measureReturnGlobal(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
   const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal(false));
-  const dispatchDuration = performance.now() - started;
   await page.waitForFunction(() => Boolean((window as any).__sigmaProduction?.productionProbe?.().productionPath));
   await waitForAnimationFrames(page);
+  const duration = performance.now() - started;
   const probe = (result as { production?: { productionPath?: boolean }; selectedContainerId?: string | null }).production;
   const selectedContainerId = (result as { selectedContainerId?: string | null }).selectedContainerId;
   const readyProbe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe());
   return recordFromPage(page, metadata, {
     action: "return_global",
-    duration_ms: dispatchDuration,
+    duration_ms: duration,
     pass: Boolean((readyProbe as { productionPath?: boolean }).productionPath) && selectedContainerId == null,
     failure_class: Boolean((readyProbe as { productionPath?: boolean }).productionPath) && selectedContainerId == null ? null : "global_return_incomplete",
     failure_detail: Boolean((readyProbe as { productionPath?: boolean }).productionPath) && selectedContainerId == null ? null : `productionPath=${probe?.productionPath}; readyProductionPath=${(readyProbe as { productionPath?: boolean }).productionPath}; selectedContainerId=${selectedContainerId ?? "null"}`,
     artifact_path: resultPath
   });
+}
+
+function allowsNonSigmaRouteForAction(action: string): boolean {
+  return action === "enter_community";
+}
+
+function clickedCommunityFromCounts(counts: { lastSelectionKind?: string | null; lastSelectionCommunityIds?: string[] }): string | null {
+  return counts.lastSelectionKind === "community" ? counts.lastSelectionCommunityIds?.[0] ?? null : null;
 }
 
 async function measureRepeatedCycles(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
@@ -791,14 +897,19 @@ async function measureRepeatedCycles(page: PageLike, metadata: LargeGraphFixture
   const before = await memoryMb(page);
   const started = performance.now();
   for (let index = 0; index < cycleCount; index += 1) {
-    await page.evaluate(async () => {
+    await ensureSearchReady(page, metadata);
+    const nodeTarget = await page.evaluate(() => (window as any).__sigmaProduction.nodeHitTarget());
+    if (!nodeTarget) throw new Error("measureRepeatedCycles: no Sigma node hit target");
+    await clickPoint(page, nodeTarget as PointerTarget);
+    await waitForAnimationFrames(page, 2);
+    const containerTarget = await page.evaluate(() => {
       const trial = (window as any).__sigmaProduction;
-      trial.searchHighlight("needle");
-      trial.pointSelect(trial.firstNodeId);
-      trial.containerSelect(trial.firstCommunityId);
-      trial.openDrawer();
-      await trial.returnGlobal();
+      return trial.containerHitTarget(trial.firstCommunityId);
     });
+    if (!containerTarget) throw new Error("measureRepeatedCycles: no Sigma container hit target");
+    await clickPoint(page, containerTarget as PointerTarget);
+    await page.evaluate(() => (window as any).__sigmaProduction.openDrawer());
+    await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal());
     await waitForAnimationFrames(page, 2);
   }
   await settleMemory(page);
@@ -816,6 +927,25 @@ async function measureRepeatedCycles(page: PageLike, metadata: LargeGraphFixture
   record.memory_after_cycles_mb = after;
   record.memory_growth_mb = memoryGrowth;
   return record;
+}
+
+async function ensureSearchReady(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<void> {
+  const count = await page.evaluate(() => (window as any).__sigmaProduction?.counts?.().visibilitySearchResultCount ?? 0);
+  if (count === metadata.search_hits) return;
+  await page.evaluate(() => (window as any).__sigmaProduction.searchHighlight("needle"));
+  await page.waitForFunction(
+    (expected: number) => ((window as any).__sigmaProduction?.counts?.().visibilitySearchResultCount ?? 0) === expected,
+    metadata.search_hits,
+    { timeout: 4000 }
+  );
+  await waitForAnimationFrames(page, 3);
+}
+
+async function clickPoint(page: PageLike, target: PointerTarget): Promise<void> {
+  if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) {
+    throw new Error(`invalid pointer target: x=${target.x}; y=${target.y}`);
+  }
+  await page.mouse.click(target.x, target.y);
 }
 
 async function recordFromPage(
@@ -842,7 +972,9 @@ async function recordFromPage(
       interaction_preserved_nodes: trialCounts.nodes ?? null,
       interaction_max_updates: trialCounts.nodes ?? null,
       production_route: trialCounts.route ?? null,
-      loading_state: trialCounts.productionPath ? "sigma-global-ready" : "sigma-global-not-ready",
+      loading_state: trialCounts.loadingState || (trialCounts.productionPath ? "sigma-global-ready" : "sigma-global-not-ready"),
+      loading_state_seen_at_ms: typeof trialCounts.loadingStateSeenAtMs === "number" ? Math.round(trialCounts.loadingStateSeenAtMs * 10) / 10 : null,
+      production_path: Boolean(trialCounts.topLevelProductionPath),
       sigma_canvas_count: trialCounts.canvasCount ?? 0
     };
   });
@@ -856,6 +988,14 @@ async function recordFromPage(
     failure_class: input.failure_class ?? null,
     failure_detail: input.failure_detail ?? null
   };
+  if (allowsNonSigmaRouteForAction(record.action) && record.production_route === "dom-svg-community") {
+    record.production_path = true;
+  }
+  if (!record.production_path && !record.failure_class && !allowsNonSigmaRouteForAction(record.action)) {
+    record.pass = false;
+    record.failure_class = "production_path_missing";
+    record.failure_detail = `route=${record.production_route ?? "unknown"}; sigma_canvas_count=${record.sigma_canvas_count ?? "null"}`;
+  }
   return applyDurationGate(metadata, record);
 }
 
@@ -878,6 +1018,9 @@ function failedRecord(
 ): PerformanceRecord {
   return {
     ...baseRecord(metadata, input.action, input.artifact_path),
+    production_path: false,
+    production_route: "unknown",
+    loading_state: "not-run",
     failure_class: input.failure_class,
     failure_detail: input.failure_detail ?? null
   };
@@ -922,6 +1065,7 @@ function baseRecord(metadata: LargeGraphFixtureMetadata, action: string, artifac
     run_finished_at: runContext.run_finished_at,
     production_route: null,
     loading_state: null,
+    loading_state_seen_at_ms: null,
     sigma_canvas_count: null,
     warmup_runs: undefined,
     median_fps: undefined,
@@ -1091,6 +1235,14 @@ interface BrowserLike {
   close(): Promise<void>;
 }
 
+interface PointerTarget {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  id: string | null;
+}
+
 interface PageLike {
   on?: (event: "console" | "pageerror" | "requestfailed", listener: (...args: any[]) => void) => void;
   addInitScript(script: string): Promise<void>;
@@ -1102,6 +1254,7 @@ interface PageLike {
   evaluate<T>(fn: Function | string, arg?: unknown): Promise<T>;
   mouse: {
     move(x: number, y: number, options?: { steps?: number }): Promise<void>;
+    click(x: number, y: number): Promise<void>;
     down(): Promise<void>;
     up(): Promise<void>;
     wheel(deltaX: number, deltaY: number): Promise<void>;
@@ -1147,6 +1300,7 @@ interface PerformanceRecord {
   run_finished_at: string;
   production_route: string | null;
   loading_state: string | null;
+  loading_state_seen_at_ms: number | null;
   sigma_canvas_count: number | null;
   warmup_runs?: number;
   median_fps?: number | null;

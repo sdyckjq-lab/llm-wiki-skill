@@ -146,13 +146,9 @@ export {
   SIGMA_GLOBAL_RENDERER_ID,
   SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
   buildSigmaGlobalGraphologyGraph,
-  createSigmaGlobalHitProjector,
-  createSigmaGlobalRenderer,
-  sigmaGlobalRendererRuntimeBoundary
+  createSigmaGlobalHitProjector
 } from "./sigma-global-renderer";
 export type {
-  SigmaGlobalRenderer,
-  SigmaGlobalRendererCreateOptions,
   SigmaGlobalGraphologyAggregationAttributes,
   SigmaGlobalGraphologyCommunityAttributes,
   SigmaGlobalGraphologyEdgeAttributes,
@@ -167,8 +163,7 @@ export type {
   SigmaGlobalRenderedObject,
   SigmaGlobalRendererRuntime,
   SigmaGlobalRendererRuntimeBoundary,
-  SigmaGlobalSigmaLike,
-  SigmaGlobalRendererUpdateOptions
+  SigmaGlobalSigmaLike
 } from "./sigma-global-renderer";
 export { classifyGraphKeyboardIntent, isTextEditingElement } from "./keyboard";
 export type { GraphKeyboardIntent, GraphKeyboardIntentInput } from "./keyboard";
