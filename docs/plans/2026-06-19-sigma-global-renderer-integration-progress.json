@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-3",
-    "task": "3.1",
+    "task": "3.2",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 3, Task 3.2: build the Graphology graph from GraphRendererAdapterData without using raw GraphData for budget decisions."
+    "next_allowed_action": "Advance to Phase 3, Task 3.3: implement Sigma hit projection and community-region hit testing without moving semantic hit priority into Sigma callbacks."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -96,6 +96,13 @@
       "decision": "Keep route manager ownership in the facade and establish the Sigma runtime as an explicit graph-engine boundary: ESM workbench path loads Sigma/Graphology via lazy chunks when selected, while offline IIFE bundles the runtime in engine.iife.js.",
       "reason": "Task 3.1 requires route ownership and bundle/offline boundaries before lifecycle work. Direct static importing Sigma into normal Node tests fails because Sigma references WebGL2RenderingContext, so the production skeleton uses an async runtime boundary instead of loading WebGL code during ordinary DOM/SVG tests.",
       "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/vite.config.ts; npm run build --workspace=@llm-wiki/graph-engine"
+    },
+    {
+      "id": "D11",
+      "status": "recorded",
+      "decision": "Build the production Sigma Graphology graph only from GraphRendererAdapterData and store render-only node, edge, community, aggregation, counts, and selection attributes in Graphology.",
+      "reason": "Task 3.2 requires Sigma to consume the adapter output and not traverse raw GraphData to decide nodes, edges, labels, colors, selected/search/Pin state, or aggregation budget. Graphology is a renderer data structure, not the source of product truth.",
+      "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/test/sigma-global-renderer.test.ts"
     }
   ],
   "phases": [
@@ -289,10 +296,16 @@
         {
           "id": "3.2",
           "title": "Build Graphology graph from adapter output",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/sigma-global-renderer.test.ts => exit 0 (5 tests, 0 fail).",
+            "node --import tsx --test packages/graph-engine/test/renderer-adapter-contract.test.ts packages/graph-engine/test/sigma-trial-adapter.test.ts => exit 0 (4 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (331 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0.",
+            "Static production boundary check in sigma-global-renderer.test proves sigma-global-renderer.ts accepts GraphRendererAdapterData and does not reference GraphData, buildGraphRendererAdapterData, data.nodes, or data.edges."
+          ],
+          "evidence": "Added buildSigmaGlobalGraphologyGraph(adapterData, runtime) and exported its render-attribute types. The Graphology graph is populated from adapterData.nodes/edges/communities/aggregations plus adapterData.renderable community/container render attributes; tests use hand-authored GraphRendererAdapterData without any raw GraphData and assert labels, sizes, colors, selection, search, Pin, edge, community, aggregation, counts, and selection attributes. createSigmaGlobalRenderer remains intentionally inactive until Task 3.4.",
+          "residual_risk": "This task establishes the production data construction boundary only. Sigma event hit projection, lifecycle updates, camera/state preservation, and real WebGL renderer activation remain deferred to Tasks 3.3 and 3.4."
         },
         {
           "id": "3.3",
@@ -562,6 +575,14 @@
       "action": "Moved Sigma/Graphology into graph-engine runtime dependencies, added Sigma global renderer skeleton/runtime boundary, exported route/bundle constants, and recorded build-size/offline evidence.",
       "result": "phase-3 task 3.1 complete; typecheck/build/test and boundary tests pass; advancing to task 3.2.",
       "at": "2026-06-19T00:00:00+08:00"
+    },
+    {
+      "turn": 9,
+      "task": "3.2",
+      "phase": "phase-3",
+      "action": "Added production Graphology graph construction from GraphRendererAdapterData and tests proving the Sigma module does not use raw GraphData for render-budget decisions.",
+      "result": "phase-3 task 3.2 complete; Sigma boundary, adapter contract, full graph-engine test, and typecheck pass; advancing to task 3.3.",
+      "at": "2026-06-19T20:57:05+08:00"
     }
   ],
   "final": {

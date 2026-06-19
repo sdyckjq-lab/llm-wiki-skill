@@ -145,12 +145,19 @@ export {
   SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY,
   SIGMA_GLOBAL_RENDERER_ID,
   SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
+  buildSigmaGlobalGraphologyGraph,
   createSigmaGlobalRenderer,
   sigmaGlobalRendererRuntimeBoundary
 } from "./sigma-global-renderer";
 export type {
   SigmaGlobalRenderer,
   SigmaGlobalRendererCreateOptions,
+  SigmaGlobalGraphologyAggregationAttributes,
+  SigmaGlobalGraphologyCommunityAttributes,
+  SigmaGlobalGraphologyEdgeAttributes,
+  SigmaGlobalGraphologyGraph,
+  SigmaGlobalGraphologyNodeAttributes,
+  SigmaGlobalGraphologyRuntime,
   SigmaGlobalRendererRuntimeBoundary,
   SigmaGlobalRendererUpdateOptions
 } from "./sigma-global-renderer";
