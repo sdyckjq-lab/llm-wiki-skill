@@ -7,6 +7,7 @@ import {
   SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY,
   SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
   buildSigmaGlobalGraphologyGraph,
+  createSigmaGlobalHitProjector,
   createSigmaGlobalRenderer
 } from "../src/render";
 import type { GraphRendererAdapterData } from "../src";
@@ -161,6 +162,45 @@ describe("Sigma global renderer production boundary", () => {
     assert.doesNotMatch(source, /buildGraphRendererAdapterData/);
     assert.doesNotMatch(source, /\bdata\.nodes\b/);
     assert.doesNotMatch(source, /\bdata\.edges\b/);
+  });
+
+  it("projects Sigma node hits before overlapping community regions", () => {
+    const projector = createSigmaGlobalHitProjector({
+      adapterData: adapterDataFixture(),
+      viewport: { x: 0, y: 0, scale: 1 },
+      viewportSize: { width: 500, height: 500 }
+    });
+
+    assert.deepEqual(
+      projector.targetFromSigmaHit({ nodeId: "render-alpha", screenPoint: { x: 111, y: 222 } }),
+      { kind: "node", id: "render-alpha" }
+    );
+  });
+
+  it("uses the graph spatial path for Sigma community-region hits", () => {
+    const projector = createSigmaGlobalHitProjector({
+      adapterData: adapterDataFixture(),
+      viewport: { x: 0, y: 0, scale: 1 },
+      viewportSize: { width: 500, height: 500 }
+    });
+
+    assert.deepEqual(
+      projector.targetFromSigmaHit({ screenPoint: { x: 250, y: 250 } }),
+      { kind: "community-wash", id: "adapter-community" }
+    );
+  });
+
+  it("projects Sigma blank screen hits without inventing graph semantics in the callback", () => {
+    const projector = createSigmaGlobalHitProjector({
+      adapterData: adapterDataFixture(),
+      viewport: { x: 0, y: 0, scale: 1 },
+      viewportSize: { width: 500, height: 500 }
+    });
+
+    assert.deepEqual(
+      projector.targetFromSigmaHit({ screenPoint: { x: 490, y: 490 } }),
+      { kind: "graph-blank" }
+    );
   });
 });
 
@@ -329,7 +369,7 @@ function adapterDataFixture(): GraphRendererAdapterData {
           color: "#123456",
           nodeCount: 2,
           boundaryCertainty: "high",
-          wash: null
+          wash: { cx: 250, cy: 250, rx: 80, ry: 60, opacity: 0.2 }
         }
       ],
       aggregationContainers: [

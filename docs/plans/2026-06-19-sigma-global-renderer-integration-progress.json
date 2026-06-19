@@ -3,9 +3,9 @@
   "created_at": "2026-06-19",
   "status": {
     "phase": "phase-3",
-    "task": "3.2",
+    "task": "3.3",
     "state": "done",
-    "next_allowed_action": "Advance to Phase 3, Task 3.3: implement Sigma hit projection and community-region hit testing without moving semantic hit priority into Sigma callbacks."
+    "next_allowed_action": "Advance to Phase 3, Task 3.4: complete Sigma lifecycle and error reporting, including update strategy, stale-event suppression, and camera/state preservation tests."
   },
   "execution_rules": {
     "branch": "codex/sigma-global-renderer-integration",
@@ -102,6 +102,13 @@
       "status": "recorded",
       "decision": "Build the production Sigma Graphology graph only from GraphRendererAdapterData and store render-only node, edge, community, aggregation, counts, and selection attributes in Graphology.",
       "reason": "Task 3.2 requires Sigma to consume the adapter output and not traverse raw GraphData to decide nodes, edges, labels, colors, selected/search/Pin state, or aggregation budget. Graphology is a renderer data structure, not the source of product truth.",
+      "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/test/sigma-global-renderer.test.ts"
+    },
+    {
+      "id": "D12",
+      "status": "recorded",
+      "decision": "Resolve production Sigma hits through a graph-engine bridge: Sigma node ids win first, rendered object ids map to existing graph targets, and screen-point hits project to world coordinates before using the shared spatial index.",
+      "reason": "Task 3.3 requires hit priority and community-region semantics to remain owned by graph-engine/adapter logic, not by ad hoc Sigma callback calculations.",
       "source": "packages/graph-engine/src/render/sigma-global-renderer.ts; packages/graph-engine/test/sigma-global-renderer.test.ts"
     }
   ],
@@ -310,10 +317,15 @@
         {
           "id": "3.3",
           "title": "Implement Sigma hit projection and community-region hit testing",
-          "status": "pending",
-          "verification": [],
-          "evidence": "",
-          "residual_risk": ""
+          "status": "done",
+          "verification": [
+            "node --import tsx --test packages/graph-engine/test/sigma-global-renderer.test.ts => exit 0 (8 tests, 0 fail).",
+            "node --import tsx --test packages/graph-engine/test/spatial-index.test.ts packages/graph-engine/test/renderer-adapter-contract.test.ts packages/graph-engine/test/interaction-contract.test.ts => exit 0 (19 tests, 0 fail).",
+            "npm run test --workspace=@llm-wiki/graph-engine => exit 0 (334 tests, 0 fail).",
+            "npm run typecheck --workspace=@llm-wiki/graph-engine => exit 0."
+          ],
+          "evidence": "Added createSigmaGlobalHitProjector(adapterData, viewport, viewportSize). Sigma node id hits resolve directly to node targets, rendered object ids map only to known adapter objects, and screen-point hits are projected through screenPointToWorldPoint into createGraphSpatialIndex built from adapterData/renderable output. Tests cover node-over-community priority, community-region hit, and blank hit without loading Sigma/WebGL or moving semantic priority into callbacks.",
+          "residual_risk": "Hit projection is unit-proven but not yet wired to a live Sigma lifecycle. Event listener ownership, stale event suppression, update-after-destroy behavior, and camera/state preservation remain for Task 3.4."
         },
         {
           "id": "3.4",
@@ -583,6 +595,14 @@
       "action": "Added production Graphology graph construction from GraphRendererAdapterData and tests proving the Sigma module does not use raw GraphData for render-budget decisions.",
       "result": "phase-3 task 3.2 complete; Sigma boundary, adapter contract, full graph-engine test, and typecheck pass; advancing to task 3.3.",
       "at": "2026-06-19T20:57:05+08:00"
+    },
+    {
+      "turn": 10,
+      "task": "3.3",
+      "phase": "phase-3",
+      "action": "Added Sigma hit projection bridge from node ids, rendered object ids, and screen points into existing graph-engine gesture targets and spatial index semantics.",
+      "result": "phase-3 task 3.3 complete; Sigma hit tests, spatial/adapter/interaction tests, full graph-engine test, and typecheck pass; advancing to task 3.4.",
+      "at": "2026-06-19T21:04:23+08:00"
     }
   ],
   "final": {

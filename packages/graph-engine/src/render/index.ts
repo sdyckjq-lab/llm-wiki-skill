@@ -146,6 +146,7 @@ export {
   SIGMA_GLOBAL_RENDERER_ID,
   SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER,
   buildSigmaGlobalGraphologyGraph,
+  createSigmaGlobalHitProjector,
   createSigmaGlobalRenderer,
   sigmaGlobalRendererRuntimeBoundary
 } from "./sigma-global-renderer";
@@ -158,6 +159,10 @@ export type {
   SigmaGlobalGraphologyGraph,
   SigmaGlobalGraphologyNodeAttributes,
   SigmaGlobalGraphologyRuntime,
+  SigmaGlobalHitInput,
+  SigmaGlobalHitProjector,
+  SigmaGlobalHitProjectorInput,
+  SigmaGlobalRenderedObject,
   SigmaGlobalRendererRuntimeBoundary,
   SigmaGlobalRendererUpdateOptions
 } from "./sigma-global-renderer";

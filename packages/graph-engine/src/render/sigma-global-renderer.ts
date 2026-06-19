@@ -1,4 +1,5 @@
 import type { ThemeId } from "../types";
+import { createGraphSpatialIndex, type GraphSpatialIndex, type GraphSpatialIndexInput } from "../layout";
 import type {
   GraphRendererAdapterAggregation,
   GraphRendererAdapterCommunity,
@@ -6,6 +7,9 @@ import type {
   GraphRendererAdapterEdge,
   GraphRendererAdapterNode
 } from "./adapter";
+import { screenPointToWorldPoint, type GraphScreenPoint } from "./geometry";
+import { graphSpatialHitToGestureTarget, type GraphGestureTarget } from "./gestures";
+import type { RendererViewport, RendererViewportSize } from "./viewport";
 import type { GraphRendererSurface } from "./renderer-surface";
 
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
@@ -92,6 +96,29 @@ export interface SigmaGlobalGraphologyAggregationAttributes {
   commands: GraphRendererAdapterAggregation["commands"];
 }
 
+export type SigmaGlobalRenderedObject =
+  | { kind: "node"; id: string }
+  | { kind: "edge"; id: string }
+  | { kind: "community-wash"; id: string }
+  | { kind: "aggregation-container"; id: string; communityId?: string | null };
+
+export interface SigmaGlobalHitInput {
+  nodeId?: string | null;
+  screenPoint?: GraphScreenPoint | null;
+  renderedObject?: SigmaGlobalRenderedObject | null;
+}
+
+export interface SigmaGlobalHitProjectorInput {
+  adapterData: GraphRendererAdapterData;
+  viewport: RendererViewport;
+  viewportSize: RendererViewportSize;
+}
+
+export interface SigmaGlobalHitProjector {
+  targetFromSigmaHit(input: SigmaGlobalHitInput): GraphGestureTarget;
+  index(): GraphSpatialIndex;
+}
+
 export interface SigmaGlobalRendererCreateOptions {
   container: HTMLElement;
   surface: GraphRendererSurface;
@@ -153,8 +180,90 @@ export function buildSigmaGlobalGraphologyGraph(
   return graph;
 }
 
+export function createSigmaGlobalHitProjector(input: SigmaGlobalHitProjectorInput): SigmaGlobalHitProjector {
+  const knownNodeIds = new Set(input.adapterData.nodes.map((node) => node.id));
+  const spatialIndex = createGraphSpatialIndex(spatialInputFromAdapterData(input.adapterData));
+
+  return {
+    targetFromSigmaHit(hit) {
+      if (hit.nodeId && knownNodeIds.has(hit.nodeId)) {
+        return { kind: "node", id: hit.nodeId };
+      }
+
+      const renderedObjectTarget = hit.renderedObject ? gestureTargetFromRenderedObject(hit.renderedObject, input.adapterData) : null;
+      if (renderedObjectTarget) return renderedObjectTarget;
+
+      if (hit.screenPoint) {
+        const worldPoint = screenPointToWorldPoint(
+          hit.screenPoint,
+          input.viewport,
+          input.viewportSize,
+          input.adapterData.renderable.worldBounds
+        );
+        return graphSpatialHitToGestureTarget(spatialIndex.hitTest(worldPoint));
+      }
+
+      return { kind: "graph-blank" };
+    },
+    index() {
+      return spatialIndex;
+    }
+  };
+}
+
 export function createSigmaGlobalRenderer(_options: SigmaGlobalRendererCreateOptions): SigmaGlobalRenderer {
   throw new Error("Sigma global renderer lifecycle is established in Task 3.4 after adapter and hit projection work land.");
+}
+
+function spatialInputFromAdapterData(adapterData: GraphRendererAdapterData): GraphSpatialIndexInput {
+  const renderableEdgeById = new Map(adapterData.renderable.edges.map((edge) => [edge.id, edge]));
+  return {
+    nodes: adapterData.nodes.map((node) => ({
+      id: node.id,
+      label: node.label,
+      type: node.type,
+      point: node.point,
+      displayMode: node.render.displayMode,
+      visualRole: node.render.visualRole
+    })),
+    edges: adapterData.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.sourceNodeId,
+      target: edge.targetNodeId,
+      curveOffset: renderableEdgeById.get(edge.id)?.curveOffset ?? 0
+    })),
+    communities: adapterData.renderable.communities.map((community) => ({
+      id: community.id,
+      wash: community.wash
+    })),
+    aggregationContainers: adapterData.renderable.aggregationContainers.map((aggregation) => ({
+      id: aggregation.id,
+      communityId: aggregation.communityId,
+      point: aggregation.point,
+      radius: aggregation.radius
+    }))
+  };
+}
+
+function gestureTargetFromRenderedObject(
+  object: SigmaGlobalRenderedObject,
+  adapterData: GraphRendererAdapterData
+): GraphGestureTarget | null {
+  switch (object.kind) {
+    case "node":
+      return adapterData.nodes.some((node) => node.id === object.id) ? { kind: "node", id: object.id } : null;
+    case "edge":
+      return adapterData.edges.some((edge) => edge.id === object.id) ? { kind: "edge", id: object.id } : null;
+    case "community-wash":
+      return adapterData.communities.some((community) => community.id === object.id) ? { kind: "community-wash", id: object.id } : null;
+    case "aggregation-container": {
+      const aggregation = adapterData.aggregations.find((item) => item.id === object.id);
+      if (!aggregation) return null;
+      return { kind: "aggregation-container", id: object.id, communityId: object.communityId ?? aggregation.communityId };
+    }
+    default:
+      return null;
+  }
 }
 
 function sigmaGlobalNodeAttributes(
