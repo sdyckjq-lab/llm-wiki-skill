@@ -1428,7 +1428,129 @@
     height: 100%;
     min-width: 0;
     flex-direction: column;
-    background: transparent;
+    gap: 10px;
+    padding: 10px;
+    background: color-mix(in srgb, var(--app-bg) 78%, transparent);
+  }
+
+  .graph-toolbar {
+    display: flex;
+    min-height: 48px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 94%, transparent), color-mix(in srgb, var(--app-bg) 82%, var(--app-surface))),
+      var(--paper-grain);
+    background-size: auto, 180px 180px;
+    box-shadow: var(--shadow);
+  }
+
+  .graph-toolbar-left,
+  .graph-toolbar-actions {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .graph-toolbar-left {
+    flex: 1;
+  }
+
+  .graph-toolbar-actions {
+    flex-shrink: 0;
+    justify-content: flex-end;
+  }
+
+  .graph-toolbar-dot {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--app-success);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-success) 14%, transparent);
+  }
+
+  .graph-toolbar-dot-warn {
+    background: var(--app-warn);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-warn) 14%, transparent);
+  }
+
+  .graph-toolbar-dot-error {
+    background: var(--app-danger);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-danger) 14%, transparent);
+  }
+
+  .graph-toolbar-title {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .graph-toolbar-title span {
+    overflow: hidden;
+    color: var(--app-fg);
+    font-size: 13px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .graph-toolbar-title small {
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .graph-toolbar-chip,
+  .graph-toolbar-button {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 26%, var(--app-border));
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .graph-toolbar-chip-muted {
+    border-color: color-mix(in srgb, var(--app-border) 82%, transparent);
+    background: color-mix(in srgb, var(--app-surface) 70%, transparent);
+    color: var(--app-muted);
+    font-family: var(--font-mono);
+    font-weight: 700;
+  }
+
+  .graph-toolbar-button {
+    cursor: pointer;
+    transition: transform 0.14s, border-color 0.14s, background 0.14s, color 0.14s;
+  }
+
+  .graph-toolbar-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--app-accent) 58%, var(--app-border));
+    background: color-mix(in srgb, var(--app-accent) 18%, var(--app-surface));
+  }
+
+  .graph-toolbar-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+
+  .graph-toolbar-button svg {
+    width: 14px;
+    height: 14px;
   }
 
   .graph-stage {
@@ -1436,7 +1558,13 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
+    border-radius: 16px;
+    background:
+      radial-gradient(circle at 18px 18px, var(--dot) 1px, transparent 1.25px),
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 56%, transparent), color-mix(in srgb, var(--app-bg) 88%, transparent));
+    background-size: 26px 26px, auto;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
   }
 
   .graph-host {
@@ -1446,6 +1574,56 @@
 
   .graph-host-empty {
     opacity: 0.42;
+  }
+
+  .graph-legend {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: calc(100% - 28px);
+    padding: 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+    box-shadow: var(--shadow);
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .graph-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  .graph-legend-dot {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-radius: 999px;
+  }
+
+  .graph-legend-dot-node {
+    background: var(--app-accent);
+  }
+
+  .graph-legend-dot-community {
+    background: var(--comm-seq);
+    outline: 1px solid color-mix(in srgb, var(--app-accent) 20%, transparent);
+  }
+
+  .graph-legend-line {
+    width: 16px;
+    height: 2px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-muted) 62%, transparent);
   }
 
   .graph-state {
@@ -1484,13 +1662,13 @@
     display: inline-flex;
     gap: 6px;
     padding: 6px 9px;
-    border: 1px solid var(--app-border);
+    border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
     border-radius: 999px;
-    background: color-mix(in oklch, var(--app-raised) 78%, transparent);
+    background: color-mix(in srgb, var(--app-surface) 82%, transparent);
     color: var(--app-muted);
     font-family: var(--font-mono);
     font-size: 11px;
-    box-shadow: var(--soft-shadow);
+    box-shadow: var(--shadow);
   }
 
   .graph-growth-indicator {
@@ -1498,14 +1676,14 @@
     left: 16px;
     bottom: 52px;
     z-index: 5;
-    border: 1px solid var(--app-border);
+    border: 1px solid color-mix(in srgb, var(--app-accent) 30%, var(--app-border));
     border-radius: 999px;
-    background: color-mix(in oklch, var(--app-raised) 82%, transparent);
+    background: var(--app-accent-soft);
     padding: 6px 9px;
-    color: var(--app-accent);
+    color: var(--app-accent-deep);
     font-family: var(--font-mono);
     font-size: 11px;
-    box-shadow: var(--soft-shadow);
+    box-shadow: var(--shadow);
   }
 
   .graph-toast {
@@ -1518,12 +1696,15 @@
     gap: 10px;
     max-width: min(360px, calc(100% - 32px));
     padding: 8px 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    background: color-mix(in oklch, var(--app-raised) 94%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 94%, transparent), color-mix(in srgb, var(--app-bg) 82%, var(--app-surface))),
+      var(--paper-grain);
+    background-size: auto, 180px 180px;
     color: var(--app-fg);
     font-size: 12px;
-    box-shadow: var(--soft-shadow);
+    box-shadow: var(--shadow-lg);
   }
 
   .graph-toast span {
@@ -1535,7 +1716,7 @@
 
   .graph-toast button {
     flex-shrink: 0;
-    border-radius: 6px;
+    border-radius: 999px;
     padding: 4px 7px;
     color: var(--app-accent);
     font-weight: 650;

@@ -20,10 +20,10 @@ import {
 	getGraphLayout,
 	putGraphLayout,
 	rebuildGraph,
-} from "@/lib/api";
-import type { GraphSelectionCommand } from "@/lib/graph-summary-actions";
-import { cn } from "@/lib/utils";
-import type { GraphStatusKind, GraphStatusSnapshot } from "@/lib/view-status";
+} from "../lib/api";
+import type { GraphSelectionCommand } from "../lib/graph-summary-actions";
+import { cn } from "../lib/utils";
+import type { GraphStatusKind, GraphStatusSnapshot } from "../lib/view-status";
 
 interface Props {
 	currentKnowledgeBaseName: string | null;
@@ -483,7 +483,7 @@ export function GraphPanel({
 	}, [data, focusPath, status]);
 
 	useEffect(() => {
-		if (!import.meta.env.DEV || !data || !engineRef.current || status !== "ready") return;
+		if (!import.meta.env?.DEV || !data || !engineRef.current || status !== "ready") return;
 		const params = new URLSearchParams(window.location.search);
 		const mode = params.get("graphTest");
 		if (mode !== "reduced" && mode !== "motion") return;
@@ -497,20 +497,27 @@ export function GraphPanel({
 		});
 	}, [data, status]);
 
+	const hasReadyGraph = status === "ready" && data;
 	return (
 		<div className="graph-screen" data-graph-status={status} data-graph-theme={graphTheme} data-graph-animation={animationState}>
-			<header className="statusbar">
-				<div className="statusbar-left">
-					<span className={cn("status-dot", status === "building" && "status-dot-warn", status === "error" && "status-dot-error")} />
-					<span className="status-kb">
-						{currentKnowledgeBaseName ?? <span className="italic opacity-60">未选择</span>}
-					</span>
-					<span className="status-pill">图谱</span>
+			<header className="graph-toolbar" aria-label="图谱工具栏">
+				<div className="graph-toolbar-left">
+					<span className={cn("graph-toolbar-dot", status === "building" && "graph-toolbar-dot-warn", status === "error" && "graph-toolbar-dot-error")} />
+					<div className="graph-toolbar-title">
+						<span>{currentKnowledgeBaseName ?? "未选择知识库"}</span>
+						<small>结构地图</small>
+					</div>
+					<span className="graph-toolbar-chip">{statusLabel(status)}</span>
+					{hasReadyGraph && (
+						<span className="graph-toolbar-chip graph-toolbar-chip-muted">
+							{data.nodes.length} 节点 · {data.edges.length} 关联
+						</span>
+					)}
 				</div>
-				<div className="statusbar-right">
+				<div className="graph-toolbar-actions">
 					<button
 						type="button"
-						className="status-pill status-pill-button"
+						className="graph-toolbar-button"
 						onClick={resetLayout}
 						disabled={!currentKnowledgeBasePath || status !== "ready"}
 						title="重置布局"
@@ -520,7 +527,7 @@ export function GraphPanel({
 					</button>
 					<button
 						type="button"
-						className="status-pill status-pill-button"
+						className="graph-toolbar-button"
 							onClick={() => {
 								const kbPath = activeKbPathRef.current;
 								if (!kbPath) return;
@@ -546,6 +553,11 @@ export function GraphPanel({
 
 			<div className="graph-stage">
 				<div ref={hostRef} className={cn("graph-host", !data && "graph-host-empty")} />
+				<div className="graph-legend" aria-label="图谱图例">
+					<span><i className="graph-legend-dot graph-legend-dot-node" />节点</span>
+					<span><i className="graph-legend-line" />关系</span>
+					<span><i className="graph-legend-dot graph-legend-dot-community" />社区</span>
+				</div>
 				{status !== "ready" && (
 					<div className="graph-state" data-testid="graph-state">
 						<div className="graph-state-title">{statusTitle(status)}</div>
@@ -576,6 +588,15 @@ export function GraphPanel({
 			</div>
 		</div>
 	);
+}
+
+function statusLabel(status: GraphStatusKind): string {
+	if (status === "idle") return "空闲";
+	if (status === "loading") return "读取中";
+	if (status === "building") return "构建中";
+	if (status === "ready") return "就绪";
+	if (status === "error") return "错误";
+	return status;
 }
 
 function statusTitle(status: GraphStatusKind): string {
