@@ -989,6 +989,11 @@
     height: 100%;
     overflow: hidden;
     background: transparent;
+    transition: flex-basis 0.2s ease, width 0.2s ease;
+  }
+
+  .app-body[data-drawer-open="true"] .shell-main {
+    min-width: 0;
   }
 
   .sidebar-header {
@@ -3269,6 +3274,17 @@
     }
   }
 
+  @media (max-width: 1023px) {
+    .drawer-panel-open {
+      position: fixed;
+      inset: 60px 0 0 auto;
+      z-index: 35;
+      width: min(var(--drawer-width, 420px), 100vw);
+      min-width: min(var(--drawer-width, 420px), 100vw);
+      height: calc(100vh - 60px);
+    }
+  }
+
   @media (max-width: 1024px) {
     .topbar {
       gap: 10px;
@@ -3310,7 +3326,7 @@
       min-width: 52px;
     }
 
-    .drawer-panel-open {
+    .app-body .drawer-panel-open {
       width: var(--drawer-width, 360px);
       min-width: var(--drawer-width, 360px);
     }
@@ -3370,9 +3386,11 @@
       display: none;
     }
 
-    .drawer-panel-open {
+    .app-body .drawer-panel-open {
+      inset: 56px 0 0 auto;
       width: 100vw;
       min-width: 100vw;
+      height: calc(100vh - 56px);
     }
 
     .drawer-resize-handle {

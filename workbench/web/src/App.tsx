@@ -951,6 +951,8 @@ function App() {
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [activeKnowledgeBase?.valid]);
 
+	const drawerOpen = drawer.mode !== "closed";
+
 	return (
 		<TooltipProvider delayDuration={200}>
 			<div className="app-shell">
@@ -970,7 +972,7 @@ function App() {
 					onToggleTheme={toggleTheme}
 					onOpenAppearance={() => setAppearanceOpen((value) => !value)}
 				/>
-				<div className="app-body">
+				<div className="app-body" data-drawer-open={drawerOpen ? "true" : "false"}>
 					<Sidebar
 						knowledgeBases={kbs}
 						currentKbPath={active?.kb.path ?? null}

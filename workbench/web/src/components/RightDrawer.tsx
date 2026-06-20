@@ -97,6 +97,7 @@ export function RightDrawer({
 		<React.Fragment>
 		<aside
 			className={cn("drawer-panel drawer-panel-open", fullscreen && "drawer-panel-fullscreen")}
+			data-drawer-open="true"
 			style={{ "--drawer-width": `${width}px` } as CSSProperties}
 		>
 			{!fullscreen && (

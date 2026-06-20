@@ -9,6 +9,14 @@ import type { ArtifactManifest } from "../src/lib/api";
 import { click, pressKey, render, screen } from "./render";
 
 describe("RightDrawer interactions", () => {
+	it("marks the drawer as open for shell layout", () => {
+		renderDrawer(wikiDrawer("wiki/paper.md", { content: "Paper body" }));
+
+		const drawer = document.querySelector(".drawer-panel-open");
+		assert.ok(drawer);
+		assert.equal(drawer?.getAttribute("data-drawer-open"), "true");
+	});
+
 	it("resizes by dragging, keyboard shortcuts, and double click reset", async () => {
 		const resizeCalls: number[] = [];
 		renderDrawer(wikiDrawer("wiki/paper.md", { content: "Paper body" }), {
