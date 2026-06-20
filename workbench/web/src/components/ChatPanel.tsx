@@ -93,6 +93,11 @@ interface Props {
 		displayText: string;
 	} | null;
 	onPendingPromptConsumed?: () => void;
+	pendingInsertRef?: {
+		id: string;
+		path: string;
+	} | null;
+	onPendingInsertRefConsumed?: () => void;
 }
 
 export function ChatPanel({
@@ -109,6 +114,8 @@ export function ChatPanel({
 	onStartBatchDigest,
 	pendingPrompt,
 	onPendingPromptConsumed,
+	pendingInsertRef,
+	onPendingInsertRefConsumed,
 }: Props) {
 	const [messages, setMessages] = useState<Message[]>(() => initialMessages.map(fromUIMessage));
 	const [input, setInput] = useState("");
@@ -138,6 +145,7 @@ export function ChatPanel({
 	const toolFlushTimersRef = useRef<Record<string, number>>({});
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const consumedPendingPromptRef = useRef<string | null>(null);
+	const consumedPendingInsertRef = useRef<string | null>(null);
 
 	const detectedMaterial = (() => {
 		const text = input.trim();
@@ -441,6 +449,15 @@ export function ChatPanel({
 		onPendingPromptConsumed?.();
 		void sendPrompt(pendingPrompt.message, pendingPrompt.displayText);
 	}, [onPendingPromptConsumed, pendingPrompt]);
+
+	useEffect(() => {
+		if (!pendingInsertRef || consumedPendingInsertRef.current === pendingInsertRef.id) return;
+		consumedPendingInsertRef.current = pendingInsertRef.id;
+		const link = `[[${pendingInsertRef.path}]]`;
+		setInput((current) => `${current}${current.trim() ? " " : ""}${link} `);
+		onPendingInsertRefConsumed?.();
+		requestAnimationFrame(() => textareaRef.current?.focus());
+	}, [onPendingInsertRefConsumed, pendingInsertRef]);
 
 	useEffect(() => {
 		if (!onWikiLinkSeen) return;

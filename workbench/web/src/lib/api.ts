@@ -522,8 +522,8 @@ export async function streamBatchDigest(
 	return parseSSE(res.body);
 }
 
-export async function listRefs(kbPath: string, query: string): Promise<PageRef[]> {
-	const url = `/api/refs?kb=${encodeURIComponent(kbPath)}&q=${encodeURIComponent(query)}&limit=20`;
+export async function listRefs(kbPath: string, query: string, limit = 20): Promise<PageRef[]> {
+	const url = `/api/refs?kb=${encodeURIComponent(kbPath)}&q=${encodeURIComponent(query)}&limit=${limit}`;
 	const res = await fetch(url);
 	const json = (await res.json()) as { ok: boolean; items?: PageRef[]; error?: string };
 	if (!res.ok || !json.ok) throw new Error(json.error ?? `HTTP ${res.status}`);

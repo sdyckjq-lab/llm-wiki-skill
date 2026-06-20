@@ -16,6 +16,7 @@ import { AppearancePanel } from "@/components/AppearancePanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { GraphPanel } from "@/components/GraphPanel";
 import { RightDrawer } from "@/components/RightDrawer";
+import { SearchPanel } from "@/components/SearchPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Sidebar, type MainView } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -31,7 +32,9 @@ import {
 	listArtifacts,
 	listConversations,
 	listKnowledgeBases,
+	listRefs,
 	type ModelRef,
+	type PageRef,
 	registerExternalKnowledgeBase,
 	readPage,
 	selectConversation,
@@ -89,6 +92,7 @@ const COMPACT_SIDEBAR_WIDTH = 230;
 const COLLAPSED_SIDEBAR_WIDTH = 52;
 const MOBILE_BREAKPOINT = 768;
 const COMPACT_BREAKPOINT = 1024;
+const SEARCH_REF_LIMIT = 5000;
 
 function drawerForGraphNodeVisibility(
 	data: GraphData | null,
@@ -220,6 +224,10 @@ function App() {
 	const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [appearanceOpen, setAppearanceOpen] = useState(false);
+	const [searchOpen, setSearchOpen] = useState(false);
+	const [searchRefs, setSearchRefs] = useState<PageRef[]>([]);
+	const [searchRefsLoading, setSearchRefsLoading] = useState(false);
+	const [searchRefsError, setSearchRefsError] = useState<string | null>(null);
 	const [chatStatus, setChatStatus] = useState<ChatStatusSnapshot>(DEFAULT_CHAT_STATUS);
 	const [graphStatus, setGraphStatus] = useState<GraphStatusSnapshot>(DEFAULT_GRAPH_STATUS);
 	const [drawer, setDrawer] = useState<DrawerState>(() => closedDrawer());
@@ -231,6 +239,7 @@ function App() {
 		message: string;
 		displayText: string;
 	} | null>(null);
+	const [pendingInsertRef, setPendingInsertRef] = useState<{ id: string; path: string } | null>(null);
 	const [graphFocusPath, setGraphFocusPath] = useState<string | null>(null);
 	const [pendingGraphDiff, setPendingGraphDiff] = useState<GraphDiff | null>(null);
 	const [graphRefreshToken, setGraphRefreshToken] = useState(0);
@@ -906,6 +915,45 @@ function App() {
 			}
 		: null;
 
+	useEffect(() => {
+		if (!active?.kb.path) {
+			setSearchRefs([]);
+			setSearchRefsError(null);
+			setSearchRefsLoading(false);
+			return;
+		}
+		let cancelled = false;
+		setSearchRefsLoading(true);
+		setSearchRefsError(null);
+		listRefs(active.kb.path, "", SEARCH_REF_LIMIT)
+			.then((items) => {
+				if (!cancelled) setSearchRefs(items);
+			})
+			.catch((err) => {
+				if (!cancelled) {
+					setSearchRefs([]);
+					setSearchRefsError(err instanceof Error ? err.message : String(err));
+				}
+			})
+			.finally(() => {
+				if (!cancelled) setSearchRefsLoading(false);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [active?.kb.path]);
+
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+			if (event.defaultPrevented) return;
+			event.preventDefault();
+			if (activeKnowledgeBase?.valid) setSearchOpen(true);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [activeKnowledgeBase?.valid]);
+
 	return (
 		<TooltipProvider delayDuration={200}>
 			<div className="app-shell">
@@ -916,10 +964,10 @@ function App() {
 					chatStatus={chatStatus}
 					graphStatus={graphStatus}
 					appearanceOpen={appearanceOpen}
-					searchDisabled
+					searchDisabled={!activeKnowledgeBase?.valid}
 					modelDisabled={loading}
 					newConversationDisabled={loading}
-					onSearch={() => {}}
+					onSearch={() => setSearchOpen(true)}
 					onConfigChanged={handleConfigChanged}
 					onNewConversation={handleNewConversation}
 					onToggleTheme={toggleTheme}
@@ -982,6 +1030,8 @@ function App() {
 								onStartBatchDigest={handleStartBatchDigest}
 								pendingPrompt={pendingGraphPrompt}
 								onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
+								pendingInsertRef={pendingInsertRef}
+								onPendingInsertRefConsumed={() => setPendingInsertRef(null)}
 							/>
 						)}
 					</main>
@@ -1020,6 +1070,19 @@ function App() {
 					value={appearance}
 					onChange={updateAppearance}
 					onClose={() => setAppearanceOpen(false)}
+				/>
+				<SearchPanel
+					open={searchOpen}
+					refs={searchRefs}
+					loading={searchRefsLoading}
+					error={searchRefsError}
+					knowledgeBaseName={active?.kb.name ?? null}
+					onClose={() => setSearchOpen(false)}
+					onOpenPage={handleOpenPage}
+					onInsertRef={(path) => {
+						setMainView("chat");
+						setPendingInsertRef({ id: Math.random().toString(36).slice(2, 10), path });
+					}}
 				/>
 			</div>
 		</TooltipProvider>

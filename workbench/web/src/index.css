@@ -560,6 +560,234 @@
     font-weight: 700;
   }
 
+  .search-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 76px 18px 18px;
+    background:
+      radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--app-accent) 12%, transparent), transparent 30%),
+      color-mix(in srgb, var(--app-bg) 36%, transparent);
+    backdrop-filter: blur(6px);
+    z-index: 90;
+  }
+
+  .search-panel {
+    width: min(680px, 100%);
+    max-height: min(680px, calc(100vh - 104px));
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 12px;
+    overflow: hidden;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 78%, transparent);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 96%, transparent), color-mix(in srgb, var(--app-bg) 86%, var(--app-surface))),
+      var(--paper-grain);
+    background-size: auto, 180px 180px;
+    box-shadow: var(--shadow-lg);
+    color: var(--app-fg);
+  }
+
+  .search-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .search-panel-title {
+    color: var(--app-fg);
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  .search-panel-subtitle {
+    margin-top: 3px;
+    color: var(--app-faint);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .search-input-wrap {
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 0 11px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+    color: var(--app-muted);
+  }
+
+  .search-input-wrap:focus-within {
+    border-color: color-mix(in srgb, var(--app-accent) 70%, var(--app-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 14%, transparent), inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+  }
+
+  .search-input-wrap input {
+    min-width: 0;
+    height: 40px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--app-fg);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .search-input-wrap input::placeholder {
+    color: var(--app-faint);
+  }
+
+  [data-hand="on"] .search-input-wrap input::placeholder {
+    font-family: var(--font-hand);
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .search-input-wrap kbd {
+    padding: 2px 7px;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-bg) 74%, var(--app-surface));
+    color: var(--app-faint);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .search-panel-body {
+    min-height: 180px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  .search-results {
+    display: grid;
+    gap: 6px;
+  }
+
+  .search-result {
+    min-height: 54px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-surface) 52%, transparent);
+    transition: background 0.14s, border-color 0.14s, box-shadow 0.14s, transform 0.14s;
+  }
+
+  .search-result:hover,
+  .search-result-selected {
+    border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+    background: var(--app-accent-soft);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--app-accent) 10%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .search-result-main {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 9px;
+    color: inherit;
+    text-align: left;
+  }
+
+  .search-result-kind {
+    min-width: 42px;
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-bg) 58%, transparent);
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  .search-result-copy {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .search-result-title,
+  .search-result-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-title {
+    color: var(--app-fg);
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .search-result-path {
+    color: var(--app-faint);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .search-result-main svg {
+    color: var(--app-faint);
+  }
+
+  .search-insert-btn {
+    min-width: 74px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--app-surface) 70%, transparent);
+    color: var(--app-accent-deep);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .search-insert-btn:hover {
+    background: color-mix(in srgb, var(--app-accent) 16%, var(--app-surface));
+  }
+
+  .search-state {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    border: 1px dashed color-mix(in srgb, var(--app-border) 82%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-bg) 46%, transparent);
+    color: var(--app-muted);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .search-state-error {
+    border-color: color-mix(in srgb, var(--app-danger) 46%, var(--app-border));
+    color: var(--app-danger);
+  }
+
   .appearance-panel {
     position: absolute;
     top: 58px;
