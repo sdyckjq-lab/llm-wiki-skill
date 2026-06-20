@@ -36,6 +36,7 @@ const v2PrototypeUrl = process.env.PAPER_V2_PROTOTYPE_URL
 const staticFallbackUrl = "http://paper-ui.local/";
 const distDir = resolve(process.cwd(), "dist");
 const visualKbPath = "/visual/ai-learning";
+const evaluateNameHelper = "globalThis.__name = (fn) => fn;";
 const defaultPrefs: PaperPrefs = {
 	theme: "light",
 	paper: "clean",
@@ -233,7 +234,12 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 		deviceScaleFactor: 1,
 		viewport,
 	});
-	if (useStaticFallback) await installStaticFallbackRoutes(context);
+	await context.addInitScript(evaluateNameHelper);
+	if (useStaticFallback) {
+		await installStaticFallbackRoutes(context);
+	} else {
+		await installVisualApiRoutes(context, new URL(url).origin);
+	}
 	if (visualCase.fonts === "blocked") {
 		await context.route(/fonts\.(googleapis|gstatic)\.com/, (route: Route) => route.abort());
 	}
@@ -418,6 +424,7 @@ async function captureReference(browser: Browser, viewport: { width: number; hei
 		deviceScaleFactor: 1,
 		viewport,
 	});
+	await context.addInitScript(evaluateNameHelper);
 	const page = await context.newPage();
 	try {
 		await page.goto(v2PrototypeUrl, { waitUntil: "domcontentloaded" });
@@ -435,6 +442,13 @@ async function captureReference(browser: Browser, viewport: { width: number; hei
 	} finally {
 		await context.close();
 	}
+}
+
+async function installVisualApiRoutes(context: BrowserContext, origin: string) {
+	await context.route(`${origin}/api/**`, async (route) => {
+		const request = route.request();
+		await fulfillMockApi(route, new URL(request.url()), request.method());
+	});
 }
 
 async function installStaticFallbackRoutes(context: BrowserContext) {
@@ -702,10 +716,10 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 		const composer = asRect(state.composerRect);
 		if (!state.drawerOpen || !drawer || !composer) throw new Error(`${visualCase.name}: expected drawer and composer geometry`);
 		const viewportWidth = Number(state.viewportWidth);
-		if (viewportWidth >= 1024 && composer.right > drawer.left - 8) {
+		if (viewportWidth > 1180 && composer.right > drawer.left - 8) {
 			throw new Error(`${visualCase.name}: drawer overlaps composer`);
 		}
-		if (viewportWidth >= 1024 && composer.width < 420) {
+		if (viewportWidth > 1180 && composer.width < 420) {
 			throw new Error(`${visualCase.name}: composer squeezed too narrow (${composer.width}px)`);
 		}
 	}

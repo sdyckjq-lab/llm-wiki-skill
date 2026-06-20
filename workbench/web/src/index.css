@@ -3323,7 +3323,7 @@
     }
   }
 
-  @media (max-width: 1023px) {
+  @media (max-width: 1180px) {
     .drawer-panel-open {
       position: fixed;
       inset: 60px 0 0 auto;
