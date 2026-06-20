@@ -19,7 +19,6 @@ import type {
 	GraphCommunitySummaryPayload,
 	GraphExcludedObjectPayload,
 	GraphNodeSummaryPayload,
-	GraphSummaryCommand,
 	GraphUnavailableObjectPayload,
 } from "@llm-wiki/graph-engine";
 
@@ -261,9 +260,9 @@ function excludedFixture(): GraphExcludedObjectPayload {
 }
 
 function noop() {}
-function noopString(_value: string) {}
-function noopNumber(_value: number) {}
-function noopCommand(_command: GraphSummaryCommand) {}
-function noopPreviewNode(_nodeId: string | null) {}
-function noopSelectionAsk(_actionId: string | null, _newConversation: boolean) {}
-function noopClose(_reason: "button" | "escape") {}
+function noopString() {}
+function noopNumber() {}
+function noopCommand() {}
+function noopPreviewNode() {}
+function noopSelectionAsk() {}
+function noopClose() {}

@@ -13,7 +13,7 @@ import {
 	reduceToolStatusEvent,
 	type ToolStatusState,
 } from "../src/lib/tool-status-model";
-import type { ToolStatusContractEvent, ToolStatusEndEvent } from "../src/lib/api";
+import type { ToolStatusContractEvent } from "../src/lib/api";
 
 describe("ToolHistorySummary", () => {
 	it("renders a compact folded summary grouped by tool kind", () => {
