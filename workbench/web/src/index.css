@@ -2307,12 +2307,16 @@
 
   .composer-card {
     position: relative;
-    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    overflow: visible;
     border: 1px solid color-mix(in srgb, var(--app-border) 90%, transparent);
-    border-radius: 16px;
+    border-radius: 14px;
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 98%, transparent), color-mix(in srgb, var(--app-bg) 68%, var(--app-surface))),
       var(--paper-grain);
+    padding: 6px 7px 6px 15px;
     box-shadow: 0 1px 2px rgba(70, 55, 40, 0.04), 0 12px 28px rgba(70, 55, 40, 0.075);
     transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
   }
@@ -2326,16 +2330,17 @@
   }
 
   .chat-textarea {
+    flex: 1;
     width: 100%;
-    min-height: 70px;
-    max-height: 180px;
+    min-height: 40px;
+    max-height: 160px;
     resize: none;
     border: 0;
     background: transparent;
-    padding: 13px 15px 9px;
+    padding: 9px 0;
     color: var(--app-fg);
-    font-size: 13px;
-    line-height: 1.5;
+    font-size: 14.5px;
+    line-height: 1.55;
     outline: none;
     box-shadow: none;
   }
@@ -2351,6 +2356,30 @@
   [data-hand="on"] .chat-textarea::placeholder {
     font-family: var(--font-hand);
     font-size: 17px;
+  }
+
+  .composer-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  .composer-status {
+    max-width: 88px;
+    overflow: hidden;
+    color: var(--app-muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .composer-tools {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
   }
 
   .export-bar {
@@ -2424,28 +2453,16 @@
     box-shadow: none;
   }
 
-  .chat-send-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 42px;
-    border-top: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
-    padding: 7px 9px 8px 13px;
-    background: color-mix(in srgb, var(--app-surface) 72%, transparent);
-  }
-
-  .chat-status-text {
-    color: var(--app-muted);
-    font-size: 11px;
-  }
-
   .send-btn {
     display: inline-flex;
+    width: 36px;
+    height: 36px;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    min-height: 34px;
-    padding: 7px 13px;
+    min-height: 36px;
+    flex: 0 0 auto;
+    padding: 0;
     border-radius: 10px;
     background: var(--app-accent);
     color: white;
@@ -2468,6 +2485,32 @@
 
   .stop-btn {
     background: var(--app-danger);
+  }
+
+  .composer-tools .export-bar {
+    margin-left: auto;
+    border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 74%, transparent);
+    padding: 5px 7px;
+  }
+
+  .composer-tools .export-bar-head {
+    min-width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .composer-tools .export-hint {
+    display: none;
+  }
+
+  .composer-tools .export-btn {
+    min-height: 28px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
   }
 
   .popup-menu {

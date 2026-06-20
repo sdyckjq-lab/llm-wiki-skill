@@ -647,7 +647,6 @@ export function ChatPanel({
 					</div>
 				)}
 				<div className="composer-card">
-					<div className="relative">
 					<CommandMenu
 						open={commandMenu.open}
 						query={commandMenu.query}
@@ -676,20 +675,21 @@ export function ChatPanel({
 							updateMenus(e.currentTarget.value, e.currentTarget.selectionStart);
 						}}
 						onKeyDown={handleKeyDown}
-						rows={3}
+						rows={1}
 						className="chat-textarea"
 						placeholder={
 							currentKnowledgeBaseName
-								? "输入消息… @引用页面  /调用命令  Cmd+Enter 发送"
+								? "写下想法…  @ 引用  / 命令  ·  ⌘↵ 发送"
 								: "请先在左侧选择一个知识库…"
 						}
 						disabled={status === "streaming" || !currentKnowledgeBaseName}
 					/>
-					</div>
-					<div className="chat-send-row">
-						<span className="chat-status-text">
-							{status === "streaming" ? "生成中" : status === "error" ? "出错" : "就绪"}
-						</span>
+					<div className="composer-actions">
+						{(status === "streaming" || status === "error" || detectedMaterial || detectedBatch) && (
+							<span className="composer-status" role={status === "error" ? "alert" : "status"}>
+								{status === "streaming" ? "生成中" : status === "error" ? "出错" : "待消化"}
+							</span>
+						)}
 						<button
 							type="button"
 							className={cn("send-btn", status === "streaming" && "stop-btn")}
@@ -698,11 +698,14 @@ export function ChatPanel({
 								else void sendPrompt();
 							}}
 							disabled={status !== "streaming" && (!input.trim() || !currentKnowledgeBaseName)}
+							title={status === "streaming" ? "停止" : "发送（⌘↵）"}
 						>
 							{status === "streaming" ? <Square className="size-4" /> : <Send className="size-4" />}
-							{status === "streaming" ? "停止" : "发送"}
+							<span className="sr-only">{status === "streaming" ? "停止" : "发送"}</span>
 						</button>
 					</div>
+				</div>
+				<div className="composer-tools">
 					<ExportButtons
 						disabled={!currentKnowledgeBaseName || status === "streaming" || messages.length === 0}
 						disabledReason={
