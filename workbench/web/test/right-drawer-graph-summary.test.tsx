@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -30,10 +32,13 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.match(html, /Alpha node/);
 		assert.match(html, /节点/);
 		assert.match(html, /连接/);
+		assert.match(html, /graph-summary-community-chip/);
+		assert.match(html, /graph-summary-relation-pill/);
 		assert.match(html, /打开详情/);
 		assert.match(html, /固定位置/);
 		assert.doesNotMatch(html, /full markdown body should stay out of summaries/);
 		assert.doesNotMatch(html, /graph-reader-drawer/);
+		assert.doesNotMatch(html, /summary-left-rail|ai-slop|border-left/);
 	});
 
 	it("renders community summary with different fields and actions", () => {
@@ -42,6 +47,7 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.match(html, /data-testid="graph-community-summary"/);
 		assert.match(html, /Alpha community/);
 		assert.match(html, /社区/);
+		assert.match(html, /graph-summary-community-chip/);
 		assert.match(html, /核心节点/);
 		assert.match(html, /查看全部/);
 		assert.match(html, /alpha-node/);
@@ -107,6 +113,19 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.match(community, /<button[^>]*class="graph-summary-action"[^>]*>进入社区<\/button>/);
 		assert.match(excluded, /<button[^>]*class="graph-summary-action"[^>]*>显示这个对象<\/button>/);
 		assert.doesNotMatch(`${node}${community}${excluded}`, /tabindex="-1"/i);
+	});
+
+	it("keeps the Paper summary styling contract", () => {
+		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
+
+		assert.match(css, /\.graph-summary-drawer[\s\S]*border-radius:\s*16px/);
+		assert.match(css, /\.graph-summary-drawer[\s\S]*var\(--paper-grain\)/);
+		assert.match(css, /\.graph-summary-drawer[\s\S]*box-shadow:\s*var\(--shadow-lg\)/);
+		assert.match(css, /\.graph-summary-community-chip::before[\s\S]*width:\s*7px/);
+		assert.match(css, /\.graph-summary-relation-pill[\s\S]*border-radius:\s*999px/);
+		assert.match(css, /\.graph-summary-action[\s\S]*box-shadow:\s*var\(--shadow\)/);
+		assert.doesNotMatch(css, /--app-shadow-color/);
+		assert.doesNotMatch(css, /summary-left-rail|ai-slop/);
 	});
 });
 

@@ -40,7 +40,7 @@ export function GraphNodeSummary({ payload, onCommand }: NodeSummaryProps) {
 			</div>
 			<div className="graph-summary-meta">
 				<span>{payload.type}</span>
-				<span>{payload.communityId ?? "未分组"}</span>
+				<span className="graph-summary-community-chip">{payload.communityId ?? "未分组"}</span>
 				<span>{payload.pinHint.pinned ? "已固定" : "未固定"}</span>
 				{payload.searchHit && <span>搜索命中</span>}
 			</div>
@@ -66,7 +66,7 @@ export function GraphCommunitySummary({ payload, onCommand, onShowNodeSummary, o
 				<SummaryFact label="命中" value={payload.searchResultIds.length} />
 			</div>
 			<div className="graph-summary-meta">
-				<span>{payload.communityId}</span>
+				<span className="graph-summary-community-chip">{payload.communityId}</span>
 				<span>{payload.pinHints.length > 0 ? `${payload.pinHints.length} 个固定` : "无固定"}</span>
 			</div>
 			<section className="graph-summary-section">
@@ -204,7 +204,7 @@ function RelationList({
 					{relations.map((relation) => (
 						<li key={relation.edgeId}>
 							<span>{relation.fromNodeId} - {relation.toNodeId}</span>
-							<small>{relation.relationType ?? relation.confidence ?? "关系"}</small>
+							<small className="graph-summary-relation-pill">{relation.relationType ?? relation.confidence ?? "关系"}</small>
 						</li>
 					))}
 				</ul>

@@ -2698,22 +2698,35 @@
   }
 
   .graph-summary-drawer {
-    display: flex;
-    flex-direction: column;
+    display: grid;
     gap: 14px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 96%, transparent), color-mix(in srgb, var(--app-bg) 84%, var(--app-surface))),
+      var(--paper-grain);
+    background-size: auto, 180px 180px;
+    box-shadow: var(--shadow-lg);
   }
 
   .graph-summary-kicker {
-    color: var(--app-muted);
+    width: fit-content;
+    padding: 4px 9px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 30%, var(--app-border));
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 0;
   }
 
   .graph-summary-title {
     margin: 0;
     color: var(--app-fg);
-    font-size: 18px;
-    font-weight: 650;
+    font-size: 19px;
+    font-weight: 800;
     line-height: 1.25;
   }
 
@@ -2724,11 +2737,11 @@
   }
 
   .graph-summary-fact {
-    border: 1px solid var(--app-border);
-    border-radius: 10px;
-    background: var(--app-surface);
-    box-shadow: var(--shadow);
     padding: 9px 10px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-surface) 76%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
   }
 
   .graph-summary-fact strong,
@@ -2737,7 +2750,7 @@
   }
 
   .graph-summary-fact strong {
-    color: var(--app-fg);
+    color: var(--app-accent-deep);
     font-size: 16px;
     line-height: 1.1;
   }
@@ -2756,26 +2769,53 @@
   }
 
   .graph-summary-meta span {
-    border: 1px solid var(--app-border);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    padding: 3px 9px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
     border-radius: 999px;
-    padding: 3px 8px;
-    background: color-mix(in srgb, var(--app-raised) 70%, transparent);
+    background: color-mix(in srgb, var(--app-surface) 72%, transparent);
     color: var(--app-muted);
     font-size: 11px;
+    font-weight: 700;
+  }
+
+  .graph-summary-community-chip::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    content: "";
+    background: var(--app-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
   }
 
   .graph-summary-excerpt {
     margin: 0;
-    color: var(--app-muted);
+    padding: 12px 13px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-bg) 54%, transparent);
+    color: color-mix(in srgb, var(--app-fg) 78%, var(--app-muted));
     font-size: 13px;
     line-height: 1.6;
   }
 
+  .graph-summary-section {
+    display: grid;
+    gap: 8px;
+    padding: 11px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-surface) 48%, transparent);
+  }
+
   .graph-summary-section h3 {
-    margin: 0 0 8px;
-    color: var(--app-muted);
+    margin: 0;
+    color: var(--app-fg);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 800;
   }
 
   .graph-summary-section-header {
@@ -2783,7 +2823,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 8px;
   }
 
   .graph-summary-section-header h3 {
@@ -2802,16 +2841,20 @@
   .graph-summary-list li {
     display: flex;
     min-width: 0;
+    align-items: center;
     justify-content: space-between;
     gap: 8px;
-    border-bottom: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
-    padding-bottom: 6px;
+    padding: 7px 8px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 58%, transparent);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--app-bg) 42%, transparent);
     color: var(--app-fg);
     font-size: 12px;
   }
 
   .graph-summary-click-list li {
-    padding-bottom: 0;
+    padding: 0;
+    overflow: hidden;
   }
 
   .graph-summary-node-link,
@@ -2825,7 +2868,7 @@
 
   .graph-summary-node-link {
     width: 100%;
-    padding: 0 0 6px;
+    padding: 7px 8px;
     text-align: left;
   }
 
@@ -2836,8 +2879,13 @@
 
   .graph-summary-inline-action {
     flex-shrink: 0;
-    color: var(--app-muted);
+    padding: 3px 8px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 30%, var(--app-border));
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
     font-size: 12px;
+    font-weight: 800;
   }
 
   .graph-summary-list small,
@@ -2846,19 +2894,38 @@
     font-size: 12px;
   }
 
+  .graph-summary-relation-pill {
+    max-width: 46%;
+    overflow: hidden;
+    padding: 3px 8px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .graph-summary-action {
-    border: 1px solid var(--app-border);
-    border-radius: 9px;
-    background: var(--app-surface);
-    padding: 7px 10px;
-    color: var(--app-fg);
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+    color: var(--app-accent-deep);
     font-size: 12px;
+    font-weight: 800;
     cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: transform 0.14s, border-color 0.14s, background 0.14s, box-shadow 0.14s;
   }
 
   .graph-summary-action:hover {
-    border-color: var(--app-accent);
-    color: var(--app-accent-deep);
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--app-accent) 64%, var(--app-border));
+    background: var(--app-accent-soft);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--app-accent) 12%, transparent);
   }
 
   .batch-panel {

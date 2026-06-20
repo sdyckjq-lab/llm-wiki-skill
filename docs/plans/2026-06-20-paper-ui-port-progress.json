@@ -3,8 +3,8 @@
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
     "phase": "phase-5",
-    "task": "5.1",
-    "next_allowed_action": "Implement task 5.1; after verified completion, advance to the next task automatically"
+    "task": "5.2",
+    "next_allowed_action": "Implement task 5.2; after verified completion, advance to the next task automatically"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -110,7 +110,7 @@
         "浏览器 1440：抽屉阅读正常；resize/tab/全屏可用；摘要无左竖条"
       ],
       "tasks": [
-        { "id": "5.1", "title": "抽屉阅读 Paper 化：摘要带标签柔卡(去左竖条)、meta chip 社区圆点、关联列表、操作按钮", "status": "pending", "verification": [] },
+        { "id": "5.1", "title": "抽屉阅读 Paper 化：摘要带标签柔卡(去左竖条)、meta chip 社区圆点、关联列表、操作按钮", "status": "completed", "verification": ["2026-06-20 task 5.1：RightDrawer 图谱摘要阅读态 Paper 化为柔卡：摘要容器加入纸纹、圆角、边框和稳定阴影，kicker/meta/fact/section/list/excerpt 改为暖纸卡片；节点和社区 meta chip 加社区圆点；关系列表加关系药丸；操作按钮加入抬升阴影。去除左竖条/AI slop 形态，未改 resize/tab/fullscreen 状态逻辑（留给 task 5.2）。补强 right-drawer-graph-summary.test.tsx，覆盖社区 chip、关系 pill、无左竖条文本、按钮可 tab，以及 CSS 契约防止无效 --app-shadow-color 回归。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/right-drawer-graph-summary.test.tsx 退出 0（6 tests）；cd workbench/web && npm test 退出 0（26 suites / 82 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0（仅既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；git diff --check 退出 0；Playwright 浏览器 smoke（1440，提权运行）确认 card radius=16px、card shadow 非 none、社区圆点 width=7px、relation pill radius=999px、action shadow 非 none、无 summary-left-rail/ai-slop 文本。下一步 5.2。"] },
         { "id": "5.2", "title": "保留 resize/tab/全屏与 drawer 状态逻辑不回归", "status": "pending", "verification": [] }
       ]
     },
@@ -229,6 +229,11 @@
       "task": "4.4",
       "timestamp": "2026-06-20T05:36:00Z",
       "entry": "完成 ⌘K 当前库真搜索：App 级缓存当前库最多 5k refs，SearchPanel 本地过滤 title/path/name/category，支持键盘打开抽屉、点击打开和插入 wiki 引用；覆盖无库/加载/错误/空结果。新增过滤和 DOM 交互测试；typecheck/build/test/lint、git diff --check 与 1440/768 浏览器 smoke 通过。Phase 4 完成，下一步 Phase 5 task 5.1。"
+    },
+    {
+      "task": "5.1",
+      "timestamp": "2026-06-20T05:55:00Z",
+      "entry": "完成 RightDrawer 图谱摘要 Paper 阅读视觉：摘要容器、标签、事实卡、meta chip、关系列表、操作按钮改成暖纸柔卡；社区 chip 有圆点，关系有药丸，按钮有真实阴影，左竖条/AI slop 不再出现。目标测试、全量 test/typecheck/build/lint、git diff --check 与 1440 浏览器 smoke 通过。下一步 5.2。"
     }
   ]
 }
