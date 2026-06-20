@@ -1115,8 +1115,25 @@
     gap: 8px;
   }
 
+  .sidebar-section {
+    display: grid;
+    gap: 6px;
+  }
+
+  .sidebar-section + .sidebar-section {
+    margin-top: 16px;
+  }
+
+  .sidebar-section-head {
+    display: flex;
+    min-height: 24px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   .sidebar-section-label {
-    padding: 8px 6px 4px;
+    padding: 4px 6px;
     color: var(--app-muted);
     font-size: 10px;
     font-weight: 650;
@@ -1124,8 +1141,30 @@
     text-transform: uppercase;
   }
 
+  .sidebar-section-body {
+    display: grid;
+    gap: 3px;
+  }
+
+  .section-action {
+    display: inline-grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--app-muted);
+  }
+
+  .section-action:hover {
+    border-color: var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-accent-deep);
+  }
+
   .kb-row {
     display: flex;
+    width: 100%;
     align-items: center;
     gap: 6px;
     min-height: 32px;
@@ -1152,20 +1191,6 @@
   .kb-row-disabled {
     opacity: 0.42;
     cursor: not-allowed;
-  }
-
-  .kb-chevron {
-    width: 16px;
-    height: 16px;
-    display: grid;
-    place-items: center;
-    color: var(--app-muted);
-    flex-shrink: 0;
-    transition: transform 0.15s;
-  }
-
-  .kb-chevron-open {
-    transform: rotate(90deg);
   }
 
   .kb-name {
@@ -1201,27 +1226,11 @@
     color: var(--app-danger);
   }
 
-  .kb-children {
-    margin-left: 22px;
-    border-left: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
-  }
-
-  .conv-new-btn,
   .conv-row {
     width: 100%;
     text-align: left;
     border-radius: 8px;
     transition: background 0.1s, color 0.1s;
-  }
-
-  .conv-new-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin: 2px 0;
-    padding: 3px 10px;
-    color: var(--app-muted);
-    font-size: 11px;
   }
 
   .conv-row {
@@ -1233,7 +1242,6 @@
     border: 1px solid transparent;
   }
 
-  .conv-new-btn:hover,
   .conv-row:hover {
     color: var(--app-fg);
     background: var(--app-hover);
@@ -1269,6 +1277,10 @@
     background: color-mix(in srgb, var(--app-bg) 54%, transparent);
   }
 
+  .sidebar-footer-v2 {
+    gap: 5px;
+  }
+
   .sidebar-footer-btn {
     display: flex;
     align-items: center;
@@ -1289,6 +1301,17 @@
     background: color-mix(in srgb, var(--app-surface) 70%, transparent);
   }
 
+  .sidebar-footer-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .sidebar-footer-btn-active {
+    border-color: color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+  }
+
   .sidebar-footer-btn-primary {
     color: var(--app-accent-deep);
   }
@@ -1303,47 +1326,6 @@
     flex-direction: column;
     height: 100%;
     background: transparent;
-  }
-
-  .main-view-switch {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
-    padding: 4px;
-    border: 1px solid color-mix(in srgb, var(--app-border-strong) 72%, transparent);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--app-bg) 78%, var(--app-surface));
-  }
-
-  .main-view-btn {
-    display: inline-flex;
-    position: relative;
-    min-width: 0;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 6px 8px;
-    border-radius: 8px;
-    color: var(--app-muted);
-    font-size: 12px;
-    font-weight: 600;
-    transition: color 0.12s, background 0.12s;
-  }
-
-  .main-view-btn:hover:not(:disabled) {
-    color: var(--app-fg);
-    background: var(--app-hover);
-  }
-
-  .main-view-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-  }
-
-  .main-view-btn-active {
-    box-shadow: 0 1px 0 color-mix(in srgb, white 34%, transparent), 0 5px 14px color-mix(in srgb, var(--app-accent) 8%, transparent);
-    color: var(--app-accent-deep);
-    background: color-mix(in srgb, var(--app-surface) 84%, var(--app-accent-soft));
   }
 
   .graph-update-dot {

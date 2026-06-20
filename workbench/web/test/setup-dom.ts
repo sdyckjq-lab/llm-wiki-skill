@@ -24,6 +24,7 @@ Object.defineProperties(globalThis, {
 	KeyboardEvent: { configurable: true, value: window.KeyboardEvent },
 	MouseEvent: { configurable: true, value: window.MouseEvent },
 	CustomEvent: { configurable: true, value: window.CustomEvent },
+	MutationObserver: { configurable: true, value: window.MutationObserver },
 	React: { configurable: true, value: React },
 	getComputedStyle: { configurable: true, value: window.getComputedStyle.bind(window) },
 	requestAnimationFrame: {

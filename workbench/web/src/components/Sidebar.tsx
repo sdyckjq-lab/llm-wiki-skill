@@ -1,19 +1,15 @@
 import React, { useState } from "react";
 import {
 	BookOpen,
-	ChevronRight,
-	Download,
 	MessagesSquare,
 	Network,
 	PanelLeftClose,
 	PanelLeftOpen,
 	Plus,
-	RefreshCw,
 	Settings,
 } from "lucide-react";
 
 import { AddExternalDialog } from "./AddExternalDialog";
-import { NewWikiDialog } from "./NewWikiDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type { ConversationInfo, KnowledgeBaseInfo } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -25,7 +21,6 @@ interface Props {
 	currentKbPath: string | null;
 	conversations: ConversationInfo[];
 	currentConversationId: string | null;
-	loading: boolean;
 	error: string | null;
 	collapsed: boolean;
 	activeView: MainView;
@@ -34,11 +29,9 @@ interface Props {
 	onSelectConversation: (item: ConversationInfo) => void;
 	onSelectView: (view: MainView) => void;
 	onNewConversation: () => void;
-	onRefresh: () => void;
 	onOpenSettings?: () => void;
 	onToggleCollapsed: () => void;
 	onAddExternal: (path: string) => Promise<void>;
-	onCreateWiki: (name: string, purpose: string) => Promise<void>;
 	onStartBatchDigest?: (input: {
 		kbPath: string;
 		filePaths: string[];
@@ -53,7 +46,6 @@ export function Sidebar({
 	currentKbPath,
 	conversations,
 	currentConversationId,
-	loading,
 	error,
 	collapsed,
 	activeView,
@@ -62,32 +54,18 @@ export function Sidebar({
 	onSelectConversation,
 	onSelectView,
 	onNewConversation,
-	onRefresh,
 	onOpenSettings,
 	onToggleCollapsed,
 	onAddExternal,
-	onCreateWiki,
 	onStartBatchDigest,
 }: Props) {
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const [newWikiOpen, setNewWikiOpen] = useState(false);
-	const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-	const currentExpanded = currentKbPath ? expanded.has(currentKbPath) : false;
 	const currentKb = knowledgeBases.find((item) => item.path === currentKbPath) ?? null;
-	const toggleExpanded = (path: string) => {
-		setExpanded((prev) => {
-			const next = new Set(prev);
-			if (next.has(path)) next.delete(path);
-			else next.add(path);
-			return next;
-		});
-	};
 
 	const openCurrentKb = () => {
 		if (!currentKb || !currentKb.valid) return;
 		onSelectKb(currentKb);
-		setExpanded(new Set([currentKb.path]));
 	};
 
 	if (collapsed) {
@@ -115,7 +93,7 @@ export function Sidebar({
 						<MessagesSquare />
 					</RailButton>
 					<RailButton
-						label="图谱"
+						label="图谱活地图"
 						onClick={() => onSelectView("graph")}
 						active={activeView === "graph"}
 						disabled={!currentKb?.valid}
@@ -123,25 +101,14 @@ export function Sidebar({
 					>
 						<Network />
 					</RailButton>
-					<RailButton label="刷新" onClick={onRefresh} disabled={loading}>
-						<RefreshCw className={cn(loading && "animate-spin")} />
-					</RailButton>
 					<div className="sidebar-rail-spacer" />
-					<RailButton label="新建知识库" onClick={() => setNewWikiOpen(true)}>
-						<Plus />
-					</RailButton>
-					<RailButton label="添加现有库" onClick={() => setDialogOpen(true)}>
-						<Download />
-					</RailButton>
 					<RailButton label="设置" onClick={onOpenSettings}>
 						<Settings />
 					</RailButton>
+					<RailButton label="新建知识库" onClick={() => setDialogOpen(true)}>
+						<Plus />
+					</RailButton>
 				</div>
-				<NewWikiDialog
-					open={newWikiOpen}
-					onOpenChange={setNewWikiOpen}
-					onSubmit={onCreateWiki}
-				/>
 				<AddExternalDialog
 					open={dialogOpen}
 					onOpenChange={setDialogOpen}
@@ -159,23 +126,15 @@ export function Sidebar({
 					<span className="sidebar-brand-dot" />
 					<span>llm-wiki-agent</span>
 				</div>
-				<div className="flex items-center gap-0.5">
-					<button
-						className="icon-btn"
-						type="button"
-						onClick={onToggleCollapsed}
-						title="折叠侧栏"
-						aria-label="折叠侧栏"
-					>
-						<PanelLeftClose />
-					</button>
-					<button className="icon-btn" type="button" onClick={onRefresh} disabled={loading} title="刷新">
-						<RefreshCw className={cn(loading && "animate-spin")} />
-					</button>
-					<button className="icon-btn" type="button" onClick={onOpenSettings} title="设置" aria-label="设置">
-						<Settings />
-					</button>
-				</div>
+				<button
+					className="icon-btn"
+					type="button"
+					onClick={onToggleCollapsed}
+					title="折叠侧栏"
+					aria-label="折叠侧栏"
+				>
+					<PanelLeftClose />
+				</button>
 			</div>
 
 			<div className="sidebar-body">
@@ -185,104 +144,75 @@ export function Sidebar({
 					</div>
 				)}
 
-				<div className="main-view-switch" aria-label="主视图切换">
-					<button
-						type="button"
-						className={cn("main-view-btn", activeView === "chat" && "main-view-btn-active")}
-						onClick={() => onSelectView("chat")}
-						disabled={!currentKb?.valid}
-					>
-						<MessagesSquare className="size-3.5" />
-						<span>对话</span>
-					</button>
-					<button
-						type="button"
-						className={cn("main-view-btn", activeView === "graph" && "main-view-btn-active")}
-						onClick={() => onSelectView("graph")}
-						disabled={!currentKb?.valid}
-						data-pending-update={graphHasPendingUpdate ? "true" : "false"}
-					>
-						<Network className="size-3.5" />
-						<span>图谱</span>
-						{graphHasPendingUpdate && <span className="graph-update-dot" aria-label="图谱有更新" />}
-					</button>
-				</div>
-
-				<Section title="知识库">
+				<Section title="笔记本">
 					{knowledgeBases.length === 0 ? (
 						<EmptyHint text="还没有知识库" />
 					) : (
-						knowledgeBases.map((item) => {
-							const active = item.path === currentKbPath;
-							const opened = active && currentExpanded;
-							return (
-								<div key={item.path}>
-									<KbItem
-										item={item}
-										active={active}
-										expanded={opened}
-										onClick={() => {
-											if (!item.valid) return;
-											if (active) {
-												toggleExpanded(item.path);
-											} else {
-												onSelectKb(item);
-												setExpanded(new Set([item.path]));
-											}
-										}}
-										onToggle={() => toggleExpanded(item.path)}
-									/>
-									{opened && (
-										<div className="kb-children">
-											<button type="button" onClick={onNewConversation} className="conv-new-btn">
-												<Plus className="size-3" />
-												<span>新对话</span>
-											</button>
-											{conversations.length === 0 ? (
-												<EmptyHint text="暂无对话" />
-											) : (
-												conversations.map((c) => (
-													<ConversationItem
-														key={c.id}
-														item={c}
-														active={c.id === currentConversationId}
-														onClick={() => onSelectConversation(c)}
-													/>
-												))
-											)}
-										</div>
-									)}
-								</div>
-							);
-						})
+						knowledgeBases.map((item) => (
+							<KbItem
+								key={item.path}
+								item={item}
+								active={item.path === currentKbPath}
+								onClick={() => {
+									if (item.valid) onSelectKb(item);
+								}}
+							/>
+						))
+					)}
+				</Section>
+
+				<Section
+					title="会话"
+					action={
+						<button type="button" className="section-action" onClick={onNewConversation} aria-label="新对话">
+							<Plus className="size-3" />
+						</button>
+					}
+				>
+					{conversations.length === 0 ? (
+						<EmptyHint text="暂无对话" />
+					) : (
+						conversations.map((item) => (
+							<ConversationItem
+								key={item.id}
+								item={item}
+								active={item.id === currentConversationId}
+								onClick={() => onSelectConversation(item)}
+							/>
+						))
 					)}
 				</Section>
 			</div>
 
-			<div className="sidebar-footer">
+			<div className="sidebar-footer sidebar-footer-v2">
 				<button
 					type="button"
-					className="sidebar-footer-btn sidebar-footer-btn-primary"
-					onClick={() => setNewWikiOpen(true)}
+					className={cn("sidebar-footer-btn", activeView === "graph" && "sidebar-footer-btn-active")}
+					onClick={() => onSelectView("graph")}
+					disabled={!currentKb?.valid}
 				>
-					<Plus className="size-4" />
-					<span>新建知识库</span>
+					<Network className="size-4" />
+					<span>图谱活地图</span>
+					{graphHasPendingUpdate && <span className="graph-update-dot" aria-label="图谱有更新" />}
 				</button>
 				<button
 					type="button"
 					className="sidebar-footer-btn"
+					onClick={onOpenSettings}
+				>
+					<Settings className="size-4" />
+					<span>设置</span>
+				</button>
+				<button
+					type="button"
+					className="sidebar-footer-btn sidebar-footer-btn-primary"
 					onClick={() => setDialogOpen(true)}
 				>
-					<Download className="size-4" />
-					<span>添加现有库</span>
+					<Plus className="size-4" />
+					<span>新建知识库</span>
 				</button>
 			</div>
 
-			<NewWikiDialog
-				open={newWikiOpen}
-				onOpenChange={setNewWikiOpen}
-				onSubmit={onCreateWiki}
-			/>
 			<AddExternalDialog
 				open={dialogOpen}
 				onOpenChange={setDialogOpen}
@@ -329,11 +259,22 @@ function RailButton({
 	);
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+	title,
+	action,
+	children,
+}: {
+	title: string;
+	action?: React.ReactNode;
+	children: React.ReactNode;
+}) {
 	return (
-		<div>
-			<div className="sidebar-section-label">{title}</div>
-			<div>{children}</div>
+		<div className="sidebar-section">
+			<div className="sidebar-section-head">
+				<div className="sidebar-section-label">{title}</div>
+				{action}
+			</div>
+			<div className="sidebar-section-body">{children}</div>
 		</div>
 	);
 }
@@ -345,41 +286,24 @@ function EmptyHint({ text }: { text: string }) {
 function KbItem({
 	item,
 	active,
-	expanded,
 	onClick,
-	onToggle,
 }: {
 	item: KnowledgeBaseInfo;
 	active: boolean;
-	expanded: boolean;
 	onClick: () => void;
-	onToggle: () => void;
 }) {
 	const isDisabled = !item.valid;
 
 	const inner = (
-		<div className={cn("kb-row", active && "kb-row-active", isDisabled && "kb-row-disabled")}>
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					onToggle();
-				}}
-				disabled={isDisabled || !active}
-				className={cn("kb-chevron", expanded && "kb-chevron-open")}
-				aria-label="展开对话"
-			>
-				<ChevronRight className="size-3" />
-			</button>
-			<button
-				type="button"
-				onClick={onClick}
-				disabled={isDisabled}
-				className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed"
-				title={item.path}
-			>
-				<span className="kb-name">{item.name}</span>
-			</button>
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={isDisabled}
+			className={cn("kb-row", active && "kb-row-active", isDisabled && "kb-row-disabled")}
+			title={item.path}
+		>
+			<BookOpen className="size-3.5 shrink-0" />
+			<span className="kb-name">{item.name}</span>
 			{!item.valid ? (
 				<span className="kb-badge kb-badge-invalid">不可用</span>
 			) : item.origin === "external" ? (
@@ -387,7 +311,7 @@ function KbItem({
 			) : (
 				<span className="kb-badge">默认</span>
 			)}
-		</div>
+		</button>
 	);
 
 	if (!item.valid && item.reason) {

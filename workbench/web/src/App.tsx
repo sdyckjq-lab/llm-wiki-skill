@@ -25,7 +25,6 @@ import {
 	type ActiveContext,
 	type ConversationInfo,
 	createNewConversation,
-	createKnowledgeBase,
 	type ArtifactManifest,
 	getActiveContext,
 	type KnowledgeBaseInfo,
@@ -425,6 +424,7 @@ function App() {
 
 	const handleSelectConversation = async (item: ConversationInfo) => {
 		if (!active) return;
+		setMainView("chat");
 		if (item.id === active.conversation.id) return;
 
 		setSidebarError(null);
@@ -439,6 +439,7 @@ function App() {
 
 	const handleNewConversation = async () => {
 		if (!active) return;
+		setMainView("chat");
 		setSidebarError(null);
 		try {
 			const ctx = await createNewConversation(active.kb.path);
@@ -591,12 +592,6 @@ function App() {
 		const { info } = await registerExternalKnowledgeBase(path);
 		await refreshAll();
 		if (info.valid) await handleSelectKb(info);
-	};
-
-	const handleCreateWiki = async (name: string, purpose: string) => {
-		const info = await createKnowledgeBase(name, purpose);
-		await refreshAll();
-		await handleSelectKb(info);
 	};
 
 	const handleMessageSent = async () => {
@@ -981,7 +976,6 @@ function App() {
 						currentKbPath={active?.kb.path ?? null}
 						conversations={conversations}
 						currentConversationId={active?.conversation.id ?? null}
-						loading={loading}
 						error={sidebarError}
 						collapsed={sidebarCollapsed}
 						activeView={mainView}
@@ -989,12 +983,10 @@ function App() {
 						onSelectConversation={handleSelectConversation}
 						onSelectView={setMainView}
 						onNewConversation={handleNewConversation}
-						onRefresh={refreshAll}
 						onOpenSettings={() => setSettingsOpen(true)}
 						onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
 						graphHasPendingUpdate={graphHasPendingUpdate}
 						onAddExternal={handleAddExternal}
-						onCreateWiki={handleCreateWiki}
 						onStartBatchDigest={handleStartBatchDigest}
 					/>
 					<main className="shell-main">

@@ -35,7 +35,7 @@ interface Props {
 }
 
 /**
- * 登记外部知识库的对话框。
+ * 通过选择本地文件夹创建或登记知识库。
  * 用户粘绝对路径，后端验证（存在 + 是目录 + 含 .wiki-schema.md）。
  */
 export function AddExternalDialog({ open, onOpenChange, onSubmit, onStartBatchDigest }: Props) {
@@ -201,9 +201,9 @@ export function AddExternalDialog({ open, onOpenChange, onSubmit, onStartBatchDi
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="dialog-surface w-[calc(100vw-2rem)] overflow-hidden sm:max-w-lg">
 				<DialogHeader>
-					<DialogTitle>添加现有知识库</DialogTitle>
+					<DialogTitle>新建知识库</DialogTitle>
 					<DialogDescription>
-						输入一个绝对路径，目录里需要含有 <code>.wiki-schema.md</code>（由 llm-wiki-skill 初始化产生）。
+						选择一个已有文件夹；如果它还不是知识库，可以在这里初始化成新的知识库。
 					</DialogDescription>
 				</DialogHeader>
 
