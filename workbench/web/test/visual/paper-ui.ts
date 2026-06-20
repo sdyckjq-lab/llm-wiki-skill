@@ -1,48 +1,79 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir, copyFile } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Route } from "playwright";
 
-type PaperSmokeCase = {
+type ThemeValue = "light" | "dark";
+type PaperValue = "clean" | "grid" | "laid";
+type AccentValue = "terracotta" | "clay" | "amber" | "rose";
+type UserBubbleValue = "soft" | "solid";
+type HandValue = "on" | "off";
+type DensityValue = "cozy" | "compact";
+
+type PaperPrefs = {
+	theme: ThemeValue;
+	paper: PaperValue;
+	accent: AccentValue;
+	userbubble: UserBubbleValue;
+	hand: HandValue;
+	density: DensityValue;
+};
+
+type PaperVisualCase = {
 	name: string;
-	prefs: {
-		theme: "light" | "dark";
-		paper: "clean";
-		accent: "terracotta";
-		userbubble: "soft";
-		hand: "on";
-		density: "cozy";
-	};
+	description: string;
+	prefs: PaperPrefs;
+	fonts?: "normal" | "blocked";
 };
 
 const baseUrl = process.env.PAPER_UI_BASE_URL ?? "http://localhost:5180";
 const updateBaseline = process.argv.includes("--update");
 const actualDir = resolve(process.cwd(), "test-results/paper-ui/actual");
 const baselineDir = resolve(process.cwd(), "test-results/paper-ui/baseline");
+const defaultPrefs: PaperPrefs = {
+	theme: "light",
+	paper: "clean",
+	accent: "terracotta",
+	userbubble: "soft",
+	hand: "on",
+	density: "cozy",
+};
 
-const cases: PaperSmokeCase[] = [
+const cases: PaperVisualCase[] = [
+	...(["light", "dark"] as const).flatMap((theme) =>
+		(["clean", "grid", "laid"] as const).map((paper) => ({
+			name: `${theme}-${paper}-1440`,
+			description: `${theme} theme with ${paper} paper`,
+			prefs: { ...defaultPrefs, theme, paper },
+			fonts: "normal" as const,
+		})),
+	),
 	{
-		name: "paper-light-1440",
-		prefs: {
-			theme: "light",
-			paper: "clean",
-			accent: "terracotta",
-			userbubble: "soft",
-			hand: "on",
-			density: "cozy",
-		},
+		name: "variant-userbubble-solid-1440",
+		description: "solid user bubbles",
+		prefs: { ...defaultPrefs, userbubble: "solid" },
 	},
 	{
-		name: "paper-dark-1440",
-		prefs: {
-			theme: "dark",
-			paper: "clean",
-			accent: "terracotta",
-			userbubble: "soft",
-			hand: "on",
-			density: "cozy",
-		},
+		name: "variant-density-compact-1440",
+		description: "compact density",
+		prefs: { ...defaultPrefs, density: "compact" },
+	},
+	{
+		name: "variant-hand-off-1440",
+		description: "handwriting accents disabled",
+		prefs: { ...defaultPrefs, hand: "off" },
+	},
+	...(["terracotta", "clay", "amber", "rose"] as const).map((accent) => ({
+		name: `accent-${accent}-1440`,
+		description: `${accent} accent`,
+		prefs: { ...defaultPrefs, accent },
+	})),
+	{
+		name: "font-fallback-blocked-1440",
+		description: "font requests blocked to verify fallback stack",
+		prefs: defaultPrefs,
+		fonts: "blocked",
 	},
 ];
 
@@ -64,8 +95,8 @@ try {
 
 	const browser = await chromium.launch({ headless: true });
 	try {
-		for (const smokeCase of cases) {
-			await captureSmoke(browser, smokeCase);
+		for (const visualCase of cases) {
+			await captureCase(browser, visualCase);
 		}
 	} finally {
 		await browser.close();
@@ -76,11 +107,14 @@ try {
 	}
 }
 
-async function captureSmoke(browser: Browser, smokeCase: PaperSmokeCase) {
+async function captureCase(browser: Browser, visualCase: PaperVisualCase) {
 	const context = await browser.newContext({
 		deviceScaleFactor: 1,
 		viewport: { width: 1440, height: 900 },
 	});
+	if (visualCase.fonts === "blocked") {
+		await context.route(/fonts\.(googleapis|gstatic)\.com/, (route: Route) => route.abort());
+	}
 	const page = await context.newPage();
 	try {
 		await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -91,7 +125,7 @@ async function captureSmoke(browser: Browser, smokeCase: PaperSmokeCase) {
 			localStorage.setItem("llm-wiki-agent-appearance-userbubble", prefs.userbubble);
 			localStorage.setItem("llm-wiki-agent-appearance-hand", prefs.hand);
 			localStorage.setItem("llm-wiki-agent-appearance-density", prefs.density);
-		}, smokeCase.prefs);
+		}, visualCase.prefs);
 		await page.reload({ waitUntil: "domcontentloaded" });
 		await page.waitForSelector(".app-shell", { timeout: 15_000 });
 		await page.evaluate(async () => {
@@ -101,6 +135,7 @@ async function captureSmoke(browser: Browser, smokeCase: PaperSmokeCase) {
 		const state = await page.evaluate(() => {
 			const root = document.documentElement;
 			const appShell = document.querySelector(".app-shell");
+			const topbar = document.querySelector(".topbar");
 			return {
 				theme: root.dataset.theme,
 				paper: root.dataset.paper,
@@ -110,28 +145,36 @@ async function captureSmoke(browser: Browser, smokeCase: PaperSmokeCase) {
 				density: root.dataset.density,
 				darkClass: root.classList.contains("dark"),
 				appBackground: appShell ? getComputedStyle(appShell).backgroundColor : null,
+				topbarFont: topbar ? getComputedStyle(topbar).fontFamily : null,
 			};
 		});
 
-		if (state.theme !== smokeCase.prefs.theme) {
-			throw new Error(`${smokeCase.name}: expected theme=${smokeCase.prefs.theme}, got ${state.theme}`);
-		}
-		if (state.paper !== "clean" || state.accent !== "terracotta" || state.userbubble !== "soft" || state.hand !== "on" || state.density !== "cozy") {
-			throw new Error(`${smokeCase.name}: Paper defaults drifted: ${JSON.stringify(state)}`);
-		}
-		if (state.darkClass !== (smokeCase.prefs.theme === "dark")) {
-			throw new Error(`${smokeCase.name}: dark class mismatch`);
-		}
+		assertState(visualCase, state);
 
-		const filename = `${smokeCase.name}.png`;
+		const filename = `${visualCase.name}.png`;
 		const actualPath = resolve(actualDir, filename);
 		await page.screenshot({ fullPage: true, path: actualPath });
 		if (updateBaseline) {
 			await copyFile(actualPath, resolve(baselineDir, filename));
 		}
-		console.log(`${smokeCase.name}: wrote ${actualPath}`);
+		console.log(`${visualCase.name}: wrote ${actualPath}${updateBaseline ? " and updated baseline" : ""}`);
 	} finally {
 		await context.close();
+	}
+}
+
+function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>) {
+	const { prefs } = visualCase;
+	for (const key of ["theme", "paper", "accent", "userbubble", "hand", "density"] as const) {
+		if (state[key] !== prefs[key]) {
+			throw new Error(`${visualCase.name}: expected ${key}=${prefs[key]}, got ${String(state[key])}`);
+		}
+	}
+	if (state.darkClass !== (prefs.theme === "dark")) {
+		throw new Error(`${visualCase.name}: dark class mismatch`);
+	}
+	if (typeof state.topbarFont !== "string" || !state.topbarFont.includes("Plus Jakarta Sans")) {
+		throw new Error(`${visualCase.name}: font stack drifted: ${String(state.topbarFont)}`);
 	}
 }
 

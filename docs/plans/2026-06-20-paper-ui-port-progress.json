@@ -3,8 +3,8 @@
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
     "phase": "phase-6",
-    "task": "6.2",
-    "next_allowed_action": "Implement task 6.2; after verified completion, advance to the next task automatically"
+    "task": "6.3",
+    "next_allowed_action": "Implement task 6.3; after verified completion, advance to the next task automatically"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -124,7 +124,7 @@
       ],
       "tasks": [
         { "id": "6.1", "title": "GraphPanel Tab 入口/工具条/图例 Paper 化（画布内部 Sigma 不动）", "status": "completed", "verification": ["2026-06-20 task 6.1：GraphPanel 外壳 Paper 化：将旧 statusbar 替换为图谱专用 graph-toolbar，加入 Paper 纸纹、状态 dot、状态/数量 chip、重置布局/重构按钮；graph-stage 外壳加暖纸边框、圆角和点阵底；新增 graph-legend 图例条（节点/关系/社区）；graph-metrics/growth/toast 对齐 Paper 视觉。未修改 packages/graph-engine 或 Sigma 画布内部渲染配色。为 node:test 直接渲染 GraphPanel，将 GraphPanel 的 @/lib 导入改为相对路径，并让 import.meta.env.DEV 安全读取。新增 graph-panel-paper.test.tsx 覆盖工具条/图例 DOM 与 CSS 契约，断言不涉及 graph-engine 内部选择器。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/graph-panel-paper.test.tsx 退出 0（2 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm test 退出 0（28 suites / 88 tests）；cd workbench/web && npm run build 退出 0（仅既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；git diff --check 退出 0；Playwright 浏览器 smoke（1440，提权运行）确认 graph-toolbar radius=14px 且 shadow 非 none、graph-stage radius=16px、graph-legend radius=999px，并显示节点/关系/社区。下一步 6.2。"] },
-        { "id": "6.2", "title": "脚本化视觉回归(Codex #9)：扩展 npm run visual:paper，Playwright headless 抓关键组合(非 96 张全排列)，固定命名、baseline/actual 目录、--update 规则；必要时 npx playwright install chromium", "status": "pending", "verification": [] },
+        { "id": "6.2", "title": "脚本化视觉回归(Codex #9)：扩展 npm run visual:paper，Playwright headless 抓关键组合(非 96 张全排列)，固定命名、baseline/actual 目录、--update 规则；必要时 npx playwright install chromium", "status": "completed", "verification": ["2026-06-20 task 6.2：扩展 npm run visual:paper 脚本：固定生成 14 张关键组合截图，包含 light/dark × clean/grid/laid 主轴 6 张、solid 气泡、compact 密度、hand off、terracotta/clay/amber/rose 四个配色代表，以及 fonts.google/fonts.gstatic blocked 的字体兜底截图；保留 actual/baseline 固定目录，支持 --update 将 actual 拷贝到 baseline；每个 case 校验 data-theme/data-paper/data-accent/data-userbubble/data-hand/data-density、dark class 与字体栈。png 仍由 test-results/paper-ui/.gitignore 排除，不纳入 commit。验证：cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run visual:paper 提权运行退出 0（普通沙箱 listen 127.0.0.1:5180 EPERM，提权后生成新 14 张 actual 截图，目录内含旧 2 张共 16 张 png）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；cd workbench/web && npm run build 退出 0（仅既有 chunk size warning）；git diff --check 退出 0。下一步 6.3。"] },
         { "id": "6.3", "title": "全量回归：typecheck/build/test/lint/visual:paper 全绿 + 主流程手动过(发消息→@/→⌘K 搜索→导出→批量→切库→切模型→抽屉 resize/全屏)", "status": "pending", "verification": [] }
       ]
     }
@@ -244,6 +244,11 @@
       "task": "6.1",
       "timestamp": "2026-06-20T06:28:00Z",
       "entry": "完成 GraphPanel 外壳 Paper 化：图谱工具条、状态/数量 chip、重置/重构按钮、图例条和舞台外框统一成暖纸视觉；Sigma 画布内部没有改。新增 GraphPanel 外壳测试；typecheck/test/build/lint、diff check 和 1440 浏览器 smoke 通过。下一步 6.2。"
+    },
+    {
+      "task": "6.2",
+      "timestamp": "2026-06-20T06:45:00Z",
+      "entry": "完成 Paper 视觉回归脚本扩展：visual:paper 现在生成 14 张关键组合截图，覆盖浅/夜灯×三种纸张、气泡/密度/手写、四个配色和字体兜底；支持 --update 更新 baseline。typecheck、visual:paper、lint、build 和 diff check 通过。下一步 6.3。"
     }
   ]
 }
