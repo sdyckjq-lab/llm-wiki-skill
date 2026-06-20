@@ -1714,17 +1714,27 @@
     display: flex;
     min-width: 0;
     max-width: 100%;
-    gap: 10px;
-    margin: 0 0 10px;
-    padding: 9px 10px;
+    gap: 11px;
+    margin: 2px 0 10px;
+    padding: 10px 12px;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--tool-runway-color) 40%, var(--app-border));
-    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--tool-runway-color) 32%, var(--app-border));
+    border-radius: 12px;
     background:
-      linear-gradient(90deg, color-mix(in srgb, var(--tool-runway-color) 14%, transparent), transparent 65%),
-      color-mix(in srgb, var(--app-surface) 92%, transparent);
+      linear-gradient(90deg, color-mix(in srgb, var(--tool-runway-color) 16%, transparent), transparent 68%),
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 98%, transparent), color-mix(in srgb, var(--app-bg) 72%, var(--app-surface))),
+      var(--paper-grain);
     color: var(--app-fg);
-    box-shadow: var(--shadow);
+    box-shadow: 0 1px 2px rgba(70, 55, 40, 0.04), 0 8px 20px rgba(70, 55, 40, 0.055);
+  }
+
+  .tool-runway::after {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--tool-runway-color) 10%, transparent), transparent);
+    content: "";
+    opacity: 0.42;
   }
 
   .tool-runway-running {
@@ -1744,10 +1754,13 @@
   }
 
   .tool-runway-pulse {
-    width: 8px;
+    position: relative;
+    z-index: 1;
+    width: 6px;
     border-radius: 999px;
-    background: var(--tool-runway-color);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--tool-runway-color) 64%, white), var(--tool-runway-color));
     flex: 0 0 auto;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tool-runway-color) 12%, transparent);
   }
 
   .tool-runway-running .tool-runway-pulse {
@@ -1755,6 +1768,8 @@
   }
 
   .tool-runway-main {
+    position: relative;
+    z-index: 1;
     min-width: 0;
     flex: 1;
   }
@@ -1770,10 +1785,13 @@
   .tool-runway-status,
   .tool-runway-action {
     flex: 0 0 auto;
-    font-weight: 650;
+    font-weight: 720;
   }
 
   .tool-runway-status {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--tool-runway-color) 14%, transparent);
+    padding: 2px 7px;
     color: var(--tool-runway-color);
   }
 
@@ -1807,10 +1825,11 @@
     min-width: 0;
     max-width: 180px;
     overflow: hidden;
-    padding: 2px 6px;
+    padding: 3px 7px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--tool-runway-color) 14%, transparent);
-    color: var(--app-muted);
+    border: 1px solid color-mix(in srgb, var(--tool-runway-color) 18%, transparent);
+    background: color-mix(in srgb, var(--app-surface) 78%, var(--tool-runway-color) 10%);
+    color: color-mix(in srgb, var(--app-fg) 72%, var(--tool-runway-color));
     font-family: var(--font-mono);
     font-size: 11px;
     text-overflow: ellipsis;
@@ -1818,11 +1837,14 @@
   }
 
   .tool-history-summary {
-    margin: 8px 0 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--app-surface) 92%, transparent);
-    box-shadow: var(--shadow);
+    margin: 8px 0 11px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-border) 88%, transparent);
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 97%, transparent), color-mix(in srgb, var(--app-bg) 70%, var(--app-surface))),
+      var(--paper-grain);
+    box-shadow: 0 1px 2px rgba(70, 55, 40, 0.04), 0 8px 20px rgba(70, 55, 40, 0.05);
   }
 
   .tool-history-header {
@@ -1832,7 +1854,7 @@
     gap: 8px;
     align-items: center;
     border: 0;
-    padding: 8px 10px;
+    padding: 9px 11px;
     background: transparent;
     color: inherit;
     cursor: pointer;
@@ -1848,7 +1870,11 @@
   .tool-history-title,
   .tool-history-count {
     font-size: 12px;
-    font-weight: 650;
+    font-weight: 720;
+  }
+
+  .tool-history-title {
+    color: var(--app-accent-deep);
   }
 
   .tool-history-count {
@@ -1871,9 +1897,10 @@
   .tool-history-chip {
     min-width: 0;
     overflow: hidden;
-    padding: 2px 6px;
+    padding: 3px 7px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--app-raised) 86%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+    background: color-mix(in srgb, var(--app-raised) 84%, var(--app-surface));
     color: var(--app-muted);
     font-size: 11px;
     text-overflow: ellipsis;
@@ -1882,6 +1909,7 @@
 
   .tool-history-chip {
     max-width: 180px;
+    background: color-mix(in srgb, var(--app-surface) 80%, var(--app-accent-soft));
     font-family: var(--font-mono);
   }
 
@@ -1897,8 +1925,8 @@
     gap: 8px;
     align-items: center;
     min-width: 0;
-    padding: 5px 0;
-    border-top: 1px solid var(--app-border);
+    padding: 6px 0;
+    border-top: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
     font-size: 11px;
   }
 
@@ -1927,7 +1955,7 @@
 
   .tool-history-more {
     padding-top: 6px;
-    border-top: 1px solid var(--app-border);
+    border-top: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
     color: var(--app-muted);
     font-size: 11px;
   }

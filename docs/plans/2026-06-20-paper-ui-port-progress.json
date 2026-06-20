@@ -2,9 +2,9 @@
   "plan": "docs/plans/2026-06-20-paper-ui-port-phased-plan.md",
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
-    "phase": "phase-3",
-    "task": "3.3",
-    "next_allowed_action": "Implement task 3.3; after verified completion, advance to the next phase automatically"
+    "phase": "phase-4",
+    "task": "4.1",
+    "next_allowed_action": "Implement task 4.1; after verified completion, advance to the next task automatically"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -85,7 +85,7 @@
       "tasks": [
         { "id": "3.1", "title": "ChatPanel 消息扁平→气泡（用户 soft/solid、头像区分、密度）；气泡不用 backdrop-filter（长对话合成开销，实色卡片即可）", "status": "completed", "verification": ["2026-06-20 task 3.1：ChatPanel 消息壳就地演进为 Paper 气泡：用户消息靠右、助手消息靠左，保留 .msg-row/.msg-avatar/.msg-body/.msg-content 单一类系统；用户气泡支持 data-userbubble soft/solid，头像改为“你”/“AI”区分，角色标签改为“你”/“llm-wiki”，data-density=compact 收紧消息间距、头像和气泡 padding；气泡使用实色/渐变纸面与轻阴影，无 backdrop-filter。为让 DOM 测试直接渲染 ChatPanel，将 ChatPanel、CommandMenu、ExportButtons、RefMenu 的 @ alias 导入改为相对路径，并在 test/setup-dom.ts 暴露 React 给 node+tsx JSX 运行时；新增 chat-panel-bubbles.test.tsx 覆盖真实初始用户/助手消息气泡、角色/头像/内容，以及 CSS 契约：solid/compact 选择器存在、.msg-content 无 backdrop-filter。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/chat-panel-bubbles.test.tsx 退出 0（2 tests）；cd workbench/web && npm test 退出 0（20 suites / 60 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0（仍有既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；Playwright 浏览器 smoke（1440，提权运行）注入用户/助手消息，确认用户气泡在右侧、solid/compact 样式生效，用户/助手气泡 computed backdropFilter 均为 none。下一步 3.2。"] },
         { "id": "3.2", "title": "MarkdownView 概念链接 .at Paper 样式 + 荧光笔 .hl", "status": "completed", "verification": ["2026-06-20 task 3.2：MarkdownView 的 wiki 概念链接改用 .at Paper 下划线样式，保留 onOpenPage/onWikiLinkSeen/emitWikiLinkSeen 点击链路；新增轻量 remarkPaperHighlight 插件支持 ==高亮== 语法，输出 mark.hl，不引入 raw HTML 解析或新依赖；index.css 新增 .msg-content/.drawer-content 内的 .at 和 .hl Paper 样式，.hl 使用稳定 --comm-attn 变量。新增 markdown-view.test.tsx 覆盖 wiki 链接 class、href、点击打开回调，以及 ==important context== 渲染为 MARK.hl。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/markdown-view.test.tsx 退出 0（2 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm test 退出 0（21 suites / 62 tests）；cd workbench/web && npm run build 退出 0（仍有既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；Playwright 浏览器 smoke（1440，提权运行）确认 .at computed textDecorationLine=underline/cursor=pointer，.hl 背景 gradient 生效且 tagName=MARK。下一步 3.3。"] },
-        { "id": "3.3", "title": "ToolStatusRunway/ToolHistorySummary 暖化（保 omp 折叠语义与信息量）", "status": "pending", "verification": [] }
+        { "id": "3.3", "title": "ToolStatusRunway/ToolHistorySummary 暖化（保 omp 折叠语义与信息量）", "status": "completed", "verification": ["2026-06-20 task 3.3：ToolStatusRunway 与 ToolHistorySummary 在现有结构上 Paper 暖化：运行态卡片加入纸纹背景、状态色微光轨道、pill 状态标签与柔和 chips；折叠工具摘要加入纸纹卡片、暖色标题、分组/目标 chips 与更轻的 detail 分隔线。未改工具状态数据模型、折叠语义、目标截断、详情上限或分组信息。补强 tool-status-runway.test.ts 与 tool-history-summary.test.tsx：继续验证运行态状态/动作/目标、完成/失败/取消类、摘要分组/关键目标/详情上限，并新增 CSS 契约覆盖 paper-grain、runway 微光、pill 状态、mono chips、detail grid。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/tool-status-runway.test.ts test/tool-history-summary.test.tsx test/chat-panel-tool-status.test.tsx 退出 0（9 tests）；cd workbench/web && npm test 退出 0（21 suites / 64 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0（仍有既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；Playwright 浏览器 smoke（1440，提权运行）确认 runway/history 均有 paper-grain 背景，runway ::after 微光存在，pulse 阴影/状态 pill 生效，折叠摘要仍显示“文件 2/命令 1”和 wiki/a.md 关键目标。Phase 3 全任务完成，下一步 Phase 4 task 4.1。"] }
       ]
     },
     {
@@ -204,6 +204,11 @@
       "task": "3.2",
       "timestamp": "2026-06-20T05:03:00Z",
       "entry": "完成 MarkdownView 概念链接与荧光笔：wiki 链接改 .at Paper 样式且点击开抽屉链路保持不变；新增 ==高亮== 到 mark.hl 的轻量解析与样式。新增 MarkdownView DOM 测试；test/typecheck/build/lint 和浏览器 smoke 通过。下一步 3.3。"
+    },
+    {
+      "task": "3.3",
+      "timestamp": "2026-06-20T05:09:00Z",
+      "entry": "完成工具状态暖化：运行态工具卡和折叠工具摘要改为 Paper 纸面、微光、pill/chip 视觉，同时保留原有折叠语义、分组、目标和详情上限。相关测试、全量 test/typecheck/build/lint 与浏览器 smoke 通过。Phase 3 完成，下一步 Phase 4 task 4.1。"
     }
   ]
 }

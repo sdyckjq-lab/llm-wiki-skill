@@ -2,6 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
 	TOOL_HISTORY_DETAIL_LIMIT,
@@ -35,6 +37,15 @@ describe("ToolHistorySummary", () => {
 		assert.match(html, /Skill 1/);
 		assert.equal(html.includes("tool-history-row"), false);
 		assert.ok((html.match(/tool-history-chip/g) ?? []).length <= TOOL_HISTORY_FOLDED_TARGET_LIMIT + 4);
+	});
+
+	it("keeps the folded Paper summary styled while preserving groups and targets", () => {
+		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
+
+		assert.match(css, /\.tool-history-summary[\s\S]*var\(--paper-grain\)/);
+		assert.match(css, /\.tool-history-title[\s\S]*var\(--app-accent-deep\)/);
+		assert.match(css, /\.tool-history-group,[\s\S]*\.tool-history-chip/);
+		assert.match(css, /\.tool-history-row[\s\S]*grid-template-columns:\s*44px 64px minmax\(0, 1fr\)/);
 	});
 
 	it("renders expanded detail with a hard row limit and remaining count", () => {
