@@ -11,10 +11,9 @@ import {
 
 import { AddExternalDialog } from "./AddExternalDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import type { MainView } from "./MainViewTabs";
 import type { ConversationInfo, KnowledgeBaseInfo } from "../lib/api";
 import { cn } from "../lib/utils";
-
-export type MainView = "chat" | "graph";
 
 interface Props {
 	knowledgeBases: KnowledgeBaseInfo[];
@@ -122,10 +121,6 @@ export function Sidebar({
 	return (
 		<aside className="shell-sidebar">
 			<div className="sidebar-header">
-				<div className="sidebar-brand">
-					<span className="sidebar-brand-dot" />
-					<span>llm-wiki-agent</span>
-				</div>
 				<button
 					className="icon-btn"
 					type="button"
@@ -302,7 +297,6 @@ function KbItem({
 			className={cn("kb-row", active && "kb-row-active", isDisabled && "kb-row-disabled")}
 			title={item.path}
 		>
-			<BookOpen className="size-3.5 shrink-0" />
 			<span className="kb-name">{item.name}</span>
 			{!item.valid ? (
 				<span className="kb-badge kb-badge-invalid">不可用</span>

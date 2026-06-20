@@ -13,6 +13,7 @@ describe("Sidebar", () => {
 
 		assert.equal(Boolean(screen.queryByTitle("刷新")), false, "expanded sidebar should not render refresh");
 		assert.equal(Boolean(screen.queryByLabelText("设置")), false, "expanded sidebar should not render top settings");
+		assert.equal(Boolean(screen.queryByText("llm-wiki-agent")), false, "expanded sidebar should not repeat the topbar brand");
 		assert.ok(screen.getByLabelText("折叠侧栏"));
 		assert.ok(screen.getByText("笔记本"));
 		assert.ok(screen.getByText("会话"));

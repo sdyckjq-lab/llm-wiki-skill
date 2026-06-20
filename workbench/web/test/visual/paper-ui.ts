@@ -46,6 +46,7 @@ const defaultPrefs: PaperPrefs = {
 	density: "cozy",
 };
 const referenceCache = new Map<number, Promise<string>>();
+const explicitBaseUrl = Boolean(process.env.PAPER_UI_BASE_URL);
 
 const cases: PaperVisualCase[] = [
 	...(["light", "dark"] as const).flatMap((theme) =>
@@ -198,15 +199,19 @@ let appUrl = baseUrl;
 let staticFallback = false;
 
 try {
-	if (!(await isReachable(baseUrl))) {
+	if (explicitBaseUrl) {
+		await waitForUrl(baseUrl, 30_000);
+	} else {
 		if (await canListenOnLocalhost()) {
-			server = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1"], {
+			const port = await findFreeLocalhostPort();
+			appUrl = `http://127.0.0.1:${port}`;
+			server = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
 				cwd: process.cwd(),
 				env: process.env,
 			});
 			server.stdout.on("data", (chunk) => process.stdout.write(`[vite] ${chunk}`));
 			server.stderr.on("data", (chunk) => process.stderr.write(`[vite] ${chunk}`));
-			await waitForUrl(baseUrl, 30_000);
+			await waitForUrl(appUrl, 30_000);
 		} else {
 			staticFallback = true;
 			appUrl = staticFallbackUrl;
@@ -297,6 +302,8 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 			const sidebar = document.querySelector(".shell-sidebar");
 			const sidebarFooter = document.querySelector(".sidebar-footer");
 			const main = document.querySelector(".shell-main");
+			const mainTabs = document.querySelector(".main-view-tabs");
+			const chatMessages = document.querySelector(".chat-messages");
 			const drawer = document.querySelector(".drawer-panel-open");
 			const composer = document.querySelector(".composer-card");
 			const textarea = document.querySelector(".chat-textarea");
@@ -329,7 +336,11 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 				sidebarButtonLabels: Array.from(sidebar?.querySelectorAll("button") ?? [])
 					.map((button) => button.getAttribute("aria-label") || button.textContent?.replace(/\s+/g, " ").trim() || "")
 					.filter(Boolean),
+				sidebarKbRowIconCount: document.querySelectorAll(".shell-sidebar:not(.shell-sidebar-collapsed) .kb-row svg").length,
 				sidebarFooterText: sidebarFooter?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+				mainTabsText: mainTabs?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+				mainTabsRect: mainTabs ? rectOf(mainTabs) : null,
+				chatMessagesText: chatMessages?.textContent?.replace(/\s+/g, " ").trim() ?? null,
 				sidebarRect: sidebar ? rectOf(sidebar) : null,
 				mainRect: main ? rectOf(main) : null,
 				drawerRect: drawer ? rectOf(drawer) : null,
@@ -690,6 +701,9 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 			assertTextExcludes(labels, "刷新", visualCase.name);
 			assertTextExcludes(labels, "添加现有库", visualCase.name);
 		} else {
+			if (state.sidebarKbRowIconCount !== 0) {
+				throw new Error(`${visualCase.name}: expanded notebook rows still render leading icons`);
+			}
 			assertTextIncludes(stringOrNull(state.sidebarFooterText), "新建知识库", visualCase.name);
 			assertTextExcludes(stringOrNull(state.sidebarFooterText), "添加现有库", visualCase.name);
 			assertTextIncludes(stringOrNull(state.sidebarText), "笔记本", visualCase.name);
@@ -699,7 +713,21 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 		}
 	}
 
+	if (visualCase.name.startsWith("v2-")) {
+		assertTextIncludes(stringOrNull(state.mainTabsText), "对话", visualCase.name);
+		assertTextIncludes(stringOrNull(state.mainTabsText), "图谱", visualCase.name);
+		const mainTabs = asRect(state.mainTabsRect);
+		const main = asRect(state.mainRect);
+		if (!mainTabs || !main) throw new Error(`${visualCase.name}: missing V2 main view tabs`);
+		if (mainTabs.left < main.left + 8 || mainTabs.top < main.top) {
+			throw new Error(`${visualCase.name}: main view tabs are not placed at the top of the main area`);
+		}
+	}
+
 	if (visualCase.v2Focus === "composer") {
+		assertTextIncludes(stringOrNull(state.chatMessagesText), "transformer", visualCase.name);
+		assertTextIncludes(stringOrNull(state.chatMessagesText), "mamba", visualCase.name);
+		assertTextIncludes(stringOrNull(state.chatMessagesText), "两者都在解长序列", visualCase.name);
 		const composer = asRect(state.composerRect);
 		const textarea = asRect(state.textareaRect);
 		const send = asRect(state.sendRect);
@@ -716,12 +744,17 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 		const composer = asRect(state.composerRect);
 		if (!state.drawerOpen || !drawer || !composer) throw new Error(`${visualCase.name}: expected drawer and composer geometry`);
 		const viewportWidth = Number(state.viewportWidth);
-		if (viewportWidth > 1180 && composer.right > drawer.left - 8) {
+		if (viewportWidth >= 1024 && composer.right > drawer.left - 8) {
 			throw new Error(`${visualCase.name}: drawer overlaps composer`);
 		}
-		if (viewportWidth > 1180 && composer.width < 420) {
+		if (viewportWidth >= 1024 && composer.width < 420) {
 			throw new Error(`${visualCase.name}: composer squeezed too narrow (${composer.width}px)`);
 		}
+	}
+
+	if (visualCase.name.startsWith("v2-") && Number(state.viewportWidth) === 768) {
+		const sidebar = asRect(state.sidebarRect);
+		if (!sidebar || sidebar.width < 220) throw new Error(`${visualCase.name}: V2 sidebar disappeared at 768px`);
 	}
 
 	if (visualCase.view === "graph") {
@@ -827,6 +860,21 @@ async function canListenOnLocalhost(): Promise<boolean> {
 		server.once("error", () => resolveCanListen(false));
 		server.listen(0, "127.0.0.1", () => {
 			server.close(() => resolveCanListen(true));
+		});
+	});
+}
+
+async function findFreeLocalhostPort(): Promise<number> {
+	return new Promise((resolvePort, reject) => {
+		const server = createServer();
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", () => {
+			const address = server.address();
+			const port = typeof address === "object" && address ? address.port : 0;
+			server.close(() => {
+				if (port) resolvePort(port);
+				else reject(new Error("Unable to allocate a localhost port"));
+			});
 		});
 	});
 }

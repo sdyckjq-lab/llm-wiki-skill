@@ -15,10 +15,11 @@ import { BatchDigestPanel, type BatchDigestJob } from "@/components/BatchDigestP
 import { AppearancePanel } from "@/components/AppearancePanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { GraphPanel } from "@/components/GraphPanel";
+import { MainViewTabs, type MainView } from "@/components/MainViewTabs";
 import { RightDrawer } from "@/components/RightDrawer";
 import { SearchPanel } from "@/components/SearchPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { Sidebar, type MainView } from "@/components/Sidebar";
+import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -78,19 +79,15 @@ import {
 	type ChatStatusSnapshot,
 	type GraphStatusSnapshot,
 } from "@/lib/view-status";
+import {
+	DEFAULT_DRAWER_WIDTH,
+	clampDrawerWidthForViewport,
+	sidebarLayoutWidth,
+} from "@/lib/drawer-layout";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "llm-wiki-agent-sidebar-collapsed";
 const DRAWER_WIDTH_STORAGE_KEY = "llm-wiki-agent-drawer-width";
 const MAIN_VIEW_STORAGE_KEY = "llm-wiki-agent-main-view";
-const DEFAULT_DRAWER_WIDTH = 420;
-const MIN_DRAWER_WIDTH = 360;
-const MIN_CHAT_WIDTH = 420;
-const MAX_DRAWER_RATIO = 0.7;
-const FULL_SIDEBAR_WIDTH = 270;
-const COMPACT_SIDEBAR_WIDTH = 230;
-const COLLAPSED_SIDEBAR_WIDTH = 52;
-const MOBILE_BREAKPOINT = 768;
-const COMPACT_BREAKPOINT = 1024;
 const SEARCH_REF_LIMIT = 5000;
 
 function drawerForGraphNodeVisibility(
@@ -164,19 +161,15 @@ function visibilityWithTemporaryObject(
 
 function getSidebarLayoutWidth(collapsed: boolean): number {
 	if (typeof window === "undefined") return 0;
-	if (window.innerWidth <= MOBILE_BREAKPOINT) return 0;
-	if (collapsed) return COLLAPSED_SIDEBAR_WIDTH;
-	return window.innerWidth <= COMPACT_BREAKPOINT ? COMPACT_SIDEBAR_WIDTH : FULL_SIDEBAR_WIDTH;
+	return sidebarLayoutWidth(collapsed, window.innerWidth);
 }
 
 function clampDrawerWidth(width: number, sidebarCollapsed: boolean): number {
 	if (typeof window === "undefined") return DEFAULT_DRAWER_WIDTH;
-	const sidebarWidth = getSidebarLayoutWidth(sidebarCollapsed);
-	const maxByRatio = Math.floor(window.innerWidth * MAX_DRAWER_RATIO);
-	const maxByChat = Math.max(0, window.innerWidth - sidebarWidth - MIN_CHAT_WIDTH);
-	const maxWidth = Math.max(0, Math.min(maxByRatio, maxByChat));
-	const minWidth = Math.min(MIN_DRAWER_WIDTH, maxWidth);
-	return Math.min(Math.max(width, minWidth), maxWidth);
+	return clampDrawerWidthForViewport(width, {
+		viewportWidth: window.innerWidth,
+		sidebarWidth: getSidebarLayoutWidth(sidebarCollapsed),
+	});
 }
 
 /**
@@ -210,7 +203,7 @@ function App() {
 	const [drawerWidth, setDrawerWidthState] = useState(() => {
 		if (typeof window === "undefined") return DEFAULT_DRAWER_WIDTH;
 		const stored = window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY);
-		if (!stored) return DEFAULT_DRAWER_WIDTH;
+		if (!stored) return clampDrawerWidth(DEFAULT_DRAWER_WIDTH, sidebarCollapsed);
 		const raw = Number(stored);
 		return Number.isFinite(raw) ? clampDrawerWidth(raw, sidebarCollapsed) : DEFAULT_DRAWER_WIDTH;
 	});
@@ -243,6 +236,7 @@ function App() {
 	const [pendingGraphDiff, setPendingGraphDiff] = useState<GraphDiff | null>(null);
 	const [graphRefreshToken, setGraphRefreshToken] = useState(0);
 	const [graphHasPendingUpdate, setGraphHasPendingUpdate] = useState(false);
+	const [graphBuildError, setGraphBuildError] = useState<Extract<GraphEvent, { type: "graph_error" }> | null>(null);
 	const [graphData, setGraphData] = useState<GraphData | null>(null);
 	const [graphPins, setGraphPins] = useState<PinMap>({});
 	const [graphVisibilityState, setGraphVisibilityState] = useState<GraphVisibilityState | null>(null);
@@ -286,6 +280,7 @@ function App() {
 		events.addEventListener("graph_updated", (message) => {
 			const event = JSON.parse((message as MessageEvent).data) as GraphEvent;
 			if (event.type !== "graph_updated" || event.kbPath !== active.kb.path) return;
+			setGraphBuildError(null);
 			setGraphRefreshToken((token) => token + 1);
 			setPendingGraphDiff(event.diff);
 			if (mainViewRef.current !== "graph" && event.diff) setGraphHasPendingUpdate(true);
@@ -294,6 +289,7 @@ function App() {
 			const event = JSON.parse((message as MessageEvent).data) as GraphEvent;
 			if (event.type === "graph_error" && event.kbPath === active.kb.path) {
 				setSidebarError(event.message);
+				setGraphBuildError(event);
 			}
 		});
 		return () => events.close();
@@ -318,6 +314,7 @@ function App() {
 
 	useEffect(() => {
 		const handleResize = () => setDrawerWidthState((width) => clampDrawerWidth(width, sidebarCollapsed));
+		handleResize();
 		window.addEventListener("resize", handleResize);
 		return () => window.removeEventListener("resize", handleResize);
 	}, [sidebarCollapsed]);
@@ -351,11 +348,13 @@ function App() {
 			setActive(currentActive);
 			if (currentActive) {
 				setInitialMessages(currentActive.conversation.messages);
+				setChatKey((k) => k + 1);
 				await refreshConversations(currentActive.kb.path);
 			} else {
 				setInitialMessages([]);
 				setConversations([]);
 				setArtifacts([]);
+				setGraphBuildError(null);
 				setDrawer(closedDrawer());
 			}
 		} catch (err) {
@@ -401,6 +400,7 @@ function App() {
 		setDrawer(closedDrawer());
 		setArtifacts([]);
 		setPendingGraphDiff(null);
+		setGraphBuildError(null);
 		setGraphHasPendingUpdate(false);
 		setGraphData(null);
 		setGraphPins({});
@@ -612,7 +612,10 @@ function App() {
 		}
 	};
 
-	const handleOpenGraphPage = async (payload: GraphOpenPagePayload, options: { syncGraphFocus?: boolean } = {}) => {
+	const handleOpenGraphPage = useCallback(async (
+		payload: GraphOpenPagePayload,
+		options: { syncGraphFocus?: boolean } = {},
+	) => {
 		if (!active) return;
 		const syncGraphFocus = options.syncGraphFocus ?? true;
 		const normalizedPagePath = toRelativePagePath(payload.path, active.kb.path) ?? payload.path;
@@ -637,10 +640,10 @@ function App() {
 			setDrawer((current) => (
 				shouldApplyGraphReaderResult(current, normalizedPayload)
 					? graphReaderDrawer(normalizedPayload, { error: err instanceof Error ? err.message : String(err) })
-					: current
+				: current
 			));
 		}
-	};
+	}, [active]);
 
 	const handleGraphSummaryCommand = useCallback((command: GraphSummaryCommand) => {
 		if (command.kind === "open-detail-read") {
@@ -683,13 +686,13 @@ function App() {
 				const temporaryObject = command.object;
 				setDrawer((current) => {
 					const next = drawerForGraphNodeVisibility(graphData, nodeId, current, {
-					pins: graphPins,
-					visibility: {
-						searchQuery: graphVisibilityState?.searchQuery ?? "",
-						searchResultIds: graphVisibilityState?.searchResultIds ?? [],
-						typeFilters: graphVisibilityState?.typeFilters ?? {},
-						temporaryObject,
-					},
+						pins: graphPins,
+						visibility: {
+							searchQuery: graphVisibilityState?.searchQuery ?? "",
+							searchResultIds: graphVisibilityState?.searchResultIds ?? [],
+							typeFilters: graphVisibilityState?.typeFilters ?? {},
+							temporaryObject,
+						},
 					});
 					return sameGraphDrawerTarget(current, next) ? current : next;
 				});
@@ -712,7 +715,7 @@ function App() {
 				return sameGraphDrawerTarget(current, next) ? current : next;
 			});
 		}
-	}, [graphData, graphPins, graphVisibilityState, active]);
+	}, [graphData, graphPins, graphVisibilityState, handleOpenGraphPage]);
 
 	useEffect(() => {
 		if (drawer.mode !== "graph-node-summary") return;
@@ -992,44 +995,52 @@ function App() {
 						onStartBatchDigest={handleStartBatchDigest}
 					/>
 					<main className="shell-main">
-						{mainView === "graph" ? (
-							<GraphPanel
-								currentKnowledgeBaseName={active?.kb.name ?? null}
-								currentKnowledgeBasePath={active?.kb.path ?? null}
-								theme={theme}
-								onOpenPage={handleOpenGraphPage}
-								onGraphDataChange={setGraphData}
-								onGraphPinsChange={setGraphPins}
-								onGraphVisibilityChange={handleGraphVisibilityChange}
-								onSelectionChange={handleGraphSelectionChange}
-								onStatusChange={setGraphStatus}
-								onViewReset={handleGraphViewReset}
-								selectionCommand={selectionCommand}
-								focusPath={graphFocusPath}
-								pendingDiff={pendingGraphDiff}
-								refreshToken={graphRefreshToken}
-								onDiffConsumed={() => setPendingGraphDiff(null)}
-							/>
-						) : (
-							<ChatPanel
-								key={chatKey}
-								currentKnowledgeBaseName={active?.kb.name ?? null}
-								initialMessages={initialMessages}
-								onMessageSent={handleMessageSent}
-								onStatusChange={setChatStatus}
-								currentKnowledgeBasePath={active?.kb.path ?? null}
-								onOpenPage={handleOpenPage}
-								onWikiLinkSeen={handleWikiLinkSeen}
-								onArtifactCreated={handleArtifactCreated}
-								artifactCount={artifacts.length}
-								onOpenArtifacts={handleOpenArtifacts}
-								onStartBatchDigest={handleStartBatchDigest}
-								pendingPrompt={pendingGraphPrompt}
-								onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
-								pendingInsertRef={pendingInsertRef}
-								onPendingInsertRefConsumed={() => setPendingInsertRef(null)}
-							/>
-						)}
+						<MainViewTabs
+							activeView={mainView}
+							graphHasPendingUpdate={graphHasPendingUpdate}
+							onSelectView={setMainView}
+						/>
+						<div className="main-view-content">
+							{mainView === "graph" ? (
+								<GraphPanel
+									currentKnowledgeBaseName={active?.kb.name ?? null}
+									currentKnowledgeBasePath={active?.kb.path ?? null}
+									theme={theme}
+									graphBuildError={graphBuildError}
+									onOpenPage={handleOpenGraphPage}
+									onGraphDataChange={setGraphData}
+									onGraphPinsChange={setGraphPins}
+									onGraphVisibilityChange={handleGraphVisibilityChange}
+									onSelectionChange={handleGraphSelectionChange}
+									onStatusChange={setGraphStatus}
+									onViewReset={handleGraphViewReset}
+									selectionCommand={selectionCommand}
+									focusPath={graphFocusPath}
+									pendingDiff={pendingGraphDiff}
+									refreshToken={graphRefreshToken}
+									onDiffConsumed={() => setPendingGraphDiff(null)}
+								/>
+							) : (
+								<ChatPanel
+									key={chatKey}
+									currentKnowledgeBaseName={active?.kb.name ?? null}
+									initialMessages={initialMessages}
+									onMessageSent={handleMessageSent}
+									onStatusChange={setChatStatus}
+									currentKnowledgeBasePath={active?.kb.path ?? null}
+									onOpenPage={handleOpenPage}
+									onWikiLinkSeen={handleWikiLinkSeen}
+									onArtifactCreated={handleArtifactCreated}
+									artifactCount={artifacts.length}
+									onOpenArtifacts={handleOpenArtifacts}
+									onStartBatchDigest={handleStartBatchDigest}
+									pendingPrompt={pendingGraphPrompt}
+									onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
+									pendingInsertRef={pendingInsertRef}
+									onPendingInsertRefConsumed={() => setPendingInsertRef(null)}
+								/>
+							)}
+						</div>
 					</main>
 					<RightDrawer
 						drawer={drawer}

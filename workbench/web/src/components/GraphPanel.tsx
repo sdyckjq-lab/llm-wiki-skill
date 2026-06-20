@@ -23,12 +23,13 @@ import {
 } from "../lib/api";
 import type { GraphSelectionCommand } from "../lib/graph-summary-actions";
 import { cn } from "../lib/utils";
-import type { GraphStatusKind, GraphStatusSnapshot } from "../lib/view-status";
+import { DEFAULT_GRAPH_STATUS, type GraphStatusKind, type GraphStatusSnapshot } from "../lib/view-status";
 
 interface Props {
 	currentKnowledgeBaseName: string | null;
 	currentKnowledgeBasePath: string | null;
 	theme: "dark" | "light";
+	graphBuildError?: { kbPath: string; message: string; rebuiltAt: string } | null;
 	onOpenPage?: (payload: GraphOpenPagePayload) => void;
 	onGraphDataChange?: (data: GraphData | null) => void;
 	onGraphPinsChange?: (pins: PinMap) => void;
@@ -57,6 +58,7 @@ export function GraphPanel({
 	currentKnowledgeBaseName,
 	currentKnowledgeBasePath,
 	theme,
+	graphBuildError = null,
 	onOpenPage,
 	onGraphDataChange,
 	onGraphPinsChange,
@@ -103,7 +105,7 @@ export function GraphPanel({
 	const lastDragStateRef = useRef(false);
 	const aggregationMarkers = useMemo(
 		() => data ? buildCommunityAggregationMarkers(data, { pins: layoutPinsRef.current, minCommunitySize: 6 }) : [],
-		[data, layoutPinsRef.current],
+		[data],
 	);
 
 	const graphTheme: ThemeId = theme === "dark" ? "mo-ye" : "shan-shui";
@@ -115,6 +117,24 @@ export function GraphPanel({
 		setData(null);
 		setDataKnowledgeBasePath(currentKnowledgeBasePath);
 	}, [currentKnowledgeBasePath]);
+
+	useEffect(() => {
+		return () => {
+			onStatusChange?.(DEFAULT_GRAPH_STATUS);
+		};
+	}, [onStatusChange]);
+
+	useEffect(() => {
+		if (!graphBuildError || graphBuildError.kbPath !== currentKnowledgeBasePath) return;
+		setData(null);
+		setDataKnowledgeBasePath(currentKnowledgeBasePath);
+		onGraphDataChangeRef.current?.(null);
+		onGraphVisibilityChangeRef.current?.(null);
+		onSelectionChangeRef.current?.(null);
+		setBuildState("none");
+		setError(graphBuildError.message);
+		setStatus("error");
+	}, [currentKnowledgeBasePath, graphBuildError]);
 
 	useLayoutEffect(() => {
 		graphThemeRef.current = graphTheme;
@@ -383,7 +403,7 @@ export function GraphPanel({
 		engineRef.current = engine;
 		engineKbPathRef.current = currentKnowledgeBasePath;
 		engineDataRef.current = data;
-	}, [aggregationMarkers, currentKnowledgeBasePath, data, dataKnowledgeBasePath, persistPins, playDiff]);
+	}, [aggregationMarkers, currentKnowledgeBasePath, data, dataKnowledgeBasePath, persistPins, playDiff, selectionCommand]);
 
 	useEffect(() => {
 		engineRef.current?.setTheme(graphTheme);

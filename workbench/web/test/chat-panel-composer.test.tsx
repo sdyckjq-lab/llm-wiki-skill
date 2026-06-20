@@ -27,6 +27,14 @@ describe("ChatPanel Paper composer", () => {
 		assert.equal(Boolean(exportBar?.closest(".composer-tools")), true);
 	});
 
+	it("keeps the empty composer to one light input card", () => {
+		renderChatPanel([]);
+
+		assert.equal(document.querySelector(".chat-input-hints"), null);
+		assert.equal(document.querySelector(".composer-tools"), null);
+		assert.ok(document.querySelector(".composer-card"));
+	});
+
 	it("keeps material ingest chips available above the composer card", async () => {
 		renderChatPanel();
 
@@ -62,16 +70,16 @@ describe("ChatPanel Paper composer", () => {
 	});
 });
 
-function renderChatPanel() {
+function renderChatPanel(initialMessages = [
+	{ id: "u1", role: "user" as const, content: "帮我总结这篇笔记", tools: [] },
+	{ id: "a1", role: "assistant" as const, content: "可以。", tools: [] },
+]) {
 	return render(
 		<TooltipProvider>
 			<ChatPanel
 				currentKnowledgeBaseName="AI学习知识库"
 				currentKnowledgeBasePath="/kb"
-				initialMessages={[
-					{ id: "u1", role: "user", content: "帮我总结这篇笔记", tools: [] },
-					{ id: "a1", role: "assistant", content: "可以。", tools: [] },
-				]}
+				initialMessages={initialMessages}
 			/>
 		</TooltipProvider>,
 	);

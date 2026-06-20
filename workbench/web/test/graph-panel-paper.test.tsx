@@ -48,6 +48,36 @@ describe("GraphPanel Paper shell", () => {
 		assert.ok(document.querySelector(".graph-host"));
 	});
 
+	it("surfaces graph build errors in the graph panel", async () => {
+		mockGraphFetch({ needsBuild: true });
+
+		const { rerender } = render(
+			<GraphPanel
+				currentKnowledgeBaseName="AI 学习库"
+				currentKnowledgeBasePath="/kb"
+				theme="light"
+			/>,
+		);
+
+		await waitFor(() => {
+			assert.match(screen.getByText("图谱构建中").textContent ?? "", /图谱构建中/);
+		});
+
+		rerender(
+			<GraphPanel
+				currentKnowledgeBaseName="AI 学习库"
+				currentKnowledgeBasePath="/kb"
+				theme="light"
+				graphBuildError={{ kbPath: "/kb", message: "构建失败", rebuiltAt: "2026-06-20T00:00:00.000Z" }}
+			/>,
+		);
+
+		await waitFor(() => {
+			assert.match(screen.getByText("图谱暂时不可用").textContent ?? "", /图谱暂时不可用/);
+			assert.match(document.body.textContent ?? "", /构建失败/);
+		});
+	});
+
 	it("keeps the GraphPanel Paper shell styling outside graph-engine internals", () => {
 		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
 
@@ -72,7 +102,7 @@ function cssBlock(css: string, selector: string): string {
 	return end === -1 ? css.slice(start) : css.slice(start, end);
 }
 
-function mockGraphFetch() {
+function mockGraphFetch(options: { needsBuild?: boolean } = {}) {
 	globalThis.fetch = (async (input) => {
 		const url = String(input);
 		if (url.startsWith("/api/graph/layout")) {
@@ -82,6 +112,13 @@ function mockGraphFetch() {
 			});
 		}
 		if (url.startsWith("/api/graph?")) {
+			if (options.needsBuild) {
+				return jsonResponse({
+					ok: true,
+					needsBuild: true,
+					graphPath: "/kb/.llm-wiki/graph.json",
+				});
+			}
 			return jsonResponse({
 				ok: true,
 				needsBuild: false,
@@ -100,7 +137,10 @@ function mockGraphFetch() {
 					edges: [],
 					communities: [],
 				},
-			});
+				});
+			}
+		if (url.startsWith("/api/graph/rebuild")) {
+			return jsonResponse({ ok: true, status: "started" });
 		}
 		return jsonResponse({ ok: false, error: `Unexpected request: ${url}` }, 500);
 	}) as typeof fetch;
