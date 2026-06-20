@@ -496,6 +496,160 @@
     font-weight: 700;
   }
 
+  .appearance-panel {
+    position: absolute;
+    top: 58px;
+    right: 14px;
+    width: min(306px, calc(100vw - 28px));
+    display: grid;
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 78%, transparent);
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 96%, transparent), color-mix(in srgb, var(--app-bg) 88%, var(--app-surface))),
+      var(--paper-grain);
+    background-size: auto, 180px 180px;
+    box-shadow: var(--shadow-lg);
+    color: var(--app-fg);
+    z-index: 70;
+  }
+
+  .appearance-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .appearance-panel-header h2 {
+    margin: 0;
+    color: var(--app-fg);
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.2;
+  }
+
+  .appearance-panel-header p {
+    margin: 2px 0 0;
+    color: var(--app-faint);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .appearance-close {
+    width: 28px;
+    height: 28px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 76%, transparent);
+    color: var(--app-muted);
+    transition: background 0.14s, border-color 0.14s, color 0.14s;
+  }
+
+  .appearance-close:hover {
+    border-color: color-mix(in srgb, var(--app-accent) 44%, var(--app-border));
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+  }
+
+  .appearance-close svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .appearance-group {
+    display: grid;
+    gap: 7px;
+  }
+
+  .appearance-label {
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 750;
+  }
+
+  .appearance-segmented {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 88%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-bg) 76%, transparent);
+  }
+
+  .appearance-segment {
+    min-width: 0;
+    min-height: 29px;
+    overflow: hidden;
+    padding: 0 8px;
+    border-radius: 8px;
+    color: var(--app-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background 0.14s, color 0.14s, box-shadow 0.14s;
+  }
+
+  .appearance-segment:hover,
+  .appearance-segment-active {
+    background: var(--app-surface);
+    color: var(--app-accent-deep);
+    box-shadow: 0 1px 0 color-mix(in srgb, white 40%, transparent), 0 5px 14px color-mix(in srgb, var(--app-accent) 8%, transparent);
+  }
+
+  .appearance-swatches {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .appearance-swatch {
+    height: 34px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+    border-radius: 10px;
+    color: #fffdf7;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 5px 14px rgba(70, 55, 40, 0.08);
+    transition: transform 0.14s, box-shadow 0.14s, border-color 0.14s;
+  }
+
+  .appearance-swatch:hover,
+  .appearance-swatch-active {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--app-fg) 28%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 9px 22px rgba(70, 55, 40, 0.16);
+  }
+
+  .appearance-swatch svg {
+    width: 15px;
+    height: 15px;
+    filter: drop-shadow(0 1px 2px rgba(50, 36, 22, 0.22));
+  }
+
+  .appearance-swatch-terracotta {
+    background: linear-gradient(135deg, #e07a5f, #b85f48);
+  }
+
+  .appearance-swatch-clay {
+    background: linear-gradient(135deg, #b85f48, #8f4635);
+  }
+
+  .appearance-swatch-amber {
+    background: linear-gradient(135deg, #d9a857, #9b6a22);
+  }
+
+  .appearance-swatch-rose {
+    background: linear-gradient(135deg, #df8790, #aa4e58);
+  }
+
   [data-paper="grid"] .app-shell {
     background-image:
       var(--paper-glow),

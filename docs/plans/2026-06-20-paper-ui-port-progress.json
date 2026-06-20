@@ -3,8 +3,8 @@
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
     "phase": "phase-2",
-    "task": "2.3",
-    "next_allowed_action": "Implement task 2.3; after verified completion, advance to the next task or phase automatically"
+    "task": "2.4",
+    "next_allowed_action": "Implement task 2.4; after verified completion, advance to the next task or phase automatically"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -67,7 +67,7 @@
         { "id": "2.0", "title": "外壳改竖向（Codex #6）：.app-shell 单横排 → TopBar 在上 + body 行包裹(Sidebar+Main+Drawer)，index.css + App.tsx 同步", "status": "completed", "verification": ["2026-06-20 task 2.0：App.tsx 将 Sidebar + shell-main + RightDrawer 包进新的 .app-body，保留 SettingsPanel 与 BatchDigestPanel 作为 app-shell 级浮层；index.css 将 .app-shell 改为竖向 flex，并新增 .app-body 横向 flex 容器，预留 Phase 2 TopBar 插入点；本步未新建 TopBar，也未改变业务 props。验证：cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm test 退出 0（16 suites / 47 tests）；Playwright 检查 1440/1024/768：.app-shell flexDirection=column、.app-body display=flex/flexDirection=row/overflow=hidden，主区尺寸正常，小屏继续沿用现有侧栏隐藏行为；cd workbench/web && npm run visual:paper 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）。"] },
         { "id": "2.1", "title": "TopBar.tsx：左 kb 头(库名 + origin/valid 标记，静态无下拉无模型名；KB 无篇数字段不显示篇数 — Codex #3) + 右控件组(搜索⌘K入口/模型选择器/新对话/主题/外观齿轮)", "status": "completed", "verification": ["2026-06-20 task 2.1：新增 TopBar.tsx 组件本体，左侧知识库头只展示库名、origin 默认/外部 badge、valid 可用/失效 badge，不显示篇数、不显示模型名、不做下拉；右侧提供搜索⌘K、模型按钮、新对话、主题切换、外观齿轮按钮，全部为受控 props/callback，不读写配置；新增 topbar CSS；新增 topbar.test.tsx 覆盖左侧静态信息与全局按钮回调。为让 node:test 直接渲染带 Tooltip 的组件，将 ui/tooltip.tsx 的 cn 导入从 @ alias 改为相对路径，行为不变。注意：本步只交付组件本体，App 挂载按 task 2.4 执行；模型真实下拉/保存按 task 2.2 执行。验证：cd workbench/web && npm test 退出 0（17 suites / 49 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）。"] },
         { "id": "2.2", "title": "TopBar 模型选择器(Codex #2：真实 app 无 ModelSelector，模型在 SettingsPanel/config)：新建控件，复用 getConfig().modelRoles.main 读 + 写 config，真能切并保存；保存后走 handleConfigChanged 同源刷新，让当前模型显示立即更新", "status": "completed", "verification": ["2026-06-20 task 2.2：TopBar 模型按钮升级为真实主对话模型选择器，打开时读取 getConfig().modelRoles.main 与 fetchAvailableModels()，展示默认项与可用模型，选择后调用 setConfig({ modelRoles: { main } }) 保存，并触发 onConfigChanged 供 App 后续接 handleConfigChanged 同源刷新；新增 lib/model-roles.ts 抽出 modelRefToValue/valueToModelRef/modelInfoToValue/modelValueLabel，SettingsPanel 改为复用同一 helper，避免两套转换逻辑。TopBar.test.tsx 新增 mock API 覆盖 GET /api/config、GET /api/models、POST /api/config 和 onConfigChanged。注意：本步完成选择器本体，App 挂载与 handleConfigChanged 传入按 task 2.4 执行。验证：cd workbench/web && npm test 退出 0（17 suites / 50 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）。"] },
-        { "id": "2.3", "title": "AppearancePanel.tsx：复刻 v2 TweaksPanel，齿轮触发右上展开，受控于 App", "status": "pending", "verification": [] },
+        { "id": "2.3", "title": "AppearancePanel.tsx：复刻 v2 TweaksPanel，齿轮触发右上展开，受控于 App", "status": "completed", "verification": ["2026-06-20 task 2.3：新增受控 AppearancePanel，提供主题/纸张/配色/气泡/手写/密度选项，配色色板和分段控件通过 onChange 发出偏好 patch，关闭按钮通过 onClose 上报；新增右上浮层 Paper 样式，尺寸固定、响应式不挤出视口；新增 appearance-panel.test.tsx 覆盖隐藏态、真实点击分段/色板、关闭回调。注意：本步只交付面板本体和样式，App 挂载与实时写 documentElement.dataset 按 task 2.4/2.7 执行。验证：cd workbench/web && npm test 退出 0（18 suites / 53 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）。"] },
         { "id": "2.4", "title": "App 接线：挂 TopBar + AppearancePanel；移除 ChatPanel/GraphPanel statusbar 控件与 onToggleTheme 双传", "status": "pending", "verification": [] },
         { "id": "2.5", "title": "状态快照上报(Codex #4 修订)：ChatPanel/GraphPanel 保持内部生命周期状态，只向 App callback 上报 TopBar 需要的 chat/graph 状态快照(原 statusbar dot/提示不丢)；图谱专属控件(重置/重建 — Codex #5)留 GraphPanel 视图内", "status": "pending", "verification": [] },
         { "id": "2.6", "title": "Sidebar Paper 化 + 移除「夜灯模式」项（保留图谱/设置/折叠）", "status": "pending", "verification": [] },
@@ -169,6 +169,11 @@
       "task": "2.2",
       "timestamp": "2026-06-20T03:05:40Z",
       "entry": "完成 TopBar 主模型选择器：复用 getConfig/fetchAvailableModels/setConfig 路径读写 config.modelRoles.main，保存后触发 onConfigChanged；抽出共享 model-roles helper 并让 SettingsPanel 复用。typecheck/build/test/lint 通过。下一步 2.3。"
+    },
+    {
+      "task": "2.3",
+      "timestamp": "2026-06-20T03:15:00Z",
+      "entry": "完成 AppearancePanel 组件、右上浮层样式与 DOM 交互测试；面板仍保持受控，等待 2.4 挂到 App 后实时应用外观偏好。typecheck/build/test/lint 通过。下一步 2.4。"
     }
   ]
 }
