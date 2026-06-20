@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Moon, RefreshCw, RotateCcw, Sun } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 import {
 	createGraphWorkbenchCapabilities,
 	createGraphEngine,
@@ -28,7 +28,6 @@ interface Props {
 	currentKnowledgeBaseName: string | null;
 	currentKnowledgeBasePath: string | null;
 	theme: "dark" | "light";
-	onToggleTheme?: () => void;
 	onOpenPage?: (payload: GraphOpenPagePayload) => void;
 	onGraphDataChange?: (data: GraphData | null) => void;
 	onGraphPinsChange?: (pins: PinMap) => void;
@@ -58,7 +57,6 @@ export function GraphPanel({
 	currentKnowledgeBaseName,
 	currentKnowledgeBasePath,
 	theme,
-	onToggleTheme,
 	onOpenPage,
 	onGraphDataChange,
 	onGraphPinsChange,
@@ -501,15 +499,6 @@ export function GraphPanel({
 					<span className="status-pill">图谱</span>
 				</div>
 				<div className="statusbar-right">
-					<button
-						type="button"
-						className="status-pill status-pill-button"
-						onClick={onToggleTheme}
-						title={theme === "dark" ? "切换浅色主题" : "切换暗色主题"}
-						aria-label={theme === "dark" ? "切换浅色主题" : "切换暗色主题"}
-					>
-						{theme === "dark" ? <Moon /> : <Sun />}
-					</button>
 					<button
 						type="button"
 						className="status-pill status-pill-button"

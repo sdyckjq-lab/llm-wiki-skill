@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Files, Monitor, Moon, Send, Settings, Square, Sun, X } from "lucide-react";
+import { Files, Send, Square, X } from "lucide-react";
 
 import { CommandMenu } from "@/components/CommandMenu";
 import { ExportButtons } from "@/components/ExportButtons";
@@ -7,7 +7,6 @@ import { MarkdownView } from "@/components/MarkdownView";
 import { RefMenu } from "@/components/RefMenu";
 import { ToolHistorySummary } from "@/components/ToolHistorySummary";
 import { ToolStatusRunway } from "@/components/ToolStatusRunway";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
 	buildExportPrompt,
 	type CommandItem,
@@ -16,7 +15,6 @@ import {
 	type InspectPathResult,
 	listCommands,
 	listRefs,
-	type ModelInfo,
 	type PageRef,
 	streamPrompt,
 	type ToolStatusContractEvent,
@@ -68,23 +66,19 @@ function isExportCommand(name: string): name is ExportKind {
  * 阶段一 step 8 + review 修：
  *   - 接受 initialMessages（历史消息）作为初始状态
  *   - 父组件通过 key 在切换会话时强制重挂载本组件
- *   - 顶部状态条按 PRODUCT.md §5.2 占位三栏（KB / 模型 / 设置）
+ *   - 全局库/模型/主题入口已上提到 TopBar
  *   - 删除"等待 agent 响应…"文字，改用 ▍ 光标
  */
 interface Props {
 	currentKnowledgeBaseName: string | null;
 	currentKnowledgeBasePath: string | null;
-	model: ModelInfo | null;
 	initialMessages: UIMessage[];
 	onMessageSent?: () => void;
-	onOpenSettings?: () => void;
 	onOpenPage?: (path: string) => void;
 	onWikiLinkSeen?: (path: string) => void;
 	onArtifactCreated?: (id: string) => void;
 	artifactCount?: number;
 	onOpenArtifacts?: () => void;
-	theme?: "dark" | "light";
-	onToggleTheme?: () => void;
 	onStartBatchDigest?: (input: {
 		kbPath: string;
 		filePaths: string[];
@@ -102,17 +96,13 @@ interface Props {
 export function ChatPanel({
 	currentKnowledgeBaseName,
 	currentKnowledgeBasePath,
-	model,
 	initialMessages,
 	onMessageSent,
-	onOpenSettings,
 	onOpenPage,
 	onWikiLinkSeen,
 	onArtifactCreated,
 	artifactCount = 0,
 	onOpenArtifacts,
-	theme = "dark",
-	onToggleTheme,
 	onStartBatchDigest,
 	pendingPrompt,
 	onPendingPromptConsumed,
@@ -551,26 +541,6 @@ export function ChatPanel({
 					</span>
 				</div>
 				<div className="statusbar-right">
-					<button
-						type="button"
-						className="status-pill status-pill-button"
-						onClick={onToggleTheme}
-						title={theme === "dark" ? "切换浅色主题" : "切换暗色主题"}
-						aria-label={theme === "dark" ? "切换浅色主题" : "切换暗色主题"}
-					>
-						{theme === "dark" ? <Moon /> : <Sun />}
-					</button>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<span className="status-pill cursor-help">
-								<Monitor />
-								{model ? `${model.provider}/${model.id}` : "无活跃模型"}
-							</span>
-						</TooltipTrigger>
-						<TooltipContent side="bottom">
-							<div className="text-xs">当前模型来自设置</div>
-						</TooltipContent>
-					</Tooltip>
 					{artifactCount > 0 && (
 						<button
 							type="button"
@@ -582,14 +552,6 @@ export function ChatPanel({
 							产物 {artifactCount}
 						</button>
 					)}
-					<button
-						type="button"
-						onClick={onOpenSettings}
-						className="status-pill status-pill-button"
-					>
-						<Settings />
-						设置
-					</button>
 				</div>
 			</header>
 

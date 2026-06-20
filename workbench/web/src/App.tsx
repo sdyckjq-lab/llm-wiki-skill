@@ -12,11 +12,13 @@ import {
 } from "@llm-wiki/graph-engine";
 
 import { BatchDigestPanel, type BatchDigestJob } from "@/components/BatchDigestPanel";
+import { AppearancePanel } from "@/components/AppearancePanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { GraphPanel } from "@/components/GraphPanel";
 import { RightDrawer } from "@/components/RightDrawer";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Sidebar, type MainView } from "@/components/Sidebar";
+import { TopBar } from "@/components/TopBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
 	type ActiveContext,
@@ -65,6 +67,7 @@ import {
 	mergeAppearance,
 	readAppearance,
 	writeAppearance,
+	type AppearancePrefs,
 	type ThemeMode,
 } from "@/lib/appearance";
 
@@ -210,6 +213,7 @@ function App() {
 	const [chatKey, setChatKey] = useState(0);
 	const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [appearanceOpen, setAppearanceOpen] = useState(false);
 	const [drawer, setDrawer] = useState<DrawerState>(() => closedDrawer());
 	const [artifacts, setArtifacts] = useState<ArtifactManifest[]>([]);
 	const [drawerFullscreen, setDrawerFullscreen] = useState(false);
@@ -245,6 +249,10 @@ function App() {
 		setAppearance((value) => mergeAppearance(value, {
 			theme: value.theme === "dark" ? "light" : "dark",
 		}));
+	}, []);
+
+	const updateAppearance = useCallback((patch: Partial<AppearancePrefs>) => {
+		setAppearance((value) => mergeAppearance(value, patch));
 	}, []);
 
 	useEffect(() => {
@@ -881,9 +889,32 @@ function App() {
 		}
 	};
 
+	const activeKnowledgeBase: KnowledgeBaseInfo | null = active?.kb
+		? kbs.find((kb) => kb.path === active.kb.path) ?? {
+				path: active.kb.path,
+				name: active.kb.name,
+				origin: "default",
+				valid: true,
+			}
+		: null;
+
 	return (
 		<TooltipProvider delayDuration={200}>
 			<div className="app-shell">
+				<TopBar
+					knowledgeBase={activeKnowledgeBase}
+					model={active?.model ?? null}
+					theme={theme}
+					appearanceOpen={appearanceOpen}
+					searchDisabled
+					modelDisabled={loading}
+					newConversationDisabled={loading}
+					onSearch={() => {}}
+					onConfigChanged={handleConfigChanged}
+					onNewConversation={handleNewConversation}
+					onToggleTheme={toggleTheme}
+					onOpenAppearance={() => setAppearanceOpen((value) => !value)}
+				/>
 				<div className="app-body">
 					<Sidebar
 						knowledgeBases={kbs}
@@ -912,7 +943,6 @@ function App() {
 								currentKnowledgeBaseName={active?.kb.name ?? null}
 								currentKnowledgeBasePath={active?.kb.path ?? null}
 								theme={theme}
-								onToggleTheme={toggleTheme}
 								onOpenPage={handleOpenGraphPage}
 								onGraphDataChange={setGraphData}
 								onGraphPinsChange={setGraphPins}
@@ -929,10 +959,8 @@ function App() {
 							<ChatPanel
 								key={chatKey}
 								currentKnowledgeBaseName={active?.kb.name ?? null}
-								model={active?.model ?? null}
 								initialMessages={initialMessages}
 								onMessageSent={handleMessageSent}
-								onOpenSettings={() => setSettingsOpen(true)}
 								currentKnowledgeBasePath={active?.kb.path ?? null}
 								onOpenPage={handleOpenPage}
 								onWikiLinkSeen={handleWikiLinkSeen}
@@ -940,8 +968,6 @@ function App() {
 								artifactCount={artifacts.length}
 								onOpenArtifacts={handleOpenArtifacts}
 								onStartBatchDigest={handleStartBatchDigest}
-								theme={theme}
-								onToggleTheme={toggleTheme}
 								pendingPrompt={pendingGraphPrompt}
 								onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
 							/>
@@ -976,6 +1002,12 @@ function App() {
 					job={batchJob}
 					onClose={() => setBatchJob(null)}
 					onOpenOutput={handleOpenBatchOutput}
+				/>
+				<AppearancePanel
+					open={appearanceOpen}
+					value={appearance}
+					onChange={updateAppearance}
+					onClose={() => setAppearanceOpen(false)}
 				/>
 			</div>
 		</TooltipProvider>
