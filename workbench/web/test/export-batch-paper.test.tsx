@@ -58,7 +58,7 @@ describe("Paper export and batch digest surfaces", () => {
 
 		assert.match(css, /\.export-bar\s*\{/);
 		assert.match(css, /\.export-bar[\s\S]*var\(--paper-grain\)/);
-		assert.match(css, /\.export-btn[\s\S]*border-radius:\s*999px/);
+		assert.match(css, /\.export-btn[\s\S]*border-radius:\s*9px/);
 		assert.match(css, /\.batch-panel[\s\S]*var\(--paper-grain\)/);
 		assert.match(css, /\.batch-status-running[\s\S]*var\(--app-accent-soft\)/);
 		assert.match(css, /\.batch-progress-bar[\s\S]*linear-gradient/);

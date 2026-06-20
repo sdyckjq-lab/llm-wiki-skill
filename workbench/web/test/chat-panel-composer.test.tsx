@@ -17,7 +17,8 @@ describe("ChatPanel Paper composer", () => {
 		const composer = textarea.closest(".composer-card");
 		assert.ok(composer);
 		assert.equal(composer?.contains(sendButton), true);
-		assert.equal(document.querySelector(".export-bar")?.closest(".composer-card"), null);
+		assert.equal(document.querySelector(".export-bar")?.closest(".composer-card"), composer);
+		assert.equal(document.querySelector(".statusbar"), null);
 	});
 
 	it("keeps material ingest chips available above the composer card", async () => {
@@ -37,7 +38,7 @@ describe("ChatPanel Paper composer", () => {
 		assert.match(css, /\.composer-card:focus-within[\s\S]*var\(--app-accent\)/);
 		assert.match(css, /\.chat-textarea[\s\S]*background:\s*transparent/);
 		assert.match(css, /\[data-hand="on"\] \.chat-textarea::placeholder[\s\S]*var\(--font-hand\)/);
-		assert.match(css, /\.send-btn[\s\S]*border-radius:\s*999px/);
+		assert.match(css, /\.send-btn[\s\S]*border-radius:\s*10px/);
 	});
 });
 

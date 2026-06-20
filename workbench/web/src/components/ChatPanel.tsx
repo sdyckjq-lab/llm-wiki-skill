@@ -560,28 +560,6 @@ export function ChatPanel({
 
 	return (
 		<div className="chat-screen">
-			<header className="statusbar">
-				<div className="statusbar-left">
-					<span className="status-dot" />
-					<span className="status-kb">
-						{currentKnowledgeBaseName ?? <span className="italic opacity-60">未选择</span>}
-					</span>
-				</div>
-				<div className="statusbar-right">
-					{artifactCount > 0 && (
-						<button
-							type="button"
-							onClick={onOpenArtifacts}
-							className="status-pill status-pill-button"
-							title="查看产物"
-						>
-							<Files />
-							产物 {artifactCount}
-						</button>
-					)}
-				</div>
-			</header>
-
 			<div className="chat-messages">
 				{messages.length === 0 && (
 					<div className="chat-empty">
@@ -623,6 +601,17 @@ export function ChatPanel({
 					<span className="chat-input-hint"><kbd>@</kbd> 引用页面</span>
 					<span className="chat-input-hint"><kbd>/</kbd> 调用命令</span>
 					<span className="chat-input-hint"><kbd>⌘↵</kbd> 发送</span>
+					{artifactCount > 0 && (
+						<button
+							type="button"
+							onClick={onOpenArtifacts}
+							className="chat-input-artifact"
+							title="查看产物"
+						>
+							<Files className="size-3.5" />
+							产物 {artifactCount}
+						</button>
+					)}
 					<span className="chat-input-hint ml-auto opacity-60">拖入文件或链接进行消化</span>
 				</div>
 				{batchChipVisible && detectedBatch?.inspect.ingestibleFiles && (
@@ -714,18 +703,18 @@ export function ChatPanel({
 							{status === "streaming" ? "停止" : "发送"}
 						</button>
 					</div>
+					<ExportButtons
+						disabled={!currentKnowledgeBaseName || status === "streaming" || messages.length === 0}
+						disabledReason={
+							!currentKnowledgeBaseName
+								? "请先选择知识库"
+								: status === "streaming"
+									? "当前正在生成"
+									: "请先开始对话"
+						}
+						onExport={handleExport}
+					/>
 				</div>
-				<ExportButtons
-					disabled={!currentKnowledgeBaseName || status === "streaming" || messages.length === 0}
-					disabledReason={
-						!currentKnowledgeBaseName
-							? "请先选择知识库"
-							: status === "streaming"
-								? "当前正在生成"
-								: "请先开始对话"
-					}
-					onExport={handleExport}
-				/>
 			</div>
 		</div>
 	);

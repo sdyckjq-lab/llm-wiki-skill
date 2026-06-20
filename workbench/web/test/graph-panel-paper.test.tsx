@@ -14,7 +14,7 @@ describe("GraphPanel Paper shell", () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	it("renders the graph toolbar and legend around the canvas host", async () => {
+	it("renders the graph shell toolbar without adding app-level graph overlays", async () => {
 		mockGraphFetch();
 
 		render(
@@ -26,6 +26,7 @@ describe("GraphPanel Paper shell", () => {
 		);
 
 		const toolbar = screen.getByRole("banner", { name: "图谱工具栏" });
+		assert.equal(toolbar.classList.contains("graph-shell-toolbar"), true);
 		assert.match(toolbar.textContent ?? "", /AI 学习库/);
 		assert.match(toolbar.textContent ?? "", /结构地图/);
 		assert.match(toolbar.textContent ?? "", /就绪|读取中/);
@@ -36,21 +37,19 @@ describe("GraphPanel Paper shell", () => {
 			assert.match(toolbar.textContent ?? "", /1 节点 · 0 关联/);
 		});
 
-		const legend = screen.getByLabelText("图谱图例");
-		assert.match(legend.textContent ?? "", /节点/);
-		assert.match(legend.textContent ?? "", /关系/);
-		assert.match(legend.textContent ?? "", /社区/);
+		assert.equal(screen.queryByLabelText("图谱图例"), null);
+		assert.equal(document.querySelector(".graph-legend"), null);
 		assert.ok(document.querySelector(".graph-host"));
 	});
 
 	it("keeps the GraphPanel Paper shell styling outside graph-engine internals", () => {
 		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
 
-		assert.match(css, /\.graph-toolbar[\s\S]*var\(--paper-grain\)/);
-		assert.match(css, /\.graph-toolbar-chip,[\s\S]*\.graph-toolbar-button/);
+		assert.match(css, /\.graph-shell-toolbar[\s\S]*var\(--paper-grain\)/);
+		assert.match(css, /\.graph-shell-toolbar-chip,[\s\S]*\.graph-shell-toolbar-button/);
 		assert.match(css, /\.graph-stage[\s\S]*border-radius:\s*16px/);
-		assert.match(css, /\.graph-legend[\s\S]*border-radius:\s*999px/);
-		assert.match(css, /\.graph-legend-line[\s\S]*height:\s*2px/);
+		assert.doesNotMatch(css, /(^|\n)\s*\.graph-toolbar\b/);
+		assert.doesNotMatch(css, /(^|\n)\s*\.graph-legend\b/);
 		assert.doesNotMatch(css, /render-styles|sigma-node|sigma-edge/);
 	});
 });

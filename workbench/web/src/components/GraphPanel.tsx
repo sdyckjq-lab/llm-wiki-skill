@@ -500,24 +500,24 @@ export function GraphPanel({
 	const hasReadyGraph = status === "ready" && data;
 	return (
 		<div className="graph-screen" data-graph-status={status} data-graph-theme={graphTheme} data-graph-animation={animationState}>
-			<header className="graph-toolbar" aria-label="图谱工具栏">
-				<div className="graph-toolbar-left">
-					<span className={cn("graph-toolbar-dot", status === "building" && "graph-toolbar-dot-warn", status === "error" && "graph-toolbar-dot-error")} />
-					<div className="graph-toolbar-title">
+			<header className="graph-shell-toolbar" aria-label="图谱工具栏">
+				<div className="graph-shell-toolbar-left">
+					<span className={cn("graph-shell-toolbar-dot", status === "building" && "graph-shell-toolbar-dot-warn", status === "error" && "graph-shell-toolbar-dot-error")} />
+					<div className="graph-shell-toolbar-title">
 						<span>{currentKnowledgeBaseName ?? "未选择知识库"}</span>
 						<small>结构地图</small>
 					</div>
-					<span className="graph-toolbar-chip">{statusLabel(status)}</span>
+					<span className="graph-shell-toolbar-chip">{statusLabel(status)}</span>
 					{hasReadyGraph && (
-						<span className="graph-toolbar-chip graph-toolbar-chip-muted">
+						<span className="graph-shell-toolbar-chip graph-shell-toolbar-chip-muted">
 							{data.nodes.length} 节点 · {data.edges.length} 关联
 						</span>
 					)}
 				</div>
-				<div className="graph-toolbar-actions">
+				<div className="graph-shell-toolbar-actions">
 					<button
 						type="button"
-						className="graph-toolbar-button"
+						className="graph-shell-toolbar-button"
 						onClick={resetLayout}
 						disabled={!currentKnowledgeBasePath || status !== "ready"}
 						title="重置布局"
@@ -527,20 +527,20 @@ export function GraphPanel({
 					</button>
 					<button
 						type="button"
-						className="graph-toolbar-button"
-							onClick={() => {
-								const kbPath = activeKbPathRef.current;
-								if (!kbPath) return;
-								setStatus("building");
-								void rebuildGraph(kbPath)
-									.then((next) => {
-										if (activeKbPathRef.current === kbPath) setBuildState(next);
-									})
-									.catch((err) => {
-										if (activeKbPathRef.current !== kbPath) return;
-										setStatus("error");
-										setError(err instanceof Error ? err.message : String(err));
-									});
+						className="graph-shell-toolbar-button"
+						onClick={() => {
+							const kbPath = activeKbPathRef.current;
+							if (!kbPath) return;
+							setStatus("building");
+							void rebuildGraph(kbPath)
+								.then((next) => {
+									if (activeKbPathRef.current === kbPath) setBuildState(next);
+								})
+								.catch((err) => {
+									if (activeKbPathRef.current !== kbPath) return;
+									setStatus("error");
+									setError(err instanceof Error ? err.message : String(err));
+								});
 						}}
 						disabled={!currentKnowledgeBasePath || status === "building"}
 						title="重新构建图谱"
@@ -553,11 +553,6 @@ export function GraphPanel({
 
 			<div className="graph-stage">
 				<div ref={hostRef} className={cn("graph-host", !data && "graph-host-empty")} />
-				<div className="graph-legend" aria-label="图谱图例">
-					<span><i className="graph-legend-dot graph-legend-dot-node" />节点</span>
-					<span><i className="graph-legend-line" />关系</span>
-					<span><i className="graph-legend-dot graph-legend-dot-community" />社区</span>
-				</div>
 				{status !== "ready" && (
 					<div className="graph-state" data-testid="graph-state">
 						<div className="graph-state-title">{statusTitle(status)}</div>

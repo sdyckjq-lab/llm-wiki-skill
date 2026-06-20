@@ -397,6 +397,8 @@ function App() {
 		setActive(ctx);
 		setInitialMessages(ctx.conversation.messages);
 		setChatKey((k) => k + 1);
+		setChatStatus(DEFAULT_CHAT_STATUS);
+		setGraphStatus(DEFAULT_GRAPH_STATUS);
 		setDrawer(closedDrawer());
 		setArtifacts([]);
 		setPendingGraphDiff(null);
