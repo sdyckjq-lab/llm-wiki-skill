@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import type { GraphSelectionCommand } from "@/lib/graph-summary-actions";
 import { cn } from "@/lib/utils";
+import type { GraphStatusKind, GraphStatusSnapshot } from "@/lib/view-status";
 
 interface Props {
 	currentKnowledgeBaseName: string | null;
@@ -33,6 +34,7 @@ interface Props {
 	onGraphPinsChange?: (pins: PinMap) => void;
 	onGraphVisibilityChange?: (state: GraphVisibilityState | null) => void;
 	onSelectionChange?: (selection: Selection | null) => void;
+	onStatusChange?: (snapshot: GraphStatusSnapshot) => void;
 	onViewReset?: () => void;
 	selectionCommand?: GraphSelectionCommand;
 	focusPath?: string | null;
@@ -40,8 +42,6 @@ interface Props {
 	refreshToken?: number;
 	onDiffConsumed?: () => void;
 }
-
-type GraphStatus = "idle" | "loading" | "building" | "ready" | "error";
 
 interface ResetNotice {
 	pins: PinMap;
@@ -62,6 +62,7 @@ export function GraphPanel({
 	onGraphPinsChange,
 	onGraphVisibilityChange,
 	onSelectionChange,
+	onStatusChange,
 	onViewReset,
 	selectionCommand,
 	focusPath,
@@ -93,7 +94,7 @@ export function GraphPanel({
 	const [data, setData] = useState<GraphData | null>(null);
 	const [dataKnowledgeBasePath, setDataKnowledgeBasePath] = useState<string | null>(currentKnowledgeBasePath);
 	const [resetNotice, setResetNotice] = useState<ResetNotice | null>(null);
-	const [status, setStatus] = useState<GraphStatus>("idle");
+	const [status, setStatus] = useState<GraphStatusKind>("idle");
 	const [error, setError] = useState<string | null>(null);
 	const [buildState, setBuildState] = useState<"none" | "started" | "queued">("none");
 	const [animationState, setAnimationState] = useState<"idle" | "playing" | "queued">("idle");
@@ -138,6 +139,14 @@ export function GraphPanel({
 	useLayoutEffect(() => {
 		onSelectionChangeRef.current = onSelectionChange;
 	}, [onSelectionChange]);
+
+	useLayoutEffect(() => {
+		onStatusChange?.({
+			status,
+			summary: graphStatusSummary(status, Boolean(currentKnowledgeBasePath), buildState, error, data, animationState),
+			animation: animationState,
+		});
+	}, [animationState, buildState, currentKnowledgeBasePath, data, error, onStatusChange, status]);
 
 	useLayoutEffect(() => {
 		onViewResetRef.current = onViewReset;
@@ -569,7 +578,7 @@ export function GraphPanel({
 	);
 }
 
-function statusTitle(status: GraphStatus): string {
+function statusTitle(status: GraphStatusKind): string {
 	if (status === "idle") return "选择知识库后查看图谱";
 	if (status === "loading") return "正在读取图谱";
 	if (status === "building") return "图谱构建中";
@@ -578,7 +587,7 @@ function statusTitle(status: GraphStatus): string {
 }
 
 function statusCopy(
-	status: GraphStatus,
+	status: GraphStatusKind,
 	hasKnowledgeBase: boolean,
 	buildState: "none" | "started" | "queued",
 	error: string | null,
@@ -592,6 +601,22 @@ function statusCopy(
 	}
 	if (status === "error") return error ?? "请稍后重试。";
 	return "";
+}
+
+function graphStatusSummary(
+	status: GraphStatusKind,
+	hasKnowledgeBase: boolean,
+	buildState: "none" | "started" | "queued",
+	error: string | null,
+	data: GraphData | null,
+	animationState: GraphStatusSnapshot["animation"],
+): string {
+	if (status === "ready" && data) {
+		if (animationState === "playing") return "图谱更新动画播放中";
+		if (animationState === "queued") return "图谱更新等待播放";
+		return `${data.nodes.length} 节点 · ${data.edges.length} 关联`;
+	}
+	return statusCopy(status, hasKnowledgeBase, buildState, error);
 }
 
 function sampleDiffForGraphTest(data: GraphData): GraphDiff {

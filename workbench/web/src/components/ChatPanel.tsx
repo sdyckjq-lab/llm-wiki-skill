@@ -29,6 +29,7 @@ import {
 	type ToolStatusState,
 } from "@/lib/tool-status-model";
 import { cn } from "@/lib/utils";
+import type { ChatStatusSnapshot } from "@/lib/view-status";
 import { extractWikiPageRefs } from "@/lib/wiki-links";
 
 type ToolMark = { name: string; status: "running" | "done" };
@@ -74,6 +75,7 @@ interface Props {
 	currentKnowledgeBasePath: string | null;
 	initialMessages: UIMessage[];
 	onMessageSent?: () => void;
+	onStatusChange?: (snapshot: ChatStatusSnapshot) => void;
 	onOpenPage?: (path: string) => void;
 	onWikiLinkSeen?: (path: string) => void;
 	onArtifactCreated?: (id: string) => void;
@@ -98,6 +100,7 @@ export function ChatPanel({
 	currentKnowledgeBasePath,
 	initialMessages,
 	onMessageSent,
+	onStatusChange,
 	onOpenPage,
 	onWikiLinkSeen,
 	onArtifactCreated,
@@ -165,6 +168,13 @@ export function ChatPanel({
 			for (const timer of Object.values(toolFlushTimersRef.current)) window.clearTimeout(timer);
 		};
 	}, []);
+
+	useEffect(() => {
+		onStatusChange?.({
+			status,
+			summary: chatStatusSummary(status, errorMsg, Boolean(currentKnowledgeBaseName)),
+		});
+	}, [currentKnowledgeBaseName, errorMsg, onStatusChange, status]);
 
 	useEffect(() => {
 		if (!refMenu.open || !currentKnowledgeBasePath) {
@@ -765,6 +775,17 @@ function parseToolStatusEvent(event: string, data: string): ToolStatusContractEv
 	} catch {
 		return null;
 	}
+}
+
+function chatStatusSummary(
+	status: ChatStatusSnapshot["status"],
+	errorMsg: string | null,
+	hasKnowledgeBase: boolean,
+): string {
+	if (!hasKnowledgeBase) return "等待选择知识库";
+	if (status === "streaming") return "正在接收回复";
+	if (status === "error") return errorMsg ?? "对话暂时不可用";
+	return "可以发送消息";
 }
 
 function parseDroppedPath(dataTransfer: DataTransfer): string | null {

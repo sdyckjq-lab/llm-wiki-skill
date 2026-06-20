@@ -246,7 +246,7 @@
     min-height: 44px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 16px;
     padding: 7px 14px;
     border-bottom: 1px solid var(--app-border);
@@ -343,11 +343,75 @@
     color: var(--app-danger);
   }
 
+  .topbar-status {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--app-muted);
+  }
+
+  .topbar-status-pill {
+    min-height: 24px;
+    max-width: 142px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    padding: 0 8px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 84%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 66%, transparent);
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .topbar-status-pill span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--app-faint);
+    flex-shrink: 0;
+  }
+
+  .topbar-status-pill-busy {
+    color: color-mix(in srgb, var(--app-warn) 78%, var(--app-fg));
+  }
+
+  .topbar-status-pill-busy .topbar-status-dot {
+    background: var(--app-warn);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-warn) 18%, transparent);
+  }
+
+  .topbar-status-pill-ready {
+    color: color-mix(in srgb, var(--app-success) 78%, var(--app-fg));
+  }
+
+  .topbar-status-pill-ready .topbar-status-dot {
+    background: var(--app-success);
+  }
+
+  .topbar-status-pill-error {
+    color: var(--app-danger);
+  }
+
+  .topbar-status-pill-error .topbar-status-dot {
+    background: var(--app-danger);
+  }
+
   .topbar-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
+    margin-left: auto;
     flex-shrink: 0;
   }
 

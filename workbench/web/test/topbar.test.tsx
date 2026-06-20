@@ -56,6 +56,26 @@ describe("TopBar", () => {
 		assert.deepEqual(calls, ["search", "new", "theme", "appearance"]);
 	});
 
+	it("renders chat and graph status snapshots", () => {
+		renderTopBar(
+			<TopBar
+				knowledgeBase={{ path: "/kb", name: "AI学习知识库", origin: "default", valid: true }}
+				model={null}
+				theme="light"
+				chatStatus={{ status: "streaming", summary: "正在接收回复" }}
+				graphStatus={{ status: "ready", summary: "42 节点 · 80 关联", animation: "queued" }}
+				onSearch={noop}
+				onNewConversation={noop}
+				onToggleTheme={noop}
+				onOpenAppearance={noop}
+			/>,
+		);
+
+		const status = screen.getByLabelText("运行状态");
+		assert.match(status.textContent ?? "", /对话回复中/);
+		assert.match(status.textContent ?? "", /图谱待更新/);
+	});
+
 	it("loads and saves the main model role through the shared config API", async () => {
 		const originalFetch = globalThis.fetch;
 		const requests: Array<{ url: string; method: string; body?: unknown }> = [];

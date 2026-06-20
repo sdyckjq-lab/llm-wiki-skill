@@ -70,6 +70,12 @@ import {
 	type AppearancePrefs,
 	type ThemeMode,
 } from "@/lib/appearance";
+import {
+	DEFAULT_CHAT_STATUS,
+	DEFAULT_GRAPH_STATUS,
+	type ChatStatusSnapshot,
+	type GraphStatusSnapshot,
+} from "@/lib/view-status";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "llm-wiki-agent-sidebar-collapsed";
 const DRAWER_WIDTH_STORAGE_KEY = "llm-wiki-agent-drawer-width";
@@ -214,6 +220,8 @@ function App() {
 	const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [appearanceOpen, setAppearanceOpen] = useState(false);
+	const [chatStatus, setChatStatus] = useState<ChatStatusSnapshot>(DEFAULT_CHAT_STATUS);
+	const [graphStatus, setGraphStatus] = useState<GraphStatusSnapshot>(DEFAULT_GRAPH_STATUS);
 	const [drawer, setDrawer] = useState<DrawerState>(() => closedDrawer());
 	const [artifacts, setArtifacts] = useState<ArtifactManifest[]>([]);
 	const [drawerFullscreen, setDrawerFullscreen] = useState(false);
@@ -905,6 +913,8 @@ function App() {
 					knowledgeBase={activeKnowledgeBase}
 					model={active?.model ?? null}
 					theme={theme}
+					chatStatus={chatStatus}
+					graphStatus={graphStatus}
 					appearanceOpen={appearanceOpen}
 					searchDisabled
 					modelDisabled={loading}
@@ -948,6 +958,7 @@ function App() {
 								onGraphPinsChange={setGraphPins}
 								onGraphVisibilityChange={handleGraphVisibilityChange}
 								onSelectionChange={handleGraphSelectionChange}
+								onStatusChange={setGraphStatus}
 								onViewReset={handleGraphViewReset}
 								selectionCommand={selectionCommand}
 								focusPath={graphFocusPath}
@@ -961,6 +972,7 @@ function App() {
 								currentKnowledgeBaseName={active?.kb.name ?? null}
 								initialMessages={initialMessages}
 								onMessageSent={handleMessageSent}
+								onStatusChange={setChatStatus}
 								currentKnowledgeBasePath={active?.kb.path ?? null}
 								onOpenPage={handleOpenPage}
 								onWikiLinkSeen={handleWikiLinkSeen}

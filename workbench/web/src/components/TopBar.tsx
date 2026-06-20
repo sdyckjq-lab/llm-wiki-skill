@@ -24,11 +24,14 @@ import {
 import type { ThemeMode } from "../lib/appearance";
 import { modelInfoToValue, modelRefToValue, modelValueLabel, valueToModelRef } from "../lib/model-roles";
 import { cn } from "../lib/utils";
+import type { ChatStatusSnapshot, GraphStatusSnapshot } from "../lib/view-status";
 
 interface TopBarProps {
 	knowledgeBase: KnowledgeBaseInfo | null;
 	model: ModelInfo | null;
 	theme: ThemeMode;
+	chatStatus?: ChatStatusSnapshot;
+	graphStatus?: GraphStatusSnapshot;
 	appearanceOpen?: boolean;
 	searchDisabled?: boolean;
 	modelDisabled?: boolean;
@@ -44,6 +47,8 @@ export function TopBar({
 	knowledgeBase,
 	model,
 	theme,
+	chatStatus,
+	graphStatus,
 	appearanceOpen = false,
 	searchDisabled = false,
 	modelDisabled = false,
@@ -85,6 +90,11 @@ export function TopBar({
 						)}
 					</div>
 				</div>
+			</div>
+
+			<div className="topbar-status" aria-label="运行状态">
+				<TopBarStatusPill kind="chat" snapshot={chatStatus} />
+				<TopBarStatusPill kind="graph" snapshot={graphStatus} />
 			</div>
 
 			<div className="topbar-actions" aria-label="全局操作">
@@ -144,6 +154,51 @@ export function TopBar({
 			</div>
 		</header>
 	);
+}
+
+function TopBarStatusPill({
+	kind,
+	snapshot,
+}: {
+	kind: "chat" | "graph";
+	snapshot?: ChatStatusSnapshot | GraphStatusSnapshot;
+}) {
+	const label = kind === "chat"
+		? chatStatusLabel(snapshot as ChatStatusSnapshot | undefined)
+		: graphStatusLabel(snapshot as GraphStatusSnapshot | undefined);
+	const tone = statusTone(snapshot?.status ?? "idle");
+	const title = snapshot?.summary ? `${label}：${snapshot.summary}` : label;
+	return (
+		<span className={cn("topbar-status-pill", `topbar-status-pill-${tone}`)} title={title}>
+			<span className="topbar-status-dot" aria-hidden="true" />
+			<span>{label}</span>
+		</span>
+	);
+}
+
+function chatStatusLabel(snapshot?: ChatStatusSnapshot): string {
+	if (snapshot?.status === "streaming") return "对话回复中";
+	if (snapshot?.status === "error") return "对话出错";
+	return "对话空闲";
+}
+
+function graphStatusLabel(snapshot?: GraphStatusSnapshot): string {
+	if (snapshot?.status === "loading") return "图谱读取中";
+	if (snapshot?.status === "building") return "图谱构建中";
+	if (snapshot?.status === "ready") {
+		if (snapshot.animation === "playing") return "图谱更新中";
+		if (snapshot.animation === "queued") return "图谱待更新";
+		return "图谱就绪";
+	}
+	if (snapshot?.status === "error") return "图谱出错";
+	return "图谱空闲";
+}
+
+function statusTone(status: ChatStatusSnapshot["status"] | GraphStatusSnapshot["status"]): "idle" | "busy" | "ready" | "error" {
+	if (status === "error") return "error";
+	if (status === "streaming" || status === "loading" || status === "building") return "busy";
+	if (status === "ready") return "ready";
+	return "idle";
 }
 
 function TopBarModelSelector({

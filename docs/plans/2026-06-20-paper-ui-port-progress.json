@@ -3,8 +3,8 @@
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
     "phase": "phase-2",
-    "task": "2.5",
-    "next_allowed_action": "Implement task 2.5; after verified completion, advance to the next task or phase automatically"
+    "task": "2.6",
+    "next_allowed_action": "Implement task 2.6; after verified completion, advance to the next task or phase automatically"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -69,7 +69,7 @@
         { "id": "2.2", "title": "TopBar 模型选择器(Codex #2：真实 app 无 ModelSelector，模型在 SettingsPanel/config)：新建控件，复用 getConfig().modelRoles.main 读 + 写 config，真能切并保存；保存后走 handleConfigChanged 同源刷新，让当前模型显示立即更新", "status": "completed", "verification": ["2026-06-20 task 2.2：TopBar 模型按钮升级为真实主对话模型选择器，打开时读取 getConfig().modelRoles.main 与 fetchAvailableModels()，展示默认项与可用模型，选择后调用 setConfig({ modelRoles: { main } }) 保存，并触发 onConfigChanged 供 App 后续接 handleConfigChanged 同源刷新；新增 lib/model-roles.ts 抽出 modelRefToValue/valueToModelRef/modelInfoToValue/modelValueLabel，SettingsPanel 改为复用同一 helper，避免两套转换逻辑。TopBar.test.tsx 新增 mock API 覆盖 GET /api/config、GET /api/models、POST /api/config 和 onConfigChanged。注意：本步完成选择器本体，App 挂载与 handleConfigChanged 传入按 task 2.4 执行。验证：cd workbench/web && npm test 退出 0（17 suites / 50 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）。"] },
         { "id": "2.3", "title": "AppearancePanel.tsx：复刻 v2 TweaksPanel，齿轮触发右上展开，受控于 App", "status": "completed", "verification": ["2026-06-20 task 2.3：新增受控 AppearancePanel，提供主题/纸张/配色/气泡/手写/密度选项，配色色板和分段控件通过 onChange 发出偏好 patch，关闭按钮通过 onClose 上报；新增右上浮层 Paper 样式，尺寸固定、响应式不挤出视口；新增 appearance-panel.test.tsx 覆盖隐藏态、真实点击分段/色板、关闭回调。注意：本步只交付面板本体和样式，App 挂载与实时写 documentElement.dataset 按 task 2.4/2.7 执行。验证：cd workbench/web && npm test 退出 0（18 suites / 53 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）。"] },
         { "id": "2.4", "title": "App 接线：挂 TopBar + AppearancePanel；移除 ChatPanel/GraphPanel statusbar 控件与 onToggleTheme 双传", "status": "completed", "verification": ["2026-06-20 task 2.4：App 已挂载全局 TopBar 与受控 AppearancePanel，TopBar 接入当前知识库、当前模型、主题切换、新对话、模型配置刷新和外观开关；AppearancePanel 修改偏好后复用唯一 appearance writer，实时写 documentElement data-* 并持久化。ChatPanel 移除模型/设置/主题 statusbar 控件和 theme/onToggleTheme props，仅保留聊天本地状态与产物入口；GraphPanel 移除主题切换和 onToggleTheme props，重置布局/重构图谱控件仍留在图谱视图内。验证：cd workbench/web && npm test 退出 0（18 suites / 53 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；Playwright 在 1440 检查 TopBar/AppearancePanel 可见，点击纸张/配色/密度后 dataset 变为 paper=grid/accent=rose/density=compact，Chat/Graph 旧主题按钮不存在，body 背景为 rgb(253,250,242)；1024/768 顶栏无横向溢出。"] },
-        { "id": "2.5", "title": "状态快照上报(Codex #4 修订)：ChatPanel/GraphPanel 保持内部生命周期状态，只向 App callback 上报 TopBar 需要的 chat/graph 状态快照(原 statusbar dot/提示不丢)；图谱专属控件(重置/重建 — Codex #5)留 GraphPanel 视图内", "status": "pending", "verification": [] },
+        { "id": "2.5", "title": "状态快照上报(Codex #4 修订)：ChatPanel/GraphPanel 保持内部生命周期状态，只向 App callback 上报 TopBar 需要的 chat/graph 状态快照(原 statusbar dot/提示不丢)；图谱专属控件(重置/重建 — Codex #5)留 GraphPanel 视图内", "status": "completed", "verification": ["2026-06-20 task 2.5：新增 view-status 共享类型，ChatPanel 继续持有 idle/streaming/error 与错误信息，只通过 onStatusChange 上报摘要；GraphPanel 继续持有 idle/loading/building/ready/error、buildState 与 animationState，只通过 onStatusChange 上报摘要和动画状态；App 只持有快照并喂给 TopBar。TopBar 新增对话/图谱状态胶囊，展示空闲/回复中/读取中/构建中/就绪/错误/待更新等状态；图谱重置布局和重构按钮仍留在 GraphPanel。新增 TopBar 状态快照 DOM 测试。验证：cd workbench/web && npm test 退出 0（18 suites / 54 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；Playwright 检查 1440/1024/768 顶栏状态可见且无横向溢出。"] },
         { "id": "2.6", "title": "Sidebar Paper 化 + 移除「夜灯模式」项（保留图谱/设置/折叠）", "status": "pending", "verification": [] },
         { "id": "2.7", "title": "测试：TopBar.test.tsx（真实点击主题切换、开关外观面板、模型切换写 config 后刷新当前模型、状态快照显示）+ AppearancePanel.test.tsx（点分段/色板→偏好+documentElement.dataset 更新）", "status": "pending", "verification": [] }
       ]
@@ -179,6 +179,11 @@
       "task": "2.4",
       "timestamp": "2026-06-20T03:27:00Z",
       "entry": "完成 App 接线：TopBar 成为全局入口，AppearancePanel 实时切换并持久化外观偏好；Chat/Graph 移除旧主题按钮和 onToggleTheme 双传，Graph 专属重置/重构控件保留。typecheck/build/test/lint 与 1440/1024/768 浏览器检查通过。下一步 2.5。"
+    },
+    {
+      "task": "2.5",
+      "timestamp": "2026-06-20T03:39:00Z",
+      "entry": "完成状态快照上报：Chat/Graph 内部生命周期不搬家，只向 App 上报摘要；TopBar 显示对话/图谱状态胶囊。typecheck/build/test/lint 与 1440/1024/768 浏览器检查通过。下一步 2.6。"
     }
   ]
 }
