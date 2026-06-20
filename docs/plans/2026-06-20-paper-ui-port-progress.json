@@ -42,23 +42,24 @@
         "浏览器 1440 首屏为浅色暖纸底"
       ],
       "tasks": [
-        { "id": "1.1", "title": "Paper token 进 index.css（浅纸/夜灯 + 纸张层 + comm/dot/shadow）+ .pw-* 组件 CSS 层 + index.html 去 dark + 引字体", "status": "pending", "verification": [] },
-        { "id": "1.2", "title": "lib/appearance.ts：类型/默认/localStorage/applyAppearance（强调色 color-mix 推导 soft）", "status": "pending", "verification": [] },
-        { "id": "1.3", "title": "App 接入外观偏好状态 + effect；theme 默认改 light", "status": "pending", "verification": [] }
+        { "id": "1.1", "title": "Paper token 进 index.css（浅纸/夜灯 + 纸张层 + comm/dot/shadow）；演进现有组件类(.msg-*/.chat-*/.tool-*/.drawer-*)到 Paper，不引入 .pw-* 并行类；data-paper/userbubble/hand/density/accent 变体选择器加在现有类上；index.html 去 dark + 引字体", "status": "pending", "verification": [] },
+        { "id": "1.2", "title": "lib/appearance.ts：类型/默认/localStorage/applyAppearance（强调色走 data-accent 预设，非行内 JS 变量）", "status": "pending", "verification": [] },
+        { "id": "1.3", "title": "lib/appearance.ts 成唯一外观 writer(含 theme)：删 App 旧 theme effect，applyAppearance 统一写 dataset.theme + .dark + data-*；theme 默认 light", "status": "pending", "verification": [] }
       ]
     },
     {
       "id": "phase-2",
       "goal": "统一 TopBar + AppearancePanel + Sidebar Paper 化（去夜灯项）",
       "acceptance": [
-        "typecheck / build / test 退出 0",
+        "typecheck / build / test 退出 0；新增 TopBar.test.tsx + AppearancePanel.test.tsx 通过",
         "浏览器 1440/1024/768：顶栏控件可用，外观面板实时切换全部偏好，切对话/切库/新对话不回归，侧栏无夜灯项"
       ],
       "tasks": [
-        { "id": "2.1", "title": "TopBar.tsx：左 kb 头(静态无下拉无模型名) + 右控件组(搜索⌘K入口/ModelSelector/新对话/主题/外观齿轮)", "status": "pending", "verification": [] },
+        { "id": "2.1", "title": "TopBar.tsx：左 kb 头(静态无下拉无模型名) + 右控件组(搜索⌘K入口/ModelSelector/新对话/主题/外观齿轮)；吸收原 statusbar 的连接状态 dot/库名/模型来源提示，不丢", "status": "pending", "verification": [] },
         { "id": "2.2", "title": "AppearancePanel.tsx：复刻 v2 TweaksPanel，齿轮触发右上展开，受控于 App", "status": "pending", "verification": [] },
         { "id": "2.3", "title": "App 接线：挂 TopBar + AppearancePanel；移除 ChatPanel/GraphPanel statusbar 控件与 onToggleTheme 双传", "status": "pending", "verification": [] },
-        { "id": "2.4", "title": "Sidebar Paper 化 + 移除「夜灯模式」项（保留图谱/设置/折叠）", "status": "pending", "verification": [] }
+        { "id": "2.4", "title": "Sidebar Paper 化 + 移除「夜灯模式」项（保留图谱/设置/折叠）", "status": "pending", "verification": [] },
+        { "id": "2.5", "title": "测试：TopBar.test.tsx（主题切换仍生效=回归、开/关外观面板）+ AppearancePanel.test.tsx（点分段→偏好+documentElement.dataset 更新）", "status": "pending", "verification": [] }
       ]
     },
     {
@@ -69,7 +70,7 @@
         "浏览器 1440：流式正常、气泡正确、点概念开抽屉、工具运行→折叠态正确"
       ],
       "tasks": [
-        { "id": "3.1", "title": "ChatPanel 消息扁平→气泡（用户 soft/solid、头像区分、密度）", "status": "pending", "verification": [] },
+        { "id": "3.1", "title": "ChatPanel 消息扁平→气泡（用户 soft/solid、头像区分、密度）；气泡不用 backdrop-filter（长对话合成开销，实色卡片即可）", "status": "pending", "verification": [] },
         { "id": "3.2", "title": "MarkdownView 概念链接 .at Paper 样式 + 荧光笔 .hl", "status": "pending", "verification": [] },
         { "id": "3.3", "title": "ToolStatusRunway/ToolHistorySummary 暖化（保 omp 折叠语义与信息量）", "status": "pending", "verification": [] }
       ]

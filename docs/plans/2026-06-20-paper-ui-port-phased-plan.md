@@ -213,3 +213,31 @@ Acceptance：
 
 - 每个验证通过的任务：代码 + 进度文件同一 commit，message 带任务 id（如 `feat: Composer 单卡化 [task 4.1]`）。
 - 验证不过不 commit；绝不 push/merge/amend；合并 main 需作者复核。
+
+## 评审修订（plan-eng-review 2026-06-20，已采纳并入计划）
+
+1. **A1 — 单一 CSS 类系统**（用户拍板 A）：不引入 v2 `.pw-*` 并行层；把现有 `.msg-*/.chat-*/.tool-runway/.drawer-*` 等组件类**就地演进**为 Paper 外观，`data-paper/userbubble/hand/density/accent` 变体选择器加在现有类上。理由：一套类、无死 CSS、CSS/组件/测试自洽，避免两套命名屎山（项目 CLAUDE.md 强约束）。
+2. **A2 — 外观状态单一 writer**：`lib/appearance.ts` 成为唯一外观写入方（含 theme）。**删除** `App.tsx:235-240` 现有 theme effect，`applyAppearance` 统一写 `dataset.theme` + `.dark` class + `data-*`。消除「`.dark` class 与 `data-theme` 双主漂移」。
+3. **A3 — statusbar 状态不丢**：删 `ChatPanel` 的 `.statusbar` 前，把其连接状态 dot、库名、「当前模型来自设置」提示在 TopBar 找到落点（Phase 2 task 2.1）。
+4. **Q1 — 强调色用 `data-accent`**：强调色从「行内 JS CSS 变量」改为 `data-accent` 属性 + CSS 预设，与其余 `data-*` 一致（explicit > clever）。
+5. **T1 — 补组件测试**：新增 `TopBar.test.tsx`（主题切换回归 + 开关外观面板）、`AppearancePanel.test.tsx`（点分段→偏好 + `documentElement.dataset` 更新）；Phase 2 acceptance 纳入（Phase 1 已有 `appearance.test.ts`）。
+6. **P1 — 气泡去 backdrop-filter**：助手气泡不用 `backdrop-filter:blur()`（长对话每条一个 = 合成掉帧），暖纸上实色卡片同效；最多 composer 单实例保留。
+
+### 并行化策略
+
+**大体顺序执行**。Phase 1（token + 单一类系统 + 外观）是地基，必须先行。Phase 2-5 虽触及不同组件，但单一类系统下都改 `index.css` 同一文件 → 共享热点，跨 worktree 并行会撞 `index.css` 合并冲突。建议串行；若要并行，仅 Phase 2（TopBar/Sidebar 组件文件）与 Phase 5（RightDrawer 组件文件）可错开，但 `index.css` 改动需串行协调。Phase 6 收尾最后。
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | 未运行（可选） |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | 未运行 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_found | 6 issues（A1·A2·A3·Q1·T1·P1），全部采纳并入；0 critical gap |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | 未运行（可选，UI 改动大可考虑） |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | 未运行 |
+
+- **OUTSIDE VOICE:** Codex 尝试失败——本机 codex 指向 `glm-5.2`（`localhost:58684` 代理），key 无该模型权限（404）。未 spawn 同模型子代理顶替。无跨模型第二意见；如需补，修正 codex 模型配置后重跑。
+- **VERDICT:** ENG CLEARED — 6 findings 全部采纳并入计划，0 未决、0 critical gap，可进入实现。UI 改动较大，`/plan-design-review` 可选。
+
+NO UNRESOLVED DECISIONS
