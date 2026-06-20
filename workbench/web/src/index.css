@@ -373,18 +373,92 @@
     padding: 0 10px;
   }
 
-  .topbar-model {
-    max-width: 250px;
-  }
+	  .topbar-model {
+	    max-width: 250px;
+	  }
 
-  .topbar-model span {
-    min-width: 0;
+	  .topbar-model-wrap {
+	    position: relative;
+	    display: inline-flex;
+	  }
+
+	  .topbar-model-active {
+	    border-color: color-mix(in srgb, var(--app-accent) 48%, var(--app-border));
+	    background: var(--app-accent-soft);
+	    color: var(--app-accent-deep);
+	  }
+
+	  .topbar-model span {
+	    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+	    text-overflow: ellipsis;
+	    white-space: nowrap;
+	  }
 
-  .topbar-icon-action {
+	  .topbar-model-menu {
+	    position: absolute;
+	    top: calc(100% + 8px);
+	    right: 0;
+	    width: min(340px, calc(100vw - 28px));
+	    display: grid;
+	    gap: 4px;
+	    padding: 6px;
+	    border: 1px solid var(--app-border);
+	    border-radius: 12px;
+	    background: color-mix(in srgb, var(--app-surface) 94%, var(--app-bg));
+	    box-shadow: var(--shadow-lg);
+	    z-index: 80;
+	  }
+
+	  .topbar-model-option {
+	    min-height: 34px;
+	    display: grid;
+	    grid-template-columns: minmax(0, 1fr) auto;
+	    align-items: center;
+	    gap: 10px;
+	    padding: 7px 9px;
+	    border-radius: 8px;
+	    color: var(--app-fg);
+	    font-size: 12px;
+	    text-align: left;
+	  }
+
+	  .topbar-model-option:hover:not(:disabled),
+	  .topbar-model-option-active {
+	    background: var(--app-accent-soft);
+	    color: var(--app-accent-deep);
+	  }
+
+	  .topbar-model-option:disabled {
+	    cursor: not-allowed;
+	    opacity: 0.5;
+	  }
+
+	  .topbar-model-option span:first-child {
+	    min-width: 0;
+	    overflow: hidden;
+	    text-overflow: ellipsis;
+	    white-space: nowrap;
+	  }
+
+	  .topbar-model-option-note {
+	    color: var(--app-faint);
+	    font-size: 10px;
+	    font-weight: 700;
+	    white-space: nowrap;
+	  }
+
+	  .topbar-model-state {
+	    padding: 8px 9px;
+	    color: var(--app-muted);
+	    font-size: 12px;
+	  }
+
+	  .topbar-model-state-error {
+	    color: var(--app-danger);
+	  }
+
+	  .topbar-icon-action {
     width: 31px;
     padding: 0;
   }

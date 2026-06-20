@@ -17,11 +17,11 @@ import {
 	getAuthStatus,
 	getConfig,
 	listCommands,
-	type ModelRef,
 	setAuthKey,
 	setConfig,
 	testAuthConnection,
 } from "@/lib/api";
+import { modelRefToValue, valueToModelRef } from "@/lib/model-roles";
 
 const PROVIDERS = [
 	{ id: "anthropic", label: "Anthropic" },
@@ -317,15 +317,4 @@ function ModelRoleSelect({
 			</select>
 		</label>
 	);
-}
-
-function modelRefToValue(ref?: ModelRef | null): string {
-	return ref ? `${ref.provider}/${ref.modelId}` : "";
-}
-
-function valueToModelRef(value: string): ModelRef | null {
-	const [provider, ...rest] = value.split("/");
-	const modelId = rest.join("/");
-	if (!provider || !modelId) return null;
-	return { provider, modelId };
 }

@@ -10,11 +10,19 @@ import {
 	Sun,
 	XCircle,
 } from "lucide-react";
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import type { KnowledgeBaseInfo, ModelInfo } from "../lib/api";
+import {
+	fetchAvailableModels,
+	getConfig,
+	setConfig,
+	type AvailableModelInfo,
+	type KnowledgeBaseInfo,
+	type ModelInfo,
+} from "../lib/api";
 import type { ThemeMode } from "../lib/appearance";
+import { modelInfoToValue, modelRefToValue, modelValueLabel, valueToModelRef } from "../lib/model-roles";
 import { cn } from "../lib/utils";
 
 interface TopBarProps {
@@ -26,7 +34,7 @@ interface TopBarProps {
 	modelDisabled?: boolean;
 	newConversationDisabled?: boolean;
 	onSearch: () => void;
-	onOpenModelSelector: () => void;
+	onConfigChanged?: () => void;
 	onNewConversation: () => void;
 	onToggleTheme: () => void;
 	onOpenAppearance: () => void;
@@ -41,13 +49,12 @@ export function TopBar({
 	modelDisabled = false,
 	newConversationDisabled = false,
 	onSearch,
-	onOpenModelSelector,
+	onConfigChanged,
 	onNewConversation,
 	onToggleTheme,
 	onOpenAppearance,
 }: TopBarProps) {
 	const kbLabel = knowledgeBase?.name ?? "未选择知识库";
-	const modelLabel = model ? `${model.provider}/${model.id}` : "沿用默认模型";
 	const valid = knowledgeBase?.valid !== false;
 	const originLabel = knowledgeBase?.origin === "external" ? "外部" : "默认";
 
@@ -94,19 +101,11 @@ export function TopBar({
 					</button>
 				</TopBarHint>
 
-				<TopBarHint label="切换主对话模型">
-					<button
-						type="button"
-						className="topbar-model"
-						onClick={onOpenModelSelector}
-						disabled={modelDisabled}
-						aria-label="切换主对话模型"
-					>
-						<Bot />
-						<span>{modelLabel}</span>
-						<ChevronDown />
-					</button>
-				</TopBarHint>
+				<TopBarModelSelector
+					currentModel={model}
+					disabled={modelDisabled}
+					onConfigChanged={onConfigChanged}
+				/>
 
 				<TopBarHint label="新对话">
 					<button
@@ -144,6 +143,143 @@ export function TopBar({
 				</TopBarHint>
 			</div>
 		</header>
+	);
+}
+
+function TopBarModelSelector({
+	currentModel,
+	disabled = false,
+	onConfigChanged,
+}: {
+	currentModel: ModelInfo | null;
+	disabled?: boolean;
+	onConfigChanged?: () => void;
+}) {
+	const rootRef = useRef<HTMLDivElement | null>(null);
+	const [open, setOpen] = useState(false);
+	const [models, setModels] = useState<AvailableModelInfo[]>([]);
+	const [value, setValue] = useState("");
+	const [loading, setLoading] = useState(false);
+	const [savingValue, setSavingValue] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const displayedValue = value || modelInfoToValue(currentModel);
+	const label = modelValueLabel(displayedValue);
+
+	const loadModels = async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			const [config, availableModels] = await Promise.all([getConfig(), fetchAvailableModels()]);
+			setValue(modelRefToValue(config.modelRoles?.main));
+			setModels(availableModels);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const toggleOpen = () => {
+		if (open) {
+			setOpen(false);
+			return;
+		}
+		setOpen(true);
+		void loadModels();
+	};
+
+	useEffect(() => {
+		if (!open) return;
+		const onPointerDown = (event: PointerEvent) => {
+			if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+		};
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setOpen(false);
+		};
+		document.addEventListener("pointerdown", onPointerDown);
+		document.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", onPointerDown);
+			document.removeEventListener("keydown", onKeyDown);
+		};
+	}, [open]);
+
+	const saveModel = async (nextValue: string) => {
+		setSavingValue(nextValue);
+		setError(null);
+		try {
+			await setConfig({ modelRoles: { main: valueToModelRef(nextValue) } });
+			setValue(nextValue);
+			onConfigChanged?.();
+			setOpen(false);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSavingValue(null);
+		}
+	};
+
+	return (
+		<div className="topbar-model-wrap" ref={rootRef}>
+			<TopBarHint label="切换主对话模型">
+				<button
+					type="button"
+					className={cn("topbar-model", open && "topbar-model-active")}
+					onClick={toggleOpen}
+					disabled={disabled}
+					aria-expanded={open}
+					aria-haspopup="listbox"
+					aria-label={`切换主对话模型：${label}`}
+				>
+					<Bot />
+					<span>{label}</span>
+					<ChevronDown />
+				</button>
+			</TopBarHint>
+
+			{open && (
+				<div className="topbar-model-menu" role="listbox" aria-label="主对话模型">
+					<button
+						type="button"
+						role="option"
+						aria-selected={value === ""}
+						className={cn("topbar-model-option", value === "" && "topbar-model-option-active")}
+						onClick={() => saveModel("")}
+						disabled={savingValue !== null}
+					>
+						<span>沿用 pi 默认</span>
+						{savingValue === "" && <span className="topbar-model-option-note">保存中</span>}
+					</button>
+
+					{loading && <div className="topbar-model-state">加载模型中...</div>}
+					{error && <div className="topbar-model-state topbar-model-state-error">{error}</div>}
+					{!loading && !error && models.length === 0 && (
+						<div className="topbar-model-state">暂无可选模型</div>
+					)}
+					{models.map((item) => {
+						const optionValue = `${item.provider}/${item.modelId}`;
+						const selected = optionValue === value;
+						return (
+							<button
+								key={optionValue}
+								type="button"
+								role="option"
+								aria-selected={selected}
+								className={cn("topbar-model-option", selected && "topbar-model-option-active")}
+								onClick={() => saveModel(optionValue)}
+								disabled={!item.hasAuth || savingValue !== null}
+								title={item.hasAuth ? item.name : "未配置认证"}
+							>
+								<span>{optionValue}</span>
+								<span className="topbar-model-option-note">
+									{savingValue === optionValue ? "保存中" : item.hasAuth ? item.name : "未配置"}
+								</span>
+							</button>
+						);
+					})}
+				</div>
+			)}
+		</div>
 	);
 }
 
