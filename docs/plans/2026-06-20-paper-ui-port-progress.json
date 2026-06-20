@@ -2,9 +2,9 @@
   "plan": "docs/plans/2026-06-20-paper-ui-port-phased-plan.md",
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
-    "phase": "phase-6",
-    "task": "6.3",
-    "next_allowed_action": "Implement task 6.3; after verified completion, advance to the next task automatically"
+    "phase": "complete",
+    "task": "complete",
+    "next_allowed_action": "All six Paper UI phases are complete; no further goal-plan tasks remain"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -125,7 +125,7 @@
       "tasks": [
         { "id": "6.1", "title": "GraphPanel Tab 入口/工具条/图例 Paper 化（画布内部 Sigma 不动）", "status": "completed", "verification": ["2026-06-20 task 6.1：GraphPanel 外壳 Paper 化：将旧 statusbar 替换为图谱专用 graph-toolbar，加入 Paper 纸纹、状态 dot、状态/数量 chip、重置布局/重构按钮；graph-stage 外壳加暖纸边框、圆角和点阵底；新增 graph-legend 图例条（节点/关系/社区）；graph-metrics/growth/toast 对齐 Paper 视觉。未修改 packages/graph-engine 或 Sigma 画布内部渲染配色。为 node:test 直接渲染 GraphPanel，将 GraphPanel 的 @/lib 导入改为相对路径，并让 import.meta.env.DEV 安全读取。新增 graph-panel-paper.test.tsx 覆盖工具条/图例 DOM 与 CSS 契约，断言不涉及 graph-engine 内部选择器。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/graph-panel-paper.test.tsx 退出 0（2 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm test 退出 0（28 suites / 88 tests）；cd workbench/web && npm run build 退出 0（仅既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；git diff --check 退出 0；Playwright 浏览器 smoke（1440，提权运行）确认 graph-toolbar radius=14px 且 shadow 非 none、graph-stage radius=16px、graph-legend radius=999px，并显示节点/关系/社区。下一步 6.2。"] },
         { "id": "6.2", "title": "脚本化视觉回归(Codex #9)：扩展 npm run visual:paper，Playwright headless 抓关键组合(非 96 张全排列)，固定命名、baseline/actual 目录、--update 规则；必要时 npx playwright install chromium", "status": "completed", "verification": ["2026-06-20 task 6.2：扩展 npm run visual:paper 脚本：固定生成 14 张关键组合截图，包含 light/dark × clean/grid/laid 主轴 6 张、solid 气泡、compact 密度、hand off、terracotta/clay/amber/rose 四个配色代表，以及 fonts.google/fonts.gstatic blocked 的字体兜底截图；保留 actual/baseline 固定目录，支持 --update 将 actual 拷贝到 baseline；每个 case 校验 data-theme/data-paper/data-accent/data-userbubble/data-hand/data-density、dark class 与字体栈。png 仍由 test-results/paper-ui/.gitignore 排除，不纳入 commit。验证：cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run visual:paper 提权运行退出 0（普通沙箱 listen 127.0.0.1:5180 EPERM，提权后生成新 14 张 actual 截图，目录内含旧 2 张共 16 张 png）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；cd workbench/web && npm run build 退出 0（仅既有 chunk size warning）；git diff --check 退出 0。下一步 6.3。"] },
-        { "id": "6.3", "title": "全量回归：typecheck/build/test/lint/visual:paper 全绿 + 主流程手动过(发消息→@/→⌘K 搜索→导出→批量→切库→切模型→抽屉 resize/全屏)", "status": "pending", "verification": [] }
+        { "id": "6.3", "title": "全量回归：typecheck/build/test/lint/visual:paper 全绿 + 主流程手动过(发消息→@/→⌘K 搜索→导出→批量→切库→切模型→抽屉 resize/全屏)", "status": "completed", "verification": ["2026-06-20 task 6.3：最终全量回归完成。验证：cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0（仅既有 chunk size warning）；cd workbench/web && npm test 单独运行退出 0（28 suites / 88 tests；此前与 build 并行运行曾因 graph-engine dist 被重建产生临时 import 竞态，单独重跑通过）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；cd workbench/web && npm run visual:paper 退出 0，生成 light/dark × clean/grid/laid、solid 气泡、compact 密度、hand off、4 配色、字体兜底共 14 张关键截图，actual 目录含旧 smoke 共 16 张 png。", "2026-06-20 task 6.3：浏览器主流程 smoke 使用 Playwright + mock API 覆盖：默认浅色 Paper 首屏、发消息并回到 idle、@ 引用菜单、/ 命令菜单、⌘K 当前库搜索并打开抽屉、抽屉 resize 与全屏/退出全屏、导出按钮触发 HTML 导出提示、拖拽目录触发批量消化入口并完成、切库更新 TopBar、模型选择器保存 config。", "2026-06-20 task 6.3：文档终检完成。docs/spark supersede note、plan、PRODUCT.md §5.2/§5.4/§10/ADR-24/ADR-25 对默认浅色 Paper、统一 TopBar、单一 CSS 类系统、data-accent、当前库 refs 搜索、图谱画布内部与跨库/全文搜索后置保持一致；rg 命中的“默认深色/顶部状态条”等均为历史 changelog 或计划冲突说明，不是当前 stale 决策。"] }
       ]
     }
   ],
@@ -249,6 +249,21 @@
       "task": "6.2",
       "timestamp": "2026-06-20T06:45:00Z",
       "entry": "完成 Paper 视觉回归脚本扩展：visual:paper 现在生成 14 张关键组合截图，覆盖浅/夜灯×三种纸张、气泡/密度/手写、四个配色和字体兜底；支持 --update 更新 baseline。typecheck、visual:paper、lint、build 和 diff check 通过。下一步 6.3。"
+    },
+    {
+      "task": "6.3",
+      "timestamp": "2026-06-20T07:15:00Z",
+      "entry": "完成 Paper UI 最终回归与文档终检：typecheck/build/test/lint/visual:paper 全部通过；浏览器 smoke 覆盖发消息、@、/、⌘K 搜索、导出、拖拽批量、切库、切模型、抽屉 resize/全屏；spec/plan/PRODUCT 当前决策一致，旧“默认深色/顶部状态条”等只存在于历史记录或计划冲突说明。六个 phase 全部完成。"
     }
-  ]
+  ],
+  "final_status": {
+    "status": "completed",
+    "completed_at": "2026-06-20T07:15:00Z",
+    "summary": "All six Paper UI migration phases are implemented, verified, and recorded. Paper warm-light UI is the default, with TopBar, appearance preferences, chat/composer/search/export/batch/drawer/graph shell Paper treatment, visual regression coverage, and docs aligned.",
+    "residual_risk": [
+      "Lint still reports 5 pre-existing React hook warnings in App/ChatPanel/GraphPanel; no lint errors.",
+      "Vite build still reports an existing large chunk warning.",
+      "Graph canvas internal Sigma styling and real cross-library/full-text search backend remain intentionally deferred by scope."
+    ]
+  }
 }
