@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --import tsx --import ./test/setup-dom.ts --test test/*.test.ts test/*.test.tsx",
+    "visual:paper": "node --import tsx test/visual/paper-ui.ts",
     "pretypecheck": "npm run build -w @llm-wiki/graph-engine",
     "typecheck": "tsc -b --noEmit"
   },
@@ -43,6 +44,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
+    "playwright": "^1.61.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"
