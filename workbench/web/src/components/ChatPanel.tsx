@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Files, Send, Square, X } from "lucide-react";
 
-import { CommandMenu } from "@/components/CommandMenu";
-import { ExportButtons } from "@/components/ExportButtons";
-import { MarkdownView } from "@/components/MarkdownView";
-import { RefMenu } from "@/components/RefMenu";
-import { ToolHistorySummary } from "@/components/ToolHistorySummary";
-import { ToolStatusRunway } from "@/components/ToolStatusRunway";
+import { CommandMenu } from "./CommandMenu";
+import { ExportButtons } from "./ExportButtons";
+import { MarkdownView } from "./MarkdownView";
+import { RefMenu } from "./RefMenu";
+import { ToolHistorySummary } from "./ToolHistorySummary";
+import { ToolStatusRunway } from "./ToolStatusRunway";
 import {
 	buildExportPrompt,
 	type CommandItem,
@@ -19,18 +19,18 @@ import {
 	streamPrompt,
 	type ToolStatusContractEvent,
 	type UIMessage,
-} from "@/lib/api";
-import { createLegacyToolStatusState } from "@/lib/legacy-tool-status";
+} from "../lib/api";
+import { createLegacyToolStatusState } from "../lib/legacy-tool-status";
 import {
 	cancelActiveToolStatus,
 	createToolStatusState,
 	flushToolStatusUpdates,
 	reduceToolStatusEvent,
 	type ToolStatusState,
-} from "@/lib/tool-status-model";
-import { cn } from "@/lib/utils";
-import type { ChatStatusSnapshot } from "@/lib/view-status";
-import { extractWikiPageRefs } from "@/lib/wiki-links";
+} from "../lib/tool-status-model";
+import { cn } from "../lib/utils";
+import type { ChatStatusSnapshot } from "../lib/view-status";
+import { extractWikiPageRefs } from "../lib/wiki-links";
 
 type ToolMark = { name: string; status: "running" | "done" };
 
@@ -728,12 +728,12 @@ function MessageBubble({
 		message.toolStatus && (showCursor || message.toolStatus.cancelReason || message.toolStatus.error),
 	);
 	return (
-		<div className={cn("msg-row", isUser ? "msg-row-user" : "msg-row-assistant")}>
+		<div className={cn("msg-row", isUser ? "msg-row-user" : "msg-row-assistant")} aria-label={isUser ? "用户消息" : "助手消息"}>
 			<div className={cn("msg-avatar", isUser ? "msg-avatar-user" : "msg-avatar-assistant")}>
-				{isUser ? "U" : "A"}
+				{isUser ? "你" : "AI"}
 			</div>
 			<div className="msg-body">
-				<div className="msg-role">{isUser ? "你" : "assistant"}</div>
+				<div className="msg-role">{isUser ? "你" : "llm-wiki"}</div>
 				{message.toolStatus ? (
 					showToolRunway ? (
 						<ToolStatusRunway state={message.toolStatus} />
@@ -741,7 +741,7 @@ function MessageBubble({
 						<ToolHistorySummary state={message.toolStatus} />
 					)
 				) : null}
-				<div className="msg-content">
+				<div className="msg-content" aria-label={isUser ? "用户气泡" : "助手气泡"}>
 					{isUser ? (
 						<span className="whitespace-pre-wrap">{message.content}</span>
 					) : (

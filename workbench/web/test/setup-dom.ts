@@ -1,5 +1,6 @@
 import { afterEach, beforeEach } from "node:test";
 import { JSDOM } from "jsdom";
+import React from "react";
 
 const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
 	pretendToBeVisual: true,
@@ -23,6 +24,7 @@ Object.defineProperties(globalThis, {
 	KeyboardEvent: { configurable: true, value: window.KeyboardEvent },
 	MouseEvent: { configurable: true, value: window.MouseEvent },
 	CustomEvent: { configurable: true, value: window.CustomEvent },
+	React: { configurable: true, value: React },
 	getComputedStyle: { configurable: true, value: window.getComputedStyle.bind(window) },
 	requestAnimationFrame: {
 		configurable: true,

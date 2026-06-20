@@ -1,8 +1,8 @@
 import { FileDown, FileText, Globe, Presentation, Table } from "lucide-react";
 import type { ComponentType } from "react";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ExportKind } from "@/lib/api";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import type { ExportKind } from "../lib/api";
 
 const EXPORTS: Array<{
 	kind: ExportKind;

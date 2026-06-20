@@ -1,5 +1,5 @@
-import type { CommandItem as CommandItemType } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import type { CommandItem as CommandItemType } from "../lib/api";
+import { cn } from "../lib/utils";
 
 interface Props {
 	open: boolean;
