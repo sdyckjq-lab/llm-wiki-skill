@@ -1,8 +1,10 @@
 # Paper 视觉 + 布局 移植设计（图谱后置）
 
 日期：2026-06-20
-状态：待用户复核
+状态：已转执行计划（被 plan 的评审修订更新）
 当前分支：`feat/paper-ui`
+
+> **执行以 plan 为准**：本 spec 是设计意图；几处实现细节已被 `docs/plans/2026-06-20-paper-ui-port-phased-plan.md` 的 plan-eng-review + Codex 修订**取代**——①不引入 `.pw-*` 并行类，就地演进现有 `.msg-*/.chat-*` 等类；②强调色用 `data-accent` 预设而非行内变量；③`ModelSelector` 组件不存在，需新建（复用 SettingsPanel 的 config 路径）；④TopBar 不显示「篇数」（`KnowledgeBaseInfo` 无此字段）；⑤搜索 ⌘K 做客户端真搜索；⑥PRODUCT.md 对齐提前到实现第一步。以 plan 为实现真相。
 
 ## 目的
 
