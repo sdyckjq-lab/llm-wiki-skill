@@ -1344,14 +1344,25 @@
   .graph-screen {
     display: flex;
     height: 100%;
+    min-height: 0;
     min-width: 0;
     flex-direction: column;
-    gap: 10px;
     padding: 10px;
     background: color-mix(in srgb, var(--app-bg) 78%, transparent);
   }
 
+  .graph-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    gap: 10px;
+  }
+
   .graph-shell-toolbar {
+    position: relative;
+    z-index: 1;
     display: flex;
     min-height: 44px;
     flex-shrink: 0;
@@ -1471,10 +1482,48 @@
     height: 14px;
   }
 
+  .graph-shell-legend {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .graph-shell-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  .graph-shell-legend .graph-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--app-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 14%, transparent);
+  }
+
+  .graph-shell-legend .graph-legend-line {
+    width: 16px;
+    height: 1px;
+    background: color-mix(in srgb, var(--app-fg) 46%, transparent);
+  }
+
+  .graph-shell-legend .graph-legend-cloud {
+    width: 14px;
+    height: 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--comm-seq) 42%, transparent);
+  }
+
   .graph-stage {
     position: relative;
-    flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
     border-radius: 16px;
@@ -3423,8 +3472,11 @@
     }
 
     .graph-screen {
-      gap: 8px;
       padding: 8px;
+    }
+
+    .graph-shell {
+      gap: 8px;
     }
 
     .graph-shell-toolbar {
@@ -3434,11 +3486,13 @@
 
     .graph-shell-toolbar-left {
       min-width: 100%;
+      flex-wrap: wrap;
     }
 
     .graph-shell-toolbar-actions {
       width: 100%;
       justify-content: flex-start;
+      overflow-x: auto;
     }
   }
 }

@@ -27,17 +27,23 @@ describe("GraphPanel Paper shell", () => {
 
 		const toolbar = screen.getByRole("banner", { name: "图谱工具栏" });
 		assert.equal(toolbar.classList.contains("graph-shell-toolbar"), true);
-		assert.match(toolbar.textContent ?? "", /AI 学习库/);
-		assert.match(toolbar.textContent ?? "", /结构地图/);
-		assert.match(toolbar.textContent ?? "", /就绪|读取中/);
+		assert.match(toolbar.textContent ?? "", /图谱活地图/);
 		assert.ok(screen.getByRole("button", { name: /重置布局/ }));
 		assert.ok(screen.getByRole("button", { name: /重构/ }));
+		assert.notEqual(toolbar.querySelector(".graph-shell-legend"), null);
 
 		await waitFor(() => {
 			assert.match(toolbar.textContent ?? "", /1 节点 · 0 关联/);
 		});
 
-		assert.equal(screen.queryByLabelText("图谱图例"), null);
+		const shell = document.querySelector(".graph-shell");
+		const stage = document.querySelector(".graph-stage");
+		assert.ok(shell);
+		assert.ok(stage);
+		assert.equal(shell?.contains(toolbar), true);
+		assert.equal(shell?.contains(stage), true);
+		assert.equal(stage?.contains(toolbar), false);
+		assert.notEqual(screen.queryByLabelText("图谱图例"), null);
 		assert.equal(document.querySelector(".graph-legend"), null);
 		assert.ok(document.querySelector(".graph-host"));
 	});
@@ -45,6 +51,11 @@ describe("GraphPanel Paper shell", () => {
 	it("keeps the GraphPanel Paper shell styling outside graph-engine internals", () => {
 		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
 
+		assert.match(css, /\.graph-shell\s*\{[\s\S]*display:\s*grid/);
+		assert.match(css, /\.graph-shell-toolbar[\s\S]*position:\s*relative/);
+		assert.match(css, /\.graph-stage[\s\S]*min-height:\s*0/);
+		assert.match(css, /\.graph-shell-legend[\s\S]*display:\s*flex/);
+		assert.doesNotMatch(cssBlock(css, ".graph-shell-toolbar"), /position:\s*absolute/);
 		assert.match(css, /\.graph-shell-toolbar[\s\S]*var\(--paper-grain\)/);
 		assert.match(css, /\.graph-shell-toolbar-chip,[\s\S]*\.graph-shell-toolbar-button/);
 		assert.match(css, /\.graph-stage[\s\S]*border-radius:\s*16px/);
@@ -53,6 +64,13 @@ describe("GraphPanel Paper shell", () => {
 		assert.doesNotMatch(css, /render-styles|sigma-node|sigma-edge/);
 	});
 });
+
+function cssBlock(css: string, selector: string): string {
+	const start = css.indexOf(`${selector} {`);
+	if (start === -1) return "";
+	const end = css.indexOf("\n  }", start);
+	return end === -1 ? css.slice(start) : css.slice(start, end);
+}
 
 function mockGraphFetch() {
 	globalThis.fetch = (async (input) => {

@@ -500,86 +500,87 @@ export function GraphPanel({
 	const hasReadyGraph = status === "ready" && data;
 	return (
 		<div className="graph-screen" data-graph-status={status} data-graph-theme={graphTheme} data-graph-animation={animationState}>
-			<header className="graph-shell-toolbar" aria-label="图谱工具栏">
-				<div className="graph-shell-toolbar-left">
-					<span className={cn("graph-shell-toolbar-dot", status === "building" && "graph-shell-toolbar-dot-warn", status === "error" && "graph-shell-toolbar-dot-error")} />
-					<div className="graph-shell-toolbar-title">
-						<span>{currentKnowledgeBaseName ?? "未选择知识库"}</span>
-						<small>结构地图</small>
-					</div>
-					<span className="graph-shell-toolbar-chip">{statusLabel(status)}</span>
-					{hasReadyGraph && (
-						<span className="graph-shell-toolbar-chip graph-shell-toolbar-chip-muted">
-							{data.nodes.length} 节点 · {data.edges.length} 关联
-						</span>
-					)}
-				</div>
-				<div className="graph-shell-toolbar-actions">
-					<button
-						type="button"
-						className="graph-shell-toolbar-button"
-						onClick={resetLayout}
-						disabled={!currentKnowledgeBasePath || status !== "ready"}
-						title="重置布局"
-					>
-						<RotateCcw />
-						重置布局
-					</button>
-					<button
-						type="button"
-						className="graph-shell-toolbar-button"
-						onClick={() => {
-							const kbPath = activeKbPathRef.current;
-							if (!kbPath) return;
-							setStatus("building");
-							void rebuildGraph(kbPath)
-								.then((next) => {
-									if (activeKbPathRef.current === kbPath) setBuildState(next);
-								})
-								.catch((err) => {
-									if (activeKbPathRef.current !== kbPath) return;
-									setStatus("error");
-									setError(err instanceof Error ? err.message : String(err));
-								});
-						}}
-						disabled={!currentKnowledgeBasePath || status === "building"}
-						title="重新构建图谱"
-					>
-						<RefreshCw className={cn(status === "building" && "animate-spin")} />
-						重构
-					</button>
-				</div>
-			</header>
-
-			<div className="graph-stage">
-				<div ref={hostRef} className={cn("graph-host", !data && "graph-host-empty")} />
-				{status !== "ready" && (
-					<div className="graph-state" data-testid="graph-state">
-						<div className="graph-state-title">{statusTitle(status)}</div>
-						<div className="graph-state-copy">
-							{statusCopy(status, Boolean(currentKnowledgeBasePath), buildState, error)}
+			<div className="graph-shell">
+				<header className="graph-shell-toolbar" aria-label="图谱工具栏">
+					<div className="graph-shell-toolbar-left">
+						<span className={cn("graph-shell-toolbar-dot", status === "building" && "graph-shell-toolbar-dot-warn", status === "error" && "graph-shell-toolbar-dot-error")} />
+						<div className="graph-shell-toolbar-title">
+							<span>{currentKnowledgeBaseName ?? "未选择知识库"}</span>
+							<small>图谱活地图</small>
+						</div>
+						<span className="graph-shell-toolbar-chip">{statusLabel(status)}</span>
+						{hasReadyGraph && (
+							<span className="graph-shell-toolbar-chip graph-shell-toolbar-chip-muted">
+								{data.nodes.length} 节点 · {data.edges.length} 关联
+							</span>
+						)}
+						<div className="graph-shell-legend" aria-label="图谱图例">
+							<span><span className="graph-legend-dot graph-legend-dot-node" />节点</span>
+							<span><span className="graph-legend-line" />关系</span>
+							<span><span className="graph-legend-cloud" />社区</span>
 						</div>
 					</div>
-				)}
-				{status === "ready" && data && (
-					<div className="graph-metrics">
-						<span>{data.nodes.length} 节点</span>
-						<span>{data.edges.length} 关联</span>
-					</div>
-				)}
-				{animationState !== "idle" && (
-					<div className="graph-growth-indicator" data-testid="graph-growth-indicator">
-						{animationState === "playing" ? "图谱更新中" : "图谱更新待播放"}
-					</div>
-				)}
-				{resetNotice && (
-					<div className="graph-toast" role="status">
-						<span>已重置 {resetNotice.count} 个钉位</span>
-						<button type="button" onClick={undoResetLayout}>
-							撤销
+					<div className="graph-shell-toolbar-actions">
+						<button
+							type="button"
+							className="graph-shell-toolbar-button"
+							onClick={resetLayout}
+							disabled={!currentKnowledgeBasePath || status !== "ready"}
+							title="重置布局"
+						>
+							<RotateCcw />
+							重置布局
+						</button>
+						<button
+							type="button"
+							className="graph-shell-toolbar-button"
+							onClick={() => {
+								const kbPath = activeKbPathRef.current;
+								if (!kbPath) return;
+								setStatus("building");
+								void rebuildGraph(kbPath)
+									.then((next) => {
+										if (activeKbPathRef.current === kbPath) setBuildState(next);
+									})
+									.catch((err) => {
+										if (activeKbPathRef.current !== kbPath) return;
+										setStatus("error");
+										setError(err instanceof Error ? err.message : String(err));
+									});
+							}}
+							disabled={!currentKnowledgeBasePath || status === "building"}
+							title="重新构建图谱"
+						>
+							<RefreshCw className={cn(status === "building" && "animate-spin")} />
+							重构
 						</button>
 					</div>
-				)}
+				</header>
+
+				<div className="graph-stage">
+					<div ref={hostRef} className={cn("graph-host", !data && "graph-host-empty")} />
+					{status !== "ready" && (
+						<div className="graph-state" data-testid="graph-state">
+							<div className="graph-state-title">{statusTitle(status)}</div>
+							<div className="graph-state-copy">
+								{statusCopy(status, Boolean(currentKnowledgeBasePath), buildState, error)}
+							</div>
+						</div>
+					)}
+					{animationState !== "idle" && (
+						<div className="graph-growth-indicator" data-testid="graph-growth-indicator">
+							{animationState === "playing" ? "图谱更新中" : "图谱更新待播放"}
+						</div>
+					)}
+					{resetNotice && (
+						<div className="graph-toast" role="status">
+							<span>已重置 {resetNotice.count} 个钉位</span>
+							<button type="button" onClick={undoResetLayout}>
+								撤销
+							</button>
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	);
@@ -608,7 +609,7 @@ function statusCopy(
 	buildState: "none" | "started" | "queued",
 	error: string | null,
 ): string {
-	if (!hasKnowledgeBase) return "左侧选择一个知识库后，这里会显示它的结构地图。";
+	if (!hasKnowledgeBase) return "左侧选择一个知识库后，这里会显示它的图谱活地图。";
 	if (status === "loading") return "正在读取当前知识库的图谱数据。";
 	if (status === "building") {
 		return buildState === "queued"
