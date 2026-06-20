@@ -4,7 +4,7 @@
 
 **Goal:** Bring the current Paper UI shell into close alignment with `paper-final-v2.html`: V2 sidebar, lighter composer, non-intrusive tool calls, drawer reflow, and non-overlapping graph shell.
 
-**Architecture:** Keep the existing React state model and backend APIs. This is a shell/layout refinement on the existing `codex/paper-ui-v2-layout` branch, not a new branch and not a rewrite. Each task starts with a failing DOM/CSS/visual test, then updates the smallest relevant component and `index.css`, then commits that one unit.
+**Architecture:** Keep the existing React state model and backend APIs. This is a shell/layout refinement on the existing `codex/paper-ui-v2-layout` branch, not a new branch and not a rewrite. Tasks 1-5 start with a failing DOM/CSS test, then update the smallest relevant component and `index.css`, then commit that one unit. Task 6 strengthens the visual regression suite after those UI changes land.
 
 **Tech Stack:** Vite, React 19, Tailwind v4 CSS layer in `workbench/web/src/index.css`, shadcn/Radix primitives, lucide-react icons, `node:test`, `@testing-library/react`, jsdom, Playwright visual script.
 
@@ -27,6 +27,14 @@
 - Existing Paper implementation: `workbench/web/src/components/*`, `workbench/web/src/index.css`
 - Existing tests: `workbench/web/test/*.test.tsx`, `workbench/web/test/*.test.ts`
 
+## V2 Fidelity Gates
+
+- Treat `paper-final-v2.html` as the visual baseline, not just inspiration. The spec and this plan only override it where real product behavior requires a deviation.
+- Before implementation, open the prototype and current app side by side at 1440, 1024, and 768 widths. The final browser pass must compare against that prototype for paper texture, density, sidebar proportions, composer weight, drawer behavior, graph layout, color warmth, rounded corners, shadows, and spacing.
+- DOM tests prove structure; visual checks must also prove geometry. For drawer/composer/graph, assert element rectangles and overlap rules, not only text presence.
+- The sidebar bottom entry is named `新建知识库` because the user asked to rename the current add-existing-library flow. The opened dialog must use matching user-facing copy (`新建知识库`) and explain that it creates a knowledge base by choosing an existing folder.
+- The graph shell should follow V2's “active map” feel: React-owned toolbar/stats/legend are stable above the canvas, and the existing graph-engine search stays inside the stage without colliding with the toolbar. Keep graph-engine/Sigma internals unchanged.
+
 ## File Structure
 
 ### Modify
@@ -36,6 +44,14 @@
   - Must stop rendering `NewWikiDialog`.
   - Must keep `AddExternalDialog`, but expose it through a footer item labeled `新建知识库`.
   - Must split knowledge bases and conversations into separate sections.
+
+- `workbench/web/src/components/AddExternalDialog.tsx`
+  - Owns the existing add-existing-library flow.
+  - Must rename user-facing title/copy to match the `新建知识库` entry while keeping the same folder-based behavior.
+
+- `workbench/web/src/App.tsx`
+  - Owns shell layout state and Sidebar wiring.
+  - Must mark drawer-open state for layout and remove Sidebar props that no longer render.
 
 - `workbench/web/src/components/ChatPanel.tsx`
   - Owns composer layout and message rendering.
@@ -74,6 +90,7 @@
 - `workbench/web/test/chat-panel-composer.test.tsx`
 - `workbench/web/test/tool-status-runway.test.ts`
 - `workbench/web/test/tool-history-summary.test.tsx`
+- `workbench/web/test/add-external-dialog.test.tsx` if this test exists; otherwise add the dialog-copy assertion to `sidebar.test.tsx`.
 - `workbench/web/test/right-drawer-interactions.test.tsx`
 - `workbench/web/test/graph-panel-paper.test.tsx`
 
@@ -115,8 +132,9 @@ and no uncommitted implementation changes except this plan if it has not been co
 Run:
 
 ```bash
-cd workbench/web && npm run typecheck
-cd workbench/web && npm test
+cd workbench/web
+npm run typecheck
+npm test
 ```
 
 Expected: both commands exit `0`.
@@ -135,27 +153,18 @@ cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test \
 
 Expected: command exits `0`.
 
-- [ ] **Step 4: Commit only if preflight uncovered a documentation-only change**
-
-If only this plan file is uncommitted, run:
-
-```bash
-git add docs/superpowers/plans/2026-06-20-paper-ui-v2-shell-alignment.md
-git commit -m "docs: plan Paper V2 shell alignment"
-```
-
-Expected: one docs commit, no code changes.
-
 ---
 
 ### Task 1: Sidebar V2 Information Architecture
 
 **Files:**
+- Modify: `workbench/web/src/App.tsx`
 - Modify: `workbench/web/src/components/Sidebar.tsx`
+- Modify: `workbench/web/src/components/AddExternalDialog.tsx`
 - Modify: `workbench/web/src/index.css`
 - Test: `workbench/web/test/sidebar.test.tsx`
 
-Goal: make the sidebar match V2 structure: top brand plus collapse only, separate notebook and session sections, footer entries for graph map/settings/new library, with `新建知识库` using the existing add-existing-library flow.
+Goal: make the sidebar match V2 structure: compact brand/collapse header, separate notebook and session sections, footer entries for graph map/settings/new library, with `新建知识库` using the existing add-existing-library flow and matching dialog copy.
 
 - [ ] **Step 1: Replace sidebar tests with V2 structure expectations**
 
@@ -175,6 +184,7 @@ it("renders V2 expanded sidebar sections and footer actions", async () => {
 	assert.notEqual(screen.getByRole("button", { name: "设置" }), null);
 	assert.notEqual(screen.getByRole("button", { name: "新建知识库" }), null);
 	assert.equal(screen.queryByText("添加现有库"), null);
+	assert.equal(document.querySelector(".main-view-switch"), null);
 
 	await click(screen.getByRole("button", { name: "图谱活地图" }));
 	await click(screen.getByRole("button", { name: "设置" }));
@@ -182,7 +192,7 @@ it("renders V2 expanded sidebar sections and footer actions", async () => {
 
 	assert.deepEqual(events.views, ["graph"]);
 	assert.equal(events.settings, 1);
-	assert.notEqual(await screen.findByText("添加现有知识库"), null);
+	assert.notEqual(await screen.findByText("新建知识库"), null);
 });
 
 it("renders conversations outside the knowledge-base tree", () => {
@@ -211,7 +221,7 @@ it("keeps the collapsed rail aligned with V2 actions", async () => {
 	assert.equal(screen.queryByLabelText("添加现有库"), null);
 
 	await click(screen.getByLabelText("新建知识库"));
-	assert.notEqual(await screen.findByText("添加现有知识库"), null);
+	assert.notEqual(await screen.findByText("新建知识库"), null);
 });
 ```
 
@@ -235,7 +245,12 @@ function renderSidebar(collapsed: boolean, events = makeSidebarEvents()) {
 				]}
 				currentKbPath="/kb"
 				conversations={[
-					{ id: "c1", title: "Transformer vs Mamba", modifiedAt: "2026-06-20T10:00:00.000Z" },
+					{
+						id: "c1",
+						path: "/kb/.llm-wiki/conversations/c1.jsonl",
+						firstMessage: "Transformer vs Mamba",
+						modifiedAt: Date.parse("2026-06-20T10:00:00.000Z"),
+					},
 				]}
 				currentConversationId="c1"
 				loading={false}
@@ -243,16 +258,16 @@ function renderSidebar(collapsed: boolean, events = makeSidebarEvents()) {
 				collapsed={collapsed}
 				activeView="chat"
 				onSelectKb={noop}
-				onSelectConversation={noop}
+				onSelectConversation={(item) => {
+					events.views.push(`conversation:${item.id}`);
+				}}
 				onSelectView={(view) => events.views.push(view)}
 				onNewConversation={noop}
-				onRefresh={noop}
 				onOpenSettings={() => {
 					events.settings += 1;
 				}}
 				onToggleCollapsed={noop}
 				onAddExternal={asyncNoop}
-				onCreateWiki={asyncNoop}
 			/>
 		</TooltipProvider>,
 	);
@@ -267,17 +282,17 @@ Run:
 cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/sidebar.test.tsx
 ```
 
-Expected: FAIL because the current sidebar still renders top refresh/settings, nested conversations, and `添加现有库`.
+Expected: FAIL because the current sidebar still renders top refresh/settings, the old main-view switch, nested conversations, and `添加现有库`.
 
 - [ ] **Step 3: Refactor `Sidebar.tsx` expanded structure**
 
 In `workbench/web/src/components/Sidebar.tsx`:
 
-Remove unused `NewWikiDialog`, `RefreshCw`, and the `newWikiOpen` state.
+Remove unused `NewWikiDialog`, `RefreshCw`, `Download`, `onRefresh`, `onCreateWiki`, `newWikiOpen`, `expanded`, `currentExpanded`, and `toggleExpanded`.
 
-Keep `onCreateWiki` in props only if another caller still requires it for type compatibility. Do not render `NewWikiDialog`.
+Update the `Sidebar` prop type and the `App.tsx` call site so `onRefresh` and `onCreateWiki` are no longer passed. Typecheck must have no unused prop/import errors.
 
-Replace the expanded header action group with one collapse button:
+Replace the expanded header action group with a compact brand/collapse header. This intentionally keeps a weak brand marker from the spec while removing the old refresh/settings cluster:
 
 ```tsx
 <div className="sidebar-header">
@@ -295,6 +310,22 @@ Replace the expanded header action group with one collapse button:
 		<PanelLeftClose />
 	</button>
 </div>
+```
+
+Remove the expanded `.main-view-switch` block completely. `图谱活地图` moves to the footer, and conversation clicks/new conversation should switch the main view back to chat from `App.tsx`:
+
+```tsx
+const handleSelectConversation = async (item: ConversationInfo) => {
+	if (!active) return;
+	setMainView("chat");
+	// keep existing selectConversation behavior
+};
+
+const handleNewConversation = async () => {
+	if (!active) return;
+	setMainView("chat");
+	// keep existing createNewConversation behavior
+};
 ```
 
 Replace the nested knowledge-base section with separate sections:
@@ -376,7 +407,13 @@ function KbItem({
 		>
 			<BookOpen className="size-3.5 shrink-0" />
 			<span className="kb-name">{item.name}</span>
-			<KbBadge item={item} />
+			{!item.valid ? (
+				<span className="kb-badge kb-badge-invalid">不可用</span>
+			) : item.origin === "external" ? (
+				<span className="kb-badge kb-badge-external">外部</span>
+			) : (
+				<span className="kb-badge">默认</span>
+			)}
 		</button>
 	);
 }
@@ -401,6 +438,12 @@ Replace footer with V2 actions:
 	</button>
 </div>
 ```
+
+In `AddExternalDialog.tsx`, keep the existing behavior but align visible copy with the footer entry:
+
+- `DialogTitle`: `新建知识库`
+- Any subtitle/help copy should say this creates a knowledge base from an existing folder.
+- Do not use the old visible phrase `添加现有知识库` in the dialog title.
 
 - [ ] **Step 4: Refactor collapsed rail**
 
@@ -489,6 +532,8 @@ In `workbench/web/src/index.css`, update/add these selectors:
 
 Remove CSS that only supports `.kb-children` and `.conv-new-btn` if it is no longer used by JSX.
 
+Remove or restyle `.main-view-switch` and `.main-view-btn` only if no other component uses them. The expanded sidebar must not display this switch after Task 1.
+
 - [ ] **Step 6: Run sidebar test and verify pass**
 
 Run:
@@ -504,9 +549,10 @@ Expected: PASS.
 Run:
 
 ```bash
-cd workbench/web && npm run typecheck
-cd workbench/web && npm test
-cd workbench/web && npm run lint
+cd workbench/web
+npm run typecheck
+npm test
+npm run lint
 ```
 
 Expected: all exit `0`; existing hook warnings are acceptable only if lint already exits `0`.
@@ -524,15 +570,17 @@ Open `http://localhost:5180` and verify:
 - Top of sidebar has collapse only.
 - Middle has `笔记本` and `会话`.
 - Footer has `图谱活地图`, `设置`, `新建知识库`.
-- Footer `新建知识库` opens the existing add-existing-library dialog.
+- Footer `新建知识库` opens the existing folder-based knowledge-base dialog, whose title also reads `新建知识库`.
 - Collapsed rail has no refresh and no `添加现有库`.
+- Expanded sidebar has no old `对话 / 图谱` segmented switch.
+- Click a conversation while currently on graph view; the app returns to chat view.
 
 - [ ] **Step 9: Commit Task 1**
 
 Run:
 
 ```bash
-git add workbench/web/src/components/Sidebar.tsx workbench/web/src/index.css workbench/web/test/sidebar.test.tsx
+git add workbench/web/src/App.tsx workbench/web/src/components/Sidebar.tsx workbench/web/src/components/AddExternalDialog.tsx workbench/web/src/index.css workbench/web/test/sidebar.test.tsx
 git commit -m "feat: align Paper V2 sidebar shell"
 ```
 
@@ -544,11 +592,10 @@ Expected: one commit containing only sidebar and sidebar test changes.
 
 **Files:**
 - Modify: `workbench/web/src/components/ChatPanel.tsx`
-- Modify: `workbench/web/src/components/ExportButtons.tsx`
 - Modify: `workbench/web/src/index.css`
 - Test: `workbench/web/test/chat-panel-composer.test.tsx`
 
-Goal: make the composer look like V2: one input card with send/stop button inside bottom-right, no permanent `就绪` row, export as a light tool strip below the card.
+Goal: make the composer look like V2: a light inline input card with send/stop button inside the card, no permanent `就绪` row, export as a light tool strip below the card, and message/empty-state spacing that does not feel like the old heavy workbench.
 
 - [ ] **Step 1: Strengthen composer tests**
 
@@ -580,11 +627,13 @@ Add a CSS contract test:
 it("keeps the V2 composer compact and places actions inside the card", () => {
 	const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
 
-	assert.match(css, /\.composer-card[\s\S]*border-radius:\s*16px/);
-	assert.match(css, /\.composer-actions[\s\S]*position:\s*absolute/);
-	assert.match(css, /\.composer-actions[\s\S]*right:\s*10px/);
-	assert.match(css, /\.composer-actions[\s\S]*bottom:\s*10px/);
-	assert.match(css, /\.chat-textarea[\s\S]*padding:\s*14px 92px 46px 15px/);
+	assert.match(css, /\.composer-card[\s\S]*border-radius:\s*14px/);
+	assert.match(css, /\.composer-card[\s\S]*display:\s*flex/);
+	assert.match(css, /\.composer-card[\s\S]*align-items:\s*flex-end/);
+	assert.match(css, /\.chat-textarea[\s\S]*min-height:\s*40px/);
+	assert.match(css, /\.chat-textarea[\s\S]*padding:\s*9px 0/);
+	assert.match(css, /\.send-btn[\s\S]*width:\s*36px/);
+	assert.match(css, /\.send-btn[\s\S]*height:\s*36px/);
 	assert.match(css, /\.composer-tools[\s\S]*display:\s*flex/);
 	assert.doesNotMatch(css, /\.chat-send-row\s*\{/);
 });
@@ -606,63 +655,62 @@ In `workbench/web/src/components/ChatPanel.tsx`, replace the composer card botto
 
 ```tsx
 <div className="composer-card">
-	<div className="relative">
-		<CommandMenu
-			open={commandMenu.open}
-			query={commandMenu.query}
-			items={visibleCommands}
-			selectedIndex={commandMenu.selected}
-			onSelect={replaceCommandToken}
-		/>
-		<RefMenu
-			open={refMenu.open}
-			query={refMenu.query}
-			items={refs}
-			selectedIndex={refMenu.selected}
-			onSelect={replaceRefToken}
-		/>
-		<textarea
-			ref={textareaRef}
-			value={input}
-			onChange={(e) => {
-				setInput(e.target.value);
-				if (e.target.value.trim() !== ingestDismissedFor) setIngestDismissedFor(null);
-				updateMenus(e.target.value, e.target.selectionStart);
+	<CommandMenu
+		open={commandMenu.open}
+		query={commandMenu.query}
+		items={visibleCommands}
+		selectedIndex={commandMenu.selected}
+		onSelect={replaceCommandToken}
+	/>
+	<RefMenu
+		open={refMenu.open}
+		query={refMenu.query}
+		items={refs}
+		selectedIndex={refMenu.selected}
+		onSelect={replaceRefToken}
+	/>
+	<textarea
+		ref={textareaRef}
+		value={input}
+		onChange={(e) => {
+			setInput(e.target.value);
+			if (e.target.value.trim() !== ingestDismissedFor) setIngestDismissedFor(null);
+			updateMenus(e.target.value, e.target.selectionStart);
+		}}
+		onClick={(e) => updateMenus(e.currentTarget.value, e.currentTarget.selectionStart)}
+		onKeyUp={(e) => {
+			if (["Escape", "ArrowDown", "ArrowUp", "Enter"].includes(e.key)) return;
+			updateMenus(e.currentTarget.value, e.currentTarget.selectionStart);
+		}}
+		onKeyDown={handleKeyDown}
+		rows={1}
+		className="chat-textarea"
+		placeholder={
+			currentKnowledgeBaseName
+				? "写下想法…  @ 引用  / 命令  ·  ⌘↵ 发送"
+				: "请先在左侧选择一个知识库…"
+		}
+		disabled={status === "streaming" || !currentKnowledgeBaseName}
+	/>
+	<div className="composer-actions">
+		{(status === "streaming" || status === "error" || detectedMaterial || detectedBatch) && (
+			<span className="composer-status" role={status === "error" ? "alert" : "status"}>
+				{status === "streaming" ? "生成中" : status === "error" ? "出错" : "待消化"}
+			</span>
+		)}
+		<button
+			type="button"
+			className={cn("send-btn", status === "streaming" && "stop-btn")}
+			onClick={() => {
+				if (status === "streaming") stopStreaming();
+				else void sendPrompt();
 			}}
-			onClick={(e) => updateMenus(e.currentTarget.value, e.currentTarget.selectionStart)}
-			onKeyUp={(e) => {
-				if (["Escape", "ArrowDown", "ArrowUp", "Enter"].includes(e.key)) return;
-				updateMenus(e.currentTarget.value, e.currentTarget.selectionStart);
-			}}
-			onKeyDown={handleKeyDown}
-			rows={2}
-			className="chat-textarea"
-			placeholder={
-				currentKnowledgeBaseName
-					? "写下想法…  @ 引用  / 命令  ·  ⌘↵ 发送"
-					: "请先在左侧选择一个知识库…"
-			}
-			disabled={status === "streaming" || !currentKnowledgeBaseName}
-		/>
-		<div className="composer-actions">
-			{(status === "streaming" || status === "error" || detectedMaterial || detectedBatch) && (
-				<span className="composer-status" role={status === "error" ? "alert" : "status"}>
-					{status === "streaming" ? "生成中" : status === "error" ? "出错" : "待消化"}
-				</span>
-			)}
-			<button
-				type="button"
-				className={cn("send-btn", status === "streaming" && "stop-btn")}
-				onClick={() => {
-					if (status === "streaming") stopStreaming();
-					else void sendPrompt();
-				}}
-				disabled={status !== "streaming" && (!input.trim() || !currentKnowledgeBaseName)}
-			>
-				{status === "streaming" ? <Square className="size-4" /> : <Send className="size-4" />}
-				{status === "streaming" ? "停止" : "发送"}
-			</button>
-		</div>
+			disabled={status !== "streaming" && (!input.trim() || !currentKnowledgeBaseName)}
+			title={status === "streaming" ? "停止" : "发送（⌘↵）"}
+		>
+			{status === "streaming" ? <Square className="size-4" /> : <Send className="size-4" />}
+			<span className="sr-only">{status === "streaming" ? "停止" : "发送"}</span>
+		</button>
 	</div>
 </div>
 <div className="composer-tools">
@@ -682,6 +730,8 @@ In `workbench/web/src/components/ChatPanel.tsx`, replace the composer card botto
 
 Remove the old `.chat-send-row` block.
 
+Keep `CommandMenu` and `RefMenu` positioned relative to `.composer-card`; menus must still open above the card and stay within the viewport at 768px.
+
 - [ ] **Step 4: Update composer CSS**
 
 In `workbench/web/src/index.css`:
@@ -691,17 +741,27 @@ Delete the `.chat-send-row` block.
 Change `.chat-textarea` to:
 
 ```css
+.composer-card {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border-radius: 14px;
+  padding: 6px 7px 6px 15px;
+  position: relative;
+}
+
 .chat-textarea {
+  flex: 1;
   width: 100%;
-  min-height: 92px;
-  max-height: 176px;
+  min-height: 40px;
+  max-height: 160px;
   resize: none;
   border: 0;
   background: transparent;
-  padding: 14px 92px 46px 15px;
+  padding: 9px 0;
   color: var(--app-fg);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.55;
   outline: none;
   box-shadow: none;
 }
@@ -711,12 +771,10 @@ Add:
 
 ```css
 .composer-actions {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .composer-status {
@@ -726,6 +784,14 @@ Add:
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.send-btn {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
 }
 
 .composer-tools {
@@ -763,6 +829,8 @@ Add:
 }
 ```
 
+Tune `.chat-messages` and `.chat-empty` to keep V2's reading rhythm: empty chat stays visually quiet, existing-message chat has enough air between bubbles, and the composer remains the dominant bottom action rather than a heavy toolbar.
+
 - [ ] **Step 5: Run composer test and verify pass**
 
 Run:
@@ -792,8 +860,11 @@ Expected: PASS.
 Open `http://localhost:5180` and verify:
 
 - Send button is inside input card.
+- Composer starts as a light one-line input similar to V2, not a 90px-tall panel.
 - `就绪` is gone.
 - Export is lighter and outside the main input card.
+- Empty chat and existing-message chat both keep V2-like vertical rhythm.
+- Streaming, error, detected-material, and detected-batch states do not collide with typed text or the send/stop button at 1440, 1024, or 768 widths.
 - `@` menu still opens.
 - `/` menu still opens.
 - Sending a message still works.
@@ -840,6 +911,8 @@ it("prioritizes the current tool action in one compact line", () => {
 ```
 
 Ensure `runningState()` returns a state with one active read item targeting `wiki/mamba.md`.
+
+In the existing visual-limit test, remove the import and assertion for `TOOL_RUNWAY_TARGET_LIMIT` because the active runway no longer renders a target-chip list. Keep `TOOL_RUNWAY_DETAIL_LIMIT` and `TOOL_RUNWAY_UPDATE_CADENCE_MS` assertions unless the implementation no longer exports them.
 
 - [ ] **Step 2: Update ToolHistorySummary test for lightweight completed copy**
 
@@ -909,7 +982,7 @@ return (
 );
 ```
 
-Delete `TOOL_RUNWAY_TARGET_LIMIT`, `getSummaryTargets`, and unused imports.
+Delete `TOOL_RUNWAY_TARGET_LIMIT`, `getSummaryTargets`, and unused imports after the test no longer imports `TOOL_RUNWAY_TARGET_LIMIT`.
 
 - [ ] **Step 5: Update ToolHistorySummary copy and markup**
 
@@ -1006,7 +1079,7 @@ Expected: one commit for tool call display only.
 - Create: `workbench/web/test/app-shell-drawer-layout.test.tsx`
 - Test: `workbench/web/test/right-drawer-interactions.test.tsx`
 
-Goal: desktop drawer is a layout column that makes main content narrower; narrow screens use overlay mode so the main area is not crushed.
+Goal: desktop drawer is a layout column that makes main content narrower; narrow screens use overlay mode so the main area is not crushed. The success criterion is real geometry, not only the presence of CSS markers.
 
 - [ ] **Step 1: Create drawer layout CSS contract test**
 
@@ -1022,13 +1095,13 @@ describe("App shell drawer layout", () => {
 	it("uses desktop drawer reflow and narrow overlay contracts", () => {
 		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
 
-		assert.match(css, /\.app-body\[data-drawer-open="true"\][\s\S]*\.shell-main/);
-		assert.match(css, /\.shell-main[\s\S]*min-width:\s*0/);
-		assert.match(css, /\.drawer-panel-open[\s\S]*width:\s*var\(--drawer-width/);
-		assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*\.drawer-panel-open[\s\S]*position:\s*fixed/);
-		assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*\.drawer-panel-open[\s\S]*inset:\s*60px 0 0 auto/);
+			assert.match(css, /\.app-body\[data-drawer-open="true"\][\s\S]*\.shell-main/);
+			assert.match(css, /\.shell-main[\s\S]*min-width:\s*0/);
+			assert.match(css, /\.drawer-panel-open[\s\S]*width:\s*var\(--drawer-width/);
+			assert.match(css, /@media \(max-width:\s*1023px\)[\s\S]*\.drawer-panel-open[\s\S]*position:\s*fixed/);
+			assert.match(css, /@media \(max-width:\s*1023px\)[\s\S]*\.drawer-panel-open[\s\S]*inset:\s*60px 0 0 auto/);
+		});
 	});
-});
 ```
 
 - [ ] **Step 2: Update RightDrawer interaction test for layout marker**
@@ -1102,7 +1175,7 @@ In `workbench/web/src/index.css`, ensure these contracts exist:
   min-width: var(--drawer-width, 420px);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .app-body[data-drawer-open="true"] .shell-main {
     width: 100%;
     min-width: 0;
@@ -1120,6 +1193,8 @@ In `workbench/web/src/index.css`, ensure these contracts exist:
 ```
 
 If `.app-body` already has mobile rules, merge this into the existing media block rather than creating conflicting duplicate behavior.
+
+Use `1023px` as the overlay cutoff unless browser QA proves 1024 is still comfortable with the drawer as a column. This keeps the 1024 tablet pass usable and avoids squeezing the chat/composer into a narrow strip.
 
 - [ ] **Step 7: Run drawer tests and verify pass**
 
@@ -1139,12 +1214,21 @@ At 1440px:
 
 - Open a wiki drawer from search or a wiki link.
 - Main area and composer remain visible.
+- Composer right edge is at least 8px left of drawer left edge.
 - Resize drawer; main remains visible.
+- Composer width changes with the main area and remains at least 420px wide.
+
+At 1024px:
+
+- Drawer uses overlay behavior or otherwise leaves the composer at least 420px wide.
+- No horizontal page overflow.
 
 At 768px:
 
 - Drawer overlays from the right.
 - Main area is not squeezed into an unusable column.
+- Composer remains visible and clickable behind/around the overlay behavior.
+- No horizontal page overflow.
 - Close/fullscreen still works.
 
 - [ ] **Step 9: Commit Task 4**
@@ -1167,7 +1251,7 @@ Expected: one commit for drawer layout only.
 - Modify: `workbench/web/src/index.css`
 - Test: `workbench/web/test/graph-panel-paper.test.tsx`
 
-Goal: graph toolbar and graph stage are distinct regions; toolbar does not overlay or compress the canvas. Use `图谱活地图` naming where user-facing.
+Goal: graph toolbar and graph stage are distinct regions; toolbar does not overlay or compress the canvas. Keep V2's top graph-bar feel for React-owned shell controls: title/actions/stats/legend live in the toolbar area, while the Sigma canvas remains a separate stage. The existing graph-engine search control stays inside the engine layer for now; this task must not modify `packages/graph-engine`. Use `图谱活地图` naming where user-facing.
 
 - [ ] **Step 1: Update GraphPanel test expectations**
 
@@ -1179,6 +1263,7 @@ assert.equal(toolbar.classList.contains("graph-shell-toolbar"), true);
 assert.match(toolbar.textContent ?? "", /图谱活地图/);
 assert.ok(screen.getByRole("button", { name: /重置布局/ }));
 assert.ok(screen.getByRole("button", { name: /重构/ }));
+assert.notEqual(toolbar.querySelector(".graph-shell-legend"), null);
 
 const shell = document.querySelector(".graph-shell");
 const stage = document.querySelector(".graph-stage");
@@ -1195,7 +1280,7 @@ Change CSS contract assertions:
 assert.match(css, /\.graph-shell\s*\{[\s\S]*display:\s*grid/);
 assert.match(css, /\.graph-shell-toolbar[\s\S]*position:\s*relative/);
 assert.match(css, /\.graph-stage[\s\S]*min-height:\s*0/);
-assert.match(css, /\.graph-shell-footer[\s\S]*display:\s*flex/);
+assert.match(css, /\.graph-shell-legend[\s\S]*display:\s*flex/);
 assert.doesNotMatch(css, /\.graph-shell-toolbar[\s\S]*position:\s*absolute/);
 ```
 
@@ -1207,11 +1292,11 @@ Run:
 cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/graph-panel-paper.test.tsx
 ```
 
-Expected: FAIL because `.graph-shell` and `.graph-shell-footer` are not yet present and copy still says `结构地图`.
+Expected: FAIL because `.graph-shell` and toolbar-contained legend are not yet present and copy still says `结构地图`.
 
 - [ ] **Step 3: Update GraphPanel JSX**
 
-In `workbench/web/src/components/GraphPanel.tsx`, wrap toolbar/stage/footer:
+In `workbench/web/src/components/GraphPanel.tsx`, wrap toolbar/stage:
 
 ```tsx
 return (
@@ -1230,21 +1315,20 @@ return (
 							{data.nodes.length} 节点 · {data.edges.length} 关联
 						</span>
 					)}
+					<div className="graph-shell-legend" aria-label="图谱图例">
+						<span><span className="graph-legend-dot graph-legend-dot-node" />节点</span>
+						<span><span className="graph-legend-line" />关系</span>
+						<span><span className="graph-legend-cloud" />社区</span>
+					</div>
 				</div>
 				<div className="graph-shell-toolbar-actions">
-					{/* keep existing reset and rebuild buttons unchanged */}
+					{/* keep existing reset and rebuild controls unchanged */}
 				</div>
 			</header>
 
 			<div className="graph-stage">
 				{/* keep existing graph-stage children unchanged */}
 			</div>
-
-			<footer className="graph-shell-footer" aria-label="图谱图例">
-				<span><span className="graph-legend-dot graph-legend-dot-node" />节点</span>
-				<span><span className="graph-legend-line" />关系</span>
-				<span><span className="graph-legend-cloud" />社区</span>
-			</footer>
 		</div>
 	</div>
 );
@@ -1265,7 +1349,7 @@ In `workbench/web/src/index.css`, add:
 
 .graph-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
   flex: 1;
@@ -1281,18 +1365,15 @@ In `workbench/web/src/index.css`, add:
   min-height: 0;
 }
 
-.graph-shell-footer {
+.graph-shell-legend {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 12px;
-  min-height: 30px;
-  padding: 4px 10px;
   color: var(--app-muted);
   font-size: 11px;
 }
 
-.graph-shell-footer span {
+.graph-shell-legend span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1357,7 +1438,9 @@ At 1440, 1024, and 768:
 - Switch to graph view.
 - Toolbar appears above graph stage.
 - Toolbar never overlaps the stage.
-- Footer legend appears below graph stage.
+- Reset, rebuild, stats, and legend are visible in the toolbar and do not sit on top of the canvas.
+- Existing graph-engine search still opens/focuses inside the stage without colliding with the React toolbar.
+- Graph empty/loading/building/error/no-knowledge-base states still render inside the stage without overlapping toolbar controls.
 - Reset and rebuild buttons still work.
 
 - [ ] **Step 7: Commit Task 5**
@@ -1376,29 +1459,11 @@ Expected: one commit for graph shell only.
 ### Task 6: V2 Shell Visual Regression Cases
 
 **Files:**
-- Modify: `workbench/web/src/App.tsx`
 - Modify: `workbench/web/test/visual/paper-ui.ts`
 
-Goal: visual regression script captures the V2 shell states that matter: sidebar, chat with drawer, graph.
+Goal: visual regression script captures the V2 shell states that matter and compares them against the V2 prototype: sidebar, chat with drawer, composer, graph, desktop/tablet/narrow. Do not modify product code for visual-test convenience.
 
-- [ ] **Step 1: Add a DEV-only drawer opener for visual tests**
-
-In `workbench/web/src/App.tsx`, add this effect near the other App-level effects after `handleOpenPage` is defined and before the JSX return:
-
-```tsx
-useEffect(() => {
-	if (!import.meta.env?.DEV) return;
-	const open = () => setDrawer(wikiDrawer("wiki/paper-v2-visual.md", {
-		content: "# Paper V2 Visual\n\n视觉回归抽屉内容。\n\n- 抽屉打开\n- 主区让位\n- Composer 保持可用",
-	}));
-	window.addEventListener("paper-v2-visual-open-drawer", open);
-	return () => window.removeEventListener("paper-v2-visual-open-drawer", open);
-}, []);
-```
-
-This hook is only active in dev builds and only opens local deterministic drawer content for Playwright screenshots.
-
-- [ ] **Step 2: Add visual case type flags**
+- [ ] **Step 1: Add visual case type flags**
 
 In `workbench/web/test/visual/paper-ui.ts`, extend `PaperVisualCase`:
 
@@ -1412,10 +1477,11 @@ type PaperVisualCase = {
 	fonts?: "normal" | "blocked";
 	drawer?: "wiki";
 	sidebar?: "expanded" | "collapsed";
+	v2Focus?: "sidebar" | "composer" | "drawer" | "graph";
 };
 ```
 
-- [ ] **Step 3: Add V2 shell cases**
+- [ ] **Step 2: Add V2 shell cases**
 
 Append these cases to `cases`:
 
@@ -1425,18 +1491,42 @@ Append these cases to `cases`:
 	description: "V2 expanded sidebar with notebooks, conversations, and footer actions",
 	prefs: defaultPrefs,
 	sidebar: "expanded",
+	v2Focus: "sidebar",
 },
 {
 	name: "v2-sidebar-collapsed-1440",
 	description: "V2 collapsed sidebar rail",
 	prefs: defaultPrefs,
 	sidebar: "collapsed",
+	v2Focus: "sidebar",
+},
+{
+	name: "v2-composer-1440",
+	description: "V2 lightweight composer and chat rhythm",
+	prefs: defaultPrefs,
+	v2Focus: "composer",
+},
+{
+	name: "v2-composer-768",
+	description: "V2 lightweight composer at narrow width",
+	prefs: defaultPrefs,
+	viewport: { width: 768, height: 820 },
+	v2Focus: "composer",
 },
 {
 	name: "v2-chat-drawer-1440",
 	description: "V2 chat shell with right drawer open",
 	prefs: defaultPrefs,
 	drawer: "wiki",
+	v2Focus: "drawer",
+},
+{
+	name: "v2-chat-drawer-1024",
+	description: "V2 tablet chat shell with right drawer open",
+	prefs: defaultPrefs,
+	drawer: "wiki",
+	viewport: { width: 1024, height: 820 },
+	v2Focus: "drawer",
 },
 {
 	name: "v2-chat-drawer-768",
@@ -1444,16 +1534,34 @@ Append these cases to `cases`:
 	prefs: defaultPrefs,
 	drawer: "wiki",
 	viewport: { width: 768, height: 820 },
+	v2Focus: "drawer",
 },
 {
 	name: "v2-graph-shell-1440",
-	description: "V2 graph shell with toolbar and legend outside the stage",
+	description: "V2 graph shell with toolbar, search, stats, legend, and stage",
 	prefs: defaultPrefs,
 	view: "graph",
+	v2Focus: "graph",
+},
+{
+	name: "v2-graph-shell-1024",
+	description: "V2 graph shell at tablet width",
+	prefs: defaultPrefs,
+	view: "graph",
+	viewport: { width: 1024, height: 820 },
+	v2Focus: "graph",
+},
+{
+	name: "v2-graph-shell-768",
+	description: "V2 graph shell at narrow width",
+	prefs: defaultPrefs,
+	view: "graph",
+	viewport: { width: 768, height: 820 },
+	v2Focus: "graph",
 },
 ```
 
-- [ ] **Step 4: Seed case state before reload**
+- [ ] **Step 3: Seed case state before reload**
 
 Inside the existing `page.evaluate((prefs) => { ... })`, store:
 
@@ -1463,35 +1571,75 @@ localStorage.setItem("llm-wiki-agent-sidebar-collapsed", prefs.sidebar === "coll
 
 Include `sidebar: visualCase.sidebar` in the object passed to `page.evaluate`.
 
-- [ ] **Step 5: Open drawer for drawer cases after reload**
+- [ ] **Step 4: Open drawer cases through the real search flow**
 
-After `await waitForStableVisualState(page, visualCase);`, add:
+Do not add a DEV-only event listener to `App.tsx`. Open the drawer through existing UI so the visual case also protects search/open-page behavior:
 
 ```ts
-if (visualCase.drawer === "wiki") {
+async function openWikiDrawerFromSearch(page: Page) {
 	await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
-	await page.waitForSelector('[role="dialog"], .search-panel', { timeout: 5_000 }).catch(() => undefined);
-	await page.evaluate(() => {
-		window.dispatchEvent(new CustomEvent("paper-v2-visual-open-drawer"));
-	});
+	await page.waitForSelector(".search-panel", { timeout: 5_000 });
+	await page.waitForSelector(".search-result-main", { timeout: 10_000 });
+	await page.locator(".search-result-main").first().click();
+	await page.waitForSelector(".drawer-panel-open", { timeout: 10_000 });
+	await page.waitForSelector(".search-panel", { state: "detached", timeout: 5_000 }).catch(() => undefined);
 }
 ```
 
-- [ ] **Step 6: Add visual assertions**
+After `await waitForStableVisualState(page, visualCase);`, call:
+
+```ts
+if (visualCase.drawer === "wiki") {
+	await openWikiDrawerFromSearch(page);
+	await waitForStableVisualState(page, visualCase);
+}
+```
+
+- [ ] **Step 5: Update graph selectors for the Task 5 shell nesting**
+
+Update old direct-child selectors in the visual script:
+
+```ts
+document.querySelector(".graph-screen .graph-shell-toolbar");
+document.querySelector(".graph-screen .graph-stage");
+```
+
+Also update `waitForStableVisualState()` from `.graph-screen > .graph-stage` to `.graph-screen .graph-stage`.
+
+- [ ] **Step 6: Add visual geometry assertions**
 
 In state extraction, include:
 
 ```ts
+const sidebar = document.querySelector(".shell-sidebar");
 const sidebarFooter = document.querySelector(".sidebar-footer");
+const main = document.querySelector(".shell-main");
 const drawer = document.querySelector(".drawer-panel-open");
 const composer = document.querySelector(".composer-card");
+const textarea = document.querySelector(".chat-textarea");
+const sendButton = document.querySelector(".send-btn");
 const graphShell = document.querySelector(".graph-shell");
+const graphToolbar = document.querySelector(".graph-screen .graph-shell-toolbar");
+const graphStage = document.querySelector(".graph-screen .graph-stage");
+const graphLegend = document.querySelector(".graph-shell-legend");
+const graphSearch = document.querySelector(".graph-stage .graph-search, .graph-stage [aria-label='搜索图谱']");
 return {
 	// existing fields...
+	sidebarText: sidebar?.textContent?.replace(/\s+/g, " ").trim() ?? null,
 	sidebarFooterText: sidebarFooter?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+	sidebarRect: sidebar ? rectOf(sidebar) : null,
+	mainRect: main ? rectOf(main) : null,
+	drawerRect: drawer ? rectOf(drawer) : null,
 	drawerOpen: Boolean(drawer),
 	composerRect: composer ? rectOf(composer) : null,
+	textareaRect: textarea ? rectOf(textarea) : null,
+	sendRect: sendButton ? rectOf(sendButton) : null,
 	graphShellRect: graphShell ? rectOf(graphShell) : null,
+	graphToolbarRect: graphToolbar ? rectOf(graphToolbar) : null,
+	graphStageRect: graphStage ? rectOf(graphStage) : null,
+	graphSearchRect: graphSearch ? rectOf(graphSearch) : null,
+	graphLegendText: graphLegend?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+	graphSearchVisible: Boolean(graphSearch),
 };
 ```
 
@@ -1510,12 +1658,48 @@ Assert:
 if (visualCase.name.includes("sidebar")) {
 	assertTextIncludes(state.sidebarFooterText, "新建知识库", visualCase.name);
 	assertTextExcludes(state.sidebarFooterText, "添加现有库", visualCase.name);
+	assertTextIncludes(state.sidebarText, "笔记本", visualCase.name);
+	assertTextIncludes(state.sidebarText, "会话", visualCase.name);
+	assertTextExcludes(state.sidebarText, "刷新", visualCase.name);
 }
-if (visualCase.drawer === "wiki" && !state.drawerOpen) {
-	throw new Error(`${visualCase.name}: expected drawer to be open`);
+if (visualCase.v2Focus === "composer") {
+	const composer = asRect(state.composerRect);
+	const textarea = asRect(state.textareaRect);
+	const send = asRect(state.sendRect);
+	if (!composer || !textarea || !send) throw new Error(`${visualCase.name}: missing composer geometry`);
+	if (composer.height > 72) throw new Error(`${visualCase.name}: composer too tall for V2 (${composer.height}px)`);
+	if (Math.abs(send.width - 36) > 1 || Math.abs(send.height - 36) > 1) {
+		throw new Error(`${visualCase.name}: send button should be 36x36`);
+	}
+	if (textarea.right > send.left - 4) throw new Error(`${visualCase.name}: textarea collides with send button`);
+}
+if (visualCase.drawer === "wiki") {
+	const drawer = asRect(state.drawerRect);
+	const composer = asRect(state.composerRect);
+	if (!state.drawerOpen || !drawer || !composer) throw new Error(`${visualCase.name}: expected drawer and composer geometry`);
+	const viewportWidth = Number(state.viewportWidth);
+	if (viewportWidth >= 1024 && composer.right > drawer.left - 8) {
+		throw new Error(`${visualCase.name}: drawer overlaps composer`);
+	}
+	if (viewportWidth >= 1024 && composer.width < 420) {
+		throw new Error(`${visualCase.name}: composer squeezed too narrow (${composer.width}px)`);
+	}
 }
 if (visualCase.view === "graph" && !state.graphShellRect) {
 	throw new Error(`${visualCase.name}: expected graph shell`);
+}
+if (visualCase.view === "graph") {
+	const toolbar = asRect(state.graphToolbarRect);
+	const stage = asRect(state.graphStageRect);
+	const search = asRect(state.graphSearchRect);
+	if (!toolbar || !stage) throw new Error(`${visualCase.name}: missing graph toolbar/stage geometry`);
+	if (toolbar.bottom > stage.top + 1) throw new Error(`${visualCase.name}: graph toolbar overlaps stage`);
+	if (state.graphSearchVisible && search && search.top < stage.top - 1) {
+		throw new Error(`${visualCase.name}: graph search escaped stage`);
+	}
+	assertTextIncludes(state.graphLegendText, "节点", visualCase.name);
+	assertTextIncludes(state.graphLegendText, "关系", visualCase.name);
+	assertTextIncludes(state.graphLegendText, "社区", visualCase.name);
 }
 ```
 
@@ -1531,28 +1715,65 @@ function assertTextExcludes(value: string | null, unexpected: string, name: stri
 }
 ```
 
-- [ ] **Step 7: Run visual script**
+- [ ] **Step 7: Add prototype reference screenshots**
+
+In the same visual script, add a reference capture pass for the V2 prototype:
+
+```ts
+const v2PrototypeUrl = process.env.PAPER_V2_PROTOTYPE_URL
+	?? "file:///Users/kangjiaqi/designs/llm-wiki-skill/bright/paper-final-v2.html";
+const referenceDir = resolve(process.cwd(), "test-results/paper-ui/reference-v2");
+```
+
+Capture at least:
+
+- `reference-v2-1440.png`
+- `reference-v2-1024.png`
+- `reference-v2-768.png`
+
+The script does not need pixel-diff math, but it must print the actual app PNG path and the matching V2 reference PNG path next to each V2 case so the final browser review has explicit comparison files.
+
+- [ ] **Step 8: Run visual script**
 
 Run:
 
 ```bash
-cd workbench/web && npm run visual:paper
+cd workbench/web
+npm run visual:paper
 ```
 
 Expected: exits `0` and creates actual PNGs including:
 
 - `v2-sidebar-expanded-1440.png`
 - `v2-sidebar-collapsed-1440.png`
+- `v2-composer-1440.png`
+- `v2-composer-768.png`
 - `v2-chat-drawer-1440.png`
+- `v2-chat-drawer-1024.png`
 - `v2-chat-drawer-768.png`
 - `v2-graph-shell-1440.png`
+- `v2-graph-shell-1024.png`
+- `v2-graph-shell-768.png`
 
-- [ ] **Step 8: Commit Task 6**
+Also confirm reference PNGs exist in `test-results/paper-ui/reference-v2/`.
+
+- [ ] **Step 9: Side-by-side V2 review**
+
+Open or inspect the generated app PNGs against the matching V2 prototype PNGs. Pass only if:
+
+- Sidebar proportions, bottom actions, warm paper color, density, and muted borders feel close to V2.
+- Composer is a light one-line starting input, not a heavy panel.
+- Drawer-open desktop screenshots show the main/composer yielding cleanly.
+- Narrow drawer screenshots use overlay behavior without horizontal overflow.
+- Graph toolbar/stats/legend sit above the stage; graph-engine search, if visible, stays inside the stage and does not collide with the React toolbar.
+- Buttons, colors, border radii, and shadows do not look like generic rounded-card UI.
+
+- [ ] **Step 10: Commit Task 6**
 
 Run:
 
 ```bash
-git add workbench/web/src/App.tsx workbench/web/test/visual/paper-ui.ts
+git add workbench/web/test/visual/paper-ui.ts
 git commit -m "test: cover Paper V2 shell visuals"
 ```
 
@@ -1572,11 +1793,12 @@ Goal: prove the V2 shell package works as a whole.
 Run:
 
 ```bash
-cd workbench/web && npm run typecheck
-cd workbench/web && npm run build
-cd workbench/web && npm test
-cd workbench/web && npm run lint
-cd workbench/web && npm run visual:paper
+cd workbench/web
+npm run typecheck
+npm run build
+npm test
+npm run lint
+npm run visual:paper
 ```
 
 Expected: all exit `0`. Existing build chunk-size warnings and existing lint hook warnings are acceptable only if the command exits `0`.
@@ -1588,10 +1810,18 @@ At `http://localhost:5180`, viewport 1440:
 - Sidebar top only has collapse.
 - Sidebar sections are `笔记本` and `会话`.
 - Sidebar footer is `图谱活地图`, `设置`, `新建知识库`.
-- Composer send button is inside card.
+- Sidebar no longer shows top refresh/settings or the old `对话 / 图谱` segmented switch.
+- Footer `新建知识库` opens a dialog also titled `新建知识库`.
+- Composer send button is inside card and the composer starts as a light one-line input.
 - Tool calls are current-action first.
 - Open drawer; composer remains visible.
-- Switch graph; toolbar is outside stage.
+- Switch graph; toolbar/stats/legend are outside stage and the stage is not covered.
+- Search opens with `⌘K`/`Ctrl+K`, filters current library refs, and opens a wiki drawer.
+- Model switcher still reads/writes the main model.
+- Appearance panel still changes paper/accent/bubble/hand/density/theme preferences.
+- Export and batch digest entry points still exist.
+- Drawer resize/fullscreen/close all still work.
+- Graph reset and rebuild still work.
 
 - [ ] **Step 3: Browser tablet pass**
 
@@ -1599,8 +1829,9 @@ Viewport 1024:
 
 - TopBar does not overflow.
 - Sidebar and main remain usable.
-- Drawer open keeps main usable.
+- Drawer open keeps main/composer usable, or uses overlay behavior before the composer gets too narrow.
 - Graph toolbar wraps without covering canvas.
+- No horizontal page overflow.
 
 - [ ] **Step 4: Browser narrow pass**
 
@@ -1610,8 +1841,15 @@ Viewport 768:
 - Drawer overlays instead of crushing main.
 - Composer remains usable.
 - Graph toolbar and controls do not overlap.
+- Search panel, model menu, settings, and appearance controls remain reachable.
 
-- [ ] **Step 5: Leave working tree clean**
+- [ ] **Step 5: V2 screenshot comparison pass**
+
+Review the generated screenshots in `workbench/web/test-results/paper-ui/actual/` against `workbench/web/test-results/paper-ui/reference-v2/`.
+
+Expected: no obvious drift in paper warmth, density, sidebar proportions, composer weight, drawer behavior, graph shell layout, button placement, color use, shadow strength, or border radius. If the implementation is still only “roughly 80% V2”, fix before proceeding.
+
+- [ ] **Step 6: Leave working tree clean**
 
 Run:
 
@@ -1629,15 +1867,18 @@ Expected: no output. Do not create a final documentation-only commit for verific
 
 - Sidebar V2 structure: Task 1.
 - Footer `新建知识库` using existing add flow: Task 1.
+- `新建知识库` dialog copy alignment: Task 1.
 - Original empty-library creation hidden: Task 1.
+- Old expanded `对话 / 图谱` switch removed from sidebar: Task 1.
 - Composer send inside input card: Task 2.
+- Composer V2 compact one-line starting height: Task 2 and Task 6.
 - Permanent `就绪` row removed: Task 2.
 - Export retained but lighter: Task 2.
 - Current-action tool display: Task 3.
 - Lightweight completed tool history: Task 3.
 - Desktop drawer reflow and narrow overlay: Task 4.
 - Graph toolbar outside stage and no Sigma internals: Task 5.
-- Visual checks for V2 shell states: Task 6.
+- Visual checks and V2 prototype screenshot comparison for shell states: Task 6.
 - Full 1440/1024/768 verification: Task 7.
 
 ### Placeholder Scan
@@ -1646,7 +1887,7 @@ This plan intentionally avoids `TBD`, `TODO`, and “implement later”. If a ta
 
 ### Type Consistency
 
-- `Sidebar` still accepts existing props so `App.tsx` does not need a prop rewrite.
+- `Sidebar` removes `onRefresh` and `onCreateWiki`; `App.tsx` call site must be updated in Task 1.
 - `MainView` remains `"chat" | "graph"`.
 - `RightDrawer` keeps existing drawer modes and resize/fullscreen callbacks.
 - `GraphPanel` keeps existing status, build, reset, rebuild, and engine logic.
