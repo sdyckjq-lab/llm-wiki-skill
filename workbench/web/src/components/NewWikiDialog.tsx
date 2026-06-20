@@ -1,6 +1,6 @@
-import { useState } from "react";
+import React, { useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "./ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -8,8 +8,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "./ui/dialog";
+import { Input } from "./ui/input";
 
 interface Props {
 	open: boolean;
@@ -53,6 +53,7 @@ export function NewWikiDialog({ open, onOpenChange, onSubmit }: Props) {
 	};
 
 	return (
+		<React.Fragment>
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="dialog-surface sm:max-w-md">
 				<DialogHeader>
@@ -97,5 +98,6 @@ export function NewWikiDialog({ open, onOpenChange, onSubmit }: Props) {
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
+		</React.Fragment>
 	);
 }

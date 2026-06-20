@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 
 /**
  * Button 组件 - shadcn/ui 简化版（不含 asChild Slot，需要时再装 @radix-ui/react-slot）

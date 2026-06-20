@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "./ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -8,8 +8,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "./ui/dialog";
+import { Input } from "./ui/input";
 import {
 	type AvailableModelInfo,
 	chooseDirectory,
@@ -19,7 +19,7 @@ import {
 	inspectKnowledgeBasePath,
 	type InspectPathResult,
 	type ModelRef,
-} from "@/lib/api";
+} from "../lib/api";
 
 interface Props {
 	open: boolean;
@@ -197,6 +197,7 @@ export function AddExternalDialog({ open, onOpenChange, onSubmit, onStartBatchDi
 	};
 
 	return (
+		<React.Fragment>
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="dialog-surface w-[calc(100vw-2rem)] overflow-hidden sm:max-w-lg">
 				<DialogHeader>
@@ -343,6 +344,7 @@ export function AddExternalDialog({ open, onOpenChange, onSubmit, onStartBatchDi
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
+		</React.Fragment>
 	);
 }
 

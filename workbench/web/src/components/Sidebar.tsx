@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
 	BookOpen,
 	ChevronRight,
@@ -12,11 +12,11 @@ import {
 	Settings,
 } from "lucide-react";
 
-import { AddExternalDialog } from "@/components/AddExternalDialog";
-import { NewWikiDialog } from "@/components/NewWikiDialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ConversationInfo, KnowledgeBaseInfo } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { AddExternalDialog } from "./AddExternalDialog";
+import { NewWikiDialog } from "./NewWikiDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import type { ConversationInfo, KnowledgeBaseInfo } from "../lib/api";
+import { cn } from "../lib/utils";
 
 export type MainView = "chat" | "graph";
 
