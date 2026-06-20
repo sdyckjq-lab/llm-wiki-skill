@@ -1653,6 +1653,37 @@
     line-height: 1.45;
   }
 
+  .msg-content .at,
+  .drawer-content .at {
+    display: inline;
+    border-radius: 5px;
+    background: linear-gradient(180deg, transparent 52%, color-mix(in srgb, var(--app-accent) 20%, transparent) 52%);
+    color: var(--app-accent-deep);
+    font-weight: 650;
+    text-decoration-line: underline;
+    text-decoration-color: color-mix(in srgb, var(--app-accent) 42%, transparent);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+
+  .msg-content .at:hover,
+  .drawer-content .at:hover {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--app-accent) 8%, transparent), color-mix(in srgb, var(--app-accent) 24%, transparent));
+    color: var(--app-accent);
+  }
+
+  .msg-content .hl,
+  .drawer-content .hl {
+    border-radius: 5px;
+    background: linear-gradient(180deg, transparent 18%, color-mix(in srgb, var(--comm-attn) 58%, transparent) 18%, color-mix(in srgb, var(--comm-attn) 64%, transparent) 88%, transparent 88%);
+    padding: 0 2px;
+    color: inherit;
+    font-style: normal;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
   .msg-content table,
   .drawer-content table {
     width: 100%;
