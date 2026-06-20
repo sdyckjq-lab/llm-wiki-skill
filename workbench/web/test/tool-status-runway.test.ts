@@ -7,7 +7,6 @@ import { resolve } from "node:path";
 
 import {
 	TOOL_RUNWAY_DETAIL_LIMIT,
-	TOOL_RUNWAY_TARGET_LIMIT,
 	TOOL_RUNWAY_UPDATE_CADENCE_MS,
 	ToolStatusRunway,
 } from "../src/components/ToolStatusRunway";
@@ -19,22 +18,19 @@ import {
 import type { ToolStatusContractEvent } from "../src/lib/api";
 
 describe("ToolStatusRunway", () => {
+	it("prioritizes the current tool action in one compact line", () => {
+		const state = runningState();
+		const html = render(state);
+
+		assert.match(html, /tool-runway-current/);
+		assert.match(html, /正在/);
+		assert.match(html, /读取/);
+		assert.match(html, /wiki\/mamba\.md/);
+		assert.equal(html.includes("tool-runway-targets"), false);
+	});
+
 	it("renders a single running tool with a compact target and live state", () => {
-		const state = reduceToolStatusEvent(
-			createToolStatusState("runway-run", "runway-message"),
-			event("tool_status_start", {
-				seq: 1,
-				toolCallId: "read-1",
-				toolName: "read",
-				action: "读取",
-				target: "~/projects/private/wiki/sources/very-long-file-name-for-runway-layout.md",
-				status: "running",
-				args: { path: "~/projects/private/wiki/sources/very-long-file-name-for-runway-layout.md" },
-				runningToolCount: 1,
-				otherRunningCount: 0,
-			}),
-			{ nowMs: 1_000 },
-		);
+		const state = runningState("~/projects/private/wiki/sources/very-long-file-name-for-runway-layout.md");
 
 		const html = renderToStaticMarkup(React.createElement(ToolStatusRunway, { state }));
 
@@ -75,7 +71,6 @@ describe("ToolStatusRunway", () => {
 	});
 
 	it("exposes concrete visual limits and update cadence", () => {
-		assert.equal(TOOL_RUNWAY_TARGET_LIMIT, 3);
 		assert.equal(TOOL_RUNWAY_DETAIL_LIMIT, 50);
 		assert.ok(TOOL_RUNWAY_UPDATE_CADENCE_MS >= 80);
 		assert.ok(TOOL_RUNWAY_UPDATE_CADENCE_MS <= 150);
@@ -87,12 +82,30 @@ describe("ToolStatusRunway", () => {
 		assert.match(css, /\.tool-runway::after/);
 		assert.match(css, /\.tool-runway[\s\S]*var\(--paper-grain\)/);
 		assert.match(css, /\.tool-runway-status[\s\S]*border-radius:\s*999px/);
-		assert.match(css, /\.tool-runway-chip[\s\S]*font-family:\s*var\(--font-mono\)/);
+		assert.match(css, /\.tool-runway-current[\s\S]*white-space:\s*nowrap/);
 	});
 });
 
 function render(state: ReturnType<typeof createToolStatusState>): string {
 	return renderToStaticMarkup(React.createElement(ToolStatusRunway, { state }));
+}
+
+function runningState(target = "wiki/mamba.md") {
+	return reduceToolStatusEvent(
+		createToolStatusState("runway-run", "runway-message"),
+		event("tool_status_start", {
+			seq: 1,
+			toolCallId: "read-1",
+			toolName: "read",
+			action: "读取",
+			target,
+			status: "running",
+			args: { path: target },
+			runningToolCount: 1,
+			otherRunningCount: 0,
+		}),
+		{ nowMs: 1_000 },
+	);
 }
 
 function complete(status: "done" | "failed") {

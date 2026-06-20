@@ -3,7 +3,6 @@ import React from "react";
 import { formatToolStatusItem, type ToolStatusGroup } from "../lib/tool-status-format";
 import type { ToolStatusCompletedItem, ToolStatusState } from "../lib/tool-status-model";
 
-export const TOOL_HISTORY_FOLDED_TARGET_LIMIT = 3;
 export const TOOL_HISTORY_DETAIL_LIMIT = 50;
 
 interface Props {
@@ -15,7 +14,6 @@ interface GroupSummary {
 	group: ToolStatusGroup;
 	label: string;
 	items: ToolStatusCompletedItem[];
-	targets: string[];
 }
 
 const GROUP_LABELS: Record<ToolStatusGroup, string> = {
@@ -47,22 +45,13 @@ export function ToolHistorySummary({ state, defaultExpanded = false }: Props) {
 					aria-expanded={expanded}
 					onClick={() => setExpanded((current) => !current)}
 				>
-					<span className="tool-history-title">工具摘要</span>
-					<span className="tool-history-count">{totalCount} 项</span>
+					<span className="tool-history-title">已完成 {totalCount} 项工具调用</span>
 					<span className="tool-history-groups" aria-label="工具分组">
 						{groups.map((group) => (
 							<span key={group.group} className={`tool-history-group tool-history-group-${group.group}`}>
 								{group.label} {group.items.length}
 							</span>
 						))}
-					</span>
-					<span className="tool-history-targets" aria-label="关键目标">
-						{groups.flatMap((group) => group.targets).slice(0, TOOL_HISTORY_FOLDED_TARGET_LIMIT).map((target) => (
-							<span key={target} className="tool-history-chip">
-								{target}
-							</span>
-						))}
-						{state.completedOverflowLabel && <span className="tool-history-chip">{state.completedOverflowLabel}</span>}
 					</span>
 				</button>
 				{expanded && <div className="tool-history-detail">
@@ -100,7 +89,6 @@ function groupCompletedItems(items: ToolStatusCompletedItem[]): GroupSummary[] {
 				group,
 				label: GROUP_LABELS[group],
 				items: groupItems,
-				targets: groupItems.map((item) => formatCompletedItem(item).target),
 			},
 		];
 	});

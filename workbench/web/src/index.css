@@ -1985,10 +1985,10 @@
     position: relative;
     display: flex;
     min-width: 0;
-    max-width: 100%;
+    max-width: min(560px, 100%);
     gap: 11px;
     margin: 2px 0 10px;
-    padding: 10px 12px;
+    padding: 7px 9px;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--tool-runway-color) 32%, var(--app-border));
     border-radius: 12px;
@@ -2046,12 +2046,13 @@
     flex: 1;
   }
 
-  .tool-runway-line {
+  .tool-runway-current {
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .tool-runway-status,
@@ -2085,30 +2086,8 @@
     flex: 0 1 auto;
   }
 
-  .tool-runway-targets {
-    display: flex;
-    min-width: 0;
-    gap: 6px;
-    margin-top: 7px;
-    overflow: hidden;
-  }
-
-  .tool-runway-chip {
-    min-width: 0;
-    max-width: 180px;
-    overflow: hidden;
-    padding: 3px 7px;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--tool-runway-color) 18%, transparent);
-    background: color-mix(in srgb, var(--app-surface) 78%, var(--tool-runway-color) 10%);
-    color: color-mix(in srgb, var(--app-fg) 72%, var(--tool-runway-color));
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .tool-history-summary {
+    max-width: min(560px, 100%);
     margin: 8px 0 11px;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--app-border) 88%, transparent);
@@ -2120,9 +2099,9 @@
   }
 
   .tool-history-header {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
+    display: flex;
     width: 100%;
+    min-height: 30px;
     gap: 8px;
     align-items: center;
     border: 0;
@@ -2139,34 +2118,24 @@
     display: none;
   }
 
-  .tool-history-title,
-  .tool-history-count {
+  .tool-history-title {
     font-size: 12px;
     font-weight: 720;
+    white-space: nowrap;
   }
 
   .tool-history-title {
     color: var(--app-accent-deep);
   }
 
-  .tool-history-count {
-    color: var(--app-muted);
-  }
-
-  .tool-history-groups,
-  .tool-history-targets {
+  .tool-history-groups {
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
     gap: 5px;
   }
 
-  .tool-history-targets {
-    grid-column: 1 / -1;
-  }
-
-  .tool-history-group,
-  .tool-history-chip {
+  .tool-history-group {
     min-width: 0;
     overflow: hidden;
     padding: 3px 7px;
@@ -2177,12 +2146,6 @@
     font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .tool-history-chip {
-    max-width: 180px;
-    background: color-mix(in srgb, var(--app-surface) 80%, var(--app-accent-soft));
-    font-family: var(--font-mono);
   }
 
   .tool-history-detail {
