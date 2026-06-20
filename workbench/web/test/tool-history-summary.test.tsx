@@ -7,7 +7,6 @@ import { resolve } from "node:path";
 
 import {
 	TOOL_HISTORY_DETAIL_LIMIT,
-	TOOL_HISTORY_FOLDED_TARGET_LIMIT,
 	ToolHistorySummary,
 } from "../src/components/ToolHistorySummary";
 import {
@@ -16,6 +15,7 @@ import {
 	type ToolStatusState,
 } from "../src/lib/tool-status-model";
 import type { ToolStatusContractEvent } from "../src/lib/api";
+import { click, render } from "./render";
 
 describe("ToolHistorySummary", () => {
 	it("renders a compact folded summary grouped by tool kind", () => {
@@ -29,14 +29,28 @@ describe("ToolHistorySummary", () => {
 
 		const html = renderToStaticMarkup(React.createElement(ToolHistorySummary, { state }));
 
-		assert.match(html, /tool-history-summary/);
-		assert.match(html, /工具摘要/);
-		assert.match(html, /文件 2/);
-		assert.match(html, /命令 1/);
-		assert.match(html, /搜索 1/);
-		assert.match(html, /Skill 1/);
+		assert.equal(html.includes("tool-history-summary"), true);
+		assert.equal(html.includes("已完成 5 项工具调用"), true);
+		assert.equal(html.includes("文件 2"), true);
+		assert.equal(html.includes("命令 1"), true);
+		assert.equal(html.includes("搜索 1"), true);
+		assert.equal(html.includes("Skill 1"), true);
+		assert.equal(html.includes("tool-history-targets"), false);
 		assert.equal(html.includes("tool-history-row"), false);
-		assert.ok((html.match(/tool-history-chip/g) ?? []).length <= TOOL_HISTORY_FOLDED_TARGET_LIMIT + 4);
+	});
+
+	it("keeps completed history collapsed until the user expands it", async () => {
+		const state = completedState([
+			["read-1", "read", "读取", "wiki/a.md"],
+			["read-2", "read", "读取", "wiki/b.md"],
+		]);
+		render(<ToolHistorySummary state={state} />);
+
+		assert.equal(document.body.textContent?.includes("wiki/a.md"), false);
+		const header = document.querySelector(".tool-history-header");
+		assert.ok(header);
+		await click(header);
+		assert.equal(document.body.textContent?.includes("wiki/a.md"), true);
 	});
 
 	it("keeps the folded Paper summary styled while preserving groups and targets", () => {
@@ -44,7 +58,8 @@ describe("ToolHistorySummary", () => {
 
 		assert.match(css, /\.tool-history-summary[\s\S]*var\(--paper-grain\)/);
 		assert.match(css, /\.tool-history-title[\s\S]*var\(--app-accent-deep\)/);
-		assert.match(css, /\.tool-history-group,[\s\S]*\.tool-history-chip/);
+		assert.match(css, /\.tool-history-header[\s\S]*min-height:\s*30px/);
+		assert.match(css, /\.tool-history-title[\s\S]*white-space:\s*nowrap/);
 		assert.match(css, /\.tool-history-row[\s\S]*grid-template-columns:\s*44px 64px minmax\(0, 1fr\)/);
 	});
 

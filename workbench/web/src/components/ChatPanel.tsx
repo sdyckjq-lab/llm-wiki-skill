@@ -29,7 +29,7 @@ import {
 	type ToolStatusState,
 } from "../lib/tool-status-model";
 import { cn } from "../lib/utils";
-import type { ChatStatusSnapshot } from "../lib/view-status";
+import { DEFAULT_CHAT_STATUS, type ChatStatusSnapshot } from "../lib/view-status";
 import { extractWikiPageRefs } from "../lib/wiki-links";
 
 type ToolMark = { name: string; status: "running" | "done" };
@@ -146,6 +146,7 @@ export function ChatPanel({
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const consumedPendingPromptRef = useRef<string | null>(null);
 	const consumedPendingInsertRef = useRef<string | null>(null);
+	const sendPromptRef = useRef<(overrideText?: string, displayText?: string) => void>(() => {});
 
 	const detectedMaterial = (() => {
 		const text = input.trim();
@@ -172,10 +173,13 @@ export function ChatPanel({
 	}, [currentKnowledgeBaseName]);
 
 	useEffect(() => {
+		const toolFlushTimers = toolFlushTimersRef.current;
 		return () => {
-			for (const timer of Object.values(toolFlushTimersRef.current)) window.clearTimeout(timer);
+			abortRef.current?.abort();
+			for (const timer of Object.values(toolFlushTimers)) window.clearTimeout(timer);
+			onStatusChange?.(DEFAULT_CHAT_STATUS);
 		};
-	}, []);
+	}, [onStatusChange]);
 
 	useEffect(() => {
 		onStatusChange?.({
@@ -442,12 +446,17 @@ export function ChatPanel({
 			if (activeAssistantIdRef.current === assistantId) activeAssistantIdRef.current = null;
 		}
 	};
+	useEffect(() => {
+		sendPromptRef.current = (overrideText?: string, displayText?: string) => {
+			void sendPrompt(overrideText, displayText);
+		};
+	});
 
 	useEffect(() => {
 		if (!pendingPrompt || consumedPendingPromptRef.current === pendingPrompt.id) return;
 		consumedPendingPromptRef.current = pendingPrompt.id;
 		onPendingPromptConsumed?.();
-		void sendPrompt(pendingPrompt.message, pendingPrompt.displayText);
+		sendPromptRef.current(pendingPrompt.message, pendingPrompt.displayText);
 	}, [onPendingPromptConsumed, pendingPrompt]);
 
 	useEffect(() => {
@@ -597,11 +606,8 @@ export function ChatPanel({
 				onDragOver={(event) => event.preventDefault()}
 				onDrop={handleDrop}
 			>
-				<div className="chat-input-hints">
-					<span className="chat-input-hint"><kbd>@</kbd> 引用页面</span>
-					<span className="chat-input-hint"><kbd>/</kbd> 调用命令</span>
-					<span className="chat-input-hint"><kbd>⌘↵</kbd> 发送</span>
-					{artifactCount > 0 && (
+				{artifactCount > 0 && (
+					<div className="chat-input-hints">
 						<button
 							type="button"
 							onClick={onOpenArtifacts}
@@ -611,9 +617,8 @@ export function ChatPanel({
 							<Files className="size-3.5" />
 							产物 {artifactCount}
 						</button>
-					)}
-					<span className="chat-input-hint ml-auto opacity-60">拖入文件或链接进行消化</span>
-				</div>
+					</div>
+				)}
 				{batchChipVisible && detectedBatch?.inspect.ingestibleFiles && (
 					<div className="input-chip">
 						<button
@@ -647,7 +652,6 @@ export function ChatPanel({
 					</div>
 				)}
 				<div className="composer-card">
-					<div className="relative">
 					<CommandMenu
 						open={commandMenu.open}
 						query={commandMenu.query}
@@ -676,20 +680,21 @@ export function ChatPanel({
 							updateMenus(e.currentTarget.value, e.currentTarget.selectionStart);
 						}}
 						onKeyDown={handleKeyDown}
-						rows={3}
+						rows={1}
 						className="chat-textarea"
 						placeholder={
 							currentKnowledgeBaseName
-								? "输入消息… @引用页面  /调用命令  Cmd+Enter 发送"
+								? "写下想法…  @ 引用  / 命令  ·  ⌘↵ 发送"
 								: "请先在左侧选择一个知识库…"
 						}
 						disabled={status === "streaming" || !currentKnowledgeBaseName}
 					/>
-					</div>
-					<div className="chat-send-row">
-						<span className="chat-status-text">
-							{status === "streaming" ? "生成中" : status === "error" ? "出错" : "就绪"}
-						</span>
+					<div className="composer-actions">
+						{(status === "streaming" || status === "error" || detectedMaterial || detectedBatch) && (
+							<span className="composer-status" role={status === "error" ? "alert" : "status"}>
+								{status === "streaming" ? "生成中" : status === "error" ? "出错" : "待消化"}
+							</span>
+						)}
 						<button
 							type="button"
 							className={cn("send-btn", status === "streaming" && "stop-btn")}
@@ -698,23 +703,28 @@ export function ChatPanel({
 								else void sendPrompt();
 							}}
 							disabled={status !== "streaming" && (!input.trim() || !currentKnowledgeBaseName)}
+							title={status === "streaming" ? "停止" : "发送（⌘↵）"}
 						>
 							{status === "streaming" ? <Square className="size-4" /> : <Send className="size-4" />}
-							{status === "streaming" ? "停止" : "发送"}
+							<span className="sr-only">{status === "streaming" ? "停止" : "发送"}</span>
 						</button>
 					</div>
-					<ExportButtons
-						disabled={!currentKnowledgeBaseName || status === "streaming" || messages.length === 0}
-						disabledReason={
-							!currentKnowledgeBaseName
-								? "请先选择知识库"
-								: status === "streaming"
-									? "当前正在生成"
-									: "请先开始对话"
-						}
-						onExport={handleExport}
-					/>
 				</div>
+				{messages.length > 0 && (
+					<div className="composer-tools">
+						<ExportButtons
+							disabled={!currentKnowledgeBaseName || status === "streaming"}
+							disabledReason={
+								!currentKnowledgeBaseName
+									? "请先选择知识库"
+									: status === "streaming"
+										? "当前正在生成"
+										: ""
+							}
+							onExport={handleExport}
+						/>
+					</div>
+				)}
 			</div>
 		</div>
 	);

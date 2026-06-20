@@ -4,11 +4,20 @@ import React from "react";
 import { fireEvent } from "@testing-library/react";
 
 import { RightDrawer } from "../src/components/RightDrawer";
+import { SearchPanel } from "../src/components/SearchPanel";
 import { artifactDrawer, wikiDrawer, type DrawerState } from "../src/lib/drawer-state";
 import type { ArtifactManifest } from "../src/lib/api";
 import { click, pressKey, render, screen } from "./render";
 
 describe("RightDrawer interactions", () => {
+	it("marks the drawer as open for shell layout", () => {
+		renderDrawer(wikiDrawer("wiki/paper.md", { content: "Paper body" }));
+
+		const drawer = document.querySelector(".drawer-panel-open");
+		assert.ok(drawer);
+		assert.equal(drawer?.getAttribute("data-drawer-open"), "true");
+	});
+
 	it("resizes by dragging, keyboard shortcuts, and double click reset", async () => {
 		const resizeCalls: number[] = [];
 		renderDrawer(wikiDrawer("wiki/paper.md", { content: "Paper body" }), {
@@ -66,6 +75,30 @@ describe("RightDrawer interactions", () => {
 		await pressKey(document, "Escape");
 
 		assert.deepEqual(closeReasons, ["button", "escape"]);
+	});
+
+	it("does not close the drawer when Escape closes search above it", async () => {
+		const closeReasons: string[] = [];
+		const searchCloses: string[] = [];
+		render(
+			<React.Fragment>
+				{drawerElement(wikiDrawer("wiki/paper.md", { content: "Paper body" }), {
+					onClose: (reason) => closeReasons.push(reason),
+				})}
+				<SearchPanel
+					open
+					refs={[{ path: "wiki/paper.md", name: "paper", title: "Paper", category: "entities" }]}
+					knowledgeBaseName="AI学习知识库"
+					onOpenPage={noopString}
+					onClose={() => searchCloses.push("search")}
+				/>
+			</React.Fragment>,
+		);
+
+		await pressKey(screen.getByLabelText("搜索当前库页面"), "Escape");
+
+		assert.deepEqual(searchCloses, ["search"]);
+		assert.deepEqual(closeReasons, []);
 	});
 
 	it("switches artifact tabs without losing the active tab class", async () => {

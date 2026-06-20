@@ -17,7 +17,7 @@ describe("ChatPanel tool status rendering", () => {
 		const html = renderToStaticMarkup(React.createElement(ToolHistorySummary, { state }));
 
 		assert.match(html, /tool-history-summary/);
-		assert.match(html, /工具摘要/);
+		assert.match(html, /已完成 2 项工具调用/);
 		assert.match(html, /文件 1/);
 		assert.match(html, /命令 1/);
 		assert.equal(html.includes("msg-tools"), false);

@@ -12,6 +12,7 @@ export interface PageRef {
 
 const PAGE_DIRS = ["entities", "topics", "sources", "comparisons", "synthesis"];
 const IGNORE_NAMES = new Set([".obsidian", ".DS_Store", ".wiki-tmp", ".git", "node_modules"]);
+const MAX_REF_LIMIT = 5000;
 
 interface CacheEntry {
 	items: PageRef[];
@@ -123,14 +124,15 @@ export async function listPageRefs(
 	kbPath: string,
 	query = "",
 	limit = 20,
+	options: { assertRegistered?: boolean } = {},
 ): Promise<PageRef[]> {
 	const q = query.trim();
-	const items = await getCachedPages(kbPath);
+	const items = await getCachedPages(kbPath, { assertRegistered: options.assertRegistered });
 	return items
 		.map((item) => ({ item, score: score(item, q) }))
 		.filter((entry) => entry.score > 0)
 		.sort((a, b) => b.score - a.score || a.item.path.localeCompare(b.item.path, "zh"))
-		.slice(0, Math.max(1, Math.min(limit, 100)))
+		.slice(0, Math.max(1, Math.min(limit, MAX_REF_LIMIT)))
 		.map((entry) => entry.item);
 }
 

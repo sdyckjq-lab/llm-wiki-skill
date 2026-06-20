@@ -81,11 +81,21 @@ export function RightDrawer({
 		if (drawer.mode === "closed") return;
 
 		const handleKeyDown = (event: KeyboardEvent) => {
+			const target = event.target as { closest?: (selector: string) => Element | null } | null;
+			const topLayerTarget = typeof target?.closest === "function"
+				? target.closest(".search-panel, .appearance-panel, [role='dialog'], [data-radix-popper-content-wrapper]")
+				: null;
+			if (
+				event.defaultPrevented
+				|| topLayerTarget
+			) {
+				return;
+			}
 			if (event.key === "Escape") onClose("escape");
 		};
 
-		window.addEventListener("keydown", handleKeyDown, { capture: true });
-		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [drawer.mode, onClose]);
 
 	if (drawer.mode === "closed") return null;
@@ -97,6 +107,7 @@ export function RightDrawer({
 		<React.Fragment>
 		<aside
 			className={cn("drawer-panel drawer-panel-open", fullscreen && "drawer-panel-fullscreen")}
+			data-drawer-open="true"
 			style={{ "--drawer-width": `${width}px` } as CSSProperties}
 		>
 			{!fullscreen && (

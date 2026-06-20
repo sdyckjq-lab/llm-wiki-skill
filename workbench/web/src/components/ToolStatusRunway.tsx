@@ -1,10 +1,9 @@
 import React from "react";
 
-import { formatToolStatusItem, truncateToolStatusText } from "../lib/tool-status-format";
+import { formatToolStatusItem } from "../lib/tool-status-format";
 import type { ToolDisplay } from "../lib/api";
 import type { ToolStatusCompletedItem, ToolStatusState } from "../lib/tool-status-model";
 
-export const TOOL_RUNWAY_TARGET_LIMIT = 3;
 export const TOOL_RUNWAY_DETAIL_LIMIT = 50;
 export const TOOL_RUNWAY_UPDATE_CADENCE_MS = 100;
 
@@ -30,34 +29,22 @@ export function ToolStatusRunway({ state }: Props) {
 				maxTargetLength: 64,
 			})
 		: null;
-	const summaryTargets = getSummaryTargets(state);
 	const statusLabel = getStatusLabel(status, state);
+	const prefix = status === "running" ? "正在" : statusLabel;
 
 	return (
 		<React.Fragment>
 		<div className={`tool-runway tool-runway-${status}`} aria-label={`工具状态：${statusLabel}`}>
 			<div className="tool-runway-pulse" aria-hidden="true" />
 			<div className="tool-runway-main">
-				<div className="tool-runway-line">
-					<span className="tool-runway-status">{statusLabel}</span>
+				<div className="tool-runway-current">
+					<span className="tool-runway-status">{prefix}</span>
 					{formatted && <span className="tool-runway-action">{formatted.action}</span>}
 					{formatted && <span className="tool-runway-target">{formatted.target}</span>}
 					{active && state.active.length > 1 && (
-						<span className="tool-runway-meta">另有 {state.active.length - 1} 项运行中</span>
+						<span className="tool-runway-meta">另有 {state.active.length - 1} 项</span>
 					)}
 				</div>
-				{summaryTargets.length > 0 && (
-					<div className="tool-runway-targets">
-						{summaryTargets.map((target) => (
-							<span key={target} className="tool-runway-chip">
-								{target}
-							</span>
-						))}
-						{state.completedOverflowLabel && (
-							<span className="tool-runway-chip">{state.completedOverflowLabel}</span>
-						)}
-					</div>
-				)}
 			</div>
 		</div>
 		</React.Fragment>
@@ -80,11 +67,4 @@ function getStatusLabel(status: RunwayStatus, state: ToolStatusState): string {
 	if (status === "failed") return state.error ? "失败" : "工具失败";
 	if (status === "cancelled") return state.cancelReason ?? "已取消";
 	return "已完成";
-}
-
-function getSummaryTargets(state: ToolStatusState): string[] {
-	return state.completed
-		.slice(-TOOL_RUNWAY_TARGET_LIMIT)
-		.map((item) => truncateToolStatusText(item.target, 42))
-		.filter(Boolean);
 }
