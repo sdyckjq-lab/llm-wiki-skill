@@ -41,6 +41,8 @@ describe("ChatPanel Paper bubbles", () => {
 		assert.match(css, /\.msg-row-user \.msg-content\s*\{/);
 		assert.match(css, /\[data-userbubble="solid"\] \.msg-row-user \.msg-content/);
 		assert.match(css, /\[data-density="compact"\] \.msg-content/);
-		assert.doesNotMatch(css, /\.msg-content[\s\S]*?backdrop-filter/);
+		for (const block of css.matchAll(/\.msg-content[^{]*\{[^}]*\}/g)) {
+			assert.doesNotMatch(block[0], /backdrop-filter/);
+		}
 	});
 });

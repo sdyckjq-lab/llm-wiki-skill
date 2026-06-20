@@ -3,8 +3,8 @@
   "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
   "status": {
     "phase": "phase-4",
-    "task": "4.2",
-    "next_allowed_action": "Implement task 4.2; after verified completion, advance to the next task automatically"
+    "task": "4.3",
+    "next_allowed_action": "Implement task 4.3; after verified completion, advance to the next task automatically"
   },
   "execution_rules": {
     "branch": "feat/paper-ui",
@@ -97,7 +97,7 @@
       ],
       "tasks": [
         { "id": "4.1", "title": "Composer 分离式→v2 单卡（内嵌发送/focus 暖光环/占位符随 data-hand）；保留 input-chip 与拖拽消化", "status": "completed", "verification": ["2026-06-20 task 4.1：ChatPanel Composer 从分离 textarea + 底部发送行改为 .composer-card 单卡，textarea 与发送/停止按钮同卡内，focus-within 触发暖色光环；textarea 改透明无边框纸面输入区，发送按钮为 pill；data-hand=on 继续让 placeholder 使用 Caveat 手写字体。素材 URL/路径 input-chip 与批量消化 input-chip 仍在 composer-card 上方，chat-input-area 继续保留 onDragOver/onDrop 拖拽消化入口；ExportButtons 暂保持卡外，等待 task 4.3 Paper 化/凸显。新增 chat-panel-composer.test.tsx 覆盖 textarea 与发送按钮同属 .composer-card、导出栏不在卡内、输入 URL 后 input-chip 出现在 composer-card 上方，以及 composer CSS 契约（focus 光环、透明 textarea、data-hand placeholder、pill 发送按钮）。验证：cd workbench/web && node --import tsx --import ./test/setup-dom.ts --test test/chat-panel-composer.test.tsx 退出 0（3 tests）；cd workbench/web && npm test 退出 0（22 suites / 67 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm run build 退出 0（仍有既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；Playwright 浏览器 smoke（1440/768，提权运行）确认发送按钮在 composer card 内、input-chip 在 card 上方、focus 光环生效、paper 背景存在、textarea 透明、placeholder 使用 Caveat。下一步 4.2。"] },
-        { "id": "4.2", "title": "RefMenu/CommandMenu（@//）浮层 Paper 化", "status": "pending", "verification": [] },
+        { "id": "4.2", "title": "RefMenu/CommandMenu（@//）浮层 Paper 化", "status": "completed", "verification": ["2026-06-20 task 4.2：RefMenu/CommandMenu 继续使用现有 .popup-* 单一类系统，补充 Paper 纸面浮层、标题条、@// 符号胶囊、选中态暖色左线、引用 category pill、命令 slug/source chips 与空态；组件只新增语义类名、role=listbox/option 与 aria-selected，未改 @ 插 wiki 链接或 / 插命令逻辑。新增 popup-menus.test.tsx 覆盖 RefMenu 选中态/空态、CommandMenu 分组/选中态/source chip，以及 CSS Paper 契约；收窄 chat-panel-bubbles 测试，只检查 .msg-content 规则块无 backdrop-filter，避免 popup 单例 blur 被误判为气泡 blur。验证：cd workbench/web && node --test-concurrency=1 --import tsx --import ./test/setup-dom.ts --test test/popup-menus.test.tsx 退出 0（3 tests）；cd workbench/web && npm run typecheck 退出 0；cd workbench/web && npm test 退出 0（23 suites / 70 tests）；cd workbench/web && npm run build 退出 0（仍有既有 chunk size warning）；cd workbench/web && npm run lint 退出 0（仍有 5 个既有 react-hooks warnings，无 errors）；git diff --check 退出 0；Playwright 浏览器 smoke（1440/768，提权运行并拦截本地 mock API）确认 / 菜单为 16px Paper 浮层且 Enter 插入 /digest ，@ 菜单为 16px Paper 浮层且 Enter 插入 [[wiki/paper-ui.md]] 。npx playwright install chromium 曾因无输出卡住被停止，改用本机 ms-playwright 缓存 chromium_headless_shell-1228 完成验证。下一步 4.3。"] },
         { "id": "4.3", "title": "ExportButtons Paper 化+凸显；BatchDigestPanel Paper 化+入口上浮", "status": "pending", "verification": [] },
         { "id": "4.4", "title": "搜索⌘K 客户端真搜索(Codex #8)：App/TopBar 级 refs cache 取当前库足量页面引用 metadata，本地模糊过滤，输入即过滤、回车/点击开抽屉/插引用，处理无知识库/空结果/接口失败/快捷键冲突；跨库/全文后端=后续子任务；新增 search-filter.test.ts + DOM/浏览器交互测试", "status": "pending", "verification": [] }
       ]
@@ -214,6 +214,11 @@
       "task": "4.1",
       "timestamp": "2026-06-20T05:22:00Z",
       "entry": "完成 Composer 单卡化：textarea 和发送/停止按钮合并进 Paper 输入卡，focus 暖光环与手写 placeholder 生效；素材/批量 input-chip 和拖拽消化入口保留。新增 Composer DOM/样式契约测试；test/typecheck/build/lint 与 1440/768 浏览器 smoke 通过。下一步 4.2。"
+    },
+    {
+      "task": "4.2",
+      "timestamp": "2026-06-20T04:40:00Z",
+      "entry": "完成 RefMenu/CommandMenu Paper 浮层：@ 引用和 / 命令菜单统一纸面、标题条、选中态、chips 与空态；保留插入 wiki 链接和插入命令逻辑。新增 popup 菜单测试并修正气泡测试的断言范围；typecheck/test/build/lint 与 1440/768 浏览器 smoke 通过。下一步 4.3。"
     }
   ]
 }

@@ -2151,36 +2151,154 @@
     bottom: 100%;
     left: 0;
     z-index: 20;
-    margin-bottom: 4px;
-    max-height: 260px;
+    margin-bottom: 8px;
+    max-height: min(320px, 48vh);
     overflow-y: auto;
-    border: 1px solid var(--app-border);
-    border-radius: 12px;
-    background: var(--app-surface);
-    box-shadow: var(--shadow-lg);
+    overscroll-behavior: contain;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 18%, var(--app-border));
+    border-radius: 16px;
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--card) 94%, var(--app-accent-soft)), var(--card)),
+      var(--paper-grain);
+    box-shadow: 0 18px 46px color-mix(in srgb, var(--app-shadow) 82%, transparent);
+    padding: 7px;
+    color: var(--app-fg);
+    backdrop-filter: blur(10px);
+  }
+
+  .popup-menu::before {
+    content: "";
+    position: sticky;
+    top: 0;
+    display: block;
+    height: 0;
+    pointer-events: none;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--app-accent) 20%, transparent);
+  }
+
+  .popup-group + .popup-group {
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed color-mix(in srgb, var(--app-border) 78%, transparent);
+  }
+
+  .popup-menu-heading {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 7px 7px;
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .popup-menu-symbol {
+    display: inline-grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 26%, var(--app-border));
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+
+  .popup-menu-query {
+    min-width: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--app-muted) 78%, var(--app-accent));
+    font-weight: 600;
+    text-overflow: ellipsis;
+    text-transform: none;
+    white-space: nowrap;
   }
 
   .popup-item {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
+    gap: 10px;
+    min-height: 42px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    padding: 8px 10px;
     color: var(--app-fg);
     font-size: 12px;
+    transition:
+      background 0.12s ease,
+      border-color 0.12s ease,
+      transform 0.12s ease,
+      box-shadow 0.12s ease;
   }
 
   .popup-item-selected {
-    background: var(--app-accent-soft);
+    border-color: color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--app-accent-soft) 92%, transparent), transparent 86%),
+      color-mix(in srgb, var(--card) 96%, var(--app-accent-soft));
     color: var(--app-accent-deep);
+    box-shadow: inset 3px 0 0 var(--app-accent), 0 7px 16px color-mix(in srgb, var(--app-accent) 12%, transparent);
   }
 
   .popup-item:hover {
-    background: var(--app-hover);
+    border-color: color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+    background: color-mix(in srgb, var(--app-accent-soft) 54%, var(--card));
+    transform: translateY(-1px);
   }
 
   .popup-item-desc {
+    margin-top: 2px;
+    color: color-mix(in srgb, var(--app-muted) 86%, var(--app-fg));
+    font-size: 10px;
+  }
+
+  .popup-item-kind,
+  .popup-source {
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card) 82%, var(--app-accent-soft));
     color: var(--app-muted);
     font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .popup-item-kind {
+    min-width: 68px;
+    padding: 3px 7px;
+    text-align: center;
+  }
+
+  .popup-item-command {
+    flex-shrink: 0;
+    width: 76px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .popup-source {
+    padding: 3px 7px;
+  }
+
+  .popup-item-empty {
+    justify-content: center;
+    min-height: 52px;
+    color: var(--app-muted);
+    font-style: italic;
   }
 
   .drawer-panel {

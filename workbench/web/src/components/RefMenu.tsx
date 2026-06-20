@@ -12,12 +12,14 @@ interface Props {
 export function RefMenu({ open, query, items, selectedIndex, onSelect }: Props) {
 	if (!open) return null;
 	return (
-		<div className="popup-menu">
-			<div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--app-muted)]">
-				@ 引用 {query && <span className="normal-case opacity-70">/ {query}</span>}
+		<div className="popup-menu popup-menu-ref" role="listbox" aria-label="@ 引用页面">
+			<div className="popup-menu-heading">
+				<span className="popup-menu-symbol">@</span>
+				<span>引用页面</span>
+				{query && <span className="popup-menu-query">/ {query}</span>}
 			</div>
 			{items.length === 0 ? (
-				<div className="popup-item text-[var(--app-muted)]">没有匹配页面</div>
+				<div className="popup-item popup-item-empty">没有匹配页面</div>
 			) : (
 				items.map((item, index) => (
 					<button
@@ -25,9 +27,11 @@ export function RefMenu({ open, query, items, selectedIndex, onSelect }: Props) 
 						type="button"
 						onMouseDown={(e) => e.preventDefault()}
 						onClick={() => onSelect(item)}
+						role="option"
+						aria-selected={index === selectedIndex}
 						className={cn("popup-item w-full text-left", index === selectedIndex && "popup-item-selected")}
 					>
-						<span className="min-w-20 text-xs text-[var(--app-muted)]">{item.category}</span>
+						<span className="popup-item-kind">{item.category}</span>
 						<span className="min-w-0 flex-1">
 							<span className="block truncate">{item.title}</span>
 							<span className="popup-item-desc block truncate font-mono">{item.path}</span>
