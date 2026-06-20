@@ -2062,41 +2062,72 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--app-border);
+    gap: 7px;
+    margin-top: 10px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 18%, var(--app-border));
+    border-radius: 14px;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--app-accent-soft) 72%, var(--card)), var(--card)),
+      var(--paper-grain);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--app-shadow) 46%, transparent);
+    padding: 8px;
+  }
+
+  .export-bar-head {
+    display: flex;
+    min-width: 118px;
+    flex-direction: column;
+    gap: 1px;
+    padding: 0 4px;
   }
 
   .export-label {
-    margin-right: 6px;
-    color: var(--app-muted);
-    font-size: 11px;
-    font-weight: 650;
+    color: var(--app-accent-deep);
+    font-size: 12px;
+    font-weight: 800;
     letter-spacing: 0.04em;
+  }
+
+  .export-hint {
+    color: var(--app-muted);
+    font-size: 10px;
+    white-space: nowrap;
   }
 
   .export-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 5px 10px;
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    color: var(--app-muted);
+    min-height: 32px;
+    padding: 6px 11px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 86%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card) 84%, var(--app-accent-soft));
+    color: var(--app-fg);
     font-size: 12px;
-    font-weight: 550;
+    font-weight: 650;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 38%, transparent);
+    transition:
+      border-color 0.12s ease,
+      background 0.12s ease,
+      color 0.12s ease,
+      transform 0.12s ease,
+      box-shadow 0.12s ease;
   }
 
   .export-btn:hover {
     color: var(--app-accent-deep);
     border-color: color-mix(in srgb, var(--app-accent) 45%, var(--app-border));
     background: var(--app-accent-soft);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--app-accent) 16%, transparent);
   }
 
   .export-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.45;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
   }
 
   .chat-send-row {
@@ -2604,60 +2635,166 @@
 
   .batch-panel {
     position: fixed;
-    right: 20px;
-    bottom: 20px;
+    right: 22px;
+    bottom: 26px;
     z-index: 40;
-    width: 320px;
+    width: 360px;
     max-width: calc(100vw - 2rem);
     overflow: hidden;
-    border: 1px solid var(--app-border);
-    border-radius: 12px;
-    background: var(--app-surface);
-    box-shadow: var(--shadow-lg);
+    border: 1px solid color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+    border-radius: 16px;
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--card) 92%, var(--app-accent-soft)), var(--card)),
+      var(--paper-grain);
+    box-shadow: 0 18px 50px color-mix(in srgb, var(--app-shadow) 82%, transparent);
   }
 
   .batch-header {
     display: flex;
     align-items: center;
+    gap: 10px;
     justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--app-border);
+    padding: 12px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--app-border) 80%, transparent);
+    background: color-mix(in srgb, var(--app-accent-soft) 48%, transparent);
+  }
+
+  .batch-title {
+    color: var(--app-fg);
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .batch-subtitle {
+    margin-top: 2px;
+    color: var(--app-muted);
+    font-size: 11px;
+  }
+
+  .batch-status {
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .batch-status-running {
+    border-color: color-mix(in srgb, var(--app-accent) 32%, var(--app-border));
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+  }
+
+  .batch-status-done {
+    border-color: color-mix(in srgb, var(--app-success) 34%, var(--app-border));
+    background: color-mix(in srgb, var(--app-success) 14%, var(--card));
+    color: var(--app-success);
+  }
+
+  .batch-status-error {
+    border-color: color-mix(in srgb, var(--app-danger) 34%, var(--app-border));
+    background: color-mix(in srgb, var(--app-danger) 12%, var(--card));
+    color: var(--app-danger);
   }
 
   .batch-body {
-    max-height: 260px;
+    max-height: 310px;
     overflow-y: auto;
-    padding: 12px 14px;
+    padding: 13px 14px 14px;
   }
 
   .batch-progress {
-    height: 3px;
-    margin: 8px 0;
-    border-radius: 3px;
-    background: var(--app-border);
+    height: 7px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-border) 74%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-raised) 68%, transparent);
   }
 
   .batch-progress-bar {
     height: 100%;
-    border-radius: 3px;
-    background: var(--app-accent);
-    transition: width 0.3s;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-accent) 68%, var(--app-warn)));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--app-accent) 28%, transparent);
+    transition: width 0.3s ease;
+  }
+
+  .batch-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 6px 0 10px;
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .batch-current {
+    overflow: hidden;
+    margin-bottom: 8px;
+    border: 1px dashed color-mix(in srgb, var(--app-accent) 25%, var(--app-border));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-accent-soft) 44%, transparent);
+    padding: 6px 8px;
+    color: var(--app-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .batch-file {
     display: grid;
-    grid-template-columns: 10px minmax(0, 1fr) auto;
+    grid-template-columns: 12px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
-    padding: 4px 0;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    padding: 7px 8px;
     color: var(--app-muted);
     font-family: var(--font-mono);
     font-size: 11px;
   }
 
+  .batch-file + .batch-file {
+    margin-top: 4px;
+  }
+
+  .batch-file-running {
+    border-color: color-mix(in srgb, var(--app-accent) 18%, var(--app-border));
+    background: color-mix(in srgb, var(--app-accent-soft) 38%, transparent);
+  }
+
+  .batch-file-done {
+    background: color-mix(in srgb, var(--app-success) 7%, transparent);
+  }
+
+  .batch-file-error {
+    background: color-mix(in srgb, var(--app-danger) 8%, transparent);
+  }
+
+  .batch-file-name,
+  .batch-file-detail {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .batch-file-name {
+    color: var(--app-fg);
+    font-weight: 700;
+  }
+
+  .batch-file-detail {
+    margin-top: 2px;
+    color: var(--app-muted);
+  }
+
   .batch-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 999px;
   }
 
@@ -2676,6 +2813,40 @@
 
   .batch-dot-error {
     background: var(--app-danger);
+  }
+
+  .batch-output-btn {
+    display: inline-grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--app-border) 80%, transparent);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--app-muted);
+  }
+
+  .batch-output-btn:hover {
+    border-color: var(--app-accent);
+    color: var(--app-accent-deep);
+    background: var(--app-accent-soft);
+  }
+
+  .batch-result {
+    margin-top: 10px;
+    border-radius: 10px;
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+
+  .batch-result-done {
+    background: color-mix(in srgb, var(--app-success) 12%, var(--card));
+    color: var(--app-success);
+  }
+
+  .batch-result-error {
+    background: color-mix(in srgb, var(--app-danger) 10%, var(--card));
+    color: var(--app-danger);
   }
 
   .dialog-surface {
