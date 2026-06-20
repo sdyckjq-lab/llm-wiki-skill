@@ -60,9 +60,14 @@ import {
 	type GraphSelectionCommand,
 } from "@/lib/graph-summary-actions";
 import { WIKI_LINK_SEEN_EVENT } from "@/lib/wiki-links";
+import {
+	applyAppearance,
+	mergeAppearance,
+	readAppearance,
+	writeAppearance,
+	type ThemeMode,
+} from "@/lib/appearance";
 
-type ThemeMode = "dark" | "light";
-const THEME_STORAGE_KEY = "llm-wiki-agent-theme";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "llm-wiki-agent-sidebar-collapsed";
 const DRAWER_WIDTH_STORAGE_KEY = "llm-wiki-agent-drawer-width";
 const MAIN_VIEW_STORAGE_KEY = "llm-wiki-agent-main-view";
@@ -183,10 +188,8 @@ function clampDrawerWidth(width: number, sidebarCollapsed: boolean): number {
  *   3. ChatPanel 重挂载
  */
 function App() {
-	const [theme, setTheme] = useState<ThemeMode>(() => {
-		if (typeof window === "undefined") return "dark";
-		return window.localStorage.getItem(THEME_STORAGE_KEY) === "light" ? "light" : "dark";
-	});
+	const [appearance, setAppearance] = useState(readAppearance);
+	const theme: ThemeMode = appearance.theme;
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
 		if (typeof window === "undefined") return false;
 		return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
@@ -233,11 +236,15 @@ function App() {
 	const activeConversationId = active?.conversation.id ?? null;
 
 	useEffect(() => {
-		const root = document.documentElement;
-		root.dataset.theme = theme;
-		root.classList.toggle("dark", theme === "dark");
-		window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-	}, [theme]);
+		applyAppearance(appearance);
+		writeAppearance(appearance);
+	}, [appearance]);
+
+	const toggleTheme = useCallback(() => {
+		setAppearance((value) => mergeAppearance(value, {
+			theme: value.theme === "dark" ? "light" : "dark",
+		}));
+	}, []);
 
 	useEffect(() => {
 		window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
@@ -903,7 +910,7 @@ function App() {
 							currentKnowledgeBaseName={active?.kb.name ?? null}
 							currentKnowledgeBasePath={active?.kb.path ?? null}
 							theme={theme}
-							onToggleTheme={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+							onToggleTheme={toggleTheme}
 							onOpenPage={handleOpenGraphPage}
 							onGraphDataChange={setGraphData}
 							onGraphPinsChange={setGraphPins}
@@ -932,7 +939,7 @@ function App() {
 							onOpenArtifacts={handleOpenArtifacts}
 							onStartBatchDigest={handleStartBatchDigest}
 							theme={theme}
-							onToggleTheme={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+							onToggleTheme={toggleTheme}
 							pendingPrompt={pendingGraphPrompt}
 							onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
 						/>
