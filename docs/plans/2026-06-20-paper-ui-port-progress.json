@@ -1,0 +1,119 @@
+{
+  "plan": "docs/plans/2026-06-20-paper-ui-port-phased-plan.md",
+  "spec": "docs/spark/2026-06-20-paper-ui-port-design.md",
+  "status": {
+    "phase": "phase-1",
+    "task": "1.1",
+    "next_allowed_action": "Implement task 1.1; after verified completion, advance to the next task or phase automatically"
+  },
+  "execution_rules": {
+    "branch": "feat/paper-ui",
+    "smoke_check": "git log --oneline -15 && cd workbench/web && npm run typecheck",
+    "verification_commands": {
+      "typecheck": "cd workbench/web && npm run typecheck",
+      "build": "cd workbench/web && npm run build",
+      "test": "cd workbench/web && npm test",
+      "lint": "cd workbench/web && npm run lint",
+      "dev_browser": "npm run dev (repo root) -> http://localhost:5180, viewports 1440/1024/768"
+    },
+    "commit_each_verified_task": true,
+    "progress_update_in_same_commit": true,
+    "no_commit_on_failed_verification": true,
+    "never_push_merge_or_amend": true,
+    "advance_after_verified_phase": true,
+    "no_user_confirmation_between_phases": true,
+    "only_flip_status_fields": true
+  },
+  "decision_log": [
+    { "decision": "引入统一 TopBar", "reason": "v2 布局要求 + 消除 ChatPanel/GraphPanel 的 onToggleTheme 双传", "rejected": "沿用 per-view statusbar", "source": "用户 + spec" },
+    { "decision": "默认浅色暖纸", "reason": "Paper 主视觉", "conflict": "PRODUCT.md §5.4 默认深色 -> Phase 6 改文档", "source": "用户多轮确认" },
+    { "decision": "Paper 视觉方向取代 §5.4 工具感/系统字体", "reason": "baoyu-design 多轮定稿", "action": "Phase 6 新增 ADR-23 + 改 §5.4", "source": "用户" },
+    { "decision": "外观偏好走 localStorage", "reason": "复用现有 theme/UI 偏好范式，零后端", "rejected": "后端存偏好", "source": "spec" },
+    { "decision": "搜索后端 / 图谱画布 Paper 化 = out of scope 子任务", "reason": "避免 scope 爆炸，未实现留接口后接", "source": "用户" }
+  ],
+  "phases": [
+    {
+      "id": "phase-1",
+      "goal": "样式地基：Paper token + 字体 + 外观偏好基础设施；首屏浅色暖纸",
+      "acceptance": [
+        "cd workbench/web && npm run typecheck 退出 0",
+        "cd workbench/web && npm run build 退出 0",
+        "cd workbench/web && npm test 退出 0（含新增 appearance 测试）",
+        "浏览器 1440 首屏为浅色暖纸底"
+      ],
+      "tasks": [
+        { "id": "1.1", "title": "Paper token 进 index.css（浅纸/夜灯 + 纸张层 + comm/dot/shadow）+ .pw-* 组件 CSS 层 + index.html 去 dark + 引字体", "status": "pending", "verification": [] },
+        { "id": "1.2", "title": "lib/appearance.ts：类型/默认/localStorage/applyAppearance（强调色 color-mix 推导 soft）", "status": "pending", "verification": [] },
+        { "id": "1.3", "title": "App 接入外观偏好状态 + effect；theme 默认改 light", "status": "pending", "verification": [] }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "goal": "统一 TopBar + AppearancePanel + Sidebar Paper 化（去夜灯项）",
+      "acceptance": [
+        "typecheck / build / test 退出 0",
+        "浏览器 1440/1024/768：顶栏控件可用，外观面板实时切换全部偏好，切对话/切库/新对话不回归，侧栏无夜灯项"
+      ],
+      "tasks": [
+        { "id": "2.1", "title": "TopBar.tsx：左 kb 头(静态无下拉无模型名) + 右控件组(搜索⌘K入口/ModelSelector/新对话/主题/外观齿轮)", "status": "pending", "verification": [] },
+        { "id": "2.2", "title": "AppearancePanel.tsx：复刻 v2 TweaksPanel，齿轮触发右上展开，受控于 App", "status": "pending", "verification": [] },
+        { "id": "2.3", "title": "App 接线：挂 TopBar + AppearancePanel；移除 ChatPanel/GraphPanel statusbar 控件与 onToggleTheme 双传", "status": "pending", "verification": [] },
+        { "id": "2.4", "title": "Sidebar Paper 化 + 移除「夜灯模式」项（保留图谱/设置/折叠）", "status": "pending", "verification": [] }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "goal": "对话区气泡化 + 概念链接样式 + 工具状态暖化",
+      "acceptance": [
+        "typecheck / build / test 退出 0；tool-status-*/tool-history-summary/chat-panel-tool-status/wiki-links 测试全绿",
+        "浏览器 1440：流式正常、气泡正确、点概念开抽屉、工具运行→折叠态正确"
+      ],
+      "tasks": [
+        { "id": "3.1", "title": "ChatPanel 消息扁平→气泡（用户 soft/solid、头像区分、密度）", "status": "pending", "verification": [] },
+        { "id": "3.2", "title": "MarkdownView 概念链接 .at Paper 样式 + 荧光笔 .hl", "status": "pending", "verification": [] },
+        { "id": "3.3", "title": "ToolStatusRunway/ToolHistorySummary 暖化（保 omp 折叠语义与信息量）", "status": "pending", "verification": [] }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "goal": "Composer 单卡 + @// 菜单 + 导出/批量/搜索入口凸显",
+      "acceptance": [
+        "typecheck / build / test 退出 0；发送/流式/@/ 不回归（api/chat 测试绿）",
+        "浏览器 1440/768：单卡 Composer + 内嵌发送 + focus 态；@插链接//插命令；导出与批量入口可见可点；⌘K 打开搜索面板（空态可接受）"
+      ],
+      "tasks": [
+        { "id": "4.1", "title": "Composer 分离式→v2 单卡（内嵌发送/focus 暖光环/占位符随 data-hand）；保留 input-chip 与拖拽消化", "status": "pending", "verification": [] },
+        { "id": "4.2", "title": "RefMenu/CommandMenu（@//）浮层 Paper 化", "status": "pending", "verification": [] },
+        { "id": "4.3", "title": "ExportButtons Paper 化+凸显；BatchDigestPanel Paper 化+入口上浮", "status": "pending", "verification": [] },
+        { "id": "4.4", "title": "搜索⌘K：TopBar 入口 + 前端接口/空态 UI（真实后端为后续子任务）", "status": "pending", "verification": [] }
+      ]
+    },
+    {
+      "id": "phase-5",
+      "goal": "RightDrawer 阅读视觉 Paper 化（摘要去左竖条），保留 resize/tab/全屏",
+      "acceptance": [
+        "typecheck / build / test 退出 0；graph-drawer-state/right-drawer-graph-summary/graph-selection-drawer/graph-summary-actions 测试全绿",
+        "浏览器 1440：抽屉阅读正常；resize/tab/全屏可用；摘要无左竖条"
+      ],
+      "tasks": [
+        { "id": "5.1", "title": "抽屉阅读 Paper 化：摘要带标签柔卡(去左竖条)、meta chip 社区圆点、关联列表、操作按钮", "status": "pending", "verification": [] },
+        { "id": "5.2", "title": "保留 resize/tab/全屏与 drawer 状态逻辑不回归", "status": "pending", "verification": [] }
+      ]
+    },
+    {
+      "id": "phase-6",
+      "goal": "图谱 Tab 外壳 Paper 化 + PRODUCT.md 对齐 + 全量回归",
+      "acceptance": [
+        "typecheck && build && test && lint 全退出 0",
+        "视觉回归 2主题×3纸张×4配色×2气泡×2密度×手写 截图齐全；首屏浅纸、夜灯可切",
+        "spec / 本 plan / PRODUCT.md(§5.2/§5.4/§10/ADR-23) 三者一致无 stale"
+      ],
+      "tasks": [
+        { "id": "6.1", "title": "GraphPanel Tab 入口/工具条/图例 Paper 化（画布内部 Sigma 不动）", "status": "pending", "verification": [] },
+        { "id": "6.2", "title": "PRODUCT.md 对齐：§5.2 / §5.4 / §10 changelog + 新 ADR-23（Paper 视觉方向 & 外观偏好）", "status": "pending", "verification": [] },
+        { "id": "6.3", "title": "全量回归：typecheck/build/test/lint 全绿 + 视觉回归截图 + 主流程手动过", "status": "pending", "verification": [] }
+      ]
+    }
+  ],
+  "turn_log": []
+}
