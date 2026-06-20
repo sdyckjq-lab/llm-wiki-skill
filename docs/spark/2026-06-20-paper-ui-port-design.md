@@ -12,7 +12,7 @@
 
 这份文档只确定移植的产品与工程边界，方便后续直接写实施计划。它**不**重新评估视觉方向（方向已通过 baoyu-design 多轮迭代锁定），**不**包含图谱画布内部视觉（明确后置），**不**做 MVP 取舍（除图谱外尽量一步到位）。
 
-设计原型与真实 app **同组件架构、同「CSS 变量 + 语义类名」范式**——原型本就是照 workbench 真实结构画的（同名组件 ChatPanel / Sidebar / Composer / ToolStatus / RightDrawer / ModelSelector）。因此本次是「换皮 + 按 v2 重排布局」，不是重写业务逻辑。
+设计原型与真实 app **同组件架构、同「CSS 变量 + 语义类名」范式**——原型本就是照 workbench 真实结构画的（同名组件 ChatPanel / Sidebar / Composer / ToolStatus / RightDrawer；真实 app 没有 ModelSelector，需要新建 TopBar 模型选择控件并复用 SettingsPanel 的配置路径）。因此本次是「换皮 + 按 v2 重排布局」，不是重写业务逻辑。
 
 ## 设计结论
 
@@ -41,11 +41,11 @@ v2 的布局里，模型选择器、新对话、主题切换、外观调参、�
 
 ## 用户拍板的具体决策（硬约束）
 
-- **去掉**顶栏左侧知识库头里的「模型名 + 下拉」。左侧只保留：书本图标 + 库名 + 篇数，纯展示，不可点、无 chevron。模型展示与切换**只在右侧 ModelSelector**（保留）。
+- **去掉**顶栏左侧知识库头里的「模型名 + 下拉」。左侧只保留：书本图标 + 库名 + origin/valid 标记，纯展示，不可点、无 chevron；不显示篇数（`KnowledgeBaseInfo` 无此字段）。模型展示与切换只在右侧 TopBar 模型控件，控件需新建并复用 SettingsPanel 的 `config.modelRoles.main` 读写路径。
 - **去掉**侧栏左下角的「夜灯模式」项（与右上角主题切换功能重合）。主题切换只保留在右上角顶栏。
 - **默认主题 = 浅色暖纸**。
 - **主页凸显三个现有功能**：导出（HTML/PDF/PPTX…）、搜索 ⌘K、批量消化。
-- **搜索 ⌘K**：本次做顶栏入口 + 前端接口；若后端无现成搜索 API，真实跨库/页面搜索**拆为子任务**，不在本次扩 scope。
+- **搜索 ⌘K**：本次做当前库页面引用 metadata 的本地真搜索，数据来自 App/TopBar 级 refs cache；真实跨库 / 全文搜索后端拆为子任务，不在本次扩 scope。
 - 其余 v2 元素**全部保留复刻**。
 
 ## 范围
@@ -58,13 +58,13 @@ v2 的布局里，模型选择器、新对话、主题切换、外观调参、�
 - 对话区：扁平消息 → 气泡；工具状态暖化；Composer 单卡化；概念链接 / 荧光笔样式。
 - RightDrawer 阅读视觉 Paper 化（保留 resize/tab/全屏）。
 - 外观偏好系统（`lib/appearance.ts` + `AppearancePanel`）+ localStorage 持久化。
-- 导出 / 批量消化入口凸显并 Paper 化；搜索入口 + 前端接口。
+- 导出 / 批量消化入口凸显并 Paper 化；搜索 ⌘K 做当前库 refs 本地过滤。
 - 图谱 Tab 外壳 / 工具条 / 图例 Paper 化到不突兀。
 
 ### 本次不做（后续任务）
 
 - 图谱**画布内部**视觉（Sigma 节点 / 社区配色，在 `packages/graph-engine` 的 `render/render-styles.ts`）。
-- 真实跨库搜索后端（若无现成 API）。
+- 真实跨库 / 全文搜索后端。
 - 任何与外观无关的后端改动。
 
 ## 布局骨架（以 v2 为准）
@@ -72,8 +72,8 @@ v2 的布局里，模型选择器、新对话、主题切换、外观调参、�
 ```
 app-shell（竖向 flex）
 ├─ TopBar（新增）
-│   ├─ 左：知识库头 = 书本图标 + 库名 + 篇数（纯展示，去模型名 / 去下拉）
-│   └─ 右：搜索⌘K · ModelSelector · 新对话 · 主题切换 · 外观齿轮(Tweaks)
+│   ├─ 左：知识库头 = 书本图标 + 库名 + origin/valid（纯展示，不显示模型名 / 不下拉 / 不显示篇数）
+│   └─ 右：搜索⌘K · 模型选择器(新建) · 新对话 · 主题切换 · 外观齿轮(Tweaks)
 ├─ body（横向 flex）
 │   ├─ Sidebar：笔记本列表 + 会话列表 + footer(图谱活地图 · 设置)【去「夜灯模式」】
 │   ├─ Main：药丸 Tab(对话 / 图谱) + 对话视图 ｜ 图谱视图
@@ -91,9 +91,9 @@ app-shell（竖向 flex）
 ## 样式与 token 策略
 
 1. **Paper token 层**：把 v2 的 `:root` / `[data-theme="light"]` / `[data-theme="dark"]` 暖纸 / 夜灯变量，映射到 `workbench/web/src/index.css` 现有的 `--app-*` 与 shadcn 变量（沿用 design 仓库 `bright/paper-theme.css` 的映射思路，但**补全 v2 实际用到、`paper-theme.css` 漏掉的**：社区色 `--comm-*`、纸张层 `--paper-glow / --paper-vignette / --paper-mottle / --paper-grain`、`--dot`、暖阴影 `--shadow / --shadow-lg`）。
-2. **组件样式层**：把 v2 的 `.pw-*` 组件 CSS 作为新的 `@layer components` 引入（或独立 `paper.css`）。真实独有组件（导出栏、批量面板、抽屉 resize 把手等）保留既有类并 Paper 化对齐。
+2. **组件样式层**：不引入 `.pw-*` 并行层；把现有 `.msg-*` / `.chat-*` / `.tool-*` / `.drawer-*` 等组件类就地演进为 Paper 外观。真实独有组件（导出栏、批量面板、抽屉 resize 把手等）保留既有类并 Paper 化对齐。
 3. **字体**：`index.html` 引入 Plus Jakarta Sans（正文）+ Caveat（手写点缀）+ JetBrains Mono（路径 / 代码）。注意 CJK：Latin 在前、CJK 系统字体兜底，CJK 正文 line-height 放大。
-4. **data 属性**：`documentElement` 上 `data-theme`（已有）+ 新增 `data-paper` / `data-userbubble` / `data-hand` / `data-density`；强调色用行内 CSS 变量覆盖（`--accent` / `--accent-deep` / `--user` / `--accent-soft = color-mix(... var(--card))`，浅 / 夜灯通用）。
+4. **data 属性**：`documentElement` 上 `data-theme`（已有）+ 新增 `data-paper` / `data-userbubble` / `data-hand` / `data-density` / `data-accent`；强调色由 CSS 里的 `data-accent` 预设统一驱动（`--accent` / `--accent-deep` / `--accent-soft`），不用行内 JS 变量。
 
 token 替换只换「颜色 / 字体」，达不到复刻；真正复刻需要组件级结构改动（气泡、单卡 Composer、药丸 Tab、摘要卡去左竖条等），本设计的组件清单即覆盖这些。
 
@@ -102,7 +102,7 @@ token 替换只换「颜色 / 字体」，达不到复刻；真正复刻需要�
 - 新 `workbench/web/src/lib/appearance.ts`：
   - `AppearancePrefs` 类型：`{ theme, paper, accent, userbubble, hand, density }`。
   - 取值：`theme: light|dark`；`paper: clean|grid|laid`；`accent: terracotta|clay|amber|rose`；`userbubble: soft|solid`；`hand: on|off`；`density: cozy|compact`。
-  - 读写 localStorage（键前缀 `llm-wiki-agent-appearance-*`，SSR-safe，`typeof window` 守卫），并提供 `applyAppearance(prefs)`：把上述写成 `documentElement` 的 data 属性 + 强调色行内变量。
+  - 读写 localStorage（键前缀 `llm-wiki-agent-appearance-*`，SSR-safe，`typeof window` 守卫），并提供 `applyAppearance(prefs)`：把上述写成 `documentElement` 的 data 属性；强调色通过 `data-accent` 预设生效。
   - 复用现有 `theme` 机制：`theme` 仍走现有 `THEME_STORAGE_KEY` 与 `dataset.theme` + `.dark` class，但**默认值改为 `light`**；其余外观项新增。
 - 新 `AppearancePanel` 组件：复刻 v2 `TweaksPanel`（分段控件 + 配色色板），右上齿轮 popover，右上角展开，带显隐。
 - 状态归属：偏好状态由 `App` 持有（与现有 `theme` 并列），通过一个 effect 应用到 `documentElement`（仿现有 theme effect），`AppearancePanel` 受控。
@@ -113,14 +113,14 @@ token 替换只换「颜色 / 字体」，达不到复刻；真正复刻需要�
 | 组件 / 文件 | 改造 | 备注 |
 |---|---|---|
 | `App.tsx` | 新增 TopBar 挂载、外观偏好状态 + effect、移除分散的 `onToggleTheme` 双传 | 顶栏控件回流到此处统一编排 |
-| **TopBar（新）** | 左 kb 头（静态，去模型名 / 下拉）+ 右控件组（搜索⌘K[入口+接口]、ModelSelector[保留]、新对话、主题、外观齿轮） | 共享于对话 / 图谱两视图 |
-| `ChatPanel.tsx` | 移除 `.statusbar`（控件上提 TopBar）；扁平消息 → 气泡（`.pw-rowmsg/.pw-av/.pw-bubble`，用户 soft/solid 两态、头像区分）；导出栏 Paper 化并凸显；保留 input-chip / 拖拽消化 | 最大块 |
+| **TopBar（新）** | 左 kb 头（静态，不显示模型名 / 不下拉 / 不显示篇数）+ 右控件组（搜索⌘K 当前库 refs 本地搜索、模型选择器[新建]、新对话、主题、外观齿轮） | 共享于对话 / 图谱两视图 |
+| `ChatPanel.tsx` | 移除 `.statusbar`（控件上提 TopBar）；扁平消息 → 气泡（就地演进 `.msg-row/.msg-avatar/.msg-body/.msg-content` 等类，用户 soft/solid 两态、头像区分）；导出栏 Paper 化并凸显；保留 input-chip / 拖拽消化 | 最大块 |
 | `MarkdownView.tsx` | 概念链接补 `.at` Paper 下划线样式（点击开抽屉逻辑已存在）；荧光笔 `.hl` | 功能已在，补样式 |
 | `ToolStatusRunway.tsx` / `ToolHistorySummary.tsx` | 暖化对齐 v2（脉冲竖条 + 微光轨道 → 折叠 chips），保留真实信息量 | runway 比 v2 更全，套皮不减信息 |
 | Composer（在 `ChatPanel` 内） | 分离式 → v2 单卡（内嵌发送 + focus 暖光环 + 占位符随 `data-hand` 切手写 / 正文）；`RefMenu` / `CommandMenu` Paper 化 | |
 | `Sidebar.tsx` | 笔记本 / 会话 / footer(图谱 · 设置) Paper 化；**移除「夜灯模式」项**；保留折叠 | |
 | `RightDrawer.tsx` + 摘要 / 节点视图 | v2 阅读视觉：摘要改「带标签柔卡」（**去掉左竖条 AI slop**）、meta chip 带社区圆点、关联列表、操作按钮；保留 resize / tab / 全屏 | |
-| `ModelSelector.tsx` | Paper 化（分组、打勾、pop 动画），移到 TopBar 右侧 | |
+| `TopBar` 模型选择器 | 新建控件，Paper 化（分组、打勾、pop 动画），复用 SettingsPanel 的 config 读写路径 | 真实 app 无现成 ModelSelector |
 | `BatchDigestPanel.tsx` | Paper 化；入口上浮凸显 | |
 | `GraphPanel.tsx` | 仅 Tab 入口 / 工具条 / 图例 Paper 化；画布内部不动 | 后置任务的边界 |
 | **`lib/appearance.ts`（新）** / **`AppearancePanel`（新）** | 见上节 | |
@@ -153,10 +153,10 @@ token 替换只换「颜色 / 字体」，达不到复刻；真正复刻需要�
 ## 后续任务（不在本次，记录在案）
 
 1. **图谱活地图 Paper 化**：把社区 / 节点配色对齐暖纸调，配色在 `packages/graph-engine` 的 `render/render-styles.ts`（Sigma 渲染），与图谱体验一起规划，不在 CSS 层。
-2. **真实跨库 / 页面搜索后端**：若现有后端无搜索 API，搜索 ⌘K 的真实检索作为独立子任务（本次只交付入口 + 前端接口）。
+2. **真实跨库 / 全文搜索后端**：本次只做当前库 refs metadata 的本地搜索；跨库、全文内容索引、后端搜索 API 作为独立子任务。
 
 ## 风险 / 边界
 
 - 引入 TopBar 涉及 `App.tsx` 与 `ChatPanel` / `GraphPanel` 的控件回流，是真实重构；已确认接受（理由见上）。属可控范围，因「不以 MVP 处理」而值得一次做对。
 - v2 原型用极简 `tinyMd` 渲染抽屉正文，`## 标题` / `- 列表` 当纯文本；真实 app 用 `MarkdownView`（正常 markdown），移植后此问题不存在。
-- 强调色行内覆盖会同时作用于浅 / 夜灯；用 `color-mix(... var(--card))` 推导 `--accent-soft` 保证两主题都成立。
+- 强调色 `data-accent` 预设需要同时覆盖浅 / 夜灯；用 `color-mix(... var(--card))` 推导 `--accent-soft` 保证两主题都成立。

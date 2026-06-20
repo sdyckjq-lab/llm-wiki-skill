@@ -27,13 +27,13 @@
   "decision_log": [
     { "decision": "引入统一 TopBar", "reason": "v2 布局要求 + 消除 ChatPanel/GraphPanel 的 onToggleTheme 双传", "rejected": "沿用 per-view statusbar", "source": "用户 + spec" },
     { "decision": "默认浅色暖纸", "reason": "Paper 主视觉", "conflict": "PRODUCT.md §5.4 默认深色 -> Phase 1 task 1.0 改文档(Codex #10 提前)", "source": "用户多轮确认" },
-    { "decision": "Paper 视觉方向取代 §5.4 工具感/系统字体", "reason": "baoyu-design 多轮定稿", "action": "Phase 1 task 1.0 新增 ADR-23 + 改 §5.4", "source": "用户" },
+    { "decision": "Paper 视觉方向取代 §5.4 工具感/系统字体", "reason": "baoyu-design 多轮定稿", "action": "Phase 1 task 1.0 新增 ADR-24 + 改 §5.4；ADR-25 记录测试栈", "source": "用户" },
     { "decision": "外观偏好走 localStorage", "reason": "复用现有 theme/UI 偏好范式，零后端", "rejected": "后端存偏好", "source": "spec" },
     { "decision": "单一 CSS 类系统(演进现有类，不引 .pw-*)", "reason": "DRY/无死 CSS/防屎山", "rejected": "引入 .pw-* 并行层 / 双轨", "source": "用户(plan-eng-review A1)" },
     { "decision": "外观单一 writer 含 theme(删旧 theme effect)", "reason": "防 .dark/data-theme 双主漂移", "source": "plan-eng-review A2" },
     { "decision": "新建 TopBar 模型选择器(复用 SettingsPanel config 路径)", "reason": "真实 app 无 ModelSelector 组件(Codex #2 核实)，模型在 config.modelRoles.main", "source": "用户(Codex #2)" },
     { "decision": "搜索⌘K 做客户端真搜索(过滤已加载 refs/页面)", "reason": "避免假按钮(Codex #8)，跨库/全文后端 defer", "source": "用户(Codex #8)" },
-    { "decision": "引入 jsdom + @testing-library/react(dev)", "reason": "现测试用 renderToStaticMarkup 无 DOM，做不了交互测试(Codex #7)；记 ADR-24", "source": "用户批准" },
+    { "decision": "引入 jsdom + @testing-library/react + Playwright(dev)", "reason": "现测试用 renderToStaticMarkup 无 DOM，做不了交互测试；Paper 视觉迁移需要脚本化截图；记 ADR-25", "source": "用户批准" },
     { "decision": "搜索跨库后端 / 图谱画布 Paper 化 = out of scope 子任务", "reason": "避免 scope 爆炸，未实现留接口后接", "source": "用户" }
   ],
   "phases": [
@@ -44,15 +44,16 @@
         "cd workbench/web && npm run typecheck 退出 0",
         "cd workbench/web && npm run build 退出 0",
         "cd workbench/web && npm test 退出 0（含新增 appearance 测试）",
-        "PRODUCT.md §5.2/§5.4/§10 + ADR-23/24 已落，与 plan/spec 无 stale",
+        "PRODUCT.md §5.2/§5.4/§10 + ADR-24/25 已落，与 plan/spec 无 stale",
         "浏览器 1440 首屏为浅色暖纸底"
       ],
       "tasks": [
-        { "id": "1.0", "title": "PRODUCT.md 先对齐（Codex #10）：§5.2 顶栏形态 / §5.4 默认浅色+Paper 视觉方向+字体 / §10 changelog / 新 ADR-23(Paper 视觉&外观偏好) + ADR-24(测试栈引 jsdom+@testing-library/react)", "status": "pending", "verification": [] },
-        { "id": "1.1", "title": "Paper token 进 index.css（浅纸/夜灯 + 纸张层 + comm/dot/shadow）；演进现有组件类(.msg-*/.chat-*/.tool-*/.drawer-*)到 Paper，不引入 .pw-* 并行类；data-paper/userbubble/hand/density/accent 变体选择器加在现有类上；index.html 去 dark + 引字体", "status": "pending", "verification": [] },
+        { "id": "1.0", "title": "PRODUCT.md 先对齐（Codex #10）：§5.2 顶栏形态 / §5.4 默认浅色+Paper 视觉方向+字体 / §10 changelog / 新 ADR-24(Paper 视觉&外观偏好) + ADR-25(测试栈引 jsdom+@testing-library/react+Playwright)", "status": "completed", "verification": ["2026-06-20 plan-eng-review refresh：PRODUCT.md §5.2/§5.4/§7/§10 已更新为 Paper UI + ADR-24/25；workbench/CLAUDE.md 与 workbench/AGENTS.md 阶段状态已同步到 4.7。"] },
+        { "id": "1.1", "title": "Paper token 进 index.css（浅纸/夜灯 + 纸张层 + comm/dot/shadow）；演进现有组件类(.msg-*/.chat-*/.tool-*/.drawer-*)到 Paper，不引入 .pw-* 并行类；data-paper/userbubble/hand/density/accent 变体选择器加在现有类上；index.html 去 dark + 引字体；纸张纹理只做少量全局层", "status": "pending", "verification": [] },
         { "id": "1.2", "title": "lib/appearance.ts：类型/默认/localStorage/applyAppearance（强调色走 data-accent 预设，非行内 JS 变量）", "status": "pending", "verification": [] },
         { "id": "1.3", "title": "lib/appearance.ts 成唯一外观 writer(含 theme)：删 App 旧 theme effect，applyAppearance 统一写 dataset.theme + .dark + data-*；theme 默认 light", "status": "pending", "verification": [] },
-        { "id": "1.4", "title": "测试栈（Codex #7）：装 jsdom + @testing-library/react(dev)，配 node:test 用 DOM 环境，让交互测试可行", "status": "pending", "verification": [] }
+        { "id": "1.4", "title": "测试栈（Codex #7）：装 jsdom + @testing-library/react(dev)，新增统一 test/setup-dom.ts 与 test/render.tsx，配 node:test 用 DOM 环境，让交互测试可行", "status": "pending", "verification": [] },
+        { "id": "1.5", "title": "视觉回归基础设施：装 Playwright(dev)，新增 npm run visual:paper、固定截图/基线目录，先抓 1440 浅纸/夜灯 smoke 截图", "status": "pending", "verification": [] }
       ]
     },
     {
@@ -65,12 +66,12 @@
       "tasks": [
         { "id": "2.0", "title": "外壳改竖向（Codex #6）：.app-shell 单横排 → TopBar 在上 + body 行包裹(Sidebar+Main+Drawer)，index.css + App.tsx 同步", "status": "pending", "verification": [] },
         { "id": "2.1", "title": "TopBar.tsx：左 kb 头(库名 + origin/valid 标记，静态无下拉无模型名；KB 无篇数字段不显示篇数 — Codex #3) + 右控件组(搜索⌘K入口/模型选择器/新对话/主题/外观齿轮)", "status": "pending", "verification": [] },
-        { "id": "2.2", "title": "TopBar 模型选择器(Codex #2：真实 app 无 ModelSelector，模型在 SettingsPanel/config)：新建控件，复用 getConfig().modelRoles.main 读 + 写 config，真能切并保存", "status": "pending", "verification": [] },
+        { "id": "2.2", "title": "TopBar 模型选择器(Codex #2：真实 app 无 ModelSelector，模型在 SettingsPanel/config)：新建控件，复用 getConfig().modelRoles.main 读 + 写 config，真能切并保存；保存后走 handleConfigChanged 同源刷新，让当前模型显示立即更新", "status": "pending", "verification": [] },
         { "id": "2.3", "title": "AppearancePanel.tsx：复刻 v2 TweaksPanel，齿轮触发右上展开，受控于 App", "status": "pending", "verification": [] },
         { "id": "2.4", "title": "App 接线：挂 TopBar + AppearancePanel；移除 ChatPanel/GraphPanel statusbar 控件与 onToggleTheme 双传", "status": "pending", "verification": [] },
-        { "id": "2.5", "title": "状态上提(Codex #4)：ChatPanel/GraphPanel 的连接/流式/图谱状态 lift 到 App 喂 TopBar(原 statusbar dot/提示不丢)；图谱专属控件(重置/重建 — Codex #5)留 GraphPanel 视图内", "status": "pending", "verification": [] },
+        { "id": "2.5", "title": "状态快照上报(Codex #4 修订)：ChatPanel/GraphPanel 保持内部生命周期状态，只向 App callback 上报 TopBar 需要的 chat/graph 状态快照(原 statusbar dot/提示不丢)；图谱专属控件(重置/重建 — Codex #5)留 GraphPanel 视图内", "status": "pending", "verification": [] },
         { "id": "2.6", "title": "Sidebar Paper 化 + 移除「夜灯模式」项（保留图谱/设置/折叠）", "status": "pending", "verification": [] },
-        { "id": "2.7", "title": "测试：TopBar.test.tsx（主题切换回归、开关外观面板、模型切换写 config）+ AppearancePanel.test.tsx（点分段→偏好+documentElement.dataset 更新）", "status": "pending", "verification": [] }
+        { "id": "2.7", "title": "测试：TopBar.test.tsx（真实点击主题切换、开关外观面板、模型切换写 config 后刷新当前模型、状态快照显示）+ AppearancePanel.test.tsx（点分段/色板→偏好+documentElement.dataset 更新）", "status": "pending", "verification": [] }
       ]
     },
     {
@@ -78,7 +79,8 @@
       "goal": "对话区气泡化 + 概念链接样式 + 工具状态暖化",
       "acceptance": [
         "typecheck / build / test 退出 0；tool-status-*/tool-history-summary/chat-panel-tool-status/wiki-links 测试全绿",
-        "浏览器 1440：流式正常、气泡正确、点概念开抽屉、工具运行→折叠态正确"
+        "浏览器 1440：流式正常、气泡正确、点概念开抽屉、工具运行→折叠态正确",
+        "长对话性能 smoke：200-500 条消息样本滚动、首屏渲染、输入聚焦不明显卡顿；每条消息无高成本滤镜/纹理层"
       ],
       "tasks": [
         { "id": "3.1", "title": "ChatPanel 消息扁平→气泡（用户 soft/solid、头像区分、密度）；气泡不用 backdrop-filter（长对话合成开销，实色卡片即可）", "status": "pending", "verification": [] },
@@ -90,21 +92,21 @@
       "id": "phase-4",
       "goal": "Composer 单卡 + @// 菜单 + 导出/批量/搜索入口凸显",
       "acceptance": [
-        "typecheck / build / test 退出 0；发送/流式/@/ 不回归（api/chat 测试绿）",
+        "typecheck / build / test 退出 0；发送/流式/@/ 不回归（api/chat 测试绿）；search-filter 覆盖 1k/5k refs、CJK、路径、标题、空 query、空结果、排序",
         "浏览器 1440/768：单卡 Composer + 内嵌发送 + focus 态；@插链接//插命令；导出与批量入口可见可点；⌘K 打开搜索、输入能真过滤当前库页面/引用并跳转（非空态）"
       ],
       "tasks": [
         { "id": "4.1", "title": "Composer 分离式→v2 单卡（内嵌发送/focus 暖光环/占位符随 data-hand）；保留 input-chip 与拖拽消化", "status": "pending", "verification": [] },
         { "id": "4.2", "title": "RefMenu/CommandMenu（@//）浮层 Paper 化", "status": "pending", "verification": [] },
         { "id": "4.3", "title": "ExportButtons Paper 化+凸显；BatchDigestPanel Paper 化+入口上浮", "status": "pending", "verification": [] },
-        { "id": "4.4", "title": "搜索⌘K 客户端真搜索(Codex #8)：本地模糊过滤已加载页面/引用(refs)，输入即过滤、回车/点击开抽屉/插引用，处理 ⌘K 快捷键冲突；跨库/全文后端=后续子任务；新增 search-filter.test.ts", "status": "pending", "verification": [] }
+        { "id": "4.4", "title": "搜索⌘K 客户端真搜索(Codex #8)：App/TopBar 级 refs cache 取当前库足量页面引用 metadata，本地模糊过滤，输入即过滤、回车/点击开抽屉/插引用，处理无知识库/空结果/接口失败/快捷键冲突；跨库/全文后端=后续子任务；新增 search-filter.test.ts + DOM/浏览器交互测试", "status": "pending", "verification": [] }
       ]
     },
     {
       "id": "phase-5",
       "goal": "RightDrawer 阅读视觉 Paper 化（摘要去左竖条），保留 resize/tab/全屏",
       "acceptance": [
-        "typecheck / build / test 退出 0；graph-drawer-state/right-drawer-graph-summary/graph-selection-drawer/graph-summary-actions 测试全绿",
+        "typecheck / build / test 退出 0；graph-drawer-state/right-drawer-graph-summary/graph-selection-drawer/graph-summary-actions 测试全绿；新增 DOM/Playwright 抽屉 resize/tab/fullscreen/close 交互测试",
         "浏览器 1440：抽屉阅读正常；resize/tab/全屏可用；摘要无左竖条"
       ],
       "tasks": [
@@ -116,14 +118,14 @@
       "id": "phase-6",
       "goal": "图谱 Tab 外壳 Paper 化 + 全量回归 + 文档终检（PRODUCT.md 已在 Phase 1 对齐）",
       "acceptance": [
-        "typecheck && build && test && lint 全退出 0",
-        "Playwright 脚本化视觉回归：关键组合(浅/夜灯×纯净/网格/纹理纸 6 张 + 气泡/密度/手写/配色各代表 1 张)截图，命名固定",
-        "spec / 本 plan / PRODUCT.md(§5.2/§5.4/§10/ADR-23/24) 三者一致无 stale"
+        "typecheck && build && test && lint && visual:paper 全退出 0",
+        "Playwright 脚本化视觉回归：关键组合(浅/夜灯×纯净/网格/纹理纸 6 张 + 气泡/密度/手写/配色各代表 1 张)截图，命名固定，baseline/actual 目录固定，字体正常/失败兜底均覆盖",
+        "spec / 本 plan / PRODUCT.md(§5.2/§5.4/§10/ADR-24/25) 三者一致无 stale"
       ],
       "tasks": [
         { "id": "6.1", "title": "GraphPanel Tab 入口/工具条/图例 Paper 化（画布内部 Sigma 不动）", "status": "pending", "verification": [] },
-        { "id": "6.2", "title": "脚本化视觉回归(Codex #9)：Playwright headless 抓关键组合(非 96 张全排列)，固定命名人工比对", "status": "pending", "verification": [] },
-        { "id": "6.3", "title": "全量回归：typecheck/build/test/lint 全绿 + 主流程手动过(发消息→@/→⌘K 搜索→导出→批量→切库→切模型→抽屉 resize/全屏)", "status": "pending", "verification": [] }
+        { "id": "6.2", "title": "脚本化视觉回归(Codex #9)：扩展 npm run visual:paper，Playwright headless 抓关键组合(非 96 张全排列)，固定命名、baseline/actual 目录、--update 规则；必要时 npx playwright install chromium", "status": "pending", "verification": [] },
+        { "id": "6.3", "title": "全量回归：typecheck/build/test/lint/visual:paper 全绿 + 主流程手动过(发消息→@/→⌘K 搜索→导出→批量→切库→切模型→抽屉 resize/全屏)", "status": "pending", "verification": [] }
       ]
     }
   ],
