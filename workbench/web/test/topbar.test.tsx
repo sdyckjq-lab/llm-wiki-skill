@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import React from "react";
 
 import { TopBar } from "../src/components/TopBar";
+import { AppearancePanel } from "../src/components/AppearancePanel";
 import { TooltipProvider } from "../src/components/ui/tooltip";
+import {
+	DEFAULT_APPEARANCE,
+	applyAppearance,
+	mergeAppearance,
+	type AppearancePrefs,
+} from "../src/lib/appearance";
 import { click, render, screen, waitFor } from "./render";
 
 describe("TopBar", () => {
@@ -54,6 +61,26 @@ describe("TopBar", () => {
 		await click(screen.getByRole("button", { name: "外观偏好" }));
 
 		assert.deepEqual(calls, ["search", "new", "theme", "appearance"]);
+	});
+
+	it("drives theme switching and the appearance panel from real topbar clicks", async () => {
+		renderTopBar(<PaperTopBarHarness />);
+
+		assert.equal(document.documentElement.dataset.theme, "light");
+		assert.equal(getAppearancePanel(), null);
+
+		await click(screen.getByRole("button", { name: "切换夜灯主题" }));
+		assert.equal(document.documentElement.dataset.theme, "dark");
+		assert.equal(document.documentElement.classList.contains("dark"), true);
+		assert.ok(screen.getByRole("button", { name: "切换浅色暖纸" }));
+
+		await click(screen.getByRole("button", { name: "外观偏好" }));
+		assert.notEqual(getAppearancePanel(), null);
+		assert.equal(screen.getByRole("button", { name: "外观偏好" }).getAttribute("aria-pressed"), "true");
+
+		await click(screen.getByRole("button", { name: "关闭外观面板" }));
+		assert.equal(getAppearancePanel(), null);
+		assert.equal(screen.getByRole("button", { name: "外观偏好" }).getAttribute("aria-pressed"), "false");
 	});
 
 	it("renders chat and graph status snapshots", () => {
@@ -154,6 +181,7 @@ describe("TopBar", () => {
 			await click(await screen.findByRole("option", { name: /openai\/gpt-5/ }));
 
 			await waitFor(() => assert.deepEqual(configChanged, ["changed"]));
+			await waitFor(() => assert.match(screen.getByRole("button", { name: /切换主对话模型/ }).textContent ?? "", /openai\/gpt-5/));
 			assert.deepEqual(requests.map((item) => `${item.method} ${item.url}`), [
 				"GET /api/config",
 				"GET /api/models",
@@ -177,6 +205,44 @@ function json(payload: unknown, status = 200) {
 
 function renderTopBar(element: React.ReactElement) {
 	return render(<TooltipProvider>{element}</TooltipProvider>);
+}
+
+function getAppearancePanel() {
+	return document.querySelector('section[aria-label="外观偏好"]');
+}
+
+function PaperTopBarHarness() {
+	const [appearance, setAppearance] = React.useState<AppearancePrefs>(DEFAULT_APPEARANCE);
+	const [appearanceOpen, setAppearanceOpen] = React.useState(false);
+
+	React.useEffect(() => {
+		applyAppearance(appearance);
+	}, [appearance]);
+
+	const updateAppearance = (patch: Partial<AppearancePrefs>) => {
+		setAppearance((current) => mergeAppearance(current, patch));
+	};
+
+	return (
+		<React.Fragment>
+			<TopBar
+				knowledgeBase={{ path: "/kb", name: "AI学习知识库", origin: "default", valid: true }}
+				model={null}
+				theme={appearance.theme}
+				appearanceOpen={appearanceOpen}
+				onSearch={noop}
+				onNewConversation={noop}
+				onToggleTheme={() => updateAppearance({ theme: appearance.theme === "dark" ? "light" : "dark" })}
+				onOpenAppearance={() => setAppearanceOpen((open) => !open)}
+			/>
+			<AppearancePanel
+				open={appearanceOpen}
+				value={appearance}
+				onChange={updateAppearance}
+				onClose={() => setAppearanceOpen(false)}
+			/>
+		</React.Fragment>
+	);
 }
 
 function noop() {}
