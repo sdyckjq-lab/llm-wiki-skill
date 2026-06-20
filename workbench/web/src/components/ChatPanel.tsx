@@ -640,7 +640,8 @@ export function ChatPanel({
 						</button>
 					</div>
 				)}
-				<div className="relative">
+				<div className="composer-card">
+					<div className="relative">
 					<CommandMenu
 						open={commandMenu.open}
 						query={commandMenu.query}
@@ -678,6 +679,24 @@ export function ChatPanel({
 						}
 						disabled={status === "streaming" || !currentKnowledgeBaseName}
 					/>
+					</div>
+					<div className="chat-send-row">
+						<span className="chat-status-text">
+							{status === "streaming" ? "生成中" : status === "error" ? "出错" : "就绪"}
+						</span>
+						<button
+							type="button"
+							className={cn("send-btn", status === "streaming" && "stop-btn")}
+							onClick={() => {
+								if (status === "streaming") stopStreaming();
+								else void sendPrompt();
+							}}
+							disabled={status !== "streaming" && (!input.trim() || !currentKnowledgeBaseName)}
+						>
+							{status === "streaming" ? <Square className="size-4" /> : <Send className="size-4" />}
+							{status === "streaming" ? "停止" : "发送"}
+						</button>
+					</div>
 				</div>
 				<ExportButtons
 					disabled={!currentKnowledgeBaseName || status === "streaming" || messages.length === 0}
@@ -690,23 +709,6 @@ export function ChatPanel({
 					}
 					onExport={handleExport}
 				/>
-				<div className="chat-send-row">
-					<span className="chat-status-text">
-						{status === "streaming" ? "生成中" : status === "error" ? "出错" : "就绪"}
-					</span>
-					<button
-						type="button"
-						className={cn("send-btn", status === "streaming" && "stop-btn")}
-						onClick={() => {
-							if (status === "streaming") stopStreaming();
-							else void sendPrompt();
-						}}
-						disabled={status !== "streaming" && (!input.trim() || !currentKnowledgeBaseName)}
-					>
-						{status === "streaming" ? <Square className="size-4" /> : <Send className="size-4" />}
-						{status === "streaming" ? "停止" : "发送"}
-					</button>
-				</div>
 			</div>
 		</div>
 	);

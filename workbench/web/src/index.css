@@ -1961,9 +1961,11 @@
   }
 
   .chat-input-area {
-    padding: 12px 16px 14px;
+    padding: 13px 16px 15px;
     border-top: 1px solid var(--app-border);
-    background: color-mix(in srgb, var(--app-bg) 76%, var(--app-surface));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 82%, transparent), color-mix(in srgb, var(--app-surface) 74%, var(--app-bg))),
+      var(--paper-grain);
   }
 
   .chat-input-hints {
@@ -2008,26 +2010,43 @@
     font-size: 12px;
   }
 
+  .composer-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-border) 90%, transparent);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 98%, transparent), color-mix(in srgb, var(--app-bg) 68%, var(--app-surface))),
+      var(--paper-grain);
+    box-shadow: 0 1px 2px rgba(70, 55, 40, 0.04), 0 12px 28px rgba(70, 55, 40, 0.075);
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+  }
+
+  .composer-card:focus-within {
+    border-color: color-mix(in srgb, var(--app-accent) 55%, var(--app-border));
+    box-shadow:
+      0 1px 2px rgba(70, 55, 40, 0.04),
+      0 14px 34px rgba(70, 55, 40, 0.09),
+      0 0 0 4px color-mix(in srgb, var(--app-accent) 14%, transparent);
+  }
+
   .chat-textarea {
     width: 100%;
-    min-height: 60px;
+    min-height: 70px;
     max-height: 180px;
     resize: none;
-    border: 1px solid var(--app-border);
-    border-radius: 12px;
-    background: var(--app-surface);
-    padding: 10px 12px;
+    border: 0;
+    background: transparent;
+    padding: 13px 15px 9px;
     color: var(--app-fg);
     font-size: 13px;
     line-height: 1.5;
     outline: none;
-    box-shadow: var(--shadow);
-    transition: border-color 0.15s, box-shadow 0.15s;
+    box-shadow: none;
   }
 
   .chat-textarea:focus {
-    border-color: color-mix(in srgb, var(--app-accent) 55%, var(--app-border));
-    box-shadow: var(--shadow), 0 0 0 3px var(--app-accent-soft);
+    box-shadow: none;
   }
 
   .chat-textarea::placeholder {
@@ -2084,7 +2103,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 10px;
+    gap: 10px;
+    min-height: 42px;
+    border-top: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+    padding: 7px 9px 8px 13px;
+    background: color-mix(in srgb, var(--app-surface) 72%, transparent);
   }
 
   .chat-status-text {
@@ -2096,8 +2119,9 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 16px;
-    border-radius: 10px;
+    min-height: 30px;
+    padding: 7px 15px;
+    border-radius: 999px;
     background: var(--app-accent);
     color: white;
     font-size: 13px;

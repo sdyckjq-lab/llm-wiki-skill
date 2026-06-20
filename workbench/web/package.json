@@ -11,7 +11,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --import tsx --import ./test/setup-dom.ts --test test/*.test.ts test/*.test.tsx",
+    "test": "npm run test:unit && npm run test:dom",
+    "test:unit": "node --import tsx --test test/*.test.ts",
+    "test:dom": "node --test-concurrency=1 --import tsx --import ./test/setup-dom.ts --test test/*.test.tsx",
     "visual:paper": "node --import tsx test/visual/paper-ui.ts",
     "pretypecheck": "npm run build -w @llm-wiki/graph-engine",
     "typecheck": "tsc -b --noEmit"
