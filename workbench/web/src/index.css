@@ -222,6 +222,7 @@
 @layer components {
   .app-shell {
     display: flex;
+    flex-direction: column;
     position: relative;
     width: 100vw;
     height: 100vh;
@@ -230,6 +231,15 @@
     background-image: var(--paper-glow), var(--paper-vignette), var(--paper-mottle);
     background-size: 100% 100%, 100% 100%, 620px 620px;
     color: var(--app-fg);
+  }
+
+  .app-body {
+    display: flex;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
   }
 
   [data-paper="grid"] .app-shell {

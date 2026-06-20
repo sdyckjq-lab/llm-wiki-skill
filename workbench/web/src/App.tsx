@@ -171,7 +171,8 @@ function clampDrawerWidth(width: number, sidebarCollapsed: boolean): number {
  * 阶段一 step 8 - 阶段一完结
  *
  * Layout:
- *   [Sidebar 知识库 + 对话列表] [ChatPanel 对话主区]
+ *   [TopBar 预留]
+ *   [Sidebar 知识库 + 对话列表] [ChatPanel/GraphPanel 主区] [RightDrawer]
  *
  * 切库联动：
  *   1. POST /api/knowledge-base → 后端自动选/新建该库最近对话
@@ -883,87 +884,89 @@ function App() {
 	return (
 		<TooltipProvider delayDuration={200}>
 			<div className="app-shell">
-				<Sidebar
-					knowledgeBases={kbs}
-					currentKbPath={active?.kb.path ?? null}
-					conversations={conversations}
-					currentConversationId={active?.conversation.id ?? null}
-					loading={loading}
-					error={sidebarError}
-					collapsed={sidebarCollapsed}
-					activeView={mainView}
-					onSelectKb={handleSelectKb}
-					onSelectConversation={handleSelectConversation}
-					onSelectView={setMainView}
-					onNewConversation={handleNewConversation}
-					onRefresh={refreshAll}
-					onOpenSettings={() => setSettingsOpen(true)}
-					onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
-					graphHasPendingUpdate={graphHasPendingUpdate}
-					onAddExternal={handleAddExternal}
-					onCreateWiki={handleCreateWiki}
-					onStartBatchDigest={handleStartBatchDigest}
-				/>
-				<main className="shell-main">
-					{mainView === "graph" ? (
-						<GraphPanel
-							currentKnowledgeBaseName={active?.kb.name ?? null}
-							currentKnowledgeBasePath={active?.kb.path ?? null}
-							theme={theme}
-							onToggleTheme={toggleTheme}
-							onOpenPage={handleOpenGraphPage}
-							onGraphDataChange={setGraphData}
-							onGraphPinsChange={setGraphPins}
-							onGraphVisibilityChange={handleGraphVisibilityChange}
-							onSelectionChange={handleGraphSelectionChange}
-							onViewReset={handleGraphViewReset}
-							selectionCommand={selectionCommand}
-							focusPath={graphFocusPath}
-							pendingDiff={pendingGraphDiff}
-							refreshToken={graphRefreshToken}
-							onDiffConsumed={() => setPendingGraphDiff(null)}
-						/>
-					) : (
-						<ChatPanel
-							key={chatKey}
-							currentKnowledgeBaseName={active?.kb.name ?? null}
-							model={active?.model ?? null}
-							initialMessages={initialMessages}
-							onMessageSent={handleMessageSent}
-							onOpenSettings={() => setSettingsOpen(true)}
-							currentKnowledgeBasePath={active?.kb.path ?? null}
-							onOpenPage={handleOpenPage}
-							onWikiLinkSeen={handleWikiLinkSeen}
-							onArtifactCreated={handleArtifactCreated}
-							artifactCount={artifacts.length}
-							onOpenArtifacts={handleOpenArtifacts}
-							onStartBatchDigest={handleStartBatchDigest}
-							theme={theme}
-							onToggleTheme={toggleTheme}
-							pendingPrompt={pendingGraphPrompt}
-							onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
-						/>
-					)}
-				</main>
-				<RightDrawer
-					drawer={drawer}
-					fullscreen={drawerFullscreen}
-					width={drawerWidth}
-					defaultWidth={DEFAULT_DRAWER_WIDTH}
-					onSelectArtifact={(id) => setDrawer(artifactDrawer(artifacts, id))}
-					onOpenPage={handleOpenPage}
-					onWikiLinkSeen={handleWikiLinkSeen}
-					onGraphReaderAction={handleGraphReaderAction}
-					onGraphSummaryCommand={handleGraphSummaryCommand}
-					onGraphSummaryNodeSelect={handleGraphSummaryNodeSelect}
-					onGraphSummaryNodePreview={handleGraphSummaryNodePreview}
-					onGraphSelectionTextChange={handleGraphSelectionTextChange}
-					onGraphSelectionNeighbors={handleGraphSelectionNeighbors}
-					onGraphSelectionAsk={handleGraphSelectionAsk}
-					onResize={setDrawerWidth}
-					onToggleFullscreen={() => setDrawerFullscreen((value) => !value)}
-					onClose={handleCloseDrawer}
-				/>
+				<div className="app-body">
+					<Sidebar
+						knowledgeBases={kbs}
+						currentKbPath={active?.kb.path ?? null}
+						conversations={conversations}
+						currentConversationId={active?.conversation.id ?? null}
+						loading={loading}
+						error={sidebarError}
+						collapsed={sidebarCollapsed}
+						activeView={mainView}
+						onSelectKb={handleSelectKb}
+						onSelectConversation={handleSelectConversation}
+						onSelectView={setMainView}
+						onNewConversation={handleNewConversation}
+						onRefresh={refreshAll}
+						onOpenSettings={() => setSettingsOpen(true)}
+						onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
+						graphHasPendingUpdate={graphHasPendingUpdate}
+						onAddExternal={handleAddExternal}
+						onCreateWiki={handleCreateWiki}
+						onStartBatchDigest={handleStartBatchDigest}
+					/>
+					<main className="shell-main">
+						{mainView === "graph" ? (
+							<GraphPanel
+								currentKnowledgeBaseName={active?.kb.name ?? null}
+								currentKnowledgeBasePath={active?.kb.path ?? null}
+								theme={theme}
+								onToggleTheme={toggleTheme}
+								onOpenPage={handleOpenGraphPage}
+								onGraphDataChange={setGraphData}
+								onGraphPinsChange={setGraphPins}
+								onGraphVisibilityChange={handleGraphVisibilityChange}
+								onSelectionChange={handleGraphSelectionChange}
+								onViewReset={handleGraphViewReset}
+								selectionCommand={selectionCommand}
+								focusPath={graphFocusPath}
+								pendingDiff={pendingGraphDiff}
+								refreshToken={graphRefreshToken}
+								onDiffConsumed={() => setPendingGraphDiff(null)}
+							/>
+						) : (
+							<ChatPanel
+								key={chatKey}
+								currentKnowledgeBaseName={active?.kb.name ?? null}
+								model={active?.model ?? null}
+								initialMessages={initialMessages}
+								onMessageSent={handleMessageSent}
+								onOpenSettings={() => setSettingsOpen(true)}
+								currentKnowledgeBasePath={active?.kb.path ?? null}
+								onOpenPage={handleOpenPage}
+								onWikiLinkSeen={handleWikiLinkSeen}
+								onArtifactCreated={handleArtifactCreated}
+								artifactCount={artifacts.length}
+								onOpenArtifacts={handleOpenArtifacts}
+								onStartBatchDigest={handleStartBatchDigest}
+								theme={theme}
+								onToggleTheme={toggleTheme}
+								pendingPrompt={pendingGraphPrompt}
+								onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
+							/>
+						)}
+					</main>
+					<RightDrawer
+						drawer={drawer}
+						fullscreen={drawerFullscreen}
+						width={drawerWidth}
+						defaultWidth={DEFAULT_DRAWER_WIDTH}
+						onSelectArtifact={(id) => setDrawer(artifactDrawer(artifacts, id))}
+						onOpenPage={handleOpenPage}
+						onWikiLinkSeen={handleWikiLinkSeen}
+						onGraphReaderAction={handleGraphReaderAction}
+						onGraphSummaryCommand={handleGraphSummaryCommand}
+						onGraphSummaryNodeSelect={handleGraphSummaryNodeSelect}
+						onGraphSummaryNodePreview={handleGraphSummaryNodePreview}
+						onGraphSelectionTextChange={handleGraphSelectionTextChange}
+						onGraphSelectionNeighbors={handleGraphSelectionNeighbors}
+						onGraphSelectionAsk={handleGraphSelectionAsk}
+						onResize={setDrawerWidth}
+						onToggleFullscreen={() => setDrawerFullscreen((value) => !value)}
+						onClose={handleCloseDrawer}
+					/>
+				</div>
 				<SettingsPanel
 					open={settingsOpen}
 					onOpenChange={setSettingsOpen}
