@@ -9,7 +9,7 @@ import {
   type WikiPath
 } from "../types";
 
-const MAX_WORLD_PIN_ABS_COORDINATE = 10000;
+const MAX_WORLD_PIN_ABS_COORDINATE = 1000000;
 const MAX_LEGACY_PERCENT_PIN_ABS_COORDINATE = 1000;
 
 interface NormalizeGraphPinMapOptions {

@@ -43,7 +43,7 @@ describe("graph layout normalization", () => {
     });
   });
 
-  it("drops implausibly distant layout pins before they can skew the graph viewport", () => {
+  it("preserves explicit world pins far outside the current viewport", () => {
     assert.deepEqual(normalizeGraphLayoutFile({
       version: 2,
       pins: {
@@ -55,7 +55,24 @@ describe("graph layout normalization", () => {
       version: 2,
       pins: {
         "wiki/valid.md": { x: 412.5, y: -88.2, coordinateSpace: "world" },
+        "wiki/far-away.md": { x: 284015.9548304589, y: 47155.27885437255, coordinateSpace: "world" },
         "wiki/legacy-percent.md": { x: 80, y: 50, coordinateSpace: "legacy-percent" }
+      },
+      updatedAt: ""
+    });
+  });
+
+  it("drops implausibly distant explicit world pins only at broken-data scale", () => {
+    assert.deepEqual(normalizeGraphLayoutFile({
+      version: 2,
+      pins: {
+        "wiki/valid-world.md": { x: 284015.9548304589, y: 47155.27885437255, coordinateSpace: "world" },
+        "wiki/broken-world.md": { x: 1000001, y: 42, coordinateSpace: "world" }
+      }
+    }), {
+      version: 2,
+      pins: {
+        "wiki/valid-world.md": { x: 284015.9548304589, y: 47155.27885437255, coordinateSpace: "world" }
       },
       updatedAt: ""
     });
