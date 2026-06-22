@@ -9,6 +9,8 @@ import {
   type WikiPath
 } from "../types";
 
+const MAX_WORLD_PIN_ABS_COORDINATE = 10000;
+
 interface NormalizeGraphPinMapOptions {
   defaultCoordinateSpace?: PinCoordinateSpace;
   acceptKey?: (key: WikiPath) => boolean;
@@ -59,9 +61,15 @@ function normalizeGraphPinPosition(value: unknown, defaultCoordinateSpace: PinCo
   const x = Number(point.x);
   const y = Number(point.y);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const coordinateSpace = isPinCoordinateSpace(point.coordinateSpace) ? point.coordinateSpace : defaultCoordinateSpace;
+  if (coordinateSpace === WORLD_PIN_COORDINATE_SPACE && isImplausiblyDistantWorldPin(x, y)) return null;
   return {
     x,
     y,
-    coordinateSpace: isPinCoordinateSpace(point.coordinateSpace) ? point.coordinateSpace : defaultCoordinateSpace
+    coordinateSpace
   };
+}
+
+function isImplausiblyDistantWorldPin(x: number, y: number): boolean {
+  return Math.abs(x) > MAX_WORLD_PIN_ABS_COORDINATE || Math.abs(y) > MAX_WORLD_PIN_ABS_COORDINATE;
 }

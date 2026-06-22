@@ -43,6 +43,24 @@ describe("graph layout normalization", () => {
     });
   });
 
+  it("drops implausibly distant layout pins before they can skew the graph viewport", () => {
+    assert.deepEqual(normalizeGraphLayoutFile({
+      version: 2,
+      pins: {
+        "wiki/valid.md": { x: 412.5, y: -88.2, coordinateSpace: "world" },
+        "wiki/far-away.md": { x: 284015.9548304589, y: 47155.27885437255, coordinateSpace: "world" },
+        "wiki/legacy-percent.md": { x: 80, y: 50, coordinateSpace: "legacy-percent" }
+      }
+    }), {
+      version: 2,
+      pins: {
+        "wiki/valid.md": { x: 412.5, y: -88.2, coordinateSpace: "world" },
+        "wiki/legacy-percent.md": { x: 80, y: 50, coordinateSpace: "legacy-percent" }
+      },
+      updatedAt: ""
+    });
+  });
+
   it("normalizes stored pins without applying layout-key safety", () => {
     assert.deepEqual(normalizeGraphPinMap({
       "/fake/wiki/entities/A.md": { x: 332.5, y: 240.25 },
