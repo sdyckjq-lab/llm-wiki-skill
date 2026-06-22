@@ -1034,6 +1034,128 @@ const STATIC_RENDERER_CSS = `
   border-color: color-mix(in srgb, var(--cinnabar) 78%, transparent);
   box-shadow: 0 17px 30px color-mix(in srgb, var(--cinnabar) 18%, transparent), 0 0 0 4px color-mix(in srgb, var(--cinnabar) 11%, transparent);
 }
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .community-wash {
+  opacity: .075;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .community-wash {
+  opacity: .045;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge {
+  opacity: .2 !important;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  overflow: visible;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node::before {
+  inset: 15px;
+  z-index: 1;
+  border-radius: 999px;
+  background: var(--night);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--night) 11%, transparent);
+  opacity: .82;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-type="topic"]::before {
+  background: var(--cinnabar);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cinnabar) 12%, transparent);
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-type="source"]::before {
+  background: var(--jade);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--jade) 12%, transparent);
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-type="comparison"]::before,
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-type="synthesis"]::before {
+  background: var(--amber);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 12%, transparent);
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node-kind,
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node-meta {
+  display: none !important;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node-name {
+  position: absolute;
+  left: 29px;
+  top: 50%;
+  z-index: 2;
+  display: none;
+  max-width: 168px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--rule) 68%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: 0 8px 18px rgba(36, 31, 26, .08);
+  padding: 4px 7px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  translate: 0 -50%;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node:not(.is-label-hidden) .node-name,
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[aria-pressed="true"] .node-name,
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="focus"] .node-name,
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="first"] .node-name {
+  display: block;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[aria-pressed="true"],
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="focus"] {
+  transform: none;
+  box-shadow: none;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[aria-pressed="true"]::before,
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="focus"]::before {
+  inset: 13px;
+  opacity: 1;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--cinnabar) 15%, transparent), 0 10px 22px color-mix(in srgb, var(--cinnabar) 20%, transparent);
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .node[data-relation-focus-depth="first"]::before {
+  inset: 14px;
+  opacity: .95;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .node[data-relation-focus-depth="second"] {
+  opacity: .26;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .node[data-relation-focus-depth="second"]::before {
+  opacity: .38;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .node[data-relation-focus-depth="unrelated"] {
+  opacity: .08;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .edge[data-relation-focus-depth="first"] {
+  opacity: .78 !important;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .edge[data-relation-focus-depth="second"] {
+  opacity: .13 !important;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .edge[data-relation-focus-depth="unrelated"] {
+  opacity: .025 !important;
+  pointer-events: none;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-filter-state="hidden"],
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge[data-filter-state="hidden"] {
+  opacity: .035 !important;
+  pointer-events: none;
+}
+.llm-wiki-graph-engine[data-theme="mo-ye"][data-community-map-state="lightweight"] .node-name {
+  border-color: color-mix(in srgb, var(--line) 34%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, .28);
+}
 .node.is-disabled { opacity: .72; }
 .node.is-diff-added {
   animation: llm-wiki-node-grow .96s cubic-bezier(.18,.82,.22,1) both;

@@ -339,6 +339,23 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
+  it("marks focused community DOM output as the scoped lightweight graph view", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    assert.equal(renderer.root.dataset.communityMapState, "lightweight");
+    assert.equal(renderer.root.dataset.relationFocus, "idle");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "none");
+
+    renderer.destroy();
+  });
+
   it("keeps node double click from silently unpinning or changing focus", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");

@@ -40,6 +40,7 @@ export function paintDomSvgGraph(input: PaintDomSvgGraphInput): PaintedGraphDom 
   root.dataset.communityQuality = graph.communityQuality.level;
   root.dataset.communityBoundaryCertainty = graph.communityQuality.boundaryCertainty;
   root.dataset.communityAuxiliaryViews = graph.communityQuality.auxiliaryViews.map((view) => view.id).join(",");
+  root.dataset.communityMapState = graph.focus?.kind === "community" ? "lightweight" : "none";
 
   const painted = emptyPaintedDom();
   const contentLayer = ownerDocument.createElement("div");
