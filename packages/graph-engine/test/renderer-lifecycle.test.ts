@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 
 import type { GraphData, GraphDiff, SelectionInput } from "../src";
 import { createGraphRenderer } from "../src/render";
-import { createGraphFacadeRouteManager } from "../src/facade";
+import {
+  createGraphFacadeRouteManager,
+  type GraphFacadeRenderer,
+  type GraphFacadeRouteRendererFactoryInput
+} from "../src/facade";
 
 describe("graph renderer lifecycle", () => {
-  it("renders a light aggregation safety view for known-large Sigma failures", () => {
+  it("renders a static over-limit notice without aggregation containers or DOM full graph", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
     let sigmaAttempts = 0;
@@ -29,23 +33,28 @@ describe("graph renderer lifecycle", () => {
         }
       }
     });
-    const safetyView = findByClass(container, "graph-aggregation-safety-view")[0];
-    const notice = findByClass(container, "graph-aggregation-safety-notice")[0];
-    const containers = findByClass(container, "graph-aggregation-safety-container");
+    const overLimitView = findByClass(container, "graph-over-limit-notice-view")[0];
+    const notice = findByClass(container, "graph-over-limit-notice")[0];
+    const title = findByClass(container, "graph-over-limit-notice-title")[0];
+    const body = findByClass(container, "graph-over-limit-notice-body")[0];
+    const oldContainers = findByClass(container, "graph-aggregation-safety-container");
+    const oldActions = findByClass(container, "graph-aggregation-safety-actions");
     const retry = findByDataset(container, "action", "retry-sigma");
     const clear = findByDataset(container, "action", "clear-selection");
 
-    assert.equal(manager.routeId, "aggregation-safety-fallback");
-    assert.equal(safetyView?.dataset.notice, "sigma-unavailable-large-graph");
-    assert.equal(notice?.dataset.role, "fallback-notice");
-    assert.ok(containers.length > 0);
-    assert.ok(retry);
-    assert.ok(clear);
-
-    retry?.dispatch("click");
-
-    assert.equal(sigmaAttempts, 2);
-    assert.equal(manager.routeId, "aggregation-safety-fallback");
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(overLimitView?.dataset.notice, "node-count-over-limit");
+    assert.equal(overLimitView?.dataset.nodeLimit, "2000");
+    assert.equal(overLimitView?.dataset.containerCount, "0");
+    assert.equal(notice?.dataset.role, "over-limit-notice");
+    assert.equal(title?.textContent, "图谱节点较多");
+    assert.equal(body?.textContent, "当前图谱超过 2000 个节点。请用搜索、筛选或进入社区缩小范围。");
+    assert.deepEqual(oldContainers, []);
+    assert.deepEqual(oldActions, []);
+    assert.equal(retry, undefined);
+    assert.equal(clear, undefined);
+    assert.deepEqual(visibleNodeIds({ root: container as unknown as HTMLElement }), []);
+    assert.equal(sigmaAttempts, 0);
   });
 
   it("routes a community click to lightweight selection instead of focusing the community", () => {
@@ -71,7 +80,7 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
-  it("renders aggregation containers as distinct containers and opens community summary first", () => {
+  it("does not render aggregation marker containers in normal DOM/SVG output", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
     const selections: SelectionInput[] = [];
@@ -98,16 +107,8 @@ describe("graph renderer lifecycle", () => {
     });
     const aggregation = findByDataset(renderer.root as unknown as FakeElement, "aggregationId", "agg-community-a");
 
-    assert.ok(aggregation);
-    assert.equal(aggregation.classList.contains("aggregation-container"), true);
-    assert.equal(aggregation.dataset.role, "aggregation-container");
-    assert.equal(aggregation.dataset.nodeCount, "6");
-    assert.equal(aggregation.dataset.searchHitCount, "1");
-    assert.equal(aggregation.dataset.selectedCount, "1");
-
-    aggregation.dispatch("click");
-
-    assert.deepEqual(selections, [{ kind: "community", id: "community-a" }]);
+    assert.equal(aggregation, undefined);
+    assert.deepEqual(selections, []);
     assert.deepEqual(visibleNodeIds(renderer), ["a", "b", "c"]);
     assert.equal(renderer.root.dataset.llmWikiGraphFocus, undefined);
 
@@ -157,12 +158,48 @@ describe("graph renderer lifecycle", () => {
     assert.deepEqual(selections, [{ kind: "node", id: "a" }]);
     assert.equal(nodeElement(renderer, "a")?.getAttribute("aria-pressed"), "true");
 
-    renderer.destroy();
-  });
+	  renderer.destroy();
+	});
 
-  it("clears selection on a blank click without leaving community focus", () => {
-    const ownerDocument = new FakeDocument();
-    const container = ownerDocument.createElement("div");
+	it("preserves DOM community selection when refreshed data still contains the selected object", () => {
+	  const ownerDocument = new FakeDocument();
+	  const container = ownerDocument.createElement("div");
+	  const clearRequests: number[] = [];
+	  const selections: SelectionInput[] = [];
+	  const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+	    data: graphDataWithCommunities([
+	      ["a", "community-a"],
+	      ["b", "community-a"],
+	      ["c", "community-b"]
+	    ]),
+	    theme: "shan-shui",
+	    live: false,
+	    focus: { kind: "community", id: "community-a" },
+	    onSelectionInput: (selection) => selections.push(selection),
+	    onSelectionClearRequested: () => clearRequests.push(1)
+	  });
+
+	  renderer.select({ kind: "node", id: "a" });
+	  assert.deepEqual(selections, []);
+	  assert.equal(nodeElement(renderer, "a")?.getAttribute("aria-pressed"), "true");
+
+	  renderer.setData(graphDataWithCommunities([
+	    ["a", "community-a"],
+	    ["b", "community-a"],
+	    ["d", "community-b"]
+	  ]));
+
+	  assert.deepEqual(clearRequests, []);
+	  assert.equal(nodeElement(renderer, "a")?.getAttribute("aria-pressed"), "true");
+	  assert.ok(nodeElement(renderer, "b"));
+	  assert.equal(nodeElement(renderer, "c"), undefined);
+
+	  renderer.destroy();
+	});
+
+	it("clears selection on a blank click without leaving community focus", () => {
+	  const ownerDocument = new FakeDocument();
+	  const container = ownerDocument.createElement("div");
     const clearRequests: number[] = [];
     const renderer = createGraphRenderer(container as unknown as HTMLElement, {
       data: graphDataWithCommunities([
@@ -278,6 +315,124 @@ describe("graph renderer lifecycle", () => {
     assert.equal(nodeElement(renderer, "c")?.dataset.searchState, "faded");
 
     renderer.destroy();
+  });
+
+  it("routes the community toolbar return through Sigma global without rendering DOM full graph", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const viewResets: number[] = [];
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state: {
+        data: graphDataForReturnGlobal(),
+        pins: { "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } },
+        theme: "shan-shui",
+        focus: null,
+        typeFilters: { entity: true, source: true },
+        aggregationMarkers: [],
+        selection: null,
+        searchResultIds: [],
+        temporaryObject: null
+      },
+      callbacks: {
+        onViewReset: () => viewResets.push(1)
+      },
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return createSigmaShellRenderer(input);
+        }
+      }
+    });
+
+    manager.focusCommunity("community-a");
+    manager.setTypeFilters({ entity: true, source: false });
+    manager.select({ kind: "node", id: "a" });
+    manager.setPins({ "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } });
+    const searchInput = findByClass(container, "graph-search-input")[0];
+    searchInput.value = "Node a";
+    searchInput.dispatch("input");
+
+    assert.equal(manager.routeId, "dom-svg-community");
+    assert.deepEqual(visibleNodeIds({ root: container as unknown as HTMLElement }), ["a", "b"]);
+    assert.equal(nodeElement({ root: container as unknown as HTMLElement }, "b")?.dataset.filterState, "hidden");
+
+    findByText(container, "回全图")?.dispatch("click");
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(findByClass(container, "sigma-global-route").length, 1);
+    assert.deepEqual(visibleNodeIds({ root: container as unknown as HTMLElement }), []);
+    assert.equal(sigmaInputs.at(-1)?.options.focus, null);
+    const activeSigmaShell = findByClass(container, "sigma-global-route")[0];
+    assert.equal(activeSigmaShell?.dataset.selectedKind, "node");
+    assert.equal(activeSigmaShell?.dataset.selectedId, "a");
+    assert.equal(activeSigmaShell?.dataset.searchResultIds, "a");
+    assert.equal(activeSigmaShell?.dataset.typeFilters, "entity:true,source:false");
+    assert.equal(activeSigmaShell?.dataset.pinnedPaths, "wiki/a.md");
+    assert.deepEqual(sigmaInputs.at(-1)?.options.selection, { kind: "node", id: "a" });
+    assert.deepEqual(sigmaInputs.at(-1)?.options.searchResultIds, ["a"]);
+    assert.deepEqual(sigmaInputs.at(-1)?.options.typeFilters, { entity: true, source: false });
+    assert.deepEqual(Object.keys(sigmaInputs.at(-1)?.options.pins || {}), ["wiki/a.md"]);
+    assert.deepEqual(viewResets, [1]);
+
+    manager.destroy();
+  });
+
+  it("keeps DOM/SVG small fallback on the same lightweight global interaction rules", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const selections: SelectionInput[] = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state: {
+        data: graphDataForReturnGlobal(),
+        pins: { "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } },
+        theme: "shan-shui",
+        focus: null,
+        typeFilters: { entity: true, source: true },
+        aggregationMarkers: [],
+        selection: null,
+        searchQuery: "Node a",
+        searchResultIds: ["a"],
+        temporaryObject: null
+      },
+      callbacks: {
+        onSelectionInput: (selection) => selections.push(selection)
+      },
+      factories: {
+        createSigmaGlobal: () => {
+          throw new Error("WebGL unavailable");
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+    assert.equal(findByClass(container, "graph-aggregation-safety-container").length, 0);
+    assert.equal(findByClass(container, "graph-aggregation-safety-actions").length, 0);
+    assert.equal(findByClass(container, "community-button").length, 0);
+    assert.equal(findByClass(container, "community-wash").length > 0, true);
+    assert.deepEqual(visibleNodeIds({ root: container as unknown as HTMLElement }), ["a", "b", "c"]);
+    assert.equal(nodeElement({ root: container as unknown as HTMLElement }, "a")?.dataset.searchState, "match");
+    assert.equal(nodeElement({ root: container as unknown as HTMLElement }, "a")?.dataset.pinned, "true");
+
+    nodeElement({ root: container as unknown as HTMLElement }, "a")?.dispatch("click", { detail: 0 });
+    assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+
+    findByDataset(container, "communityId", "community-a")?.dispatch("click");
+    assert.deepEqual(selections.at(-1), { kind: "community", id: "community-a" });
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+
+    manager.focusCommunity("community-a");
+    assert.equal(manager.routeId, "dom-svg-community");
+    findByText(container, "回全图")?.dispatch("click");
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+
+    manager.setData(largeFallbackGraphData());
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(findByClass(container, "graph-over-limit-notice").length, 1);
+    assert.deepEqual(visibleNodeIds({ root: container as unknown as HTMLElement }), []);
+
+    manager.destroy();
   });
 
   it("keeps reset layout separate from return global", async () => {
@@ -750,6 +905,95 @@ function largeFallbackGraphData(): GraphData {
     nodes,
     edges
   };
+}
+
+function createSigmaShellRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {
+  const shell = input.container.ownerDocument.createElement("div");
+  shell.className = "sigma-global-route";
+  shell.dataset.route = "sigma-global";
+  input.container.append(shell);
+  let options = input.options;
+  renderSigmaShellState();
+
+  return {
+    applyDiff() {
+      return Promise.resolve();
+    },
+    isDragging() {
+      return false;
+    },
+    setData(data, pins) {
+      options = { ...options, data, pins: pins || options.pins };
+      renderSigmaShellState();
+    },
+    setAggregationMarkers(markers) {
+      options = { ...options, aggregationMarkers: markers };
+      renderSigmaShellState();
+    },
+    focusNode(path) {
+      const node = options.data.nodes.find((item) => item.id === path || item.source_path === path);
+      options = { ...options, selection: node ? { kind: "node", id: node.id } : options.selection };
+      renderSigmaShellState();
+    },
+    focusCommunity() {},
+    setTypeFilters(filters) {
+      options = { ...options, typeFilters: filters };
+      renderSigmaShellState();
+    },
+    showTemporaryObject(object) {
+      options = { ...options, temporaryObject: object };
+      renderSigmaShellState();
+    },
+    clearTemporaryObjectDisplay() {
+      options = { ...options, temporaryObject: null };
+      renderSigmaShellState();
+    },
+    resetView() {
+      options = { ...options, focus: null, selection: null };
+      renderSigmaShellState();
+    },
+    select(selection) {
+      options = { ...options, selection };
+      renderSigmaShellState();
+    },
+    previewNode() {},
+    clearSelection() {
+      options = { ...options, selection: null };
+      renderSigmaShellState();
+    },
+    clearInteraction() {
+      options = { ...options, focus: null, selection: null, temporaryObject: null };
+      renderSigmaShellState();
+    },
+    setNodeFixed() {
+      return false;
+    },
+    setTheme(theme) {
+      options = { ...options, theme };
+      renderSigmaShellState();
+    },
+    setPins(pins) {
+      options = { ...options, pins };
+      renderSigmaShellState();
+    },
+    resetLayout() {},
+    destroy() {
+      shell.remove();
+    }
+  };
+
+  function renderSigmaShellState(): void {
+    const selection = options.selection;
+    shell.dataset.focus = options.focus ? JSON.stringify(options.focus) : "";
+    shell.dataset.selectedKind = selection?.kind || "";
+    shell.dataset.selectedId = selection && "id" in selection ? selection.id : "";
+    shell.dataset.searchResultIds = options.searchResultIds.join(",");
+    shell.dataset.typeFilters = Object.entries(options.typeFilters)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([type, enabled]) => `${type}:${enabled}`)
+      .join(",");
+    shell.dataset.pinnedPaths = Object.keys(options.pins).sort().join(",");
+  }
 }
 
 function visibleNodeIds(renderer: { root: HTMLElement }): string[] {

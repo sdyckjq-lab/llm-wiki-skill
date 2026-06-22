@@ -16,6 +16,8 @@ import {
 import type {
   GraphRendererAdapterData
 } from "../src";
+import { buildGraphRendererAdapterData } from "../src";
+import type { GraphData } from "../src/types";
 
 describe("Sigma global renderer production boundary", () => {
   it("records route ownership and graph-engine bundle boundary", () => {
@@ -171,6 +173,14 @@ describe("Sigma global renderer production boundary", () => {
     assert.doesNotMatch(source, /\bdata\.edges\b/);
   });
 
+  it("keeps Sigma community overlay styles passive instead of visible circular controls", async () => {
+    const styles = await readFile(new URL("../src/render/render-styles.ts", import.meta.url), "utf8");
+
+    assert.doesNotMatch(styles, /\.sigma-global-community-wash\b/);
+    assert.doesNotMatch(styles, /\.sigma-global-aggregation-container\b/);
+    assert.match(styles, /\.sigma-global-community-label\b/);
+  });
+
   it("projects Sigma node hits before overlapping community regions", () => {
     const projector = createSigmaGlobalHitProjector({
       adapterData: adapterDataFixture(),
@@ -193,6 +203,123 @@ describe("Sigma global renderer production boundary", () => {
 
     assert.deepEqual(
       projector.targetFromSigmaHit({ screenPoint: { x: 250, y: 250 } }),
+      { kind: "community-wash", id: "adapter-community" }
+    );
+  });
+
+  it("renders passive community map labels instead of circular community controls", () => {
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({ communityCount: 10, selectedCommunityId: "community-9" }),
+      theme: "shan-shui",
+      runtime: fakeRuntime()
+    });
+
+    const communityControls = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-wash");
+    const communityRegions = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-region");
+    const labels = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-label");
+
+    assert.equal(communityControls.length, 0);
+    assert.equal(communityRegions.length, 10);
+    assert.equal(labels.length, 8);
+    assert.equal(labels[0]?.dataset.communityId, "community-9");
+    assert.deepEqual(labels.map((label) => label.dataset.communityId), [
+      "community-9",
+      "community-10",
+      "community-8",
+      "community-7",
+      "community-6",
+      "community-5",
+      "community-4",
+      "community-3"
+    ]);
+
+    for (const label of labels) {
+      assert.notEqual(label.tagName, "button");
+      assert.equal(label.getAttribute("role"), null);
+      assert.equal(label.getAttribute("aria-hidden"), "true");
+      assert.equal(label.tabIndex, -1);
+      assert.equal(label.style.pointerEvents, "none");
+    }
+    for (const region of communityRegions) {
+      assert.notEqual(region.tagName, "button");
+      assert.equal(region.getAttribute("aria-hidden"), "true");
+      assert.equal(region.tabIndex, -1);
+      assert.equal(region.style.pointerEvents, "auto");
+    }
+
+    renderer.destroy();
+  });
+
+  it("keeps dense accepted global data visibly mapped as a capped point map", () => {
+    const data = densePointMapGraph();
+    const adapterData = buildGraphRendererAdapterData(data, {
+      theme: "shan-shui",
+      selection: { kind: "node", id: "dense-1999" },
+      searchResultIds: Array.from({ length: 260 }, (_, index) => `dense-${index * 3}`),
+      pins: Object.fromEntries(
+        data.nodes.slice(300, 560).map((node, index) => [
+          node.source_path || `wiki/dense/${node.id}.md`,
+          { x: 760 + (index % 24) * 4, y: 440 + Math.floor(index / 24) * 4, coordinateSpace: "world" as const }
+        ])
+      ),
+      aggregationMarkers: [
+        {
+          id: "dense-aggregation",
+          label: "Dense aggregation should stay hidden",
+          communityId: "dense-community-0",
+          nodeIds: data.nodes.slice(0, 200).map((node) => node.id),
+          totalCount: 200
+        }
+      ]
+    });
+    const graph = buildSigmaGlobalGraphologyGraph(adapterData, { GraphologyGraph });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData,
+      theme: "shan-shui",
+      runtime: fakeRuntime()
+    });
+    const ordinarySize = graph.getNodeAttribute("dense-1000", "size");
+    const selectedSize = graph.getNodeAttribute("dense-1999", "size");
+    const searchSize = graph.getNodeAttribute("dense-0", "size");
+    const pinnedSize = graph.getNodeAttribute("dense-300", "size");
+    const weakEdge = graph.getEdgeAttributes("dense-selected-weak");
+    const strongEdge = graph.getEdgeAttributes("dense-selected-strong");
+    const labelCount = graph.filterNodes((nodeId) => graph.getNodeAttribute(nodeId, "labelVisible")).length;
+    const hitTargets = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-node-hit-target");
+    const aggregationOverlays = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-aggregation-container");
+
+    assert.equal(adapterData.renderable.counts.visibleNodes, 2000);
+    assert.equal(adapterData.renderable.counts.totalEdges, 3996);
+    assert.equal(adapterData.renderable.aggregationContainers.length, 0);
+    assert.equal(graph.getAttribute("aggregations").length, 1);
+    assert.equal(graph.order, 2000);
+    assert.equal(graph.size, 1000);
+    assert.ok(ordinarySize < selectedSize);
+    assert.ok(ordinarySize < searchSize);
+    assert.ok(ordinarySize < pinnedSize);
+    assert.ok(weakEdge.opacity < strongEdge.opacity);
+    assert.ok(weakEdge.size < strongEdge.size);
+    assert.ok(labelCount <= adapterData.renderable.budget.limits.maxLabels);
+    assert.equal(aggregationOverlays.length, 0);
+    assert.ok(hitTargets.length <= 160, `hit target overlays should stay capped, got ${hitTargets.length}`);
+    assert.ok(hitTargets.some((element) => element.dataset.nodeId === "dense-1999"), "selected anchor should keep a hit target");
+    assert.ok(hitTargets.some((element) => element.dataset.searchHit === "true"), "search anchors should keep hit targets");
+    assert.ok(hitTargets.some((element) => element.dataset.pinned === "true"), "pinned anchors should keep hit targets");
+
+    renderer.destroy();
+  });
+
+  it("lets passive community label coordinates resolve through the underlying spatial region", () => {
+    const projector = createSigmaGlobalHitProjector({
+      adapterData: adapterDataFixture(),
+      viewport: { x: 0, y: 0, scale: 1 },
+      viewportSize: { width: 500, height: 500 }
+    });
+
+    assert.deepEqual(
+      projector.targetFromSigmaHit({ screenPoint: { x: 250, y: 216 } }),
       { kind: "community-wash", id: "adapter-community" }
     );
   });
@@ -228,6 +355,9 @@ describe("Sigma global renderer production boundary", () => {
     assert.equal(container.children.length, 1);
     assert.equal(renderer.overlayRoot.children.length, 4);
     assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-node-hit-target").length, 2);
+    assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-region").length, 1);
+    assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-label").length, 1);
+    assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-aggregation-container").length, 0);
     assert.equal(sigma.graph.order, 2);
 
     sigma.camera.setState({ x: 12, y: 34, angle: 0.25, ratio: 1.8 });
@@ -325,16 +455,194 @@ describe("Sigma global renderer production boundary", () => {
 
     assert.deepEqual(errors.map((error) => String(error)), ["Error: graph swap failed", "Error: kill failed"]);
   });
+
+  it("drags a Sigma global node and writes a world-space pin on release", () => {
+    const runtime = fakeRuntime();
+    const pins: unknown[] = [];
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({ betaPinned: false }),
+      theme: "shan-shui",
+      runtime,
+      pins: {},
+      onPinsChanged: (nextPins) => pins.push(nextPins)
+    });
+    const sigma = runtime.instances[0];
+    const down = sigmaEventPayload("render-alpha", 116, 228);
+    const move = sigmaEventPayload(null, 156, 268);
+    const up = sigmaEventPayload(null, 176, 288);
+
+    sigma.emit("downNode", down);
+    sigma.emit("moveBody", move);
+    sigma.emit("upStage", up);
+
+    assert.equal(down.prevented, true);
+    assert.equal(move.prevented, true);
+    assert.equal(up.prevented, true);
+    assert.deepEqual(pins, [
+      {
+        "adapter/alpha.md": {
+          x: 171,
+          y: 282,
+          coordinateSpace: "world"
+        }
+      }
+    ]);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "x"), 171);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "y"), 282);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "pinned"), true);
+    assert.equal(sigma.settings.enableCameraPanning, true);
+
+    renderer.destroy();
+  });
+
+  it("keeps selected search and pinned metadata intact while dragging a Sigma global node", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({
+        selectedNodeId: "render-alpha",
+        searchResultIds: ["render-alpha"],
+        betaPinned: true
+      }),
+      theme: "shan-shui",
+      runtime,
+      pins: {
+        "adapter/beta.md": { x: 333, y: 444, coordinateSpace: "world" }
+      },
+      onPinsChanged: () => undefined
+    });
+    const sigma = runtime.instances[0];
+
+    sigma.emit("downNode", sigmaEventPayload("render-alpha", 111, 222));
+    sigma.emit("moveBody", sigmaEventPayload(null, 141, 252));
+    sigma.emit("upNode", sigmaEventPayload("render-alpha", 151, 262));
+
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "selected"), true);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "searchHit"), true);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "pinned"), true);
+    assert.equal(renderer.graph.getNodeAttribute("render-beta", "pinned"), true);
+    const alphaOverlay = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha");
+    const betaOverlay = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-beta");
+    assert.equal(alphaOverlay?.dataset.selected, "true");
+    assert.equal(alphaOverlay?.dataset.searchHit, "true");
+    assert.equal(alphaOverlay?.dataset.pinned, "true");
+    assert.equal(betaOverlay?.dataset.pinned, "true");
+
+    renderer.destroy();
+  });
+
+  it("keeps an already pinned Sigma global node pinned throughout drag", () => {
+    const runtime = fakeRuntime();
+    const pins: unknown[] = [];
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({
+        selectedNodeId: "render-alpha",
+        searchResultIds: ["render-alpha"],
+        alphaPinned: true,
+        betaPinned: true
+      }),
+      theme: "shan-shui",
+      runtime,
+      pins: {
+        "adapter/alpha.md": { x: 111, y: 222, coordinateSpace: "world" },
+        "adapter/beta.md": { x: 333, y: 444, coordinateSpace: "world" }
+      },
+      onPinsChanged: (nextPins) => pins.push(nextPins)
+    });
+    const sigma = runtime.instances[0];
+
+    sigma.emit("downNode", sigmaEventPayload("render-alpha", 111, 222));
+    sigma.emit("moveBody", sigmaEventPayload(null, 151, 262));
+
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "pinned"), true);
+    assert.equal(renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha")?.dataset.pinned, "true");
+
+    sigma.emit("upStage", sigmaEventPayload(null, 171, 282));
+
+    assert.deepEqual(pins, [
+      {
+        "adapter/alpha.md": { x: 171, y: 282, coordinateSpace: "world" },
+        "adapter/beta.md": { x: 333, y: 444, coordinateSpace: "world" }
+      }
+    ]);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "pinned"), true);
+
+    renderer.destroy();
+  });
+
+  it("cancels active Sigma node drag on destroy without stale pin writes", () => {
+    const runtime = fakeRuntime();
+    const pins: unknown[] = [];
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({ betaPinned: false }),
+      theme: "shan-shui",
+      runtime,
+      pins: {},
+      onPinsChanged: (nextPins) => pins.push(nextPins)
+    });
+    const sigma = runtime.instances[0];
+
+    sigma.emit("downNode", sigmaEventPayload("render-alpha", 111, 222));
+    sigma.emit("moveBody", sigmaEventPayload(null, 151, 262));
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "x"), 151);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "y"), 262);
+
+    renderer.destroy();
+    sigma.emit("upStage", sigmaEventPayload(null, 171, 282));
+
+    assert.deepEqual(pins, []);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "x"), 111);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "y"), 222);
+    assert.equal(sigma.listeners.get("downNode")?.size ?? 0, 0);
+    assert.equal(sigma.listeners.get("moveBody")?.size ?? 0, 0);
+    assert.equal(sigma.listeners.get("upStage")?.size ?? 0, 0);
+    assert.equal(sigma.listeners.get("upNode")?.size ?? 0, 0);
+    assert.equal(sigma.settings.enableCameraPanning, true);
+  });
+
+  it("does not replace overlays or swallow clicks for an un-moved drag candidate", () => {
+    const runtime = fakeRuntime();
+    const hits: unknown[] = [];
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({ betaPinned: false }),
+      theme: "shan-shui",
+      runtime,
+      pins: {},
+      onHitTarget: (target) => hits.push(target)
+    });
+    const sigma = runtime.instances[0];
+    const alphaOverlay = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha");
+
+    sigma.emit("downNode", sigmaEventPayload("render-alpha", 111, 222));
+    sigma.emit("upNode", sigmaEventPayload("render-alpha", 111, 222));
+    sigma.emit("clickNode", sigmaEventPayload("render-alpha", 111, 222));
+
+    assert.equal(renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha"), alphaOverlay);
+    assert.deepEqual(hits, [{ kind: "node", id: "render-alpha" }]);
+
+    renderer.destroy();
+  });
 });
 
 function adapterDataFixture(options: {
   selectedNodeId?: string;
   searchResultIds?: string[];
+  alphaPinned?: boolean;
   betaPinned?: boolean;
+  communityCount?: number;
+  selectedCommunityId?: string;
 } = {}): GraphRendererAdapterData {
   const selectedNodeId = options.selectedNodeId ?? "render-alpha";
   const searchResultIds = options.searchResultIds ?? ["render-beta"];
+  const alphaPinned = options.alphaPinned ?? false;
   const betaPinned = options.betaPinned ?? true;
+  const communityCount = options.communityCount ?? 1;
+  const selectedCommunityId = options.selectedCommunityId ?? "adapter-community";
+  const renderableCommunities = renderableCommunityFixture(communityCount);
   return {
     counts: {
       nodes: 2,
@@ -349,7 +657,7 @@ function adapterDataFixture(options: {
       input: { kind: "node", id: selectedNodeId },
       selectionId: `node:${selectedNodeId}`,
       selectedNodeIds: [selectedNodeId],
-      selectedCommunityIds: ["adapter-community"],
+      selectedCommunityIds: [selectedCommunityId],
       containsCurrentObject: true
     },
     nodes: [
@@ -363,7 +671,12 @@ function adapterDataFixture(options: {
         point: { x: 111, y: 222 },
         selected: selectedNodeId === "render-alpha",
         searchHit: searchResultIds.includes("render-alpha"),
-        pinHint: { nodeId: "render-alpha", wikiPath: "adapter/alpha.md", pinned: false, position: null },
+        pinHint: {
+          nodeId: "render-alpha",
+          wikiPath: "adapter/alpha.md",
+          pinned: alphaPinned,
+          position: alphaPinned ? { x: 111, y: 222, coordinateSpace: "world" } : null
+        },
         aggregationIds: ["adapter-aggregation"],
         drawerTarget: {
           summaryKind: "node-summary",
@@ -428,7 +741,7 @@ function adapterDataFixture(options: {
         label: "Adapter Community",
         nodeIds: ["render-alpha", "render-beta"],
         nodeCount: 2,
-        selected: true,
+        selected: selectedCommunityId === "adapter-community",
         searchResultIds,
         pinHints: betaPinned ? [
           {
@@ -444,7 +757,25 @@ function adapterDataFixture(options: {
           object: { kind: "community", communityId: "adapter-community" }
         },
         commands: [{ kind: "enter-community", communityId: "adapter-community", label: "进入社区" }]
-      }
+      },
+      ...renderableCommunities
+        .filter((community) => community.id !== "adapter-community")
+        .map((community) => ({
+          id: community.id,
+          object: { kind: "community" as const, communityId: community.id },
+          label: community.label,
+          nodeIds: [],
+          nodeCount: community.nodeCount,
+          selected: selectedCommunityId === community.id,
+          searchResultIds: [],
+          pinHints: [],
+          aggregationIds: [],
+          drawerTarget: {
+            summaryKind: "community-summary" as const,
+            object: { kind: "community" as const, communityId: community.id }
+          },
+          commands: [{ kind: "enter-community" as const, communityId: community.id, label: "进入社区" }]
+        }))
     ],
     aggregations: [
       {
@@ -492,16 +823,7 @@ function adapterDataFixture(options: {
     renderable: {
       nodes: [],
       edges: [],
-      communities: [
-        {
-          id: "adapter-community",
-          label: "Adapter Community",
-          color: "#123456",
-          nodeCount: 2,
-          boundaryCertainty: "high",
-          wash: { cx: 250, cy: 250, rx: 80, ry: 60, opacity: 0.2 }
-        }
-      ],
+      communities: renderableCommunities,
       aggregationContainers: [
         {
           id: "adapter-aggregation",
@@ -575,6 +897,111 @@ function adapterDataFixture(options: {
   };
 }
 
+function densePointMapGraph(): GraphData {
+  const nodeCount = 2000;
+  const edgeTarget = 3996;
+  const communityCount = 16;
+  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+    id: `dense-${index}`,
+    label: `Dense node ${index}`,
+    type: index % 17 === 0 ? "topic" : index % 29 === 0 ? "source" : "entity",
+    community: `dense-community-${index % communityCount}`,
+    source_path: `wiki/dense/dense-${index}.md`,
+    weight: 100 - (index % 97),
+    x: (index * 37) % 100,
+    y: (index * 53) % 100
+  }));
+  const edges: NonNullable<GraphData["edges"]> = [
+    {
+      id: "dense-selected-weak",
+      from: "dense-1999",
+      to: "dense-1",
+      type: "INFERRED",
+      confidence: "INFERRED",
+      relation_type: "依赖",
+      weight: 0
+    },
+    {
+      id: "dense-selected-strong",
+      from: "dense-1999",
+      to: "dense-2",
+      type: "EXTRACTED",
+      confidence: "EXTRACTED",
+      relation_type: "实现",
+      weight: 1
+    }
+  ];
+
+  for (let index = 0; edges.length < edgeTarget; index += 1) {
+    const source = index % nodeCount;
+    const target = (source + 1 + (index % 113)) % nodeCount;
+    if (source === target) continue;
+    edges.push({
+      id: `dense-edge-${index}`,
+      from: `dense-${source}`,
+      to: `dense-${target}`,
+      type: index % 5 === 0 ? "INFERRED" : "EXTRACTED",
+      confidence: index % 5 === 0 ? "INFERRED" : "EXTRACTED",
+      relation_type: index % 7 === 0 ? "对比" : "依赖",
+      weight: (index % 11) / 10
+    });
+  }
+
+  return {
+    meta: {
+      build_date: "2026-06-21T00:00:00.000Z",
+      wiki_title: "Dense Point Map Fixture",
+      total_nodes: nodes.length,
+      total_edges: edges.length
+    },
+    nodes,
+    edges,
+    learning: {
+      version: 1,
+      entry: { recommended_start_node_id: "dense-0", recommended_start_reason: "dense_fixture", default_mode: "global" },
+      views: {
+        path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+        community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+        global: { enabled: true, node_ids: nodes.map((node) => node.id), degraded: false }
+      },
+      communities: Array.from({ length: communityCount }, (_, index) => ({
+        id: `dense-community-${index}`,
+        label: `Dense Community ${index}`,
+        node_count: nodes.filter((node) => node.community === `dense-community-${index}`).length,
+        color_index: index,
+        recommended_start_node_id: index === 0 ? "dense-0" : null
+      }))
+    }
+  };
+}
+
+function renderableCommunityFixture(count: number): GraphRendererAdapterData["renderable"]["communities"] {
+  if (count <= 1) {
+    return [
+      {
+        id: "adapter-community",
+        label: "Adapter Community",
+        color: "#123456",
+        nodeCount: 2,
+        boundaryCertainty: "high",
+        wash: { cx: 250, cy: 250, rx: 80, ry: 60, opacity: 0.2 }
+      }
+    ];
+  }
+
+  return Array.from({ length: count }, (_, index) => {
+    const communityNumber = index + 1;
+    return {
+      id: `community-${communityNumber}`,
+      label: `Community ${communityNumber}`,
+      color: `#1234${String(index).padStart(2, "0")}`,
+      nodeCount: communityNumber,
+      boundaryCertainty: "high",
+      wash: { cx: 80 + index * 30, cy: 120 + index * 20, rx: 35 + index, ry: 24 + index, opacity: 0.2 }
+    };
+  });
+}
+
 function fakeContainer(): HTMLElement & { children: HTMLElement[] } {
   const children: HTMLElement[] = [];
   const container = {
@@ -592,12 +1019,15 @@ function fakeContainer(): HTMLElement & { children: HTMLElement[] } {
 
 function fakeElement(_tagName: string): HTMLElement {
   const children: HTMLElement[] = [];
+  const attributes = new Map<string, string>();
   const element = {
+    tagName: _tagName,
     className: "",
     dataset: {} as Record<string, string>,
     style: {} as Record<string, string>,
     children,
     tabIndex: -1,
+    textContent: "",
     ownerDocument: null as unknown as Document,
     append: (...items: HTMLElement[]) => {
       children.push(...items);
@@ -609,7 +1039,10 @@ function fakeElement(_tagName: string): HTMLElement {
       children.splice(0, children.length, ...items);
     },
     addEventListener: () => undefined,
-    setAttribute: () => undefined,
+    setAttribute: (name: string, value: string) => {
+      attributes.set(name, String(value));
+    },
+    getAttribute: (name: string) => attributes.get(name) ?? null,
     querySelector: () => null,
     remove: () => undefined
   };
@@ -654,6 +1087,23 @@ function fakeRuntime(options: {
     GraphologyGraph,
     instances
   };
+}
+
+function sigmaEventPayload(node: string | null, x: number, y: number): {
+  node?: string;
+  event: { x: number; y: number };
+  prevented: boolean;
+  preventSigmaDefault: () => void;
+} {
+  const payload = {
+    ...(node ? { node } : {}),
+    event: { x, y },
+    prevented: false,
+    preventSigmaDefault: () => {
+      payload.prevented = true;
+    }
+  };
+  return payload;
 }
 
 class FakeSigma implements SigmaGlobalSigmaLike {

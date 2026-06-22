@@ -35,8 +35,7 @@ import {
   summarizeGraphGlobal,
   summarizeGraphNode,
   summarizeGraphSearchResults,
-  summarizeUnavailableGraphObject,
-  buildCommunityAggregationMarkers
+  summarizeUnavailableGraphObject
 } from "./summary";
 
 export type GraphFacadeHostMode = "workbench" | "offline" | "standalone";
@@ -108,13 +107,17 @@ export type GraphFacadeRendererRouteId =
   | "sigma-global"
   | "dom-svg-community"
   | "dom-svg-small-fallback"
-  | "aggregation-safety-fallback";
+  | "over-limit-notice";
+
+export const GRAPH_FACADE_GLOBAL_NODE_LIMIT = 2000;
 
 export const GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS = {
-  maxDomSvgFallbackNodes: 2000,
+  maxDomSvgFallbackNodes: GRAPH_FACADE_GLOBAL_NODE_LIMIT,
   maxDomSvgFallbackEdges: 4000,
   maxDomSvgFallbackCommunitySize: 500
 } as const;
+
+const GRAPH_FACADE_ROUTE_TRANSITION_MS = 160;
 
 export interface GraphFacadeRouteManager extends GraphFacadeRenderer {
   readonly routeId: GraphFacadeRendererRouteId;
@@ -148,7 +151,7 @@ export interface GraphFacadeRouteRendererFactories {
   createSigmaGlobal: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
   createDomSvgCommunity: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
   createDomSvgSmallFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
-  createAggregationSafetyFallback: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
+  createOverLimitNotice: (input: GraphFacadeRouteRendererFactoryInput) => GraphFacadeRenderer;
 }
 
 export interface GraphFacadeRendererCallbacks {
@@ -157,6 +160,7 @@ export interface GraphFacadeRendererCallbacks {
   onPinsChanged?: (pins: NonNullable<GraphEngineOptions["pins"]>) => void;
   onSelectionClearRequested?: () => void;
   onViewReset?: () => void;
+  onGlobalResetRequested?: () => void;
   onDragActiveChange?: (dragging: boolean) => void;
   onVisibilityStateChange?: (state: GraphVisibilityState) => void;
 }
@@ -261,13 +265,14 @@ export function createGraphFacadeRouteManager(
       createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
     createDomSvgSmallFallback: options.factories?.createDomSvgSmallFallback || ((input) =>
       createDomSvgFacadeRenderer(input, options.toolbarContainer, true)),
-    createAggregationSafetyFallback: options.factories?.createAggregationSafetyFallback || createAggregationSafetyFallbackRenderer
+    createOverLimitNotice: options.factories?.createOverLimitNotice || createOverLimitNoticeRenderer
   };
   let routeId: GraphFacadeRendererRouteId = "sigma-global";
   let sigmaKnownUnavailable = false;
   let sigmaAttemptCount = 0;
   let destroyed = false;
   let active: GraphFacadeRenderer | undefined;
+  let routeTransitionTimer: ReturnType<typeof setTimeout> | undefined;
 
   const manager: GraphFacadeRouteManager = {
     get routeId() {
@@ -296,9 +301,20 @@ export function createGraphFacadeRouteManager(
       assertActive();
       state.data = data;
       if (pins) state.pins = pins;
+      if (graphExceedsGlobalNodeLimit(state.data)) {
+        if (routeId === "over-limit-notice" && active) {
+          currentRenderer().setData(data, pins);
+        } else {
+          switchToOverLimitNotice();
+        }
+        return;
+      }
+      if (routeId === "over-limit-notice") {
+        switchToGlobalRoute();
+        return;
+      }
       if (sigmaKnownUnavailable) {
-        const nextRouteId = fallbackRouteIdForData(state.data);
-        if (routeId === nextRouteId && active) {
+        if (routeId === "dom-svg-small-fallback" && active) {
           currentRenderer().setData(data, pins);
         } else {
           switchToFallbackRoute();
@@ -339,9 +355,7 @@ export function createGraphFacadeRouteManager(
     },
     resetView() {
       assertActive();
-      state.focus = null;
-      switchToGlobalRoute();
-      currentRenderer().resetView();
+      resetViewToGlobalRoute();
     },
     select(selection) {
       assertActive();
@@ -395,15 +409,23 @@ export function createGraphFacadeRouteManager(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      clearRouteTransitionMarker();
+      delete container.dataset.llmWikiGraphRoute;
+      delete container.dataset.llmWikiGraphRouteTransition;
       active?.destroy();
     }
   };
 
   active = activateGlobalRoute();
+  setRouteDataset(routeId, null);
 
   return manager;
 
   function switchToGlobalRoute(): void {
+    if (graphExceedsGlobalNodeLimit(state.data)) {
+      switchToOverLimitNotice();
+      return;
+    }
     if (sigmaKnownUnavailable) {
       switchToFallbackRoute();
       return;
@@ -411,7 +433,25 @@ export function createGraphFacadeRouteManager(
     switchRoute("sigma-global", activateGlobalRoute);
   }
 
+  function requestGlobalRouteFromRenderer(): { shouldNotifyViewReset: boolean } {
+    state.focus = null;
+    switchToGlobalRoute();
+    if (routeId === "sigma-global") return { shouldNotifyViewReset: true };
+    currentRenderer().resetView();
+    return { shouldNotifyViewReset: routeId !== "dom-svg-small-fallback" };
+  }
+
+  function resetViewToGlobalRoute(): void {
+    const previousRouteId = routeId;
+    state.focus = null;
+    switchToGlobalRoute();
+    if (previousRouteId === routeId) currentRenderer().resetView();
+  }
+
   function activateGlobalRoute(): GraphFacadeRenderer {
+    if (graphExceedsGlobalNodeLimit(state.data)) {
+      return activateOverLimitNotice();
+    }
     if (sigmaKnownUnavailable) {
       return activateFallbackRoute();
     }
@@ -435,24 +475,59 @@ export function createGraphFacadeRouteManager(
   }
 
   function switchToFallbackRoute(): void {
-    const nextRouteId = fallbackRouteIdForData(state.data);
-    switchRoute(nextRouteId, () => activateFallbackRoute());
+    if (graphExceedsGlobalNodeLimit(state.data)) {
+      switchToOverLimitNotice();
+      return;
+    }
+    switchRoute("dom-svg-small-fallback", () => activateFallbackRoute());
   }
 
   function activateFallbackRoute(): GraphFacadeRenderer {
-    routeId = fallbackRouteIdForData(state.data);
-    return routeId === "aggregation-safety-fallback"
-      ? factories.createAggregationSafetyFallback(factoryInput(undefined, () => manager.retrySigma()))
-      : factories.createDomSvgSmallFallback(factoryInput(undefined, () => manager.retrySigma()));
+    if (graphExceedsGlobalNodeLimit(state.data)) {
+      return activateOverLimitNotice();
+    }
+    routeId = "dom-svg-small-fallback";
+    return factories.createDomSvgSmallFallback(factoryInput(undefined, () => manager.retrySigma()));
+  }
+
+  function switchToOverLimitNotice(): void {
+    switchRoute("over-limit-notice", activateOverLimitNotice);
+  }
+
+  function activateOverLimitNotice(): GraphFacadeRenderer {
+    routeId = "over-limit-notice";
+    return factories.createOverLimitNotice(factoryInput());
   }
 
   function switchRoute(nextRouteId: GraphFacadeRendererRouteId, createNext: () => GraphFacadeRenderer): void {
     if (destroyed) return;
     if (routeId === nextRouteId && active) return;
+    const previousRouteId = routeId;
     const previous = active;
     routeId = nextRouteId;
-    active = createNext();
+    const next = createNext();
+    setRouteDataset(routeId, previousRouteId);
+    active = next;
     previous?.destroy();
+  }
+
+  function setRouteDataset(nextRouteId: GraphFacadeRendererRouteId, previousRouteId: GraphFacadeRendererRouteId | null): void {
+    container.dataset.llmWikiGraphRoute = nextRouteId;
+    clearRouteTransitionMarker();
+    if (!previousRouteId || previousRouteId === nextRouteId) return;
+    container.dataset.llmWikiGraphRouteTransition = `${previousRouteId}->${nextRouteId}`;
+    routeTransitionTimer = setTimeout(() => {
+      if (!destroyed) delete container.dataset.llmWikiGraphRouteTransition;
+      routeTransitionTimer = undefined;
+    }, GRAPH_FACADE_ROUTE_TRANSITION_MS);
+  }
+
+  function clearRouteTransitionMarker(): void {
+    if (routeTransitionTimer) {
+      clearTimeout(routeTransitionTimer);
+      routeTransitionTimer = undefined;
+    }
+    delete container.dataset.llmWikiGraphRouteTransition;
   }
 
   function factoryInput(onSigmaUnavailable?: (error: unknown) => void, onRetrySigma?: () => void): GraphFacadeRouteRendererFactoryInput {
@@ -483,6 +558,11 @@ export function createGraphFacadeRouteManager(
           onPinsChanged: (pins) => {
             state.pins = pins;
             options.callbacks?.onPinsChanged?.(pins);
+          },
+          onGlobalResetRequested: () => {
+            assertActive();
+            const result = requestGlobalRouteFromRenderer();
+            if (result.shouldNotifyViewReset) options.callbacks?.onViewReset?.();
           },
           onVisibilityStateChange: (visibility) => {
             state.searchQuery = visibility.searchQuery;
@@ -532,6 +612,7 @@ function createDomSvgFacadeRenderer(
     onPinsChanged: input.options.callbacks.onPinsChanged,
     onSelectionClearRequested: input.options.callbacks.onSelectionClearRequested,
     onViewReset: input.options.callbacks.onViewReset,
+    onGlobalResetRequested: input.options.callbacks.onGlobalResetRequested,
     onDragActiveChange: input.options.callbacks.onDragActiveChange,
     onVisibilityStateChange: input.options.callbacks.onVisibilityStateChange
   });
@@ -540,8 +621,12 @@ function createDomSvgFacadeRenderer(
   return renderer;
 }
 
+export function graphExceedsGlobalNodeLimit(data: GraphData): boolean {
+  return actualGraphNodeCount(data) > GRAPH_FACADE_GLOBAL_NODE_LIMIT;
+}
+
 export function graphRequiresAggregationSafetyFallback(data: GraphData): boolean {
-  const nodeCount = Math.max(data.meta.total_nodes || 0, data.nodes.length);
+  const nodeCount = actualGraphNodeCount(data);
   const edgeCount = Math.max(data.meta.total_edges || 0, data.edges.length);
   const communitySizes = new Map<string, number>();
   for (const node of data.nodes) {
@@ -554,21 +639,21 @@ export function graphRequiresAggregationSafetyFallback(data: GraphData): boolean
     maxCommunitySize > GRAPH_FACADE_SIGMA_FALLBACK_THRESHOLDS.maxDomSvgFallbackCommunitySize;
 }
 
-function fallbackRouteIdForData(data: GraphData): Extract<GraphFacadeRendererRouteId, "dom-svg-small-fallback" | "aggregation-safety-fallback"> {
-  return graphRequiresAggregationSafetyFallback(data) ? "aggregation-safety-fallback" : "dom-svg-small-fallback";
+function actualGraphNodeCount(data: GraphData): number {
+  return data.nodes.length;
 }
 
-function createAggregationSafetyFallbackRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {
+function createOverLimitNoticeRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {
   let options = input.options;
   let destroyed = false;
   const ownerDocument = input.container.ownerDocument;
   if (!ownerDocument) {
-    throw new Error("aggregation safety fallback requires a DOM container");
+    throw new Error("over-limit notice requires a DOM container");
   }
   const root = ownerDocument.createElement("div");
-  root.className = "graph-aggregation-safety-view";
-  root.dataset.route = "aggregation-safety-fallback";
-  root.dataset.notice = "sigma-unavailable-large-graph";
+  root.className = "graph-over-limit-notice-view";
+  root.dataset.route = "over-limit-notice";
+  root.dataset.notice = "node-count-over-limit";
   input.container.append(root);
   render();
 
@@ -650,72 +735,30 @@ function createAggregationSafetyFallbackRenderer(input: GraphFacadeRouteRenderer
 
   function render(): void {
     if (destroyed) return;
-    const selectedNodeIds = options.selection
-      ? resolveSelectionForCapabilities(options.data, options.selection, { canAsk: false }).nodeIds
-      : [];
-    const markers = options.aggregationMarkers.length > 0
-      ? options.aggregationMarkers
-      : buildCommunityAggregationMarkers(options.data, {
-          pins: options.pins,
-          minCommunitySize: 1
-        }).map((marker) => ({
-          ...marker,
-          selectedNodeIds: marker.nodeIds.filter((id) => selectedNodeIds.includes(id)),
-          searchResultIds: marker.nodeIds.filter((id) => options.searchResultIds.includes(id))
-        }));
     root.replaceChildren();
-    root.dataset.nodeCount = String(options.data.meta.total_nodes || options.data.nodes.length);
+    root.dataset.nodeCount = String(actualGraphNodeCount(options.data));
     root.dataset.edgeCount = String(options.data.meta.total_edges || options.data.edges.length);
-    root.dataset.containerCount = String(markers.length);
+    root.dataset.nodeLimit = String(GRAPH_FACADE_GLOBAL_NODE_LIMIT);
+    root.dataset.containerCount = "0";
     root.dataset.searchResultCount = String(options.searchResultIds.length);
-    root.dataset.selectedCount = String(selectedNodeIds.length);
+    root.dataset.selectedCount = String(options.selection ? resolveSelectionForCapabilities(options.data, options.selection, { canAsk: false }).nodeIds.length : 0);
     root.dataset.pinnedCount = String(Object.keys(options.pins).length);
     root.dataset.temporaryObject = options.temporaryObject ? options.temporaryObject.kind : "";
 
     const notice = ownerDocument.createElement("div");
-    notice.className = "graph-aggregation-safety-notice";
-    notice.dataset.role = "fallback-notice";
-    notice.textContent = "全局图暂时使用安全视图";
+    notice.className = "graph-over-limit-notice";
+    notice.dataset.role = "over-limit-notice";
     root.append(notice);
 
-    const actions = ownerDocument.createElement("div");
-    actions.className = "graph-aggregation-safety-actions";
-    root.append(actions);
-    actions.append(button("retry-sigma", "重试全局图", () => input.onRetrySigma?.()));
-    actions.append(button("clear-selection", "清除选择", () => {
-      options = { ...options, selection: null };
-      input.options.callbacks.onSelectionClearRequested?.();
-      render();
-    }));
+    const title = ownerDocument.createElement("strong");
+    title.className = "graph-over-limit-notice-title";
+    title.textContent = "图谱节点较多";
+    notice.append(title);
 
-    const list = ownerDocument.createElement("div");
-    list.className = "graph-aggregation-safety-containers";
-    root.append(list);
-    for (const marker of markers) {
-      const item = ownerDocument.createElement("button");
-      item.type = "button";
-      item.className = "graph-aggregation-safety-container";
-      item.dataset.aggregationId = marker.id;
-      item.dataset.communityId = marker.communityId || "";
-      item.dataset.nodeCount = String(marker.totalCount ?? marker.nodeIds.length);
-      item.dataset.searchHitCount = String((marker.searchResultIds || []).length);
-      item.dataset.selectedCount = String((marker.selectedNodeIds || []).length);
-      item.dataset.pinnedCount = String((marker.pinnedNodeIds || []).length);
-      item.textContent = marker.label || marker.communityId || marker.id;
-      item.addEventListener("click", () => {
-        if (marker.communityId) input.options.callbacks.onSelectionInput?.({ kind: "community", id: marker.communityId });
-      });
-      list.append(item);
-    }
-  }
-
-  function button(action: string, label: string, onClick: () => void): HTMLButtonElement {
-    const element = ownerDocument.createElement("button");
-    element.type = "button";
-    element.dataset.action = action;
-    element.textContent = label;
-    element.addEventListener("click", onClick);
-    return element;
+    const body = ownerDocument.createElement("p");
+    body.className = "graph-over-limit-notice-body";
+    body.textContent = "当前图谱超过 2000 个节点。请用搜索、筛选或进入社区缩小范围。";
+    notice.append(body);
   }
 }
 
@@ -744,6 +787,9 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
           adapterData: adapterDataForSigmaRoute(options),
           theme: options.theme,
           runtime: runtime as unknown as SigmaGlobalRendererRuntime,
+          pins: options.pins,
+          onPinsChanged: handleSigmaPinsChanged,
+          onDragActiveChange: input.options.callbacks.onDragActiveChange,
           onHitTarget: handleSigmaHitTarget,
           onFatalError: (error) => input.onSigmaUnavailable?.(error)
         });
@@ -758,7 +804,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       return Promise.resolve();
     },
     isDragging() {
-      return false;
+      return Boolean(renderer?.isDragging());
     },
     setData(data, pins) {
       options = { ...options, data, pins: pins || options.pins };
@@ -856,8 +902,15 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     if (!renderer || destroyed) return;
     renderer.update({
       adapterData: adapterDataForSigmaRoute(options),
-      theme: options.theme
+      theme: options.theme,
+      pins: options.pins
     });
+  }
+
+  function handleSigmaPinsChanged(pins: PinMap): void {
+    options = { ...options, pins };
+    input.options.callbacks.onPinsChanged?.(pins);
+    updateSigmaRenderer();
   }
 
   function handleSigmaHitTarget(target: GraphGestureTarget): void {

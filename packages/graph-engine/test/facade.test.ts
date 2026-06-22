@@ -248,7 +248,7 @@ describe("GraphFacade", () => {
     const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
     const communityInputs: GraphFacadeRouteRendererFactoryInput[] = [];
     const smallFallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
-    let aggregationFallbackCount = 0;
+    let overLimitNoticeCount = 0;
     const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
@@ -265,9 +265,9 @@ describe("GraphFacade", () => {
           smallFallbackInputs.push(input);
           return trackRenderer(renderers, "small-fallback");
         },
-        createAggregationSafetyFallback: () => {
-          aggregationFallbackCount += 1;
-          return trackRenderer(renderers, "aggregation-fallback");
+        createOverLimitNotice: () => {
+          overLimitNoticeCount += 1;
+          return trackRenderer(renderers, "over-limit-notice");
         }
       }
     });
@@ -276,7 +276,7 @@ describe("GraphFacade", () => {
     assert.equal(sigmaInputs.length, 1);
     assert.equal(communityInputs.length, 0);
     assert.equal(smallFallbackInputs.length, 0);
-    assert.equal(aggregationFallbackCount, 0);
+    assert.equal(overLimitNoticeCount, 0);
 
     manager.select({ kind: "node", id: "a" });
     manager.setTypeFilters({ topic: true, source: false });
@@ -301,7 +301,7 @@ describe("GraphFacade", () => {
     assert.equal(manager.routeId, "sigma-global");
     assert.equal(sigmaInputs.length, 2);
     assert.equal(smallFallbackInputs.length, 0);
-    assert.equal(aggregationFallbackCount, 0);
+    assert.equal(overLimitNoticeCount, 0);
     assert.deepEqual(sigmaInputs[1].options.focus, null);
     assert.deepEqual(sigmaInputs[1].options.selection, { kind: "node", id: "a" });
     assert.deepEqual(sigmaInputs[1].options.searchResultIds, ["a"]);
@@ -311,6 +311,130 @@ describe("GraphFacade", () => {
       "destroy",
       "destroy"
     ]);
+  });
+
+  it("marks route continuity on the stable facade host and clears transition markers", async () => {
+    const route = createRouteMarkerHarness();
+
+    route.expect("sigma-global");
+    route.expectActiveRendererCount(1);
+
+    route.manager.focusCommunity("c1");
+    route.expect("dom-svg-community", "sigma-global->dom-svg-community");
+    route.expectActiveRendererCount(1);
+
+    await route.expectTransitionCleared();
+
+    route.manager.resetView();
+    route.expect("sigma-global", "dom-svg-community->sigma-global");
+    route.expectActiveRendererCount(1);
+
+    route.manager.destroy();
+    route.expectDestroyed();
+
+    await route.expectTransitionCleared();
+    route.expectDestroyed();
+  });
+
+  it("marks fallback and over-limit route continuity on the stable facade host", async () => {
+    const route = createRouteMarkerHarness();
+
+    route.expect("sigma-global");
+    route.sigmaInputs[0].onSigmaUnavailable?.(new Error("WebGL unavailable"));
+    route.expect("dom-svg-small-fallback", "sigma-global->dom-svg-small-fallback");
+    route.expectActiveRendererCount(1);
+
+    await route.expectTransitionCleared();
+
+    route.manager.setData(largeGraphData(2001, 1, 1));
+    route.expect("over-limit-notice", "dom-svg-small-fallback->over-limit-notice");
+    route.expectActiveRendererCount(1);
+
+    await route.expectTransitionCleared();
+
+    route.manager.destroy();
+  });
+
+  it("keeps public resetView active when already on the Sigma global route", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: { kind: "node", id: "a" },
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => trackRenderer(renderers, "sigma"),
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => createFakeRenderer()
+      }
+    });
+
+    assert.equal(manager.routeId, "sigma-global");
+    manager.resetView();
+
+    assert.deepEqual(renderers[0].calls.at(-1), ["resetView"]);
+  });
+
+  it("lets a DOM/SVG community toolbar request the facade-level global route", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: { "wiki/a.md": { x: 10, y: 20, coordinateSpace: "world" } },
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: { topic: true, source: true },
+      aggregationMarkers: [],
+      selection: { kind: "node", id: "a" },
+      searchResultIds: ["a"],
+      temporaryObject: null
+    };
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const communityInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const viewResets: number[] = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      callbacks: {
+        onViewReset: () => viewResets.push(1)
+      },
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: (input) => {
+          communityInputs.push(input);
+          return createFakeRenderer();
+        },
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => createFakeRenderer()
+      }
+    });
+
+    manager.focusCommunity("c1");
+    assert.equal(manager.routeId, "dom-svg-community");
+    assert.equal(communityInputs.length, 1);
+
+    (communityInputs[0].options.callbacks as { onGlobalResetRequested?: () => void }).onGlobalResetRequested?.();
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(sigmaInputs.length, 2);
+    assert.equal(state.focus, null);
+    assert.deepEqual(sigmaInputs[1].options.focus, null);
+    assert.deepEqual(sigmaInputs[1].options.selection, { kind: "node", id: "a" });
+    assert.deepEqual(sigmaInputs[1].options.searchResultIds, ["a"]);
+    assert.deepEqual(sigmaInputs[1].options.typeFilters, { topic: true, source: true });
+    assert.deepEqual(Object.keys(sigmaInputs[1].options.pins), ["wiki/a.md"]);
+    assert.deepEqual(viewResets, [1]);
   });
 
   it("returns global to DOM/SVG small fallback without retrying a known unavailable Sigma instance", () => {
@@ -328,7 +452,7 @@ describe("GraphFacade", () => {
     };
     let sigmaCreateCount = 0;
     const smallFallbackInputs: GraphFacadeRouteRendererFactoryInput[] = [];
-    let aggregationFallbackCount = 0;
+    let overLimitNoticeCount = 0;
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
       factories: {
@@ -342,8 +466,8 @@ describe("GraphFacade", () => {
           assert.ok(input.options.data.nodes.length <= 2000);
           return createFakeRenderer();
         },
-        createAggregationSafetyFallback: () => {
-          aggregationFallbackCount += 1;
+        createOverLimitNotice: () => {
+          overLimitNoticeCount += 1;
           return createFakeRenderer();
         }
       }
@@ -354,7 +478,7 @@ describe("GraphFacade", () => {
     assert.equal(manager.sigmaAttemptCount, 1);
     assert.equal(sigmaCreateCount, 1);
     assert.equal(smallFallbackInputs.length, 1);
-    assert.equal(aggregationFallbackCount, 0);
+    assert.equal(overLimitNoticeCount, 0);
 
     manager.focusCommunity("c1");
     assert.equal(manager.routeId, "dom-svg-community");
@@ -365,7 +489,59 @@ describe("GraphFacade", () => {
     assert.equal(manager.sigmaAttemptCount, 1);
     assert.equal(sigmaCreateCount, 1);
     assert.equal(smallFallbackInputs.length, 2);
-    assert.equal(aggregationFallbackCount, 0);
+    assert.equal(overLimitNoticeCount, 0);
+  });
+
+  it("returns global to DOM/SVG small fallback from a DOM request with one view reset callback", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const viewResets: number[] = [];
+    const communityInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const smallFallbackRenderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      callbacks: {
+        onViewReset: () => viewResets.push(1)
+      },
+      factories: {
+        createSigmaGlobal: () => {
+          throw new Error("WebGL unavailable");
+        },
+        createDomSvgCommunity: (input) => {
+          communityInputs.push(input);
+          return createFakeRenderer();
+        },
+        createDomSvgSmallFallback: () => {
+          const renderer = trackRenderer(smallFallbackRenderers, "small-fallback");
+          renderer.resetView = () => {
+            renderer.calls.push(["resetView"]);
+            viewResets.push(1);
+          };
+          return renderer;
+        },
+        createOverLimitNotice: () => createFakeRenderer()
+      }
+    });
+
+    manager.focusCommunity("c1");
+    assert.equal(manager.routeId, "dom-svg-community");
+
+    (communityInputs[0].options.callbacks as { onGlobalResetRequested?: () => void }).onGlobalResetRequested?.();
+
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+    assert.equal(state.focus, null);
+    assert.deepEqual(viewResets, [1]);
+    assert.deepEqual(smallFallbackRenderers.at(-1)?.calls.filter((call) => call[0] === "resetView"), [["resetView"]]);
   });
 
   it("updates the current fallback renderer when Sigma is known unavailable and the route stays the same", () => {
@@ -390,7 +566,7 @@ describe("GraphFacade", () => {
         },
         createDomSvgCommunity: () => createFakeRenderer(),
         createDomSvgSmallFallback: () => trackRenderer(smallFallbackRenderers, "small-fallback"),
-        createAggregationSafetyFallback: () => createFakeRenderer()
+        createOverLimitNotice: () => createFakeRenderer()
       }
     });
     const nextData = {
@@ -406,10 +582,10 @@ describe("GraphFacade", () => {
     assert.deepEqual(smallFallbackRenderers[0].calls.at(-1), ["setData", nextData, undefined]);
   });
 
-  it("re-routes known-unavailable Sigma fallback when refreshed data crosses the large-graph threshold", () => {
+  it("keeps a 2000-node graph eligible for Sigma global rendering", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {
-      data: DATA,
+      data: largeGraphData(2000, 4000, 500),
       pins: {},
       theme: "shan-shui",
       focus: null,
@@ -419,37 +595,78 @@ describe("GraphFacade", () => {
       searchResultIds: [],
       temporaryObject: null
     };
-    let smallFallbackCount = 0;
-    let aggregationFallbackCount = 0;
+    let sigmaCount = 0;
+    let overLimitCount = 0;
+    let domFallbackCount = 0;
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
       factories: {
         createSigmaGlobal: () => {
-          throw new Error("WebGL unavailable");
+          sigmaCount += 1;
+          return createFakeRenderer();
         },
         createDomSvgCommunity: () => createFakeRenderer(),
         createDomSvgSmallFallback: () => {
-          smallFallbackCount += 1;
+          domFallbackCount += 1;
           return createFakeRenderer();
         },
-        createAggregationSafetyFallback: () => {
-          aggregationFallbackCount += 1;
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
           return createFakeRenderer();
         }
       }
     });
 
-    assert.equal(manager.routeId, "dom-svg-small-fallback");
-    manager.setData(largeGraphData(2101, 4101, 600));
-
-    assert.equal(manager.routeId, "aggregation-safety-fallback");
-    assert.equal(smallFallbackCount, 1);
-    assert.equal(aggregationFallbackCount, 1);
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(sigmaCount, 1);
+    assert.equal(overLimitCount, 0);
+    assert.equal(domFallbackCount, 0);
   });
 
-  it("treats stale small metadata as large when actual graph arrays exceed fallback thresholds", () => {
+  it("routes a 2001-node graph directly to the over-limit notice before Sigma", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
-    const staleLargeData = largeGraphData(2101, 4101, 600);
+    const state: GraphFacadeState = {
+      data: largeGraphData(2001, 1, 1),
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let sigmaCount = 0;
+    let overLimitCount = 0;
+    let domFallbackCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          sigmaCount += 1;
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => {
+          domFallbackCount += 1;
+          return createFakeRenderer();
+        },
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(sigmaCount, 0);
+    assert.equal(domFallbackCount, 0);
+    assert.equal(overLimitCount, 1);
+  });
+
+  it("routes stale small metadata to over-limit notice using actual node array length", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const staleLargeData = largeGraphData(2001, 1, 1);
     staleLargeData.meta.total_nodes = 1;
     staleLargeData.meta.total_edges = 1;
     const state: GraphFacadeState = {
@@ -463,8 +680,124 @@ describe("GraphFacade", () => {
       searchResultIds: [],
       temporaryObject: null
     };
-    let domFallbackCount = 0;
-    let aggregationFallbackCount = 0;
+    let sigmaCount = 0;
+    let overLimitCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          sigmaCount += 1;
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(sigmaCount, 0);
+    assert.equal(overLimitCount, 1);
+  });
+
+  it("re-routes normal global data to over-limit notice when refreshed over the node cap", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let sigmaCount = 0;
+    let overLimitCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          sigmaCount += 1;
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "sigma-global");
+    manager.setData(largeGraphData(2001, 1, 1));
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(container.dataset.llmWikiGraphRoute, "over-limit-notice");
+    assert.equal(container.dataset.llmWikiGraphRouteTransition, "sigma-global->over-limit-notice");
+    assert.equal(sigmaCount, 1);
+    assert.equal(overLimitCount, 1);
+  });
+
+  it("returns from over-limit notice to Sigma global when refreshed back under the node cap", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: largeGraphData(2001, 1, 1),
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let sigmaCount = 0;
+    let overLimitCount = 0;
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => {
+          sigmaCount += 1;
+          return createFakeRenderer();
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
+          return createFakeRenderer();
+        }
+      }
+    });
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    manager.setData(largeGraphData(2000, 1, 1));
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(overLimitCount, 1);
+    assert.equal(sigmaCount, 1);
+  });
+
+  it("re-routes known-unavailable small fallback data to over-limit notice when refreshed over the node cap", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    let smallFallbackCount = 0;
+    let overLimitCount = 0;
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
       factories: {
@@ -473,19 +806,22 @@ describe("GraphFacade", () => {
         },
         createDomSvgCommunity: () => createFakeRenderer(),
         createDomSvgSmallFallback: () => {
-          domFallbackCount += 1;
+          smallFallbackCount += 1;
           return createFakeRenderer();
         },
-        createAggregationSafetyFallback: () => {
-          aggregationFallbackCount += 1;
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
           return createFakeRenderer();
         }
       }
     });
 
-    assert.equal(manager.routeId, "aggregation-safety-fallback");
-    assert.equal(domFallbackCount, 0);
-    assert.equal(aggregationFallbackCount, 1);
+    assert.equal(manager.routeId, "dom-svg-small-fallback");
+    manager.setData(largeGraphData(2001, 1, 1));
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(smallFallbackCount, 1);
+    assert.equal(overLimitCount, 1);
   });
 
   it("keeps route manager selection state synchronized with renderer callbacks", () => {
@@ -515,7 +851,7 @@ describe("GraphFacade", () => {
         },
         createDomSvgCommunity: () => createFakeRenderer(),
         createDomSvgSmallFallback: () => createFakeRenderer(),
-        createAggregationSafetyFallback: () => createFakeRenderer()
+        createOverLimitNotice: () => createFakeRenderer()
       }
     });
 
@@ -528,10 +864,10 @@ describe("GraphFacade", () => {
     assert.equal(state.temporaryObject, null);
   });
 
-  it("routes known-large Sigma failures to aggregation safety fallback instead of DOM/SVG", () => {
+  it("routes over-limit Sigma retry back to the static notice before creating Sigma", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {
-      data: largeGraphData(2101, 4101, 600),
+      data: largeGraphData(2001, 1, 1),
       pins: {},
       theme: "shan-shui",
       focus: null,
@@ -541,29 +877,33 @@ describe("GraphFacade", () => {
       searchResultIds: [],
       temporaryObject: null
     };
-    let domFallbackCount = 0;
-    let aggregationFallbackCount = 0;
+    let sigmaCount = 0;
+    let overLimitCount = 0;
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
       factories: {
         createSigmaGlobal: () => {
-          throw new Error("WebGL unavailable");
-        },
-        createDomSvgCommunity: () => createFakeRenderer(),
-        createDomSvgSmallFallback: () => {
-          domFallbackCount += 1;
+          sigmaCount += 1;
           return createFakeRenderer();
         },
-        createAggregationSafetyFallback: () => {
-          aggregationFallbackCount += 1;
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => {
+          overLimitCount += 1;
           return createFakeRenderer();
         }
       }
     });
 
-    assert.equal(manager.routeId, "aggregation-safety-fallback");
-    assert.equal(domFallbackCount, 0);
-    assert.equal(aggregationFallbackCount, 1);
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(container.dataset.llmWikiGraphRoute, "over-limit-notice");
+    manager.retrySigma();
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(container.dataset.llmWikiGraphRoute, "over-limit-notice");
+    assert.equal(container.dataset.llmWikiGraphRouteTransition, undefined);
+    assert.equal(sigmaCount, 0);
+    assert.equal(overLimitCount, 2);
   });
 
   it("routes abnormal Sigma runtime failures to DOM/SVG small fallback and retries Sigma only on request", () => {
@@ -581,7 +921,7 @@ describe("GraphFacade", () => {
     };
     let sigmaCreateCount = 0;
     let smallFallbackCount = 0;
-    let aggregationFallbackCount = 0;
+    let overLimitNoticeCount = 0;
     const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
       state,
@@ -596,8 +936,8 @@ describe("GraphFacade", () => {
           smallFallbackCount += 1;
           return createFakeRenderer();
         },
-        createAggregationSafetyFallback: () => {
-          aggregationFallbackCount += 1;
+        createOverLimitNotice: () => {
+          overLimitNoticeCount += 1;
           return createFakeRenderer();
         }
       }
@@ -609,14 +949,14 @@ describe("GraphFacade", () => {
     assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(manager.sigmaKnownUnavailable, true);
     assert.equal(smallFallbackCount, 1);
-    assert.equal(aggregationFallbackCount, 0);
+    assert.equal(overLimitNoticeCount, 0);
     assert.equal(sigmaCreateCount, 1);
 
     manager.resetView();
     assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(sigmaCreateCount, 1);
     assert.equal(smallFallbackCount, 1);
-    assert.equal(aggregationFallbackCount, 0);
+    assert.equal(overLimitNoticeCount, 0);
 
     manager.retrySigma();
     assert.equal(manager.routeId, "sigma-global");
@@ -699,6 +1039,77 @@ function trackRenderer(
   renderer.calls.push(["create", route]);
   renderers.push(renderer);
   return renderer;
+}
+
+function assertActiveRendererCount(renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }>, expected: number): void {
+  const activeCount = renderers.filter((renderer) => !renderer.calls.some((call) => call[0] === "destroy")).length;
+  assert.equal(activeCount, expected);
+}
+
+function createRouteMarkerHarness(): {
+  container: { dataset: Record<string, string | undefined> };
+  manager: GraphFacadeRenderer & {
+    readonly routeId: string;
+    readonly sigmaKnownUnavailable: boolean;
+    readonly sigmaAttemptCount: number;
+    retrySigma(): void;
+  };
+  sigmaInputs: GraphFacadeRouteRendererFactoryInput[];
+  expect(routeId: string, transition?: string): void;
+  expectActiveRendererCount(expected: number): void;
+  expectDestroyed(): void;
+  expectTransitionCleared(): Promise<void>;
+} {
+  const container = { dataset: {} as Record<string, string | undefined> };
+  const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+  const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+  const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+    state: {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    },
+    factories: {
+      createSigmaGlobal: (input) => {
+        sigmaInputs.push(input);
+        return trackRenderer(renderers, "sigma");
+      },
+      createDomSvgCommunity: () => trackRenderer(renderers, "community"),
+      createDomSvgSmallFallback: () => trackRenderer(renderers, "fallback"),
+      createOverLimitNotice: () => trackRenderer(renderers, "over-limit")
+    }
+  });
+
+  return {
+    container,
+    manager,
+    sigmaInputs,
+    expect(routeId, transition) {
+      assert.equal(container.dataset.llmWikiGraphRoute, routeId);
+      assert.equal(container.dataset.llmWikiGraphRouteTransition, transition);
+    },
+    expectActiveRendererCount(expected) {
+      assertActiveRendererCount(renderers, expected);
+    },
+    expectDestroyed() {
+      assert.equal(container.dataset.llmWikiGraphRoute, undefined);
+      assert.equal(container.dataset.llmWikiGraphRouteTransition, undefined);
+    },
+    expectTransitionCleared() {
+      return waitForRouteTransitionClear(container);
+    }
+  };
+}
+
+async function waitForRouteTransitionClear(container: { dataset: Record<string, string | undefined> }): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 190));
+  assert.equal(container.dataset.llmWikiGraphRouteTransition, undefined);
 }
 
 function largeGraphData(nodeCount: number, edgeCount: number, communitySize: number): GraphData {

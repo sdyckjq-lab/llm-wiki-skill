@@ -111,6 +111,21 @@ export function drawerForGraphSummaryNode(
 	return graphNodeSummaryDrawer(summary);
 }
 
+export function drawerForGraphSummaryCommunity(
+	data: GraphData | null,
+	communityId: string,
+	current: DrawerState,
+	options: GraphSummaryOptions = {},
+): DrawerState {
+	if (!data) return current;
+	const summary = summarizeGraphCommunity(data, communityId, {
+		...options,
+		selection: { kind: "community", id: communityId },
+	});
+	if (summary.kind === "community-summary") return graphCommunitySummaryDrawer(summary);
+	return graphUnavailableObjectDrawer(summary);
+}
+
 export function drawerForExcludedGraphObject(
 	data: GraphData | null,
 	object: GraphSummaryObjectRef,

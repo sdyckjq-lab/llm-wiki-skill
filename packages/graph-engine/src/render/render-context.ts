@@ -36,6 +36,7 @@ export interface GraphRendererCallbacks {
   onSelectionInput?: (selection: SelectionInput) => void;
   onSelectionClearRequested?: () => void;
   onViewReset?: () => void;
+  onGlobalResetRequested?: () => void;
   onPinsChanged?: (pins: PinMap) => void;
   onDragActiveChange?: (dragging: boolean) => void;
   onVisibilityStateChange?: (state: GraphVisibilityState) => void;

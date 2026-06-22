@@ -14,157 +14,99 @@ const browser = await chromium.launch(executablePath ? { executablePath } : {});
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   await page.goto(pathToFileURL(html).href);
-  await page.waitForSelector("[data-llm-wiki-graph-root='true']");
-  await page.waitForSelector("[data-viewport-layer='true']");
-  await page.waitForSelector(".community-wash");
+  await waitForSigmaGlobal(page);
 
-  const communityId = await multiNodeCommunityId(page);
-  const expectedCommunityNodes = await nodesInCommunity(page, communityId);
+  const initial = await sigmaSnapshot(page);
+  assert.equal(initial.route, "sigma-global", "offline global route should use Sigma");
+  assert.equal(initial.oldDomNodeCount, 0, "Sigma global should not render the old DOM full graph");
+  assert.ok(initial.communityRegionCount >= 1, "Sigma global should expose community regions");
+  assert.ok(initial.communityLabelCount >= 1 && initial.communityLabelCount <= 8, "Sigma global should expose passive map labels");
+  assert.equal(initial.circularCommunityButtonCount, 0, "Sigma global should not expose circular community buttons");
+  assert.equal(initial.aggregationButtonCount, 0, "Sigma global should not expose aggregation buttons");
 
-  const washPoint = await findCommunityWashPoint(page, communityId);
-  const initialTransform = await layerTransform(page);
-  await page.mouse.move(washPoint.x, washPoint.y);
-  await page.mouse.wheel(0, -560);
-  const zoomedTransform = await waitForLayerTransform(page, initialTransform);
-  assert.notEqual(zoomedTransform, initialTransform, "wheel over community wash should zoom the graph");
+  const communityId = await firstCommunityRegionId(page);
+  const regionPoint = await findCommunityRegionPoint(page, communityId);
+  await page.mouse.click(regionPoint.x, regionPoint.y);
+  await waitForCommunitySelection(page, communityId);
+  const selected = await sigmaSnapshot(page);
+  assert.equal(selected.focus, "", "clicking a community region should not enter a DOM community route");
+  assert.equal(selected.selectedCommunityId, communityId, "clicking a community region should select that community");
+  assert.equal(selected.oldDomNodeCount, 0, "community selection should keep the Sigma global route mounted");
 
-  const clickPoint = await findCommunityWashPoint(page, communityId);
-  await page.mouse.click(clickPoint.x, clickPoint.y);
-  await waitForSelectedNodeIds(page, expectedCommunityNodes);
-  assert.deepEqual(
-    await visibleNodeIds(page),
-    ["A", "B", "C"],
-    "clicking a community wash should keep the global node set visible"
-  );
-  assert.deepEqual(
-    await selectedNodeIds(page),
-    expectedCommunityNodes,
-    "clicking a community wash should select the community nodes"
-  );
-  assert.equal(
-    await graphFocus(page),
-    "",
-    "clicking a community wash should open summary/selection first instead of entering community focus"
-  );
+  await setSearchQuery(page, "节点A");
+  await page.waitForSelector('.sigma-global-node-hit-target[data-node-id="A"]');
+  await page.locator('.sigma-global-node-hit-target[data-node-id="A"]').click({ force: true });
+  await page.waitForFunction(() => (
+    document.querySelector('.sigma-global-node-hit-target[data-node-id="A"]')?.getAttribute("data-selected") === "true"
+  ));
+  const nodeSelected = await sigmaSnapshot(page);
+  assert.equal(nodeSelected.selectedNodeId, "A", "node hit target should win over the community region beneath it");
+  assert.equal(nodeSelected.route, "sigma-global", "node hit target should keep the Sigma global route active");
 
-  await resetToFreshGraph(page);
-
-  const movedPoint = await findCommunityWashPoint(page, communityId);
-  await page.mouse.move(movedPoint.x, movedPoint.y);
-  await page.mouse.down();
-  await page.mouse.move(movedPoint.x + 28, movedPoint.y + 2, { steps: 3 });
-  await page.mouse.up();
-  await page.waitForTimeout(120);
-  assert.deepEqual(
-    await visibleNodeIds(page),
-    ["A", "B", "C"],
-    "moving on a community wash past the click threshold should cancel the community click"
-  );
-
-  await resetToFreshGraph(page);
-
-  const dragEvidence = await dragNodeOutsideInitialWash(page, expectedCommunityNodes[0], communityId);
-  assert.ok(
-    dragEvidence.nodeCenter.x > dragEvidence.initialWashRect.right + 36,
-    `node should be able to move beyond the initial community wash bounds: ${JSON.stringify(dragEvidence)}`
-  );
-  assert.equal(dragEvidence.pinned, "true", "dragging a node outside the wash should still commit a pin");
-  assert.equal(dragEvidence.dragging, "", "community wash should not leave a drag stuck active");
+  const labelPoint = await communityLabelCenter(page, communityId);
+  await page.mouse.click(labelPoint.x, labelPoint.y);
+  await waitForCommunitySelection(page, communityId);
+  const labelClick = await sigmaSnapshot(page);
+  assert.equal(labelClick.selectedCommunityId, communityId, "passive label area should fall through to the community region");
+  assert.equal(labelClick.labelPointerEvents, "none", "community labels should stay passive");
 
   console.log(JSON.stringify({
     communityId,
-    washWheel: { before: initialTransform, after: zoomedTransform, point: washPoint },
-    communityClickVisibleNodes: ["A", "B", "C"],
-    communityClickSelectedNodes: expectedCommunityNodes,
-    thresholdMoveVisibleNodes: ["A", "B", "C"],
-    dragEvidence
+    initial,
+    regionPoint,
+    selected,
+    nodeSelected,
+    labelClick
   }, null, 2));
 } finally {
   await browser.close();
 }
 
-async function layerTransform(page) {
-  return page.locator("[data-viewport-layer='true']").evaluate((element) => element.style.transform);
+async function waitForSigmaGlobal(page) {
+  await page.waitForSelector(".sigma-global-route[data-route='sigma-global']");
+  await page.waitForSelector(".sigma-global-renderer[data-renderer='sigma-global']");
+  await page.waitForSelector(".sigma-global-community-region[data-community-id]");
 }
 
-async function waitForLayerTransform(page, previous) {
-  await page.waitForFunction(
-    (previous) => document.querySelector("[data-viewport-layer='true']")?.style.transform !== previous,
-    previous,
-    { timeout: 3000 }
-  );
-  return layerTransform(page);
-}
-
-async function resetToFreshGraph(page) {
-  await page.reload();
-  await page.waitForSelector("[data-llm-wiki-graph-root='true']");
-  await page.waitForSelector("[data-viewport-layer='true']");
-  await page.waitForSelector(".community-wash");
-  await page.waitForFunction(() => document.querySelectorAll(".node").length === 3);
-}
-
-async function visibleNodeIds(page) {
-  return page.locator(".node").evaluateAll((nodes) => nodes.map((node) => node.dataset.id).sort());
-}
-
-async function waitForVisibleNodeIds(page, expected) {
-  await page.waitForFunction((expected) => {
-    const actual = [...document.querySelectorAll(".node")].map((node) => node.dataset.id).sort();
-    return actual.length === expected.length && actual.every((id, index) => id === expected[index]);
-  }, expected);
-}
-
-async function selectedNodeIds(page) {
-  return page.locator('.node[aria-pressed="true"]').evaluateAll((nodes) => nodes.map((node) => node.dataset.id).sort());
-}
-
-async function waitForSelectedNodeIds(page, expected) {
-  await page.waitForFunction((expected) => {
-    const actual = [...document.querySelectorAll('.node[aria-pressed="true"]')].map((node) => node.dataset.id).sort();
-    return actual.length === expected.length && actual.every((id, index) => id === expected[index]);
-  }, expected);
-}
-
-async function graphFocus(page) {
+async function sigmaSnapshot(page) {
   return page.evaluate(() => {
-    return document.querySelector("[data-llm-wiki-graph-root='true']")?.dataset.focus
-      || document.querySelector(".graph-host")?.dataset.llmWikiGraphFocus
-      || "";
+    const selectedRegion = document.querySelector('.sigma-global-community-region[data-selected="true"]');
+    const selectedNode = document.querySelector('.sigma-global-node-hit-target[data-selected="true"]');
+    const firstLabel = document.querySelector(".sigma-global-community-label");
+    return {
+      route: document.querySelector(".sigma-global-route")?.getAttribute("data-route") || "",
+      renderer: document.querySelector(".sigma-global-renderer")?.getAttribute("data-renderer") || "",
+      focus: document.querySelector("[data-testid='offline-graph-root']")?.getAttribute("data-llm-wiki-graph-focus")
+        || document.querySelector("[data-llm-wiki-graph-root='true']")?.getAttribute("data-focus")
+        || "",
+      oldDomNodeCount: document.querySelectorAll(".node").length,
+      oldCommunityWashCount: document.querySelectorAll(".community-wash").length,
+      communityRegionCount: document.querySelectorAll(".sigma-global-community-region").length,
+      communityLabelCount: document.querySelectorAll(".sigma-global-community-label").length,
+      circularCommunityButtonCount: document.querySelectorAll(".sigma-global-community-wash, button.sigma-global-community-label, [role='button'].sigma-global-community-label").length,
+      aggregationButtonCount: document.querySelectorAll(".sigma-global-aggregation-container").length,
+      selectedCommunityId: selectedRegion?.getAttribute("data-community-id") || "",
+      selectedNodeId: selectedNode?.getAttribute("data-node-id") || "",
+      labelPointerEvents: firstLabel ? window.getComputedStyle(firstLabel).pointerEvents : ""
+    };
   });
 }
 
-async function multiNodeCommunityId(page) {
+async function firstCommunityRegionId(page) {
   return page.evaluate(() => {
-    const counts = new Map();
-    for (const node of document.querySelectorAll(".node")) {
-      const id = node.dataset.community || "";
-      if (!id) continue;
-      counts.set(id, (counts.get(id) || 0) + 1);
-    }
-    for (const [id, count] of counts) {
-      if (count > 1 && document.querySelector(`.community-wash[data-community-id="${CSS.escape(id)}"]`)) return id;
-    }
-    throw new Error(`Could not find a multi-node community wash: ${JSON.stringify([...counts])}`);
+    const region = document.querySelector(".sigma-global-community-region[data-community-id]:not([data-community-id='_none'])")
+      || document.querySelector(".sigma-global-community-region[data-community-id]");
+    const id = region?.getAttribute("data-community-id") || "";
+    if (!id) throw new Error("Missing Sigma community region id");
+    return id;
   });
 }
 
-async function nodesInCommunity(page, communityId) {
+async function findCommunityRegionPoint(page, communityId) {
   return page.evaluate((communityId) => {
-    return [...document.querySelectorAll(".node")]
-      .filter((node) => node.dataset.community === communityId)
-      .map((node) => node.dataset.id)
-      .sort();
-  }, communityId);
-}
-
-async function findCommunityWashPoint(page, communityId) {
-  return page.evaluate((communityId) => {
-    const wash = communityId
-      ? document.querySelector(`.community-wash[data-community-id="${CSS.escape(communityId)}"]`)
-      : document.querySelector(".community-wash");
-    if (!wash) throw new Error("Missing community wash");
-    const rect = wash.getBoundingClientRect();
+    const region = document.querySelector(`.sigma-global-community-region[data-community-id="${CSS.escape(communityId)}"]`);
+    if (!region) throw new Error(`Missing Sigma community region ${communityId}`);
+    const rect = region.getBoundingClientRect();
     const candidates = [
       [0.5, 0.18],
       [0.2, 0.5],
@@ -177,11 +119,13 @@ async function findCommunityWashPoint(page, communityId) {
     for (const [rx, ry] of candidates) {
       const x = rect.left + rect.width * rx;
       const y = rect.top + rect.height * ry;
-      if (document.elementFromPoint(x, y)?.closest?.(".community-wash") === wash) {
-        return { x, y, communityId: wash.dataset.communityId || "" };
+      const hit = document.elementFromPoint(x, y);
+      if (hit?.closest?.(".sigma-global-node-hit-target")) continue;
+      if (hit?.closest?.(".sigma-global-community-region") === region) {
+        return { x, y, communityId };
       }
     }
-    throw new Error(`Could not find an exposed community wash point in ${JSON.stringify({
+    throw new Error(`Could not find exposed Sigma community region point: ${JSON.stringify({
       left: rect.left,
       top: rect.top,
       width: rect.width,
@@ -190,54 +134,37 @@ async function findCommunityWashPoint(page, communityId) {
   }, communityId);
 }
 
-async function dragNodeOutsideInitialWash(page, nodeId, communityId) {
-  const initial = await page.evaluate(({ nodeId, communityId }) => {
-    const root = document.querySelector("[data-llm-wiki-graph-root='true']");
-    const wash = document.querySelector(`.community-wash[data-community-id="${CSS.escape(communityId)}"]`);
-    const node = document.querySelector(`.node[data-id="${CSS.escape(nodeId)}"]`);
-    if (!root || !wash || !node) throw new Error("Missing graph elements for wash drag evidence");
-    const rootRect = root.getBoundingClientRect();
-    const washRect = wash.getBoundingClientRect();
-    const nodeRect = node.getBoundingClientRect();
-    const relativeRect = (rect) => ({
-      left: rect.left - rootRect.left,
-      top: rect.top - rootRect.top,
-      right: rect.right - rootRect.left,
-      bottom: rect.bottom - rootRect.top,
-      width: rect.width,
-      height: rect.height
-    });
+async function communityLabelCenter(page, communityId) {
+  return page.evaluate((communityId) => {
+    const label = document.querySelector(`.sigma-global-community-label[data-community-id="${CSS.escape(communityId)}"]`);
+    if (!label) throw new Error(`Missing Sigma community label ${communityId}`);
+    const rect = label.getBoundingClientRect();
     return {
-      rootRect: relativeRect(rootRect),
-      washRect: relativeRect(washRect),
-      nodeCenter: {
-        x: nodeRect.left + nodeRect.width / 2,
-        y: nodeRect.top + nodeRect.height / 2
-      }
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
     };
-  }, { nodeId, communityId });
+  }, communityId);
+}
 
-  await page.mouse.move(initial.nodeCenter.x, initial.nodeCenter.y);
-  await page.mouse.down();
-  await page.mouse.move(initial.nodeCenter.x + 520, initial.nodeCenter.y + 22, { steps: 8 });
-  await page.mouse.up();
-  await page.waitForSelector(`.node[data-id="${nodeId}"][data-pinned="true"]`);
-  await page.waitForTimeout(120);
+async function waitForCommunitySelection(page, communityId) {
+  await page.waitForFunction((communityId) => (
+    document.querySelector(`.sigma-global-community-region[data-community-id="${CSS.escape(communityId)}"]`)?.getAttribute("data-selected") === "true"
+  ), communityId);
+}
 
-  return page.evaluate((input) => {
-    const root = document.querySelector("[data-llm-wiki-graph-root='true']");
-    const node = document.querySelector(`.node[data-id="${CSS.escape(input.nodeId)}"]`);
-    if (!root || !node) throw new Error("Missing graph elements after wash drag");
-    const rootRect = root.getBoundingClientRect();
-    const nodeRect = node.getBoundingClientRect();
-    return {
-      initialWashRect: input.initialWashRect,
-      nodeCenter: {
-        x: nodeRect.left + nodeRect.width / 2 - rootRect.left,
-        y: nodeRect.top + nodeRect.height / 2 - rootRect.top
-      },
-      pinned: node.dataset.pinned,
-      dragging: root.dataset.dragging || ""
-    };
-  }, { nodeId, initialWashRect: initial.washRect });
+async function setSearchQuery(page, query) {
+  await page.locator(".graph-search-input").focus();
+  await page.evaluate((query) => {
+    const input = document.querySelector(".graph-search[data-state='open'] .graph-search-input");
+    if (!(input instanceof HTMLInputElement)) throw new Error("Graph search input is not open");
+    input.value = query;
+    input.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType: "insertText",
+      data: query
+    }));
+  }, query);
+  await page.waitForFunction((query) => (
+    document.querySelector(".graph-search-input")?.value === query
+  ), query);
 }

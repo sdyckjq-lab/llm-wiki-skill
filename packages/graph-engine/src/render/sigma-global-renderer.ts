@@ -1,4 +1,4 @@
-import type { ThemeId } from "../types";
+import type { PinMap, PinPosition, ThemeId } from "../types";
 import { createGraphSpatialIndex, type GraphSpatialIndex, type GraphSpatialIndexInput } from "../layout";
 import type {
   GraphRendererAdapterAggregation,
@@ -7,13 +7,27 @@ import type {
   GraphRendererAdapterEdge,
   GraphRendererAdapterNode
 } from "./adapter";
-import { screenPointToWorldPoint, worldPointToCssPercentPoint, type GraphScreenPoint } from "./geometry";
+import {
+  bindSigmaGlobalOverlayMouseDrag,
+  bindSigmaGlobalOverlayPointerDrag,
+  createSigmaGlobalNodeDragSession,
+  gestureTargetFromSigmaRenderedObject,
+  moveSigmaGlobalNodeDragSession,
+  sigmaAdapterDataWithNodePoint,
+  sigmaCommunityLabels,
+  type SigmaGlobalRenderedObject,
+  type SigmaGlobalNodeDragSession
+} from "./sigma-global-drag";
+import { rootClientPointToScreenPoint, screenPointToWorldPoint, worldPointToCssPercentPoint, type GraphScreenPoint } from "./geometry";
 import { graphSpatialHitToGestureTarget, type GraphGestureTarget } from "./gestures";
 import { DEFAULT_RENDERER_VIEWPORT, type RendererViewport, type RendererViewportSize } from "./viewport";
 
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
 
 export const SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER = "facade" as const;
+
+const SIGMA_GLOBAL_COMMUNITY_LABEL_LIMIT = 8;
+const SIGMA_GLOBAL_NODE_HIT_TARGET_LIMIT = 160;
 
 export const SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY = {
   sigma: "runtime-loaded-by-sigma-global-renderer",
@@ -45,6 +59,7 @@ export interface SigmaGlobalSigmaLike {
   getCamera?: () => SigmaGlobalCameraLike;
   getGraph?: () => unknown;
   setGraph?: (graph: SigmaGlobalGraphologyGraph) => unknown;
+  getSetting?: (key: string) => unknown;
   setSetting?: (key: string, value: unknown) => unknown;
   viewportToGraph?: (point: GraphScreenPoint) => { x: number; y: number };
   graphToViewport?: (point: { x: number; y: number }) => GraphScreenPoint;
@@ -125,16 +140,18 @@ export interface SigmaGlobalGraphologyAggregationAttributes {
   commands: GraphRendererAdapterAggregation["commands"];
 }
 
-export type SigmaGlobalRenderedObject =
-  | { kind: "node"; id: string }
-  | { kind: "edge"; id: string }
-  | { kind: "community-wash"; id: string }
-  | { kind: "aggregation-container"; id: string; communityId?: string | null };
-
 export interface SigmaGlobalHitInput {
   nodeId?: string | null;
   screenPoint?: GraphScreenPoint | null;
   renderedObject?: SigmaGlobalRenderedObject | null;
+}
+
+interface SigmaGlobalPointerEventPayload {
+  node?: unknown;
+  event?: { x?: unknown; y?: unknown; preventSigmaDefault?: () => void };
+  x?: unknown;
+  y?: unknown;
+  preventSigmaDefault?: () => void;
 }
 
 export interface SigmaGlobalHitProjectorInput {
@@ -154,7 +171,10 @@ export interface SigmaGlobalRendererCreateOptions {
   adapterData: GraphRendererAdapterData;
   theme: ThemeId;
   onHitTarget?: (target: GraphGestureTarget) => void;
+  onPinsChanged?: (pins: PinMap) => void;
+  onDragActiveChange?: (dragging: boolean) => void;
   onFatalError?: (error: unknown) => void;
+  pins?: PinMap;
   runtime?: SigmaGlobalRendererRuntime;
   viewport?: RendererViewport;
   viewportSize?: RendererViewportSize;
@@ -163,6 +183,7 @@ export interface SigmaGlobalRendererCreateOptions {
 export interface SigmaGlobalRendererUpdateOptions {
   adapterData: GraphRendererAdapterData;
   theme?: ThemeId;
+  pins?: PinMap;
 }
 
 export interface SigmaGlobalRenderer {
@@ -172,6 +193,7 @@ export interface SigmaGlobalRenderer {
   readonly graph: SigmaGlobalGraphologyGraph;
   readonly updateStrategy: "rebuild-graph-preserve-camera";
   readonly lastHitTarget: GraphGestureTarget | null;
+  isDragging(): boolean;
   update(options: SigmaGlobalRendererUpdateOptions): void;
   destroy(): void;
 }
@@ -228,7 +250,7 @@ export function createSigmaGlobalHitProjector(input: SigmaGlobalHitProjectorInpu
         return { kind: "node", id: hit.nodeId };
       }
 
-      const renderedObjectTarget = hit.renderedObject ? gestureTargetFromRenderedObject(hit.renderedObject, input.adapterData) : null;
+      const renderedObjectTarget = hit.renderedObject ? gestureTargetFromSigmaRenderedObject(hit.renderedObject, input.adapterData) : null;
       if (renderedObjectTarget) return renderedObjectTarget;
 
       if (hit.screenPoint) {
@@ -275,6 +297,10 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let sigma: SigmaGlobalSigmaLike;
   let generation = 0;
   let lastHitTarget: GraphGestureTarget | null = null;
+  let activeNodeDrag: SigmaGlobalNodeDragSession | null = null;
+  let currentPins: PinMap = { ...(options.pins ?? {}) };
+  let suppressNextNodeClickId: string | null = null;
+  let overlayPointerDragCleanup: (() => void) | null = null;
   let eventBindings: Array<{ event: string; listener: (payload?: unknown) => void }> = [];
 
   try {
@@ -298,12 +324,17 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     get lastHitTarget() {
       return lastHitTarget;
     },
+    isDragging() {
+      return Boolean(activeNodeDrag);
+    },
     update(updateOptions) {
       assertActive();
       const cameraState = readCameraState(sigma);
+      cancelNodeDrag();
       generation += 1;
       adapterData = updateOptions.adapterData;
       currentTheme = updateOptions.theme ?? currentTheme;
+      currentPins = { ...(updateOptions.pins ?? currentPins) };
       graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
       projector = createSigmaGlobalHitProjector({
         adapterData,
@@ -326,6 +357,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     },
     destroy() {
       if (destroyed) return;
+      cancelNodeDrag();
       destroyed = true;
       generation += 1;
       unbindSigmaEvents();
@@ -341,12 +373,23 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   return renderer;
 
   function bindSigmaEvents(): void {
-    const nodeClick = (payload?: unknown): void => handleSigmaHit({ nodeId: sigmaNodeIdFromPayload(payload) });
+    const nodeClick = (payload?: unknown): void => {
+      const nodeId = sigmaNodeIdFromPayload(payload);
+      if (consumeSuppressedNodeClick(nodeId)) return;
+      handleSigmaHit({ nodeId });
+    };
     const stageClick = (payload?: unknown): void => handleSigmaHit({ screenPoint: sigmaScreenPointFromPayload(payload) });
     const cameraUpdated = (): void => renderSigmaOverlays();
+    const nodeDown = (payload?: unknown): void => beginNodeDrag(sigmaNodeIdFromPayload(payload), sigmaScreenPointFromPayload(payload), payload);
+    const nodeMove = (payload?: unknown): void => moveNodeDrag(sigmaScreenPointFromPayload(payload), payload);
+    const nodeUp = (payload?: unknown): void => commitNodeDrag(sigmaScreenPointFromPayload(payload), payload);
     eventBindings = [
       { event: "clickNode", listener: nodeClick },
       { event: "clickStage", listener: stageClick },
+      { event: "downNode", listener: nodeDown },
+      { event: "moveBody", listener: nodeMove },
+      { event: "upNode", listener: nodeUp },
+      { event: "upStage", listener: nodeUp },
       { event: "cameraUpdated", listener: cameraUpdated },
       { event: "afterRender", listener: cameraUpdated }
     ];
@@ -371,9 +414,136 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     options.onHitTarget?.(target);
   }
 
+  function beginNodeDrag(nodeId: string | null, screenPoint: GraphScreenPoint | null, payload?: unknown): void {
+    if (destroyed || !nodeId || !screenPoint || !graph.hasNode(nodeId)) return;
+    preventSigmaDefault(payload);
+    cancelNodeDrag();
+    const startPoint = sigmaNodeWorldPoint(nodeId);
+    const pointerWorldPoint = sigmaScreenPointToWorldPoint(sigma, screenPoint, options);
+    activeNodeDrag = createSigmaGlobalNodeDragSession({
+      nodeId,
+      pinKey: sigmaPinKeyForNode(nodeId),
+      startPoint,
+      pointerStart: screenPoint,
+      pointerWorldPoint,
+      initiallyPinned: Boolean(graph.getNodeAttribute(nodeId, "pinned")),
+      initialPinPosition: sigmaPinPositionForNode(nodeId),
+      previousCameraPanning: sigma.getSetting?.("enableCameraPanning")
+    });
+    sigma.setSetting?.("enableCameraPanning", false);
+    sigmaRoot.dataset.draggingNodeId = nodeId;
+    options.onDragActiveChange?.(true);
+  }
+
+  function moveNodeDrag(screenPoint: GraphScreenPoint | null, payload?: unknown): void {
+    const drag = activeNodeDrag;
+    if (!drag || destroyed || !screenPoint) return;
+    preventSigmaDefault(payload);
+    const pointerWorldPoint = sigmaScreenPointToWorldPoint(sigma, screenPoint, options);
+    moveSigmaGlobalNodeDragSession(drag, screenPoint, pointerWorldPoint);
+    if (drag.moved) {
+      applyNodeDragPoint(drag.nodeId, drag.currentPoint, drag.initiallyPinned, drag.initialPinPosition);
+    }
+  }
+
+  function commitNodeDrag(screenPoint: GraphScreenPoint | null, payload?: unknown): void {
+    const drag = activeNodeDrag;
+    if (!drag || destroyed) return;
+    preventSigmaDefault(payload);
+    if (screenPoint) moveNodeDrag(screenPoint, payload);
+    clearOverlayPointerDragListeners();
+    restoreNodeDragCamera(drag);
+    activeNodeDrag = null;
+    delete sigmaRoot.dataset.draggingNodeId;
+    options.onDragActiveChange?.(false);
+    if (!drag.moved) {
+      return;
+    }
+    suppressNextNodeClickId = drag.nodeId;
+    const finalPin: PinPosition = {
+      x: drag.currentPoint.x,
+      y: drag.currentPoint.y,
+      coordinateSpace: "world"
+    };
+    currentPins = {
+      ...currentPins,
+      [drag.pinKey]: finalPin
+    };
+    applyNodeDragPoint(drag.nodeId, drag.currentPoint, true, finalPin);
+    options.onPinsChanged?.(currentPins);
+  }
+
+  function cancelNodeDrag(): void {
+    const drag = activeNodeDrag;
+    if (!drag) return;
+    clearOverlayPointerDragListeners();
+    restoreNodeDragCamera(drag);
+    activeNodeDrag = null;
+    delete sigmaRoot.dataset.draggingNodeId;
+    applyNodeDragPoint(drag.nodeId, drag.startPoint, Boolean(currentPins[drag.pinKey]), currentPins[drag.pinKey] ?? null);
+    options.onDragActiveChange?.(false);
+  }
+
+  function restoreNodeDragCamera(drag: SigmaGlobalNodeDragSession): void {
+    const nextValue = typeof drag.previousCameraPanning === "boolean" ? drag.previousCameraPanning : true;
+    sigma.setSetting?.("enableCameraPanning", nextValue);
+  }
+
+  function applyNodeDragPoint(nodeId: string, point: { x: number; y: number }, pinned: boolean, pinPosition: PinPosition | null = null): void {
+    const dragging = Boolean(activeNodeDrag);
+    if (!graph.hasNode(nodeId)) return;
+    graph.mergeNodeAttributes(nodeId, {
+      x: finiteNumber(point.x, 0),
+      y: finiteNumber(point.y, 0),
+      pinned
+    });
+    adapterData = sigmaAdapterDataWithNodePoint(adapterData, nodeId, point, pinned, pinPosition);
+    sigma.refresh?.();
+    if (!dragging) renderSigmaOverlays();
+  }
+
+  function sigmaNodeWorldPoint(nodeId: string): { x: number; y: number } {
+    return {
+      x: finiteNumber(graph.getNodeAttribute(nodeId, "x"), 0),
+      y: finiteNumber(graph.getNodeAttribute(nodeId, "y"), 0)
+    };
+  }
+
+  function sigmaPinKeyForNode(nodeId: string): string {
+    const sourcePath = graph.getNodeAttribute(nodeId, "sourcePath");
+    return typeof sourcePath === "string" && sourcePath ? sourcePath : nodeId;
+  }
+
+  function sigmaPinPositionForNode(nodeId: string): PinPosition | null {
+    const pinKey = sigmaPinKeyForNode(nodeId);
+    return currentPins[pinKey] ?? null;
+  }
+
+  function consumeSuppressedNodeClick(nodeId: string | null): boolean {
+    if (!nodeId || suppressNextNodeClickId !== nodeId) return false;
+    suppressNextNodeClickId = null;
+    return true;
+  }
+
   function renderSigmaOverlays(): void {
     if (destroyed) return;
     overlayRoot.replaceChildren();
+    for (const community of adapterData.renderable.communities) {
+      if (!community.wash) continue;
+      const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id, { pointerEvents: "auto" });
+      element.className = "sigma-global-community-region";
+      element.dataset.communityId = community.id;
+      element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
+      element.style.borderColor = community.color;
+      element.style.background = community.color;
+      const box = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
+      applyOverlayBox(element, box);
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        handleSigmaHit({ renderedObject: { kind: "community-wash", id: community.id } });
+      });
+      overlayRoot.append(element);
+    }
     for (const node of sigmaOverlayNodes(adapterData.nodes)) {
       const element = sigmaOverlayButton(overlayRoot.ownerDocument, "node", node.id, node.label || node.id);
       const size = Math.max(16, sigmaGlobalNodeSize(node) * 3);
@@ -391,46 +561,52 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       });
       element.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (consumeSuppressedNodeClick(node.id)) return;
         handleSigmaHit({ renderedObject: { kind: "node", id: node.id } });
       });
-      overlayRoot.append(element);
-    }
-    for (const community of adapterData.renderable.communities) {
-      if (!community.wash) continue;
-      const element = sigmaOverlayButton(overlayRoot.ownerDocument, "community-wash", community.id, community.label || community.id);
-      element.className = "sigma-global-community-wash";
-      element.dataset.communityId = community.id;
-      element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
-      element.style.borderColor = community.color;
-      element.style.background = community.color;
-      const box = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
-      applyOverlayBox(element, box);
-      element.addEventListener("click", (event) => {
+      element.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
         event.stopPropagation();
-        handleSigmaHit({ screenPoint: { x: event.clientX, y: event.clientY } });
+        beginNodeDrag(node.id, overlayPointerScreenPoint(event, sigmaRoot), event);
+        if (activeNodeDrag?.nodeId === node.id) {
+          bindOverlayPointerDragListeners(element.ownerDocument, element, node.id, event.pointerId);
+        }
+      });
+      element.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+        if (element.ownerDocument.defaultView?.PointerEvent) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (activeNodeDrag?.nodeId !== node.id) {
+          beginNodeDrag(node.id, overlayPointerScreenPoint(event, sigmaRoot), event);
+        }
+        if (activeNodeDrag?.nodeId === node.id) {
+          bindOverlayMouseDragListeners(element.ownerDocument, node.id);
+        }
+      });
+      element.addEventListener("dragstart", (event) => {
+        event.preventDefault();
       });
       overlayRoot.append(element);
     }
-    for (const aggregation of adapterData.renderable.aggregationContainers) {
-      const element = sigmaOverlayButton(overlayRoot.ownerDocument, "aggregation-container", aggregation.id, aggregation.label || aggregation.id);
-      element.className = "sigma-global-aggregation-container";
-      element.dataset.aggregationId = aggregation.id;
-      element.dataset.communityId = aggregation.communityId || "";
-      element.dataset.nodeCount = String(aggregation.nodeCount);
-      element.dataset.searchInside = aggregation.searchHitCount > 0 ? "true" : "false";
-      element.dataset.selected = aggregation.selected ? "true" : "false";
-      element.style.borderColor = aggregation.color;
-      const box = overlayBoxFromWorldEllipse(aggregation.point.x, aggregation.point.y, aggregation.radius, aggregation.radius);
-      applyOverlayBox(element, box);
-      element.addEventListener("click", (event) => {
-        event.stopPropagation();
-        handleSigmaHit({
-          renderedObject: {
-            kind: "aggregation-container",
-            id: aggregation.id,
-            communityId: aggregation.communityId
-          }
-        });
+    for (const community of sigmaCommunityLabels(adapterData, SIGMA_GLOBAL_COMMUNITY_LABEL_LIMIT)) {
+      if (!community.wash) continue;
+      const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-label", community.id);
+      element.className = "sigma-global-community-label";
+      element.dataset.communityId = community.id;
+      element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
+      element.style.color = community.color;
+      element.textContent = community.label || community.id;
+      const center = sigmaWorldPointToScreenPoint(sigma, {
+        x: community.wash.cx,
+        y: community.wash.cy - community.wash.ry * 0.16
+      }, options);
+      applyOverlayBox(element, {
+        left: center.x,
+        top: center.y,
+        width: 160,
+        height: 22
       });
       overlayRoot.append(element);
     }
@@ -449,11 +625,55 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     };
   }
 
+  function bindOverlayPointerDragListeners(ownerDocument: Document, element: HTMLElement, nodeId: string, pointerId: number): void {
+    clearOverlayPointerDragListeners();
+    const cleanup = bindSigmaGlobalOverlayPointerDrag({
+      ownerDocument,
+      element,
+      nodeId,
+      pointerId,
+      isActive: isActiveOverlayDrag,
+      screenPointFromEvent: (event) => overlayPointerScreenPoint(event, sigmaRoot),
+      onMove: moveNodeDrag,
+      onEnd: commitNodeDrag,
+      onCancel: cancelNodeDrag
+    });
+    overlayPointerDragCleanup = () => {
+      cleanup();
+      overlayPointerDragCleanup = null;
+    };
+  }
+
+  function bindOverlayMouseDragListeners(ownerDocument: Document, nodeId: string): void {
+    clearOverlayPointerDragListeners();
+    const cleanup = bindSigmaGlobalOverlayMouseDrag({
+      ownerDocument,
+      nodeId,
+      isActive: isActiveOverlayDrag,
+      screenPointFromEvent: (event) => overlayPointerScreenPoint(event, sigmaRoot),
+      onMove: moveNodeDrag,
+      onEnd: commitNodeDrag
+    });
+    overlayPointerDragCleanup = () => {
+      cleanup();
+      overlayPointerDragCleanup = null;
+    };
+  }
+
+  function isActiveOverlayDrag(nodeId: string): boolean {
+    return activeNodeDrag?.nodeId === nodeId;
+  }
+
+  function clearOverlayPointerDragListeners(): void {
+    overlayPointerDragCleanup?.();
+  }
+
   function assertActive(): void {
     if (destroyed) {
       throw new Error("Sigma global renderer has been destroyed");
     }
   }
+
 }
 
 function createSigmaRoot(container: HTMLElement, theme: ThemeId): HTMLElement {
@@ -483,11 +703,33 @@ function sigmaOverlayButton(ownerDocument: Document, kind: string, id: string, l
   return element;
 }
 
+function sigmaOverlayPassiveElement(
+  ownerDocument: Document,
+  kind: string,
+  id: string,
+  options: { pointerEvents?: "none" | "auto" } = {}
+): HTMLDivElement {
+  const element = ownerDocument.createElement("div");
+  element.dataset.kind = kind;
+  element.dataset.id = id;
+  element.setAttribute("aria-hidden", "true");
+  element.tabIndex = -1;
+  element.style.pointerEvents = options.pointerEvents ?? "none";
+  return element;
+}
+
 function applyOverlayBox(element: HTMLElement, box: { left: number; top: number; width: number; height: number }): void {
   element.style.left = `${box.left}px`;
   element.style.top = `${box.top}px`;
   element.style.width = `${box.width}px`;
   element.style.height = `${box.height}px`;
+}
+
+function overlayPointerScreenPoint(event: MouseEvent | PointerEvent, root: HTMLElement): GraphScreenPoint {
+  return rootClientPointToScreenPoint({
+    x: event.clientX,
+    y: event.clientY
+  }, root.getBoundingClientRect());
 }
 
 function sigmaScreenPointToWorldPoint(
@@ -564,6 +806,13 @@ function sigmaScreenPointFromPayload(payload: unknown): GraphScreenPoint | null 
   return typeof x === "number" && typeof y === "number" ? { x, y } : null;
 }
 
+function preventSigmaDefault(payload: unknown): void {
+  const eventPayload = payload as SigmaGlobalPointerEventPayload | null;
+  eventPayload?.preventSigmaDefault?.();
+  eventPayload?.event?.preventSigmaDefault?.();
+  if (payload instanceof Event) payload.preventDefault();
+}
+
 function spatialInputFromAdapterData(adapterData: GraphRendererAdapterData): GraphSpatialIndexInput {
   const renderableEdgeById = new Map(adapterData.renderable.edges.map((edge) => [edge.id, edge]));
   return {
@@ -592,27 +841,6 @@ function spatialInputFromAdapterData(adapterData: GraphRendererAdapterData): Gra
       radius: aggregation.radius
     }))
   };
-}
-
-function gestureTargetFromRenderedObject(
-  object: SigmaGlobalRenderedObject,
-  adapterData: GraphRendererAdapterData
-): GraphGestureTarget | null {
-  switch (object.kind) {
-    case "node":
-      return adapterData.nodes.some((node) => node.id === object.id) ? { kind: "node", id: object.id } : null;
-    case "edge":
-      return adapterData.edges.some((edge) => edge.id === object.id) ? { kind: "edge", id: object.id } : null;
-    case "community-wash":
-      return adapterData.communities.some((community) => community.id === object.id) ? { kind: "community-wash", id: object.id } : null;
-    case "aggregation-container": {
-      const aggregation = adapterData.aggregations.find((item) => item.id === object.id);
-      if (!aggregation) return null;
-      return { kind: "aggregation-container", id: object.id, communityId: object.communityId ?? aggregation.communityId };
-    }
-    default:
-      return null;
-  }
 }
 
 function sigmaGlobalNodeAttributes(
@@ -711,7 +939,7 @@ function sigmaOverlayNodes(nodes: readonly GraphRendererAdapterNode[]): GraphRen
   const append = (candidates: GraphRendererAdapterNode[], limit: number) => {
     let count = 0;
     for (const node of candidates) {
-      if (count >= limit || seen.has(node.id)) continue;
+      if (output.length >= SIGMA_GLOBAL_NODE_HIT_TARGET_LIMIT || count >= limit || seen.has(node.id)) continue;
       seen.add(node.id);
       output.push(node);
       count += 1;

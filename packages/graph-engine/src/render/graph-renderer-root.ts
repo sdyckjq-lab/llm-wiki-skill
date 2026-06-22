@@ -55,6 +55,7 @@ export interface GraphRendererOptions {
   onSelectionInput?: (selection: SelectionInput) => void;
   onSelectionClearRequested?: () => void;
   onViewReset?: () => void;
+  onGlobalResetRequested?: () => void;
   onPinsChanged?: (pins: PinMap) => void;
   onDragActiveChange?: (dragging: boolean) => void;
   onVisibilityStateChange?: GraphRendererCallbacks["onVisibilityStateChange"];
@@ -179,6 +180,7 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
       onSelectionInput: options.onSelectionInput,
       onSelectionClearRequested: options.onSelectionClearRequested,
       onViewReset: options.onViewReset,
+      onGlobalResetRequested: options.onGlobalResetRequested,
       onPinsChanged: options.onPinsChanged,
       onDragActiveChange: options.onDragActiveChange,
       onVisibilityStateChange: options.onVisibilityStateChange
@@ -204,6 +206,13 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
     commands: {
       render,
       resetViewState: () => controller.resetViewState(),
+      requestGlobalReset: () => {
+        if (context.callbacks.onGlobalResetRequested) {
+          context.callbacks.onGlobalResetRequested();
+          return;
+        }
+        controller.resetViewState();
+      },
       openSearch: () => controller.openSearch(),
       applySearchQuery: (query) => controller.applySearchQuery(query),
       focusNextSearchResult: () => controller.focusNextSearchResult(),

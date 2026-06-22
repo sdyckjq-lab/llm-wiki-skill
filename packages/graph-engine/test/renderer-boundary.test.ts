@@ -25,13 +25,22 @@ const HOST_CALLBACK_IDENTIFIERS = [
 ];
 
 const HOST_CALLBACK_ALLOWED_FILES = new Set(["facade.ts", "types.ts"]);
-const RAW_GRAPH_EVENT_ALLOWED_FILES = new Set(["render/gestures.ts"]);
+const RAW_GRAPH_EVENT_ALLOWED_FILES = new Set([
+  "render/gestures.ts",
+  "render/sigma-global-drag.ts"
+]);
 const RAW_GRAPH_EVENT_PATTERNS = [
   /\baddEventListener\s*\(\s*["'](?:wheel|pointerdown|pointermove|pointerup|pointercancel|lostpointercapture)["']/,
   /\bremoveEventListener\s*\(\s*["'](?:wheel|pointerdown|pointermove|pointerup|pointercancel|lostpointercapture)["']/,
   /\bsetPointerCapture\s*\(/,
   /\breleasePointerCapture\s*\(/,
   /\bclassifyGraph(?:EventTarget|WheelTarget|WheelTargetFromGraphTarget|PointerDownTarget|PointerDownTargetFromGraphTarget)\s*\(/
+];
+const SIGMA_RENDERER_FORBIDDEN_RAW_GRAPH_EVENT_PATTERNS = [
+  /\baddEventListener\s*\(\s*["'](?:wheel|pointermove|pointerup|pointercancel|lostpointercapture)["']/,
+  /\bremoveEventListener\s*\(\s*["'](?:wheel|pointerdown|pointermove|pointerup|pointercancel|lostpointercapture)["']/,
+  /\bsetPointerCapture(?:\?\.)?\s*\(/,
+  /\breleasePointerCapture(?:\?\.)?\s*\(/
 ];
 const DRAWING_MODULES = [
   "render/nodes.ts",
@@ -124,12 +133,34 @@ describe("renderer and facade boundary contract", () => {
       const rel = relative(SRC, file);
       if (RAW_GRAPH_EVENT_ALLOWED_FILES.has(rel)) continue;
       const text = await readFile(file, "utf8");
-      for (const pattern of RAW_GRAPH_EVENT_PATTERNS) {
+      const patterns = rel === "render/sigma-global-renderer.ts"
+        ? SIGMA_RENDERER_FORBIDDEN_RAW_GRAPH_EVENT_PATTERNS
+        : RAW_GRAPH_EVENT_PATTERNS;
+      for (const pattern of patterns) {
         if (pattern.test(text)) violations.push(`${rel}: ${pattern}`);
       }
     }
 
     assert.deepEqual(violations, []);
+  });
+
+  it("keeps Sigma raw pointer exceptions limited to node overlay drag", async () => {
+    const sigmaRendererText = await readFile(join(SRC, "render/sigma-global-renderer.ts"), "utf8");
+    const sigmaDragText = await readFile(join(SRC, "render/sigma-global-drag.ts"), "utf8");
+
+    assert.equal(/\baddEventListener\s*\(\s*["']wheel["']/.test(sigmaRendererText), false);
+    assert.equal(/\baddEventListener\s*\(\s*["']wheel["']/.test(sigmaDragText), false);
+    assert.match(sigmaRendererText, /className = "sigma-global-node-hit-target"/);
+    assert.match(sigmaRendererText, /\baddEventListener\s*\(\s*"pointerdown"/);
+    assert.equal(/\baddEventListener\s*\(\s*["'](?:pointermove|pointerup|pointercancel|lostpointercapture)["']/.test(sigmaRendererText), false);
+    assert.equal(/\bremoveEventListener\s*\(\s*["'](?:pointermove|pointerup|pointercancel|lostpointercapture)["']/.test(sigmaRendererText), false);
+    assert.equal(/\bsetPointerCapture(?:\?\.)?\s*\(/.test(sigmaRendererText), false);
+    assert.equal(/\breleasePointerCapture(?:\?\.)?\s*\(/.test(sigmaRendererText), false);
+    assert.match(sigmaDragText, /\bbindSigmaGlobalOverlayPointerDrag\b/);
+    assert.match(sigmaDragText, /\bsetPointerCapture(?:\?\.)?\s*\(/);
+    assert.match(sigmaDragText, /\baddEventListener\s*\(\s*"pointermove"/);
+    assert.match(sigmaDragText, /\bremoveEventListener\s*\(\s*"pointermove"/);
+    assert.match(sigmaDragText, /\breleasePointerCapture(?:\?\.)?\s*\(/);
   });
 
   it("keeps blank double-click ownership out of the graph renderer root", async () => {
@@ -191,6 +222,15 @@ describe("renderer and facade boundary contract", () => {
     assert.match(surfaceText, /setNodeDragging\(id/);
   });
 
+  it("keeps route transition CSS attached to the stable facade route marker", async () => {
+    const stylesText = await readFile(join(SRC, "render/render-styles.ts"), "utf8");
+
+    assert.equal(stylesText.includes("[data-llm-wiki-graph-route-transition] > .sigma-global-route"), true);
+    assert.equal(stylesText.includes("[data-llm-wiki-graph-route-transition] > [data-llm-wiki-graph-root=\"true\"]"), true);
+    assert.equal(stylesText.includes("[data-llm-wiki-graph-route-transition] > .graph-over-limit-notice-view"), true);
+    assert.equal(stylesText.includes(".llm-wiki-graph-engine[data-llm-wiki-graph-route-transition]"), false);
+  });
+
   it("keeps pipeline and presenter out of semantic selection/focus/pin ownership", async () => {
     const files: Array<[string, RegExp[]]> = [
       ["render/render-pipeline.ts", PIPELINE_FORBIDDEN_STATE_MUTATION_PATTERNS],
@@ -235,7 +275,7 @@ describe("renderer and facade boundary contract", () => {
       typeFilters: { topic: true },
       onPanelToggle: (panel) => calls.push(`panel:${panel}`),
       onTypeFilterToggle: (type, enabled) => calls.push(`filter:${type}:${enabled}`),
-      onReset: () => calls.push("resetView")
+      onReset: () => calls.push("requestGlobalReset")
     });
     const toolbarButtons = findByClass(toolbar.element as unknown as FakeElement, "graph-toolbar-button");
     toolbarButtons[0]?.dispatch("click");
@@ -268,7 +308,7 @@ describe("renderer and facade boundary contract", () => {
       "activateSearch",
       "closeSearch",
       "panel:filters",
-      "resetView",
+      "requestGlobalReset",
       "filter:topic:false",
       "toggleLegend",
       "hover:community-a",
@@ -281,16 +321,35 @@ describe("renderer and facade boundary contract", () => {
     const pipelineText = await readFile(join(SRC, "render/render-pipeline.ts"), "utf8");
 
     assert.doesNotMatch(pipelineText, /from\s+["']\.\/controller["']/);
-    assert.match(pipelineText, /onOpen:\s*\(\) => options\.commands\.openSearch\(\)/);
-    assert.match(pipelineText, /onQuery:\s*\(query\) => options\.commands\.applySearchQuery\(query\)/);
-    assert.match(pipelineText, /onNext:\s*\(\) => options\.commands\.focusNextSearchResult\(\)/);
-    assert.match(pipelineText, /onPrevious:\s*\(\) => options\.commands\.focusPreviousSearchResult\(\)/);
-    assert.match(pipelineText, /onActivate:\s*\(\) => options\.commands\.activateSearchResult\(\)/);
-    assert.match(pipelineText, /onClose:\s*\(\) => options\.commands\.closeSearch\(\)/);
-    assert.match(pipelineText, /options\.commands\.setCommunityHover\(id\)/);
-    assert.match(pipelineText, /onSelect:\s*\(id\) => options\.commands\.selectCommunity\(id\)/);
-    assert.match(pipelineText, /applyTypeFilters\(\{ \.\.\.context\.typeFilters, \[type\]: enabled \}\)/);
-    assert.match(pipelineText, /options\.commands\.resetViewState\(\)/);
+    assertSourceContainsAll(pipelineText, [
+      "options.commands.openSearch()",
+      "options.commands.applySearchQuery(query)",
+      "options.commands.focusNextSearchResult()",
+      "options.commands.focusPreviousSearchResult()",
+      "options.commands.activateSearchResult()",
+      "options.commands.closeSearch()",
+      "options.commands.setCommunityHover(id)",
+      "options.commands.selectCommunity(id)",
+      "applyTypeFilters({ ...context.typeFilters, [type]: enabled })",
+      "options.commands.requestGlobalReset()"
+    ]);
+    assert.doesNotMatch(pipelineText, /onReset:[\s\S]{0,160}resetViewState\(\)/);
+  });
+
+  it("routes controller-owned return-global entries through the global reset command with DOM fallback", async () => {
+    const rootText = await readFile(join(SRC, "render/graph-renderer-root.ts"), "utf8");
+    const controllerText = await readFile(join(SRC, "render/controller.ts"), "utf8");
+
+    assertSourceContainsAll(rootText, [
+      "requestGlobalReset:",
+      "context.callbacks.onGlobalResetRequested",
+      "controller.resetViewState()"
+    ]);
+    assertSourceContainsAll(controllerText, [
+      "onBlankDoubleClick:",
+      "requestGlobalReset()",
+      "function requestGlobalReset(): void"
+    ]);
   });
 
   it("keeps DOM/SVG graph drawing behind the dom-svg renderer boundary", async () => {
@@ -344,6 +403,11 @@ async function sourceFiles(dir: string): Promise<string[]> {
     return entry.isFile() && path.endsWith(".ts") ? [path] : [];
   }));
   return files.flat();
+}
+
+function assertSourceContainsAll(source: string, expectedSnippets: string[]): void {
+  const missing = expectedSnippets.filter((snippet) => !source.includes(snippet));
+  assert.deepEqual(missing, []);
 }
 
 function sampleNode(): RenderableNode {

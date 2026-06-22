@@ -607,42 +607,8 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
     };
   });
   const communityById = new Map(communities.map((community) => [community.id, community]));
-  const nodeByRawId = new Map(model.nodes.map((node) => [node.id, node]));
-  const aggregationContainers = aggregationMarkers
-    .map((marker): RenderableAggregationContainer | null => {
-      const markerNodes = marker.nodeIds.map((id) => nodeByRawId.get(id)).filter((node): node is AtlasNode => Boolean(node));
-      if (!markerNodes.length) return null;
-      const points = markerNodes.map((node) => pointById.get(node.id) || renderPointForNode(node, options));
-      const point = averagePoint(points);
-      const cssPoint = worldPointToCssPercentPoint(point, worldBounds);
-      const searchResultIds = stableIntersection(marker.nodeIds, marker.searchResultIds ?? [...searchResultSet]);
-      const pinnedNodeIds = stableIntersection(marker.nodeIds, marker.pinnedNodeIds ?? [...pinnedNodeSet]);
-      const selectedMarkerNodeIds = stableIntersection(marker.nodeIds, marker.selectedNodeIds ?? selectedNodeIds);
-      const communityId = marker.communityId ?? markerNodes[0]?.community ?? null;
-      const community = communityId ? communityById.get(communityId) : null;
-      return {
-        id: marker.id,
-        role: "aggregation-container",
-        label: marker.label ?? community?.label ?? marker.id,
-        communityId,
-        nodeIds: [...marker.nodeIds],
-        nodeCount: marker.totalCount ?? marker.nodeIds.length,
-        searchHitCount: searchResultIds.length,
-        pinnedCount: pinnedNodeIds.length,
-        selectedCount: selectedMarkerNodeIds.length,
-        selected: selectedMarkerNodeIds.length > 0 || Boolean(communityId && options.selection?.kind === "community" && options.selection.id === communityId),
-        searchResultIds,
-        pinnedNodeIds,
-        selectedNodeIds: selectedMarkerNodeIds,
-        pinHints: pinnedNodeIds.map((id) => pinHintForNode(nodeByRawId.get(id), id, options.pins)).filter((hint) => hint.pinned),
-        point,
-        x: round(cssPoint.x),
-        y: round(cssPoint.y),
-        radius: aggregationContainerRadius(marker.totalCount ?? marker.nodeIds.length),
-        color: community?.color ?? getCommunityColor(theme, 0)
-      };
-    })
-    .filter((container): container is RenderableAggregationContainer => Boolean(container));
+  const aggregationContainers: RenderableAggregationContainer[] = [];
+  void aggregationMarkers;
 
   const labelUsage = nodes.filter((node) => node.labelVisible).length;
   const cardUsage = nodes.filter((node) => node.displayMode === "card").length;

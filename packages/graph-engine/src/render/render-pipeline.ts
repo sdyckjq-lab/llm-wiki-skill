@@ -36,6 +36,7 @@ type PaintHandlers = DomSvgGraphPaintHandlers;
 export interface GraphRenderCommands {
   render(next?: { typeFilters?: Record<string, boolean> }): void;
   resetViewState(): void;
+  requestGlobalReset(): void;
   openSearch(): void;
   applySearchQuery(query: string): void;
   focusNextSearchResult(): void;
@@ -229,7 +230,7 @@ export function createGraphRenderPipeline(
         applyTypeFilters({ ...context.typeFilters, [type]: enabled });
       },
       onReset: () => {
-        options.commands.resetViewState();
+        options.commands.requestGlobalReset();
       }
     });
     if (context.dom.legendElement) toolbar.filtersPanel.appendChild(context.dom.legendElement);

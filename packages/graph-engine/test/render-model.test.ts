@@ -134,6 +134,84 @@ function budgetGraph(nodeCount: number, edgeCount: number): GraphData {
   };
 }
 
+function densePointMapGraph(): GraphData {
+  const nodeCount = 2000;
+  const edgeTarget = 3996;
+  const communityCount = 16;
+  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+    id: `dense-${index}`,
+    label: `Dense node ${index}`,
+    type: index % 17 === 0 ? "topic" : index % 29 === 0 ? "source" : "entity",
+    community: `dense-community-${index % communityCount}`,
+    source_path: `wiki/dense/dense-${index}.md`,
+    weight: 100 - (index % 97),
+    x: (index * 37) % 100,
+    y: (index * 53) % 100
+  }));
+  const edges: NonNullable<GraphData["edges"]> = [
+    {
+      id: "dense-selected-weak",
+      from: "dense-1999",
+      to: "dense-1",
+      type: "INFERRED",
+      confidence: "INFERRED",
+      relation_type: "依赖",
+      weight: 0
+    },
+    {
+      id: "dense-selected-strong",
+      from: "dense-1999",
+      to: "dense-2",
+      type: "EXTRACTED",
+      confidence: "EXTRACTED",
+      relation_type: "实现",
+      weight: 1
+    }
+  ];
+
+  for (let index = 0; edges.length < edgeTarget; index += 1) {
+    const source = index % nodeCount;
+    const target = (source + 1 + (index % 113)) % nodeCount;
+    if (source === target) continue;
+    edges.push({
+      id: `dense-edge-${index}`,
+      from: `dense-${source}`,
+      to: `dense-${target}`,
+      type: index % 5 === 0 ? "INFERRED" : "EXTRACTED",
+      confidence: index % 5 === 0 ? "INFERRED" : "EXTRACTED",
+      relation_type: index % 7 === 0 ? "对比" : "依赖",
+      weight: (index % 11) / 10
+    });
+  }
+
+  return {
+    meta: {
+      build_date: "2026-06-21T00:00:00.000Z",
+      wiki_title: "Dense Point Map Fixture",
+      total_nodes: nodes.length,
+      total_edges: edges.length
+    },
+    nodes,
+    edges,
+    learning: {
+      version: 1,
+      entry: { recommended_start_node_id: "dense-0", recommended_start_reason: "dense_fixture", default_mode: "global" },
+      views: {
+        path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+        community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+        global: { enabled: true, node_ids: nodes.map((node) => node.id), degraded: false }
+      },
+      communities: Array.from({ length: communityCount }, (_, index) => ({
+        id: `dense-community-${index}`,
+        label: `Dense Community ${index}`,
+        node_count: nodes.filter((node) => node.community === `dense-community-${index}`).length,
+        color_index: index,
+        recommended_start_node_id: index === 0 ? "dense-0" : null
+      }))
+    }
+  };
+}
+
 function manyTinyCommunitiesGraph(): GraphData {
   const nodes = Array.from({ length: 10 }, (_, index) => ({
     id: `tiny-${index}`,
@@ -562,7 +640,63 @@ describe("buildRenderableGraph", () => {
     assert.ok(graph.overflow.labels.hidden > 0);
   });
 
-  it("builds aggregation containers with counts, search hits, pins, and selected markers", () => {
+  it("keeps crowded accepted global graphs as sparse point maps without aggregation", () => {
+    const data = densePointMapGraph();
+    const graph = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      selection: { kind: "node", id: "dense-1999" },
+      searchResultIds: ["dense-20", "dense-120", "dense-1220"],
+      pins: {
+        "wiki/dense/dense-40.md": { x: 860, y: 500, coordinateSpace: "world" },
+        "wiki/dense/dense-1440.md": { x: 920, y: 540, coordinateSpace: "world" }
+      },
+      aggregationMarkers: [
+        {
+          id: "dense-aggregation",
+          label: "Dense aggregation should stay hidden",
+          communityId: "dense-community-0",
+          nodeIds: data.nodes.slice(0, 200).map((node) => node.id),
+          totalCount: 200
+        }
+      ]
+    });
+    const selected = graph.nodes.find((node) => node.id === "dense-1999");
+    const searched = ["dense-20", "dense-120", "dense-1220"].map((id) => graph.nodes.find((node) => node.id === id));
+    const pinned = ["dense-40", "dense-1440"].map((id) => graph.nodes.find((node) => node.id === id));
+    const ordinaryNodes = graph.nodes.filter((node) => !node.selected && node.temporaryBoost === 0 && !node.coreAnchor);
+    const weakEdge = graph.edges.find((edge) => edge.id === "dense-selected-weak");
+    const strongEdge = graph.edges.find((edge) => edge.id === "dense-selected-strong");
+
+    assert.equal(graph.counts.visibleNodes, 2000);
+    assert.equal(graph.counts.totalEdges, 3996);
+    assert.equal(graph.budget.view, "global");
+    assert.equal(graph.densityMode, "overview");
+    assert.equal(graph.aggregationContainers.length, 0);
+    assert.equal(graph.budget.usage.maxCards, 0);
+    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, 0);
+    assert.ok(ordinaryNodes.length > 1500);
+    assert.ok(ordinaryNodes.every((node) => node.displayMode === "overview"), "ordinary dense nodes should stay in overview point mode");
+    assert.ok(graph.budget.usage.maxLabels <= GRAPH_RENDER_BUDGETS.global.maxLabels);
+    assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= GRAPH_RENDER_BUDGETS.global.maxLabels);
+    assert.ok(graph.nodes.filter((node) => node.labelVisible).length / graph.nodes.length <= 0.03);
+    assert.ok(graph.budget.usage.maxVisibleEdges <= GRAPH_RENDER_BUDGETS.global.maxVisibleEdges);
+    assert.ok(graph.budget.usage.maxInteractionUpdates <= GRAPH_RENDER_BUDGETS.global.maxInteractionUpdates);
+    assert.ok(graph.interaction.updatedObjects <= GRAPH_RENDER_BUDGETS.global.maxInteractionUpdates);
+    assert.ok(selected);
+    assert.equal(selected.selected, true);
+    assert.equal(selected.labelVisible, true);
+    assert.ok(searched.every(Boolean));
+    assert.ok(searched.every((node) => node?.labelVisible === true));
+    assert.ok(pinned.every(Boolean));
+    assert.ok(pinned.every((node) => node?.labelVisible === true));
+    assert.ok(graph.importance.stableCoreNodeIds.every((id) => graph.nodes.some((node) => node.id === id)), "core anchors should stay visible");
+    assert.ok(weakEdge);
+    assert.ok(strongEdge);
+    assert.ok(weakEdge.opacity < strongEdge.opacity, "weak dense edges should be faded behind strong edges");
+    assert.ok(weakEdge.strokeWidth < strongEdge.strokeWidth, "weak dense edges should be thinner than strong edges");
+  });
+
+  it("does not produce visible aggregation containers in the normal render model", () => {
     const data = budgetGraph(20, 40);
     const pins = {
       "wiki/budget/n3.md": { x: 700, y: 420, coordinateSpace: "world" as const }
@@ -582,19 +716,8 @@ describe("buildRenderableGraph", () => {
         }
       ]
     });
-    const container = graph.aggregationContainers[0];
 
-    assert.ok(container);
-    assert.equal(container.role, "aggregation-container");
-    assert.equal(container.nodeCount, 12);
-    assert.equal(container.searchHitCount, 2);
-    assert.equal(container.pinnedCount, 1);
-    assert.equal(container.selectedCount, 1);
-    assert.equal(container.selected, true);
-    assert.deepEqual(container.searchResultIds, ["n1", "n4"]);
-    assert.deepEqual(container.pinnedNodeIds, ["n3"]);
-    assert.deepEqual(container.selectedNodeIds, ["n2"]);
-    assert.deepEqual(container.pinHints.map((hint) => hint.nodeId), ["n3"]);
+    assert.deepEqual(graph.aggregationContainers, []);
   });
 
   it("marks moderate community quality without auxiliary organization modes", () => {

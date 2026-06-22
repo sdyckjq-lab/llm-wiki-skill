@@ -22,7 +22,6 @@ import {
   frameSampleFailureClass,
   memoryGrowthFailureClass,
   memoryGrowthFailureDetail,
-  parseRequestedShapes,
   validateTrialResults,
   waitForAnimationFrames
 } from "./graph-renderer-trial-shared";
@@ -33,7 +32,13 @@ const { chromium } = require("playwright");
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const artifactDir = process.env.GRAPH_SIGMA_PRODUCTION_ARTIFACT_DIR || path.join(os.tmpdir(), `llm-wiki-sigma-global-production-${Date.now()}`);
 const executablePath = process.env.GRAPH_SIGMA_PRODUCTION_CHROME_EXECUTABLE || "";
-const requestedShapes = parseRequestedShapes(process.env.GRAPH_SIGMA_PRODUCTION_SHAPES);
+const DEFAULT_SIGMA_PRODUCTION_SHAPES: LargeGraphFixtureId[] = [
+  "real-snapshot-proxy",
+  "nodes-1000-sparse",
+  "nodes-1000-dense"
+];
+const SIGMA_GLOBAL_NODE_LIMIT = 2000;
+const requestedShapes = parseSigmaProductionShapes(process.env.GRAPH_SIGMA_PRODUCTION_SHAPES);
 const resultPath = path.join(artifactDir, "sigma-global-production-results.json");
 const buildCommit = readBuildCommit();
 const rendererName = "sigma-global-production";
@@ -62,6 +67,13 @@ function readBuildCommit(): string {
   }
 }
 
+function parseSigmaProductionShapes(value: string | undefined): LargeGraphFixtureId[] {
+  return (value || DEFAULT_SIGMA_PRODUCTION_SHAPES.join(","))
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean) as LargeGraphFixtureId[];
+}
+
 async function main(): Promise<void> {
   await fs.mkdir(artifactDir, { recursive: true });
   const records: PerformanceRecord[] = [];
@@ -82,6 +94,10 @@ async function main(): Promise<void> {
   try {
     for (const shape of requestedShapes) {
       const fixture = generateLargeGraphFixture(shape);
+      if (fixture.metadata.nodes > SIGMA_GLOBAL_NODE_LIMIT) {
+        errors.push(`${shape}: skipped because Phase 1 routes graphs over ${SIGMA_GLOBAL_NODE_LIMIT} nodes to over-limit notice`);
+        continue;
+      }
       const searchResultIds = fixture.data.nodes.filter((node) => node.label.includes("needle")).map((node) => node.id);
       const selectedNodeIds = fixture.data.nodes.slice(0, Math.min(8, fixture.data.nodes.length)).map((node) => node.id);
       const aggregationMarkers = buildCommunityAggregationMarkers(fixture.data, {
@@ -277,7 +293,7 @@ async function writeProductionHtml(
     stage.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest(".sigma-global-node-hit-target")) lastSelectionKind = "node";
-      if (target?.closest(".sigma-global-community-wash, .sigma-global-aggregation-container")) lastSelectionKind = "community";
+      if (target?.closest(".sigma-global-community-region")) lastSelectionKind = "community";
     }, true);
 
     try {
@@ -319,7 +335,7 @@ async function writeProductionHtml(
 
       function routeId() {
         return document.querySelector(".sigma-global-route[data-route]")?.dataset.route ||
-          document.querySelector(".graph-aggregation-safety-view[data-route]")?.dataset.route ||
+          document.querySelector(".graph-over-limit-notice-view[data-route]")?.dataset.route ||
           (document.querySelector(".llm-wiki-graph-engine") ? "dom-svg-community" : "") ||
           "unknown";
       }
@@ -356,7 +372,7 @@ async function writeProductionHtml(
               finish();
               return;
             }
-            const fallback = document.querySelector(".graph-aggregation-safety-view[data-route], .llm-wiki-graph-engine");
+            const fallback = document.querySelector(".graph-over-limit-notice-view[data-route], .llm-wiki-graph-engine");
             if (fallback && !document.querySelector(".sigma-global-route[data-route='sigma-global']")) {
               fail(new Error("production Sigma route fell back before renderer became ready"));
             }
@@ -369,7 +385,7 @@ async function writeProductionHtml(
               finish();
               return;
             }
-            const fallback = document.querySelector(".graph-aggregation-safety-view[data-route], .llm-wiki-graph-engine");
+            const fallback = document.querySelector(".graph-over-limit-notice-view[data-route], .llm-wiki-graph-engine");
             if (fallback && !document.querySelector(".sigma-global-route[data-route='sigma-global']")) {
               fail(new Error("production Sigma route fell back before renderer became ready"));
               return;
@@ -387,7 +403,7 @@ async function writeProductionHtml(
         const includeCanvasSignal = options.canvasSignal === true;
         const sigmaRoot = document.querySelector(".sigma-global-renderer[data-renderer='sigma-global']");
         const canvasSignal = sigmaRoot && includeCanvasSignal ? sigmaCanvasSignal(sigmaRoot) : { nonblank: null, sampleCount: 0 };
-        const hitTargetCount = document.querySelectorAll(".sigma-global-node-hit-target, .sigma-global-community-wash, .sigma-global-aggregation-container").length;
+        const hitTargetCount = document.querySelectorAll(".sigma-global-node-hit-target, .sigma-global-community-region").length;
         return {
           productionPath: Boolean(sigmaRoot),
           route: routeId(),
@@ -397,7 +413,7 @@ async function writeProductionHtml(
           visibleSignal: Boolean(sigmaRoot) && hitTargetCount > 0,
           hitTargetCount,
           sigmaRendererCount: document.querySelectorAll(".sigma-global-renderer[data-renderer='sigma-global']").length,
-          fallbackCount: document.querySelectorAll(".graph-aggregation-safety-view, .llm-wiki-graph-engine").length
+          fallbackCount: document.querySelectorAll(".graph-over-limit-notice-view, .llm-wiki-graph-engine").length
         };
       }
 
@@ -501,10 +517,8 @@ async function writeProductionHtml(
 
       function containerHitTarget(id) {
         if (!id) return null;
-        return overlayCenter('.sigma-global-aggregation-container[data-community-id="' + CSS.escape(id) + '"]') ||
-          overlayCenter('.sigma-global-community-wash[data-community-id="' + CSS.escape(id) + '"]') ||
-          overlayCenter(".sigma-global-aggregation-container") ||
-          overlayCenter(".sigma-global-community-wash");
+        return overlayCenter('.sigma-global-community-region[data-community-id="' + CSS.escape(id) + '"]') ||
+          overlayCenter(".sigma-global-community-region");
       }
 
       function summaryPayload() {

@@ -47,6 +47,7 @@ export interface GraphController {
   setCommunityHover(id: CommunityId | null): void;
   focusCommunity(id: CommunityId): void;
   resetViewState(): void;
+  requestGlobalReset(): void;
   retreatFocusedView(): void;
   clearSelectionOnly(): void;
   closeToolbarPanel(): void;
@@ -91,7 +92,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
       onGestureIntents,
       onActiveStateChange: syncRuntimeGestureState,
       onBlankDoubleClick: () => {
-        resetViewState();
+        requestGlobalReset();
       }
     });
   }
@@ -143,7 +144,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
       return;
     }
     if (snapshot.focus) {
-      resetViewState();
+      requestGlobalReset();
       return;
     }
     clearInteractionState();
@@ -326,12 +327,10 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     context.rendererSurface.clearNodeDragging();
     context.rendererSurface.setDragTarget(null);
     context.rendererSurface.setViewportDragging(false);
-    context.rendererSurface.setFocusDataset(false);
     context.simulation?.endDrag();
     context.gestureMachine.escape();
-    context.runtimeState.clearInteraction();
+    context.runtimeState.setHover(null);
     context.callbacks.onDragActiveChange?.(false);
-    context.callbacks.onSelectionClearRequested?.();
   }
 
   function hasInteractionState(): boolean {
@@ -491,6 +490,14 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
       delegates.viewportSize(),
       { worldBounds: context.graph.worldBounds }
     ));
+  }
+
+  function requestGlobalReset(): void {
+    if (context.callbacks.onGlobalResetRequested) {
+      context.callbacks.onGlobalResetRequested();
+      return;
+    }
+    resetViewState();
   }
 
   function retreatFocusedView(): void {
@@ -665,6 +672,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     setCommunityHover,
     focusCommunity,
     resetViewState,
+    requestGlobalReset,
     retreatFocusedView,
     clearSelectionOnly,
     closeToolbarPanel,

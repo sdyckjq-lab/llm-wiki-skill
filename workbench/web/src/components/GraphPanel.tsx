@@ -229,7 +229,6 @@ export function GraphPanel({
 			setData(result.data);
 			setDataKnowledgeBasePath(kbPath);
 			onGraphDataChangeRef.current?.(result.data);
-			onSelectionChangeRef.current?.(null);
 			setStatus("ready");
 			setBuildState("none");
 			return true;
@@ -277,13 +276,11 @@ export function GraphPanel({
 		applyLayoutPins(pins);
 		if (!kbPath) return;
 		if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
-		persistTimerRef.current = window.setTimeout(() => {
+		persistTimerRef.current = null;
+		void putGraphLayout(kbPath, pins).catch((err) => {
 			if (activeKbPathRef.current !== kbPath) return;
-			void putGraphLayout(kbPath, pins).catch((err) => {
-				if (activeKbPathRef.current !== kbPath) return;
-				setError(err instanceof Error ? err.message : String(err));
-			});
-		}, 280);
+			setError(err instanceof Error ? err.message : String(err));
+		});
 	}, [applyLayoutPins]);
 
 	const writePinsImmediately = useCallback(async (pins: PinMap): Promise<void> => {

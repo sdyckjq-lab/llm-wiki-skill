@@ -57,6 +57,7 @@ import { buildSelectionPromptPayload } from "@/lib/graph-selection";
 import {
 	drawerForGraphSelection,
 	drawerForExcludedGraphObject,
+	drawerForGraphSummaryCommunity,
 	drawerForGraphSummaryNode,
 	drawerForUnavailableGraphObject,
 	graphOpenPagePayloadForCommand,
@@ -157,6 +158,53 @@ function visibilityWithTemporaryObject(
 		typeFilters: state?.typeFilters ?? {},
 		temporaryObject,
 	};
+}
+
+function drawerAfterGraphDataRefresh(
+	current: DrawerState,
+	data: GraphData | null,
+	options: {
+		pins: PinMap;
+		visibility: GraphVisibilityState | null;
+		temporaryObject: GraphSummaryObjectRef | null;
+	},
+): DrawerState {
+	const visibility = visibilityWithTemporaryObject(options.visibility, options.temporaryObject);
+	if (current.mode === "graph-node-summary") {
+		return drawerForGraphNodeVisibility(data, current.payload.nodeId, current, {
+			pins: options.pins,
+			visibility,
+		});
+	}
+	if (current.mode === "graph-community-summary") {
+		return drawerForGraphSummaryCommunity(data, current.payload.communityId, current, {
+			pins: options.pins,
+			selection: { kind: "community", id: current.payload.communityId },
+			searchResultIds: visibility?.searchResultIds ?? [],
+			temporaryObject: visibility?.temporaryObject ?? null,
+		});
+	}
+	if (current.mode === "graph-excluded-object" && current.payload.object.kind === "node") {
+		return drawerForGraphNodeVisibility(data, current.payload.object.nodeId, current, {
+			pins: options.pins,
+			visibility,
+		});
+	}
+	if (current.mode === "graph-unavailable-object" && current.payload.object.kind === "node") {
+		return drawerForGraphNodeVisibility(data, current.payload.object.nodeId, current, {
+			pins: options.pins,
+			visibility,
+		});
+	}
+	if (current.mode === "graph-unavailable-object" && current.payload.object.kind === "community") {
+		return drawerForGraphSummaryCommunity(data, current.payload.object.communityId, current, {
+			pins: options.pins,
+			selection: { kind: "community", id: current.payload.object.communityId },
+			searchResultIds: visibility?.searchResultIds ?? [],
+			temporaryObject: visibility?.temporaryObject ?? null,
+		});
+	}
+	return current;
 }
 
 function getSidebarLayoutWidth(collapsed: boolean): number {
@@ -513,6 +561,18 @@ function App() {
 		});
 	}, [graphData, graphPins]);
 
+	const handleGraphDataChange = useCallback((nextData: GraphData | null) => {
+		setGraphData(nextData);
+		setDrawer((current) => {
+			const next = drawerAfterGraphDataRefresh(current, nextData, {
+				pins: graphPins,
+				visibility: graphVisibilityState,
+				temporaryObject: graphTemporaryObjectRef.current,
+			});
+			return sameGraphDrawerTarget(current, next) ? current : next;
+		});
+	}, [graphPins, graphVisibilityState]);
+
 	const handleGraphViewReset = useCallback(() => {
 		setGraphFocusPath(null);
 		setDrawer((current) => (
@@ -718,12 +778,13 @@ function App() {
 	}, [graphData, graphPins, graphVisibilityState, handleOpenGraphPage]);
 
 	useEffect(() => {
-		if (drawer.mode !== "graph-node-summary") return;
+		if (!isGraphInteractionDrawer(drawer)) return;
 		setDrawer((current) => (
-			current.mode === "graph-node-summary"
-				? drawerForGraphNodeVisibility(graphData, current.payload.nodeId, current, {
+			isGraphInteractionDrawer(current)
+				? drawerAfterGraphDataRefresh(current, graphData, {
 					pins: graphPins,
-					visibility: visibilityWithTemporaryObject(graphVisibilityState, graphTemporaryObjectRef.current),
+					visibility: graphVisibilityState,
+					temporaryObject: graphTemporaryObjectRef.current,
 				})
 				: current
 		));
@@ -1008,7 +1069,7 @@ function App() {
 									theme={theme}
 									graphBuildError={graphBuildError}
 									onOpenPage={handleOpenGraphPage}
-									onGraphDataChange={setGraphData}
+									onGraphDataChange={handleGraphDataChange}
 									onGraphPinsChange={setGraphPins}
 									onGraphVisibilityChange={handleGraphVisibilityChange}
 									onSelectionChange={handleGraphSelectionChange}
