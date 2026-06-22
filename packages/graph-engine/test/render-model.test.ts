@@ -507,7 +507,7 @@ describe("buildRenderableGraph", () => {
     assert.ok(graph.interaction.preservedNodeIds.some((id) => graph.importance.stableCoreNodeIds.includes(id)), "stable core anchors should stay traceable");
   });
 
-  it("caps focused community cards while allowing promoted nodes to compete for the budget", () => {
+  it("keeps focused community nodes as a lightweight map without full cards", () => {
     const data = budgetGraph(80, 1200);
     const graph = buildRenderableGraph(data, {
       theme: "shan-shui",
@@ -520,13 +520,16 @@ describe("buildRenderableGraph", () => {
 
     assert.equal(graph.budget.view, "community");
     assert.equal(graph.nodes.length, 80);
-    assert.ok(graph.budget.usage.maxCards <= graph.budget.limits.maxCards);
-    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, graph.budget.limits.maxCards);
-    assert.ok(graph.overflow.cards.hidden > 0);
-    assert.equal(graph.nodes.find((node) => node.id === "n79")?.displayMode, "card");
+    assert.equal(graph.budget.limits.maxCards, 0);
+    assert.equal(graph.budget.usage.maxCards, 0);
+    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, 0);
+    assert.ok(graph.nodes.find((node) => node.id === "n79")?.labelVisible, "selected/search/pinned context should still be eligible for a label");
+    assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= graph.budget.limits.maxLabels);
+    assert.ok(graph.overflow.cards.total >= 0);
+    assert.equal(graph.overflow.cards.hidden, 0);
   });
 
-  it("uses the small community band for card-rich focused reading", () => {
+  it("uses the small community band as a lightweight map with sparse labels", () => {
     const graph = buildRenderableGraph(budgetGraph(24, 120), {
       theme: "shan-shui",
       focus: { kind: "community", id: "c1" }
@@ -536,11 +539,12 @@ describe("buildRenderableGraph", () => {
     assert.equal(graph.communityFocus?.representation, "cards-and-labels");
     assert.equal(graph.communityFocus?.completePresence, "nodes");
     assert.equal(graph.nodes.length, 24);
-    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, 24);
-    assert.equal(graph.budget.limits.maxCards, GRAPH_COMMUNITY_FOCUS_BUDGETS.small.maxCards);
+    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, 0);
+    assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= GRAPH_COMMUNITY_FOCUS_BUDGETS.small.maxLabels);
+    assert.ok(graph.nodes.some((node) => node.displayMode === "point" || node.displayMode === "overview"), "ordinary nodes should remain point-like");
   });
 
-  it("uses the medium community band with all nodes present and most nodes as points", () => {
+  it("uses the medium community band with all nodes present and no full cards", () => {
     const graph = buildRenderableGraph(budgetGraph(120, 600), {
       theme: "shan-shui",
       focus: { kind: "community", id: "c1" },
@@ -552,11 +556,12 @@ describe("buildRenderableGraph", () => {
     assert.equal(graph.communityFocus?.sizeBand, "medium");
     assert.equal(graph.communityFocus?.representation, "points-with-cards");
     assert.equal(graph.nodes.length, 120);
-    assert.equal(cardCount, GRAPH_COMMUNITY_FOCUS_BUDGETS.medium.maxCards);
-    assert.ok(pointCount > cardCount);
+    assert.equal(cardCount, 0);
+    assert.ok(pointCount > 0);
+    assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= GRAPH_COMMUNITY_FOCUS_BUDGETS.medium.maxLabels);
   });
 
-  it("uses the large community band with complete outline and strict card and label caps", () => {
+  it("uses the large community band as a lightweight outline map with strict label caps", () => {
     const graph = buildRenderableGraph(budgetGraph(800, 1400), {
       theme: "shan-shui",
       focus: { kind: "community", id: "c1" },
@@ -567,7 +572,7 @@ describe("buildRenderableGraph", () => {
     assert.equal(graph.communityFocus?.representation, "outline-with-caps");
     assert.equal(graph.communityFocus?.completePresence, "outline");
     assert.equal(graph.nodes.length, 800);
-    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, GRAPH_COMMUNITY_FOCUS_BUDGETS.large.maxCards);
+    assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, 0);
     assert.equal(graph.nodes.filter((node) => node.labelVisible).length, GRAPH_COMMUNITY_FOCUS_BUDGETS.large.maxLabels);
     assert.ok(graph.edges.length > 0);
     assert.ok(graph.edges.length <= GRAPH_COMMUNITY_FOCUS_BUDGETS.large.maxVisibleEdges);

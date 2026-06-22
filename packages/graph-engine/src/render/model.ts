@@ -304,22 +304,22 @@ export const GRAPH_COMMUNITY_FOCUS_BUDGETS: Record<GraphCommunityFocusSizeBand, 
   small: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 1500,
-    maxLabels: 160,
-    maxCards: 80,
+    maxLabels: 12,
+    maxCards: 0,
     maxInteractionUpdates: 1800
   },
   medium: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 1500,
-    maxLabels: 60,
-    maxCards: 40,
+    maxLabels: 24,
+    maxCards: 0,
     maxInteractionUpdates: 1800
   },
   large: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 1200,
-    maxLabels: 80,
-    maxCards: 20,
+    maxLabels: 32,
+    maxCards: 0,
     maxInteractionUpdates: 1500
   },
   oversized: {
@@ -459,9 +459,11 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
       coreNodeIds: stableCoreNodeSet
     })
   );
-  const cardCandidateNodes = budgetedVisibleNodes.filter((node) =>
-    shouldPreferCard(node, budgetView, filteredDensityMode, selectedNodeSet, pinnedNodeSet, searchResultSet, importantIds, previewNodeId)
-  );
+  const cardCandidateNodes = budgetLimits.maxCards > 0
+    ? budgetedVisibleNodes.filter((node) =>
+      shouldPreferCard(node, budgetView, filteredDensityMode, selectedNodeSet, pinnedNodeSet, searchResultSet, importantIds, previewNodeId)
+    )
+    : [];
   const cardNodeSet = selectBudgetedIds(cardCandidateNodes, budgetLimits.maxCards, (node) =>
     nodeRenderPriority(node, {
       selectedNodeIds: selectedNodeSet,
@@ -1050,6 +1052,10 @@ function communityFocusSizeBand(nodeCount: number): GraphCommunityFocusSizeBand 
   return "oversized";
 }
 
+// These representation names are retained for render-model compatibility even though focused
+// community rendering is now visually card-free. The visual map behavior comes from the zero-card
+// community budgets, sparse labels, relation-focus DOM datasets, and scoped CSS — not from these
+// names. Do not read "cards-and-labels" as a promise that large cards still appear.
 function communityFocusRepresentation(sizeBand: GraphCommunityFocusSizeBand): GraphCommunityFocusRepresentation {
   if (sizeBand === "small") return "cards-and-labels";
   if (sizeBand === "medium") return "points-with-cards";
