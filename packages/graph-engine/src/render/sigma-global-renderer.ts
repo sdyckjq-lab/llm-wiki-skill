@@ -303,6 +303,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let overlayPointerDragCleanup: (() => void) | null = null;
   let eventBindings: Array<{ event: string; listener: (payload?: unknown) => void }> = [];
   let resizeObserver: ResizeObserver | null = null;
+  let resizeAnimationFrame: number | null = null;
+  let lastObservedRootSize: RendererViewportSize | null = null;
 
   try {
     sigma = new runtime.Sigma(graph, sigmaRoot, sigmaSettingsForTheme(currentTheme));
@@ -363,6 +365,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       destroyed = true;
       generation += 1;
       unbindSigmaEvents();
+      cancelScheduledResizeRefresh();
       resizeObserver?.disconnect();
       resizeObserver = null;
       try {
@@ -410,18 +413,61 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   }
 
   function bindSigmaResizeObserver(): void {
-    const ViewResizeObserver = sigmaRoot.ownerDocument.defaultView?.ResizeObserver;
+    const view = sigmaRoot.ownerDocument.defaultView;
+    const ViewResizeObserver = view?.ResizeObserver;
     if (!ViewResizeObserver) return;
-    resizeObserver = new ViewResizeObserver(() => {
+    lastObservedRootSize = readObservedRootSize();
+    resizeObserver = new ViewResizeObserver((entries) => {
       if (destroyed) return;
+      const nextSize = readResizeEntrySize(entries) ?? readObservedRootSize();
+      if (nextSize && lastObservedRootSize && sameRendererViewportSize(nextSize, lastObservedRootSize)) return;
+      if (nextSize) lastObservedRootSize = nextSize;
+      scheduleResizeRefresh();
+    });
+    resizeObserver.observe(sigmaRoot);
+  }
+
+  function scheduleResizeRefresh(): void {
+    if (resizeAnimationFrame !== null) return;
+    const view = sigmaRoot.ownerDocument.defaultView;
+    const run = () => {
+      resizeAnimationFrame = null;
       try {
+        if (destroyed) return;
         sigma.refresh?.();
         renderSigmaOverlays();
       } catch (error) {
         options.onFatalError?.(error);
       }
-    });
-    resizeObserver.observe(sigmaRoot);
+    };
+    if (view?.requestAnimationFrame) {
+      resizeAnimationFrame = view.requestAnimationFrame(run);
+      return;
+    }
+    run();
+  }
+
+  function cancelScheduledResizeRefresh(): void {
+    if (resizeAnimationFrame === null) return;
+    sigmaRoot.ownerDocument.defaultView?.cancelAnimationFrame?.(resizeAnimationFrame);
+    resizeAnimationFrame = null;
+  }
+
+  function readResizeEntrySize(entries: ResizeObserverEntry[]): RendererViewportSize | null {
+    const entry = entries.find((item) => item.target === sigmaRoot) ?? entries[0];
+    if (!entry?.contentRect) return null;
+    const width = finiteNumber(entry.contentRect.width, 0);
+    const height = finiteNumber(entry.contentRect.height, 0);
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
+  }
+
+  function readObservedRootSize(): RendererViewportSize | null {
+    const rect = typeof sigmaRoot.getBoundingClientRect === "function" ? sigmaRoot.getBoundingClientRect() : null;
+    const width = finiteNumber(rect?.width, 0);
+    const height = finiteNumber(rect?.height, 0);
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
   }
 
   function handleSigmaHit(input: SigmaGlobalHitInput): void {
@@ -979,6 +1025,10 @@ function sigmaGlobalNodeColor(node: GraphRendererAdapterNode, communityColorById
 
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function sameRendererViewportSize(left: RendererViewportSize, right: RendererViewportSize): boolean {
+  return Math.abs(left.width - right.width) < 1 && Math.abs(left.height - right.height) < 1;
 }
 
 function clamp(value: number, min: number, max: number): number {

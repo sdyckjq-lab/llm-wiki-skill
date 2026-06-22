@@ -10,7 +10,7 @@
 
 把碎片化的信息变成持续积累、互相链接的知识库
 
-[![version](https://img.shields.io/badge/v3.6.7-大图谱体验-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.8-图谱视野稳定-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-多平台-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -112,6 +112,7 @@ bash install.sh --platform claude --with-optional-adapters
 - **素材删除** — 级联删除时自动清理关联页面、断链和缓存
 - **图谱运行时兜底更稳** — helper 同时支持浏览器全局与 CommonJS，旧运行时下的复杂 emoji 截断和离线 HTML 失败回滚都更可靠
 - **大图谱全局路线** — 全局视角以 Sigma/Graphology 承接地图级浏览和轻量摘要；DOM/SVG 保留给社区阅读、离线细节和小图异常兜底
+- **图谱视野稳定** — 点击社区摘要或重复点击同一位置时，图谱保持原视角，不会被右侧抽屉挤动
 - **查询结果持久化** — 有价值的综合回答可保存回知识库，越用越完整
 - **批量消化** — 给一个文件夹路径，批量处理所有文件
 - **工作台工具摘要** — `workbench/` 对话区采用 `omp` 风格动态工具状态，停止时显示取消状态，历史工具调用默认折叠为分组摘要
