@@ -525,7 +525,7 @@ describe("buildRenderableGraph", () => {
     assert.equal(graph.nodes.filter((node) => node.displayMode === "card").length, 0);
     assert.ok(graph.nodes.find((node) => node.id === "n79")?.labelVisible, "selected/search/pinned context should still be eligible for a label");
     assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= graph.budget.limits.maxLabels);
-    assert.ok(graph.overflow.cards.total >= 0);
+    assert.equal(graph.overflow.cards.total, 0);
     assert.equal(graph.overflow.cards.hidden, 0);
   });
 

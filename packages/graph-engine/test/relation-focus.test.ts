@@ -84,4 +84,32 @@ describe("graph relation focus", () => {
     assert.deepEqual([...missing.nodeDepthById.values()], ["none", "none"]);
     assert.deepEqual([...missing.edgeDepthById.values()], ["none"]);
   });
+
+  it("treats a self-loop on the active node as a direct first-degree edge", () => {
+    const focus = resolveGraphRelationFocus({
+      activeNodeId: "A",
+      nodes: [{ id: "A" }, { id: "B" }],
+      edges: [{ id: "A-A", source: "A", target: "A" }]
+    });
+
+    assert.equal(focus.activeNodeId, "A");
+    assert.equal(focus.nodeDepthById.get("A"), "focus");
+    assert.equal(focus.nodeDepthById.get("B"), "unrelated");
+    assert.equal(focus.edgeDepthById.get("A-A"), "first");
+  });
+
+  it("treats parallel edges between the same pair as first-degree", () => {
+    const focus = resolveGraphRelationFocus({
+      activeNodeId: "A",
+      nodes: [{ id: "A" }, { id: "B" }],
+      edges: [
+        { id: "A-B-1", source: "A", target: "B" },
+        { id: "B-A-2", source: "B", target: "A" }
+      ]
+    });
+
+    assert.equal(focus.nodeDepthById.get("B"), "first");
+    assert.equal(focus.edgeDepthById.get("A-B-1"), "first");
+    assert.equal(focus.edgeDepthById.get("B-A-2"), "first");
+  });
 });

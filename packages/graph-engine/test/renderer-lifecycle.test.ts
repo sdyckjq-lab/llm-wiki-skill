@@ -356,6 +356,29 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
+  it("clears community relation focus when the view returns to global", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    nodeElement(renderer, "a")?.dispatch("pointerenter");
+    assert.equal(renderer.root.dataset.relationFocus, "active");
+    assert.equal(renderer.root.dataset.relationFocusNode, "a");
+
+    renderer.render({ focus: null });
+
+    assert.equal(renderer.root.dataset.relationFocus, "idle");
+    assert.equal(renderer.root.dataset.relationFocusNode, "");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "none");
+
+    renderer.destroy();
+  });
+
   it("keeps node double click from silently unpinning or changing focus", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");

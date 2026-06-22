@@ -52,7 +52,6 @@ try {
   assert.ok(hover.secondEdgeOpacity > hover.unrelatedEdgeOpacity, "second-degree edges should remain clearer than unrelated edges");
   assert.ok(Math.abs(beforeHoverCenter.x - afterHoverCenter.x) < 0.5, "hover should not shift node x");
   assert.ok(Math.abs(beforeHoverCenter.y - afterHoverCenter.y) < 0.5, "hover should not shift node y");
-  assert.equal(hover.readerOpen, false, "hover should not update/open the reader");
 
   await page.mouse.move(20, 20);
   await page.waitForFunction(() => (

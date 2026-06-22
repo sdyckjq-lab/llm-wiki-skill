@@ -28,7 +28,7 @@ import { resolveGraphSearchState } from "./search";
 import type { GraphRuntimeStateSnapshot } from "./state";
 import type { GraphRenderContext, PaintedGraphDom } from "./render-context";
 import { ensureGraphRendererStyles } from "./render-styles";
-import { resolveGraphRelationFocus } from "./relation-focus";
+import { resolveGraphRelationFocus, type GraphRelationFocusDepth } from "./relation-focus";
 
 const COMMUNITY_LEGEND_COLLAPSED_KEY = "llm-wiki:graph:community-legend:collapsed";
 
@@ -104,6 +104,8 @@ export function createGraphRenderPipeline(
   options: GraphRenderPipelineOptions
 ): GraphRenderPipeline {
   ensureGraphRendererStyles(context.ownerDocument);
+  const lastNodeRelationDepth = new Map<string, GraphRelationFocusDepth>();
+  const lastEdgeRelationDepth = new Map<string, GraphRelationFocusDepth>();
 
   function rebuildAndPaint(): void {
     const runtimeSnapshot = context.runtimeState.snapshot();
@@ -157,6 +159,8 @@ export function createGraphRenderPipeline(
       }
     });
     delete context.root.dataset.relationFocusApplied;
+    lastNodeRelationDepth.clear();
+    lastEdgeRelationDepth.clear();
     context.lastEffectiveDensityMode = null;
     mountSearchControl();
     mountGraphToolbar();
@@ -374,17 +378,31 @@ export function createGraphRenderPipeline(
     context.root.dataset.relationFocusNode = focus.activeNodeId || "";
     context.root.dataset.relationFocusApplied = "true";
     for (const [id, element] of context.dom.nodeElements) {
-      element.dataset.relationFocusDepth = focus.nodeDepthById.get(id) || "none";
+      const depth = focus.nodeDepthById.get(id) || "none";
+      if (lastNodeRelationDepth.get(id) !== depth) {
+        element.dataset.relationFocusDepth = depth;
+        lastNodeRelationDepth.set(id, depth);
+      }
+    }
+    for (const id of lastNodeRelationDepth.keys()) {
+      if (!context.dom.nodeElements.has(id)) lastNodeRelationDepth.delete(id);
     }
     for (const [id, element] of context.dom.edgeElements) {
-      element.dataset.relationFocusDepth = focus.edgeDepthById.get(id) || "none";
+      const depth = focus.edgeDepthById.get(id) || "none";
+      if (lastEdgeRelationDepth.get(id) !== depth) {
+        element.dataset.relationFocusDepth = depth;
+        lastEdgeRelationDepth.set(id, depth);
+      }
+    }
+    for (const id of lastEdgeRelationDepth.keys()) {
+      if (!context.dom.edgeElements.has(id)) lastEdgeRelationDepth.delete(id);
     }
   }
 
   function activeRelationFocusNodeId(): NodeId | null {
     if (context.graph.focus?.kind !== "community") return null;
     const hover = context.runtimeState.snapshot().hover;
-    if (hover?.kind === "node" && context.graph.nodes.some((node) => node.id === hover.id)) return hover.id;
+    if (hover?.kind === "node" && context.dom.nodeElements.has(hover.id)) return hover.id;
     return context.graph.selectedNodeId;
   }
 
