@@ -514,6 +514,7 @@ export function createGraphRenderPipeline(
     context.root.dataset.effectiveDensity = densityMode;
     if (densityMode === context.lastEffectiveDensityMode) return;
     context.lastEffectiveDensityMode = densityMode;
+    if (context.graph.focus?.kind === "community") return;
     for (const node of context.graph.nodes) {
       const element = context.dom.nodeElements.get(node.id);
       if (!element) continue;

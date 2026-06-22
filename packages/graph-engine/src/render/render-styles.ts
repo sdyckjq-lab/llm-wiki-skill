@@ -1087,7 +1087,7 @@ const STATIC_RENDERER_CSS = `
   left: 29px;
   top: 50%;
   z-index: 2;
-  display: none;
+  display: none !important;
   max-width: 168px;
   margin: 0;
   overflow: hidden;
@@ -1107,10 +1107,9 @@ const STATIC_RENDERER_CSS = `
   translate: 0 -50%;
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node:not(.is-label-hidden) .node-name,
-.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[aria-pressed="true"] .node-name,
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="focus"] .node-name,
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="first"] .node-name {
-  display: block;
+  display: block !important;
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[aria-pressed="true"],
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="focus"] {
