@@ -3333,7 +3333,7 @@
 
   /* Workbench visual polish: calmer paper, clearer hierarchy, lighter motion. */
   body {
-    font-size: 15px;
+    font-size: 16px;
   }
 
   .app-shell {
@@ -3743,26 +3743,26 @@
   .graph-stage .graph-toolbar-actions,
   .graph-stage .graph-toolbar-panel,
   .graph-stage .graph-search-status {
-    border-color: color-mix(in srgb, var(--app-border-strong) 70%, transparent) !important;
-    background: color-mix(in srgb, var(--app-surface) 92%, transparent) !important;
-    color: var(--app-fg) !important;
-    box-shadow: 0 12px 28px rgba(70, 55, 40, 0.08) !important;
+    border-color: color-mix(in srgb, var(--app-border-strong) 70%, transparent);
+    background: color-mix(in srgb, var(--app-surface) 92%, transparent);
+    color: var(--app-fg);
+    box-shadow: 0 12px 28px rgba(70, 55, 40, 0.08);
     backdrop-filter: blur(10px);
   }
 
   .graph-stage .graph-toolbar-button,
   .graph-stage .graph-search-status {
-    border-color: color-mix(in srgb, var(--app-border-strong) 66%, transparent) !important;
-    background: color-mix(in srgb, var(--app-surface) 86%, transparent) !important;
-    color: color-mix(in srgb, var(--app-fg) 78%, var(--app-muted)) !important;
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 30%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-border-strong) 66%, transparent);
+    background: color-mix(in srgb, var(--app-surface) 86%, transparent);
+    color: color-mix(in srgb, var(--app-fg) 78%, var(--app-muted));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
   }
 
   .graph-stage .graph-toolbar-button:hover,
   .graph-stage .graph-toolbar-button[data-active="true"] {
-    border-color: color-mix(in srgb, var(--app-accent) 38%, var(--app-border)) !important;
-    background: color-mix(in srgb, var(--app-accent) 10%, var(--app-surface)) !important;
-    color: var(--app-accent-deep) !important;
+    border-color: color-mix(in srgb, var(--app-accent) 38%, var(--app-border));
+    background: color-mix(in srgb, var(--app-accent) 10%, var(--app-surface));
+    color: var(--app-accent-deep);
   }
 
   .graph-metrics,
