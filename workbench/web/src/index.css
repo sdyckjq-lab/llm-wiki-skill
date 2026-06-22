@@ -2332,11 +2332,58 @@
   }
 
   .chat-input-area {
+    position: relative;
     padding: 13px 16px 15px;
     border-top: 1px solid var(--app-border);
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 82%, transparent), color-mix(in srgb, var(--app-surface) 74%, var(--app-bg))),
       var(--paper-grain);
+  }
+
+  .chat-scroll-bottom {
+    position: absolute;
+    z-index: 20;
+    top: -52px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .chat-scroll-bottom-btn {
+    pointer-events: auto;
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--app-border) 86%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 94%, var(--app-bg));
+    color: var(--app-muted);
+    box-shadow:
+      0 1px 2px rgba(70, 55, 40, 0.08),
+      0 10px 24px rgba(70, 55, 40, 0.12);
+    transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
+  }
+
+  .chat-scroll-bottom-btn:hover {
+    border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+    background: color-mix(in srgb, var(--app-surface) 80%, var(--app-accent-soft));
+    color: var(--app-fg);
+    transform: translateY(-1px);
+    box-shadow:
+      0 1px 2px rgba(70, 55, 40, 0.08),
+      0 12px 28px rgba(70, 55, 40, 0.14);
+  }
+
+  .chat-scroll-bottom-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--app-accent) 62%, transparent);
+    outline-offset: 3px;
+  }
+
+  [data-density="compact"] .chat-scroll-bottom {
+    top: -46px;
   }
 
   .chat-input-hints {

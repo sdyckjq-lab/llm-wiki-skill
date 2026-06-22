@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Files, Send, Square, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowDown, Files, Send, Square, X } from "lucide-react";
 
 import { CommandMenu } from "./CommandMenu";
 import { ExportButtons } from "./ExportButtons";
@@ -33,6 +33,8 @@ import { DEFAULT_CHAT_STATUS, type ChatStatusSnapshot } from "../lib/view-status
 import { extractWikiPageRefs } from "../lib/wiki-links";
 
 type ToolMark = { name: string; status: "running" | "done" };
+
+const CHAT_BOTTOM_THRESHOLD_PX = 100;
 
 interface Message {
 	id: string;
@@ -140,6 +142,7 @@ export function ChatPanel({
 		selected: 0,
 	});
 	const [refs, setRefs] = useState<PageRef[]>([]);
+	const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 	const activeAssistantIdRef = useRef<string | null>(null);
 	const toolFlushTimersRef = useRef<Record<string, number>>({});
@@ -147,6 +150,8 @@ export function ChatPanel({
 	const consumedPendingPromptRef = useRef<string | null>(null);
 	const consumedPendingInsertRef = useRef<string | null>(null);
 	const sendPromptRef = useRef<(overrideText?: string, displayText?: string) => void>(() => {});
+	const messagesRef = useRef<HTMLDivElement | null>(null);
+	const followBottomRef = useRef(true);
 
 	const detectedMaterial = (() => {
 		const text = input.trim();
@@ -187,6 +192,45 @@ export function ChatPanel({
 			summary: chatStatusSummary(status, errorMsg, Boolean(currentKnowledgeBaseName)),
 		});
 	}, [currentKnowledgeBaseName, errorMsg, onStatusChange, status]);
+
+	const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+		const element = messagesRef.current;
+		if (!element) return;
+		if (typeof element.scrollTo === "function") {
+			element.scrollTo({ top: element.scrollHeight, behavior });
+		} else {
+			element.scrollTop = element.scrollHeight;
+		}
+	}, []);
+
+	const isMessagesNearBottom = useCallback(() => {
+		const element = messagesRef.current;
+		if (!element) return true;
+		const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+		return distance <= CHAT_BOTTOM_THRESHOLD_PX;
+	}, []);
+
+	const handleMessagesScroll = useCallback(() => {
+		const nearBottom = isMessagesNearBottom();
+		followBottomRef.current = nearBottom;
+		setShowScrollToBottom(messages.length > 0 && !nearBottom);
+	}, [isMessagesNearBottom, messages.length]);
+
+	const restoreAutoFollow = useCallback(() => {
+		followBottomRef.current = true;
+		setShowScrollToBottom(false);
+		scrollMessagesToBottom("smooth");
+	}, [scrollMessagesToBottom]);
+
+	useLayoutEffect(() => {
+		if (messages.length === 0) {
+			followBottomRef.current = true;
+			return;
+		}
+		if (followBottomRef.current) {
+			scrollMessagesToBottom("auto");
+		}
+	}, [messages, scrollMessagesToBottom]);
 
 	useEffect(() => {
 		if (!refMenu.open || !currentKnowledgeBasePath) {
@@ -377,6 +421,8 @@ export function ChatPanel({
 		const userMsg: Message = { id: newId(), role: "user", content: visibleText, tools: [] };
 		const assistantId = newId();
 		const assistantMsg: Message = { id: assistantId, role: "assistant", content: "", tools: [] };
+		followBottomRef.current = true;
+		setShowScrollToBottom(false);
 		setMessages((prev) => [...prev, userMsg, assistantMsg]);
 		setStatus("streaming");
 		activeAssistantIdRef.current = assistantId;
@@ -569,7 +615,7 @@ export function ChatPanel({
 
 	return (
 		<div className="chat-screen">
-			<div className="chat-messages">
+			<div className="chat-messages" ref={messagesRef} onScroll={handleMessagesScroll}>
 				{messages.length === 0 && (
 					<div className="chat-empty">
 						<div className="chat-empty-title">
@@ -606,6 +652,19 @@ export function ChatPanel({
 				onDragOver={(event) => event.preventDefault()}
 				onDrop={handleDrop}
 			>
+				{showScrollToBottom && (
+					<div className="chat-scroll-bottom">
+						<button
+							type="button"
+							className="chat-scroll-bottom-btn"
+							aria-label="回到底部"
+							title="回到底部"
+							onClick={restoreAutoFollow}
+						>
+							<ArrowDown className="size-4" aria-hidden="true" />
+						</button>
+					</div>
+				)}
 				{artifactCount > 0 && (
 					<div className="chat-input-hints">
 						<button
