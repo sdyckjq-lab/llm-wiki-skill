@@ -2787,6 +2787,13 @@
     min-width: var(--drawer-width, 420px);
   }
 
+  .app-body[data-graph-drawer-overlay="true"] .drawer-panel-open {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 30;
+    height: 100%;
+  }
+
   .drawer-panel.drawer-panel-fullscreen {
     position: fixed;
     inset: 0;

@@ -251,6 +251,103 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("refreshes the Sigma canvas and overlays when the host resizes", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    let observedElement: Element | null = null;
+    let disconnected = false;
+    class FakeResizeObserver implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe(target: Element): void {
+        observedElement = target;
+      }
+      unobserve(): void {}
+      disconnect(): void {
+        disconnected = true;
+      }
+    }
+
+    const container = fakeContainer({ ResizeObserver: FakeResizeObserver as typeof ResizeObserver });
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container,
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    let refreshCount = 0;
+    sigma.refresh = () => {
+      refreshCount += 1;
+      sigma.settings.refreshed = true;
+    };
+    const previousOverlayElement = renderer.overlayRoot.children[0];
+
+    assert.equal(observedElement, renderer.root);
+    assert.equal(sigma.settings.refreshed, undefined);
+
+    resizeCallback?.([resizeObserverEntry(480, 320)], {} as ResizeObserver);
+
+    assert.equal(sigma.settings.refreshed, true);
+    assert.equal(refreshCount, 1);
+    assert.notEqual(renderer.overlayRoot.children[0], previousOverlayElement);
+    const resizedOverlayElement = renderer.overlayRoot.children[0];
+
+    resizeCallback?.([resizeObserverEntry(480, 320)], {} as ResizeObserver);
+
+    assert.equal(refreshCount, 1);
+    assert.equal(renderer.overlayRoot.children[0], resizedOverlayElement);
+
+    renderer.destroy();
+    assert.equal(disconnected, true);
+  });
+
+  it("coalesces rapid host resize notifications into one animation frame", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const animationFrames: FrameRequestCallback[] = [];
+    class FakeResizeObserver implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+
+    const container = fakeContainer({
+      ResizeObserver: FakeResizeObserver as typeof ResizeObserver,
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      },
+      cancelAnimationFrame: () => undefined
+    });
+    const runtime = fakeRuntime();
+    createSigmaGlobalRenderer({
+      container,
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    let refreshCount = 0;
+    sigma.refresh = () => {
+      refreshCount += 1;
+    };
+
+    resizeCallback?.([resizeObserverEntry(480, 320)], {} as ResizeObserver);
+    resizeCallback?.([resizeObserverEntry(520, 340)], {} as ResizeObserver);
+    resizeCallback?.([resizeObserverEntry(560, 360)], {} as ResizeObserver);
+
+    assert.equal(refreshCount, 0);
+    assert.equal(animationFrames.length, 1);
+
+    animationFrames.shift()?.(0);
+
+    assert.equal(refreshCount, 1);
+  });
+
   it("keeps dense accepted global data visibly mapped as a capped point map", () => {
     const data = densePointMapGraph();
     const adapterData = buildGraphRendererAdapterData(data, {
@@ -1002,11 +1099,12 @@ function renderableCommunityFixture(count: number): GraphRendererAdapterData["re
   });
 }
 
-function fakeContainer(): HTMLElement & { children: HTMLElement[] } {
+function fakeContainer(defaultView?: Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">): HTMLElement & { children: HTMLElement[] } {
   const children: HTMLElement[] = [];
   const container = {
     ownerDocument: {
-      createElement: (tagName: string) => fakeElement(tagName)
+      createElement: (tagName: string) => fakeElement(tagName, defaultView),
+      defaultView
     },
     append: (child: HTMLElement) => {
       children.push(child);
@@ -1017,7 +1115,11 @@ function fakeContainer(): HTMLElement & { children: HTMLElement[] } {
   return container;
 }
 
-function fakeElement(_tagName: string): HTMLElement {
+function resizeObserverEntry(width: number, height: number): ResizeObserverEntry {
+  return { contentRect: { width, height } as DOMRectReadOnly } as ResizeObserverEntry;
+}
+
+function fakeElement(_tagName: string, defaultView?: Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">): HTMLElement {
   const children: HTMLElement[] = [];
   const attributes = new Map<string, string>();
   const element = {
@@ -1048,10 +1150,11 @@ function fakeElement(_tagName: string): HTMLElement {
   };
   element.ownerDocument = {
     createElement: (tagName: string) => {
-      const child = fakeElement(tagName);
+      const child = fakeElement(tagName, defaultView);
       child.ownerDocument = element.ownerDocument;
       return child;
-    }
+    },
+    defaultView
   } as unknown as Document;
   element.remove = () => {
     // The fake container owns removal by filtering on object identity below.

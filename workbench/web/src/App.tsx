@@ -1016,6 +1016,7 @@ function App() {
 	}, [activeKnowledgeBase?.valid]);
 
 	const drawerOpen = drawer.mode !== "closed";
+	const graphDrawerOverlay = mainView === "graph" && isGraphInteractionDrawer(drawer) && !drawerFullscreen;
 
 	return (
 		<TooltipProvider delayDuration={200}>
@@ -1036,7 +1037,11 @@ function App() {
 					onToggleTheme={toggleTheme}
 					onOpenAppearance={() => setAppearanceOpen((value) => !value)}
 				/>
-				<div className="app-body" data-drawer-open={drawerOpen ? "true" : "false"}>
+				<div
+					className="app-body"
+					data-drawer-open={drawerOpen ? "true" : "false"}
+					data-graph-drawer-overlay={graphDrawerOverlay ? "true" : "false"}
+				>
 					<Sidebar
 						knowledgeBases={kbs}
 						currentKbPath={active?.kb.path ?? null}
