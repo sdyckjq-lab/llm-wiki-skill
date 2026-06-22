@@ -61,6 +61,22 @@ describe("graph layout normalization", () => {
     });
   });
 
+  it("drops implausibly distant legacy percent pins before migration", () => {
+    assert.deepEqual(normalizeGraphLayoutFile({
+      version: 1,
+      pins: {
+        "wiki/valid-percent.md": { x: 80, y: 50 },
+        "wiki/far-percent.md": { x: 284015.9548304589, y: 47155.27885437255 }
+      }
+    }), {
+      version: 2,
+      pins: {
+        "wiki/valid-percent.md": { x: 80, y: 50, coordinateSpace: "legacy-percent" }
+      },
+      updatedAt: ""
+    });
+  });
+
   it("normalizes stored pins without applying layout-key safety", () => {
     assert.deepEqual(normalizeGraphPinMap({
       "/fake/wiki/entities/A.md": { x: 332.5, y: 240.25 },

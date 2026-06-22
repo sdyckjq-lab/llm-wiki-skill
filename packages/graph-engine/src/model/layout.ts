@@ -10,6 +10,7 @@ import {
 } from "../types";
 
 const MAX_WORLD_PIN_ABS_COORDINATE = 10000;
+const MAX_LEGACY_PERCENT_PIN_ABS_COORDINATE = 1000;
 
 interface NormalizeGraphPinMapOptions {
   defaultCoordinateSpace?: PinCoordinateSpace;
@@ -63,6 +64,7 @@ function normalizeGraphPinPosition(value: unknown, defaultCoordinateSpace: PinCo
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   const coordinateSpace = isPinCoordinateSpace(point.coordinateSpace) ? point.coordinateSpace : defaultCoordinateSpace;
   if (coordinateSpace === WORLD_PIN_COORDINATE_SPACE && isImplausiblyDistantWorldPin(x, y)) return null;
+  if (coordinateSpace === LEGACY_PERCENT_PIN_COORDINATE_SPACE && isImplausiblyDistantLegacyPercentPin(x, y)) return null;
   return {
     x,
     y,
@@ -72,4 +74,8 @@ function normalizeGraphPinPosition(value: unknown, defaultCoordinateSpace: PinCo
 
 function isImplausiblyDistantWorldPin(x: number, y: number): boolean {
   return Math.abs(x) > MAX_WORLD_PIN_ABS_COORDINATE || Math.abs(y) > MAX_WORLD_PIN_ABS_COORDINATE;
+}
+
+function isImplausiblyDistantLegacyPercentPin(x: number, y: number): boolean {
+  return Math.abs(x) > MAX_LEGACY_PERCENT_PIN_ABS_COORDINATE || Math.abs(y) > MAX_LEGACY_PERCENT_PIN_ABS_COORDINATE;
 }
