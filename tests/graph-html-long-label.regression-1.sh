@@ -16,7 +16,7 @@ test_graph_html_has_truncate_label_markup_hooks() {
     assert_file_contains "$html" ".node-name"
     assert_file_contains "$html" "text-overflow: ellipsis;"
     assert_file_contains "$html" "white-space: nowrap;"
-    assert_file_contains "$html" "title=e.label"
+    grep -Eq "title=[a-z]+\.label" "$html" || fail "Expected $html to contain minified node title assignment (title=<var>.label)"
     assert_file_contains "$html" "node-kind"
     assert_file_contains "$html" "node-meta"
     assert_file_contains "$html" "display: none;"
