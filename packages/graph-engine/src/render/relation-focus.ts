@@ -1,0 +1,91 @@
+export type GraphRelationFocusDepth = "none" | "focus" | "first" | "second" | "unrelated";
+
+export interface GraphRelationFocusNodeLike {
+  id: string;
+}
+
+export interface GraphRelationFocusEdgeLike {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface ResolveGraphRelationFocusInput {
+  activeNodeId: string | null;
+  nodes: GraphRelationFocusNodeLike[];
+  edges: GraphRelationFocusEdgeLike[];
+}
+
+export interface GraphRelationFocusState {
+  activeNodeId: string | null;
+  nodeDepthById: Map<string, GraphRelationFocusDepth>;
+  edgeDepthById: Map<string, GraphRelationFocusDepth>;
+  firstNodeIds: Set<string>;
+  secondNodeIds: Set<string>;
+  directEdgeIds: Set<string>;
+}
+
+export function resolveGraphRelationFocus(input: ResolveGraphRelationFocusInput): GraphRelationFocusState {
+  const nodeIds = new Set(input.nodes.map((node) => node.id));
+  const activeNodeId = input.activeNodeId && nodeIds.has(input.activeNodeId) ? input.activeNodeId : null;
+  const nodeDepthById = new Map<string, GraphRelationFocusDepth>();
+  const edgeDepthById = new Map<string, GraphRelationFocusDepth>();
+  const firstNodeIds = new Set<string>();
+  const secondNodeIds = new Set<string>();
+  const directEdgeIds = new Set<string>();
+
+  if (!activeNodeId) {
+    for (const node of input.nodes) nodeDepthById.set(node.id, "none");
+    for (const edge of input.edges) edgeDepthById.set(edge.id, "none");
+    return { activeNodeId: null, nodeDepthById, edgeDepthById, firstNodeIds, secondNodeIds, directEdgeIds };
+  }
+
+  for (const edge of input.edges) {
+    if (edge.source === activeNodeId && nodeIds.has(edge.target)) {
+      firstNodeIds.add(edge.target);
+      directEdgeIds.add(edge.id);
+    }
+    if (edge.target === activeNodeId && nodeIds.has(edge.source)) {
+      firstNodeIds.add(edge.source);
+      directEdgeIds.add(edge.id);
+    }
+  }
+
+  for (const edge of input.edges) {
+    const sourceIsFirst = firstNodeIds.has(edge.source);
+    const targetIsFirst = firstNodeIds.has(edge.target);
+    if (sourceIsFirst && edge.target !== activeNodeId && !firstNodeIds.has(edge.target) && nodeIds.has(edge.target)) {
+      secondNodeIds.add(edge.target);
+    }
+    if (targetIsFirst && edge.source !== activeNodeId && !firstNodeIds.has(edge.source) && nodeIds.has(edge.source)) {
+      secondNodeIds.add(edge.source);
+    }
+  }
+
+  secondNodeIds.delete(activeNodeId);
+  for (const id of firstNodeIds) secondNodeIds.delete(id);
+
+  for (const node of input.nodes) {
+    if (node.id === activeNodeId) nodeDepthById.set(node.id, "focus");
+    else if (firstNodeIds.has(node.id)) nodeDepthById.set(node.id, "first");
+    else if (secondNodeIds.has(node.id)) nodeDepthById.set(node.id, "second");
+    else nodeDepthById.set(node.id, "unrelated");
+  }
+
+  for (const edge of input.edges) {
+    if (directEdgeIds.has(edge.id)) {
+      edgeDepthById.set(edge.id, "first");
+      continue;
+    }
+    const sourceDepth = nodeDepthById.get(edge.source);
+    const targetDepth = nodeDepthById.get(edge.target);
+    const hasFirstEndpoint = sourceDepth === "first" || targetDepth === "first";
+    const hasSecondEndpoint = sourceDepth === "second" || targetDepth === "second";
+    const bothEndpointsInContext =
+      (sourceDepth === "first" || sourceDepth === "second") &&
+      (targetDepth === "first" || targetDepth === "second");
+    edgeDepthById.set(edge.id, hasFirstEndpoint && (hasSecondEndpoint || bothEndpointsInContext) ? "second" : "unrelated");
+  }
+
+  return { activeNodeId, nodeDepthById, edgeDepthById, firstNodeIds, secondNodeIds, directEdgeIds };
+}
