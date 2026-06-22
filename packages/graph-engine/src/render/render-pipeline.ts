@@ -28,6 +28,7 @@ import { resolveGraphSearchState } from "./search";
 import type { GraphRuntimeStateSnapshot } from "./state";
 import type { GraphRenderContext, PaintedGraphDom } from "./render-context";
 import { ensureGraphRendererStyles } from "./render-styles";
+import { resolveGraphRelationFocus } from "./relation-focus";
 
 const COMMUNITY_LEGEND_COLLAPSED_KEY = "llm-wiki:graph:community-legend:collapsed";
 
@@ -49,6 +50,7 @@ export interface GraphRenderCommands {
   handleNodeClick(id: NodeId, additive: boolean): void;
   handleNodeDoubleClick(id: string): boolean;
   setNodeFixed(id: string, mode: "fix" | "unfix"): boolean;
+  setNodeHover(id: NodeId | null): void;
   scheduleHoverPreview(id: NodeId): void;
   showEdgeHoverPreview(id: string): void;
   clearHoverPreview(): void;
@@ -70,6 +72,7 @@ export interface GraphRenderPipeline {
   showTemporaryObject(object: GraphSummaryObjectRef): void;
   clearTemporaryObjectDisplay(): void;
   applyCommunityHover(): void;
+  applyRelationFocus(): void;
   bindResizeObserver(): void;
   commitViewport(nextViewport: RendererViewport, options?: ViewportFrameCommitOptions): void;
   resetRootScroll(): void;
@@ -135,6 +138,7 @@ export function createGraphRenderPipeline(
           return options.commands.handleNodeDoubleClick(id);
         },
         onNodePreviewEnter: (id) => {
+          options.commands.setNodeHover(id);
           options.commands.scheduleHoverPreview(id);
         },
         onEdgePreviewEnter: (id) => {
@@ -145,18 +149,21 @@ export function createGraphRenderPipeline(
         },
         onNodePreviewLeave: () => {
           options.commands.clearHoverPreview();
+          options.commands.setNodeHover(null);
         },
         onAggregationContainerClick: (container) => {
           options.commands.selectAggregationContainer(container.communityId);
         }
       }
     });
+    delete context.root.dataset.relationFocusApplied;
     context.lastEffectiveDensityMode = null;
     mountSearchControl();
     mountGraphToolbar();
     options.commands.applySearchQuery(context.searchQuery);
     applyTypeFilters(context.typeFilters);
     applyCommunityHover();
+    applyRelationFocus();
     markPinnedNodes(context.pinState.snapshot().pinnedNodeIds);
     commitViewport(context.runtimeState.snapshot().viewport);
     if (context.activeDiff && context.root.dataset.diffState === "playing") markDiffElements(context.activeDiff);
@@ -271,6 +278,7 @@ export function createGraphRenderPipeline(
     context.root.dataset.filteredNodeCount = String(hiddenNodeIds.size);
     context.root.dataset.typeFiltersActive = Object.values(context.typeFilters).some((enabled) => enabled === false) ? "true" : "false";
     applyCommunityHover();
+    applyRelationFocus();
     updateMinimapViewport();
   }
 
@@ -352,6 +360,32 @@ export function createGraphRenderPipeline(
       const inCommunity = nodeCommunity.get(edge.source) === active && nodeCommunity.get(edge.target) === active;
       element.dataset.communityState = active ? (inCommunity ? "active" : "faded") : "none";
     }
+  }
+
+  function applyRelationFocus(): void {
+    const activeNodeId = activeRelationFocusNodeId();
+    if (context.root.dataset.relationFocusNode === (activeNodeId || "") && context.root.dataset.relationFocusApplied === "true") return;
+    const focus = resolveGraphRelationFocus({
+      activeNodeId,
+      nodes: context.graph.nodes,
+      edges: context.graph.edges
+    });
+    context.root.dataset.relationFocus = focus.activeNodeId ? "active" : "idle";
+    context.root.dataset.relationFocusNode = focus.activeNodeId || "";
+    context.root.dataset.relationFocusApplied = "true";
+    for (const [id, element] of context.dom.nodeElements) {
+      element.dataset.relationFocusDepth = focus.nodeDepthById.get(id) || "none";
+    }
+    for (const [id, element] of context.dom.edgeElements) {
+      element.dataset.relationFocusDepth = focus.edgeDepthById.get(id) || "none";
+    }
+  }
+
+  function activeRelationFocusNodeId(): NodeId | null {
+    if (context.graph.focus?.kind !== "community") return null;
+    const hover = context.runtimeState.snapshot().hover;
+    if (hover?.kind === "node" && context.graph.nodes.some((node) => node.id === hover.id)) return hover.id;
+    return context.graph.selectedNodeId;
   }
 
   function restartSimulation(): void {
@@ -665,6 +699,7 @@ export function createGraphRenderPipeline(
     showTemporaryObject,
     clearTemporaryObjectDisplay,
     applyCommunityHover,
+    applyRelationFocus,
     bindResizeObserver,
     commitViewport,
     resetRootScroll,

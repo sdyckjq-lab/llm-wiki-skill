@@ -227,9 +227,19 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
       handleNodeClick: (id, additive) => controller.handleNodeClick(id, additive),
       handleNodeDoubleClick: (id) => controller.handleNodeDoubleClick(id),
       setNodeFixed: (id, mode) => controller.setNodeFixed(id, mode),
+      setNodeHover: (id) => {
+        presenter.setGraphHover(id ? { kind: "node", id } : null);
+        pipeline.applyRelationFocus();
+      },
       scheduleHoverPreview: (id) => presenter.scheduleHoverPreview(id),
-      showEdgeHoverPreview: (id) => presenter.showEdgeHoverPreview(id),
-      clearHoverPreview: () => presenter.clearHoverPreview()
+      showEdgeHoverPreview: (id) => {
+        presenter.showEdgeHoverPreview(id);
+        pipeline.applyRelationFocus();
+      },
+      clearHoverPreview: () => {
+        presenter.clearHoverPreview();
+        pipeline.applyRelationFocus();
+      }
     },
     overlays: {
       renderReader: () => presenter.renderReader(),
@@ -329,6 +339,7 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
       } else {
         presenter.clearHoverPreview();
       }
+      pipeline.applyRelationFocus();
       presenter.renderHoverPreview();
     },
     clearSelection(): void {

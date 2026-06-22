@@ -225,6 +225,120 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
+  it("applies community relation focus immediately on node hover and clears it on leave", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    nodeElement(renderer, "a")?.dispatch("pointerenter");
+
+    assert.equal(renderer.root.dataset.relationFocus, "active");
+    assert.equal(renderer.root.dataset.relationFocusNode, "a");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "focus");
+    assert.equal(nodeElement(renderer, "b")?.dataset.relationFocusDepth, "first");
+    assert.equal(nodeElement(renderer, "c")?.dataset.relationFocusDepth, "first");
+    assert.equal(nodeElement(renderer, "d")?.dataset.relationFocusDepth, "second");
+    assert.equal(nodeElement(renderer, "e")?.dataset.relationFocusDepth, "unrelated");
+    assert.equal(edgeElement(renderer, "a-b")?.dataset.relationFocusDepth, "first");
+    assert.equal(edgeElement(renderer, "b-d")?.dataset.relationFocusDepth, "second");
+    assert.equal(edgeElement(renderer, "d-e")?.dataset.relationFocusDepth, "unrelated");
+
+    nodeElement(renderer, "a")?.dispatch("pointerleave");
+
+    assert.equal(renderer.root.dataset.relationFocus, "idle");
+    assert.equal(renderer.root.dataset.relationFocusNode, "");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "none");
+    assert.equal(edgeElement(renderer, "a-b")?.dataset.relationFocusDepth, "none");
+
+    renderer.destroy();
+  });
+
+  it("keeps clicked community node as fixed relation focus and lets hover temporarily override it", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    nodeElement(renderer, "a")?.dispatch("click", { detail: 0 });
+
+    assert.equal(renderer.root.dataset.relationFocus, "active");
+    assert.equal(renderer.root.dataset.relationFocusNode, "a");
+    assert.equal(nodeElement(renderer, "a")?.getAttribute("aria-pressed"), "true");
+    assert.equal(nodeElement(renderer, "b")?.dataset.relationFocusDepth, "first");
+
+    nodeElement(renderer, "d")?.dispatch("pointerenter");
+
+    assert.equal(renderer.root.dataset.relationFocusNode, "d");
+    assert.equal(nodeElement(renderer, "d")?.dataset.relationFocusDepth, "focus");
+    assert.equal(nodeElement(renderer, "b")?.dataset.relationFocusDepth, "first");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "second");
+
+    nodeElement(renderer, "d")?.dispatch("pointerleave");
+
+    assert.equal(renderer.root.dataset.relationFocusNode, "a");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "focus");
+    assert.equal(nodeElement(renderer, "d")?.dataset.relationFocusDepth, "second");
+
+    dispatchPointerSequence(renderer.root as unknown as FakeElement, 20, 20);
+
+    assert.equal(renderer.root.dataset.relationFocus, "idle");
+    assert.equal(renderer.root.dataset.relationFocusNode, "");
+    assert.equal(nodeElement(renderer, "a")?.getAttribute("aria-pressed"), "false");
+
+    renderer.destroy();
+  });
+
+  it("does not apply relation focus outside focused community view", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false
+    });
+
+    nodeElement(renderer, "a")?.dispatch("pointerenter");
+
+    assert.equal(renderer.root.dataset.relationFocus, "idle");
+    assert.equal(renderer.root.dataset.relationFocusNode, "");
+    assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "none");
+    assert.equal(edgeElement(renderer, "a-b")?.dataset.relationFocusDepth, "none");
+
+    renderer.destroy();
+  });
+
+  it("keeps type-filter-hidden nodes and edges hidden during community relation focus", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    renderer.setTypeFilters({ entity: false });
+    nodeElement(renderer, "a")?.dispatch("pointerenter");
+
+    assert.equal(nodeElement(renderer, "b")?.dataset.filterState, "hidden");
+    assert.equal(nodeElement(renderer, "d")?.dataset.filterState, "hidden");
+    assert.equal(edgeElement(renderer, "a-b")?.dataset.filterState, "hidden");
+    assert.equal(edgeElement(renderer, "b-d")?.dataset.filterState, "hidden");
+    assert.equal(edgeElement(renderer, "a-b")?.dataset.relationFocusDepth, "first");
+    assert.equal(edgeElement(renderer, "b-d")?.dataset.relationFocusDepth, "second");
+
+    renderer.destroy();
+  });
+
   it("keeps node double click from silently unpinning or changing focus", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
@@ -876,6 +990,30 @@ function graphDataForReturnGlobal(): GraphData {
     ],
     edges: [
       { id: "a-b", from: "a", to: "b", type: "EXTRACTED" }
+    ]
+  };
+}
+
+function relationFocusGraphData(): GraphData {
+  return {
+    meta: {
+      build_date: "2026-06-22",
+      wiki_title: "Relation focus graph",
+      total_nodes: 5,
+      total_edges: 4
+    },
+    nodes: [
+      { id: "a", label: "Node a", type: "topic", community: "community-a", source_path: "wiki/a.md", content: "Node a" },
+      { id: "b", label: "Node b", type: "entity", community: "community-a", source_path: "wiki/b.md", content: "Node b" },
+      { id: "c", label: "Node c", type: "source", community: "community-a", source_path: "wiki/c.md", content: "Node c" },
+      { id: "d", label: "Node d", type: "entity", community: "community-a", source_path: "wiki/d.md", content: "Node d" },
+      { id: "e", label: "Node e", type: "entity", community: "community-a", source_path: "wiki/e.md", content: "Node e" }
+    ],
+    edges: [
+      { id: "a-b", from: "a", to: "b", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "实现", weight: 1 },
+      { id: "a-c", from: "a", to: "c", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.7 },
+      { id: "b-d", from: "b", to: "d", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.6 },
+      { id: "d-e", from: "d", to: "e", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "衍生", weight: 0.5 }
     ]
   };
 }

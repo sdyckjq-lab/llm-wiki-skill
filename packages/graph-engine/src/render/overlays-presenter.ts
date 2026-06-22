@@ -74,7 +74,8 @@ export function createGraphOverlaysPresenter(
     if (context.previewTimer) clearTimeout(context.previewTimer);
     context.previewTimer = setTimeout(() => {
       context.previewTimer = null;
-      setGraphHover({ kind: "node", id });
+      const hover = context.runtimeState.snapshot().hover;
+      if (hover?.kind !== "node" || hover.id !== id) return;
       renderHoverPreview();
     }, 300);
   }
