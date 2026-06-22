@@ -134,7 +134,7 @@ export function Sidebar({
 
 			<div className="sidebar-body">
 				{error && (
-					<div className="rounded-md border border-destructive bg-destructive/10 p-2 text-xs text-destructive">
+					<div className="sidebar-error rounded-md border border-destructive bg-destructive/10 p-2 text-xs text-destructive">
 						{error}
 					</div>
 				)}
