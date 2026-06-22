@@ -302,10 +302,12 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let suppressNextNodeClickId: string | null = null;
   let overlayPointerDragCleanup: (() => void) | null = null;
   let eventBindings: Array<{ event: string; listener: (payload?: unknown) => void }> = [];
+  let resizeObserver: ResizeObserver | null = null;
 
   try {
     sigma = new runtime.Sigma(graph, sigmaRoot, sigmaSettingsForTheme(currentTheme));
     bindSigmaEvents();
+    bindSigmaResizeObserver();
     renderSigmaOverlays();
   } catch (error) {
     options.onFatalError?.(error);
@@ -361,6 +363,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       destroyed = true;
       generation += 1;
       unbindSigmaEvents();
+      resizeObserver?.disconnect();
+      resizeObserver = null;
       try {
         sigma.kill?.();
       } catch (error) {
@@ -403,6 +407,21 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       sigma.off?.(binding.event, binding.listener);
     }
     eventBindings = [];
+  }
+
+  function bindSigmaResizeObserver(): void {
+    const ViewResizeObserver = sigmaRoot.ownerDocument.defaultView?.ResizeObserver;
+    if (!ViewResizeObserver) return;
+    resizeObserver = new ViewResizeObserver(() => {
+      if (destroyed) return;
+      try {
+        sigma.refresh?.();
+        renderSigmaOverlays();
+      } catch (error) {
+        options.onFatalError?.(error);
+      }
+    });
+    resizeObserver.observe(sigmaRoot);
   }
 
   function handleSigmaHit(input: SigmaGlobalHitInput): void {
