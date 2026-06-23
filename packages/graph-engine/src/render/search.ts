@@ -27,7 +27,9 @@ export function resolveGraphSearchState(
 ): GraphSearchState {
   const searchIndex = cachedIndex ?? buildSearchIndex(nodes);
   const normalizedQuery = query.trim();
-  const matchIds = applySearchToNodeIds(searchIndex, normalizedQuery);
+  // 空查询表示“没有搜索”，命中集应为空（而非全部）。否则它作为“搜索命中集”
+  // 被全局视图当成 searchHit，会让无搜索时所有节点被标成命中（橙色）。
+  const matchIds = normalizedQuery ? applySearchToNodeIds(searchIndex, normalizedQuery) : [];
   const matches = new Set(matchIds);
   return {
     query: normalizedQuery,

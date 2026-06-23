@@ -22,13 +22,13 @@ describe("graph scoped search", () => {
     );
   });
 
-  it("restores all nodes for an empty query and reuses a cached index", () => {
+  it("treats an empty query as no matches and reuses a cached index", () => {
     const nodes = searchNodes();
     const first = resolveGraphSearchState(nodes, "source");
     const second = resolveGraphSearchState(nodes, "", first.searchIndex);
 
     assert.equal(second.searchIndex, first.searchIndex);
-    assert.deepEqual(second.matchIds, ["A", "B", "C"]);
+    assert.deepEqual(second.matchIds, []);
     assert.deepEqual(second.nodes.map((node) => node.searchState), ["none", "none", "none"]);
   });
 
