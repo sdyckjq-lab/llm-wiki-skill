@@ -8,7 +8,11 @@ const { chromium } = require("playwright");
 const html = process.env.GRAPH_NODE_SLIM_HTML || "";
 assert.notEqual(html, "", "GRAPH_NODE_SLIM_HTML must point at generated HTML");
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({
+  // This regression targets the DOM/SVG small-graph fallback. The default offline
+  // global route uses Sigma when WebGL is available, which has a different DOM.
+  args: ["--disable-webgl", "--disable-webgl2", "--disable-3d-apis"]
+});
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   await page.goto(pathToFileURL(html).href);

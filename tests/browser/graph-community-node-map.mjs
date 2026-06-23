@@ -37,6 +37,14 @@ try {
   assert.ok(initial.sampleNodeStyles.dot, "community map nodes should render a dot-core element");
   assert.ok(initial.sampleNodeStyles.label, "community map labels should still be measurable when visible");
   assert.match(initial.sampleNodeStyles.label.fontFamily, /(Songti|Noto Serif|STSong|serif)/i, "community map labels should use the paper-map serif stack");
+  assert.equal(initial.nodeTypes.F, "comparison", "community map should preserve comparison nodes instead of collapsing them to entity");
+  assert.notEqual(initial.nodeDotColors.topic, initial.nodeDotColors.entity, "topic and entity dots should use different colors");
+  assert.notEqual(initial.nodeDotColors.source, initial.nodeDotColors.entity, "source and entity dots should use different colors");
+  assert.notEqual(initial.nodeDotColors.comparison, initial.nodeDotColors.entity, "comparison and entity dots should use different colors");
+  assert.equal(initial.edgeDashes.extracted, "none", "extracted confidence should render as a solid edge");
+  assert.notEqual(initial.edgeDashes.inferred, "none", "inferred confidence should render as a dashed edge");
+  assert.notEqual(initial.edgeDashes.ambiguous, "none", "ambiguous confidence should render as a dashed edge");
+  assert.notEqual(initial.edgeDashes.inferred, initial.edgeDashes.ambiguous, "inferred and ambiguous confidence should use distinct dash patterns");
 
   await page.evaluate(() => {
     window.__LLM_WIKI_GRAPH_ENGINE__?.setTypeFilters?.({ entity: false });
@@ -71,6 +79,8 @@ try {
   assert.equal(hover.edgeDepths.eEF, "unrelated");
   assert.ok(hover.firstEdgeOpacity > hover.secondEdgeOpacity, "direct edges should be clearer than second-degree edges");
   assert.ok(hover.secondEdgeOpacity > hover.unrelatedEdgeOpacity, "second-degree edges should remain clearer than unrelated edges");
+  assert.ok(hover.nodeDotOpacity.first > hover.nodeDotOpacity.second, "first-degree nodes should be clearer than second-degree nodes");
+  assert.ok(hover.nodeDotOpacity.second > hover.nodeDotOpacity.unrelated, "second-degree nodes should be clearer than unrelated nodes");
   assert.ok(Math.abs(beforeHoverCenter.x - afterHoverCenter.x) < 0.5, "hover should not shift node x");
   assert.ok(Math.abs(beforeHoverCenter.y - afterHoverCenter.y) < 0.5, "hover should not shift node y");
 
@@ -161,6 +171,7 @@ async function snapshot(page) {
         top: style.top,
         bottom: style.bottom,
         opacity: style.opacity,
+        strokeDasharray: style.strokeDasharray,
         transform: style.transform,
         width: style.width,
         height: style.height
@@ -189,6 +200,28 @@ async function snapshot(page) {
         eAB: edge("eAB")?.getAttribute("data-relation-focus-depth") || "",
         eBD: edge("eBD")?.getAttribute("data-relation-focus-depth") || "",
         eEF: edge("eEF")?.getAttribute("data-relation-focus-depth") || ""
+      },
+      nodeTypes: {
+        A: node("A")?.getAttribute("data-type") || "",
+        B: node("B")?.getAttribute("data-type") || "",
+        C: node("C")?.getAttribute("data-type") || "",
+        F: node("F")?.getAttribute("data-type") || ""
+      },
+      nodeDotColors: {
+        topic: stylesFor('.node[data-id="A"] .dot-core')?.background || "",
+        entity: stylesFor('.node[data-id="B"] .dot-core')?.background || "",
+        source: stylesFor('.node[data-id="C"] .dot-core')?.background || "",
+        comparison: stylesFor('.node[data-id="F"] .dot-core')?.background || ""
+      },
+      nodeDotOpacity: {
+        first: Number.parseFloat(stylesFor('.node[data-id="B"] .dot-core')?.opacity || "0"),
+        second: Number.parseFloat(stylesFor('.node[data-id="D"] .dot-core')?.opacity || "0"),
+        unrelated: Number.parseFloat(stylesFor('.node[data-id="F"] .dot-core')?.opacity || "0")
+      },
+      edgeDashes: {
+        extracted: stylesFor('.edge[data-edge-id="eAB"]')?.strokeDasharray || "",
+        inferred: stylesFor('.edge[data-edge-id="eAC"]')?.strokeDasharray || "",
+        ambiguous: stylesFor('.edge[data-edge-id="eEF"]')?.strokeDasharray || ""
       },
       rootBackground: root ? getComputedStyle(root).backgroundImage : "",
       rootBackgroundSize: root ? getComputedStyle(root).backgroundSize : "",

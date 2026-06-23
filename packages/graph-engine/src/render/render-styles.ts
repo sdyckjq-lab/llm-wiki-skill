@@ -1106,8 +1106,8 @@ const STATIC_RENDERER_CSS = `
   transform: none;
   overflow: visible;
 }
-.node-pin,
-.dot-core {
+.llm-wiki-graph-engine .node-pin,
+.llm-wiki-graph-engine .dot-core {
   display: none;
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node-pin {
@@ -1143,6 +1143,10 @@ const STATIC_RENDERER_CSS = `
   background: var(--amber);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 15%, transparent);
 }
+.llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-type="query"] .dot-core {
+  background: var(--violet);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--violet) 15%, transparent);
+}
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[aria-pressed="true"] .dot-core,
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node[data-relation-focus-depth="focus"] .dot-core {
   transform: scale(1.32);
@@ -1154,6 +1158,11 @@ const STATIC_RENDERER_CSS = `
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .node[data-relation-focus-depth="second"] .dot-core {
   opacity: .38;
+}
+.llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .node[data-relation-focus-depth="unrelated"] .dot-core {
+  opacity: .16;
+  transform: scale(.82);
+  box-shadow: none;
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node-kind,
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .node-meta {

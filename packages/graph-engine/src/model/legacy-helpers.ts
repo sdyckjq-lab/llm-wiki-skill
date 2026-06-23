@@ -579,13 +579,19 @@
   var ATLAS_TYPE_LABELS = {
     topic: "主题",
     entity: "实体",
-    source: "来源"
+    source: "来源",
+    comparison: "对比",
+    synthesis: "综合",
+    query: "查询"
   };
 
   var ATLAS_TYPE_KINDS = {
     topic: "TOPIC",
     entity: "ENTITY",
-    source: "SOURCE"
+    source: "SOURCE",
+    comparison: "COMPARISON",
+    synthesis: "SYNTHESIS",
+    query: "QUERY"
   };
 
   function normalizeAtlasType(type) {
