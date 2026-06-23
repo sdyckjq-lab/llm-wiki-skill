@@ -81,7 +81,7 @@ export const THEMES: Record<ThemeId, ThemeTokens> = {
     id: "shan-shui",
     colorScheme: "light",
     vars: parseCssTokens(SHAN_SHUI_ROOT),
-    communityColors: ["#8b2e24", "#315f72", "#4b7564", "#b7791f", "#6f557f", "#3e6b4b", "#9b6a36", "#5d6f91"]
+    communityColors: ["#dd9c82", "#8fb0c9", "#a6c187", "#d8b563", "#b9a3cf", "#8ec4b3", "#cda37e", "#d9a0ad", "#bdb389"]
   },
   "mo-ye": {
     id: "mo-ye",

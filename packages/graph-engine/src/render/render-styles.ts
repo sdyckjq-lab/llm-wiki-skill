@@ -93,11 +93,6 @@ const STATIC_RENDERER_CSS = `
   outline-offset: 2px;
   opacity: .2;
 }
-.sigma-global-community-region {
-  border-radius: 999px;
-  border: 0;
-  opacity: .055;
-}
 .sigma-global-community-label {
   max-width: 160px;
   overflow: hidden;
@@ -107,7 +102,7 @@ const STATIC_RENDERER_CSS = `
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent);
   padding: 1px 5px;
   color: var(--muted);
-  font: 11px/1.35 var(--font-ui);
+  font: 600 12px/1.35 var(--font-ui);
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;

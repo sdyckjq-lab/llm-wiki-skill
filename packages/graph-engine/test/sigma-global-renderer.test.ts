@@ -56,7 +56,7 @@ describe("Sigma global renderer production boundary", () => {
       x: 111,
       y: 222,
       label: "Adapter Alpha",
-      size: 8,
+      size: 10,
       color: "#ef4444",
       type: "circle",
       graphNodeType: "topic",
@@ -79,7 +79,7 @@ describe("Sigma global renderer production boundary", () => {
       x: 333,
       y: 444,
       label: "",
-      size: 8,
+      size: 10,
       color: "#f59e0b",
       type: "circle",
       graphNodeType: "source",
@@ -100,8 +100,8 @@ describe("Sigma global renderer production boundary", () => {
     });
     assert.deepEqual(graph.getEdgeAttributes("adapter-edge"), {
       size: 3,
-      color: "#64748b",
-      opacity: 0.42,
+      color: "#8a8175",
+      opacity: 0.126,
       relationType: "depends-on-adapter",
       confidence: "ADAPTER_CONFIDENCE",
       weight: 0.75,
@@ -245,7 +245,7 @@ describe("Sigma global renderer production boundary", () => {
       assert.notEqual(region.tagName, "button");
       assert.equal(region.getAttribute("aria-hidden"), "true");
       assert.equal(region.tabIndex, -1);
-      assert.equal(region.style.pointerEvents, "auto");
+      assert.equal(region.style.pointerEvents, "none");
     }
 
     renderer.destroy();
@@ -1104,6 +1104,7 @@ function fakeContainer(defaultView?: Pick<Window, "ResizeObserver" | "requestAni
   const container = {
     ownerDocument: {
       createElement: (tagName: string) => fakeElement(tagName, defaultView),
+      createElementNS: (_ns: string, tagName: string) => fakeElement(tagName, defaultView),
       defaultView
     },
     append: (child: HTMLElement) => {
@@ -1150,6 +1151,11 @@ function fakeElement(_tagName: string, defaultView?: Pick<Window, "ResizeObserve
   };
   element.ownerDocument = {
     createElement: (tagName: string) => {
+      const child = fakeElement(tagName, defaultView);
+      child.ownerDocument = element.ownerDocument;
+      return child;
+    },
+    createElementNS: (_ns: string, tagName: string) => {
       const child = fakeElement(tagName, defaultView);
       child.ownerDocument = element.ownerDocument;
       return child;

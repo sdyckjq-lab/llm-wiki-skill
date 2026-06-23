@@ -38,7 +38,7 @@ describe("theme tokens", () => {
     assert.equal(theme.vars["--surface"], "#fffdf7");
     assert.equal(theme.vars["--cinnabar"], "#8b2e24");
     assert.equal(theme.vars["--night"], "#315f72");
-    assert.equal(theme.communityColors[0], "#8b2e24");
+    assert.equal(theme.communityColors[0], "#dd9c82");
   });
 
   it("provides a mo-ye dark theme with the same token surface", () => {
@@ -55,8 +55,8 @@ describe("theme tokens", () => {
   });
 
   it("cycles community colors deterministically", () => {
-    assert.equal(getCommunityColor("shan-shui", 0), "#8b2e24");
-    assert.equal(getCommunityColor("shan-shui", 8), "#8b2e24");
+    assert.equal(getCommunityColor("shan-shui", 0), "#dd9c82");
+    assert.equal(getCommunityColor("shan-shui", 9), "#dd9c82");
     assert.equal(getCommunityColor("mo-ye", 1), "#a9bfcb");
   });
 });

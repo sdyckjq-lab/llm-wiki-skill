@@ -593,20 +593,30 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function renderSigmaOverlays(): void {
     if (destroyed) return;
     overlayRoot.replaceChildren();
+    const regionPointsByCommunity = new Map<string, GraphScreenPoint[]>();
+    for (const node of adapterData.nodes) {
+      if (!node.communityId) continue;
+      const screen = sigmaWorldPointToScreenPoint(sigma, node.point, options);
+      const list = regionPointsByCommunity.get(node.communityId);
+      if (list) list.push(screen);
+      else regionPointsByCommunity.set(node.communityId, [screen]);
+    }
+    const selectedCommunityId = adapterData.communities.find((item) => item.selected)?.id ?? null;
     for (const community of adapterData.renderable.communities) {
       if (!community.wash) continue;
-      const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id, { pointerEvents: "auto" });
+      const selected = community.id === selectedCommunityId;
+      const dim = selectedCommunityId != null && !selected;
+      const fallbackBox = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
+      const cloud = sigmaCommunityCloud(regionPointsByCommunity.get(community.id) ?? [], fallbackBox);
+      const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id);
       element.className = "sigma-global-community-region";
       element.dataset.communityId = community.id;
-      element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
-      element.style.borderColor = community.color;
-      element.style.background = community.color;
-      const box = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
-      applyOverlayBox(element, box);
-      element.addEventListener("click", (event) => {
-        event.stopPropagation();
+      element.dataset.selected = selected ? "true" : "false";
+      element.style.overflow = "visible";
+      applyOverlayBox(element, cloud.box);
+      element.append(sigmaCloudSvg(overlayRoot.ownerDocument, community, cloud, dim, () => {
         handleSigmaHit({ renderedObject: { kind: "community-wash", id: community.id } });
-      });
+      }));
       overlayRoot.append(element);
     }
     for (const node of sigmaOverlayNodes(adapterData.nodes)) {
@@ -661,7 +671,6 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       element.className = "sigma-global-community-label";
       element.dataset.communityId = community.id;
       element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
-      element.style.color = community.color;
       element.textContent = community.label || community.id;
       const center = sigmaWorldPointToScreenPoint(sigma, {
         x: community.wash.cx,
@@ -790,6 +799,112 @@ function applyOverlayBox(element: HTMLElement, box: { left: number; top: number;
   element.style.height = `${box.height}px`;
 }
 
+const SIGMA_OVERLAY_SVG_NS = "http://www.w3.org/2000/svg";
+
+interface SigmaCommunityCloud {
+  box: { left: number; top: number; width: number; height: number };
+  localPoints: Array<{ x: number; y: number }> | null;
+}
+
+function sigmaCommunityCloud(
+  screenPoints: GraphScreenPoint[],
+  fallbackBox: { left: number; top: number; width: number; height: number }
+): SigmaCommunityCloud {
+  const hull = convexHull2d(screenPoints);
+  if (hull.length >= 3) {
+    const cx = hull.reduce((sum, p) => sum + p.x, 0) / hull.length;
+    const cy = hull.reduce((sum, p) => sum + p.y, 0) / hull.length;
+    const expanded = hull.map((p) => ({ x: p.x + (p.x - cx) * 0.4, y: p.y + (p.y - cy) * 0.4 }));
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of expanded) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const box = { left: minX, top: minY, width: Math.max(8, maxX - minX), height: Math.max(8, maxY - minY) };
+    return { box, localPoints: expanded.map((p) => ({ x: p.x - box.left, y: p.y - box.top })) };
+  }
+  return { box: fallbackBox, localPoints: null };
+}
+
+function sigmaCloudSvg(
+  ownerDocument: Document,
+  community: { id: string; color: string },
+  cloud: SigmaCommunityCloud,
+  dim: boolean,
+  onSelect: () => void
+): SVGSVGElement {
+  const svg = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.style.position = "absolute";
+  svg.style.inset = "0";
+  svg.style.overflow = "visible";
+  svg.style.pointerEvents = "none";
+  const filterId = `sigma-cloud-${community.id}`;
+  const defs = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "defs");
+  const filter = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "filter");
+  filter.setAttribute("id", filterId);
+  filter.setAttribute("x", "-50%");
+  filter.setAttribute("y", "-50%");
+  filter.setAttribute("width", "200%");
+  filter.setAttribute("height", "200%");
+  const blur = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "feGaussianBlur");
+  blur.setAttribute("stdDeviation", "16");
+  filter.append(blur);
+  defs.append(filter);
+  svg.append(defs);
+  let shape: SVGElement;
+  if (cloud.localPoints) {
+    const polygon = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "polygon");
+    polygon.setAttribute("points", cloud.localPoints.map((p) => `${p.x},${p.y}`).join(" "));
+    shape = polygon;
+  } else {
+    const ellipse = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "ellipse");
+    ellipse.setAttribute("cx", String(cloud.box.width / 2));
+    ellipse.setAttribute("cy", String(cloud.box.height / 2));
+    ellipse.setAttribute("rx", String(Math.max(8, cloud.box.width / 2)));
+    ellipse.setAttribute("ry", String(Math.max(8, cloud.box.height / 2)));
+    shape = ellipse;
+  }
+  shape.setAttribute("fill", community.color);
+  shape.setAttribute("fill-opacity", dim ? "0.06" : "0.2");
+  shape.setAttribute("filter", `url(#${filterId})`);
+  shape.style.pointerEvents = "fill";
+  shape.style.cursor = "pointer";
+  shape.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onSelect();
+  });
+  svg.append(shape);
+  return svg;
+}
+
+function convexHull2d(points: GraphScreenPoint[]): GraphScreenPoint[] {
+  if (points.length < 3) return points.slice();
+  const pts = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: GraphScreenPoint, a: GraphScreenPoint, b: GraphScreenPoint): number =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: GraphScreenPoint[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: GraphScreenPoint[] = [];
+  for (let i = pts.length - 1; i >= 0; i -= 1) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
 function overlayPointerScreenPoint(event: MouseEvent | PointerEvent, root: HTMLElement): GraphScreenPoint {
   return rootClientPointToScreenPoint({
     x: event.clientX,
@@ -840,7 +955,7 @@ function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
 }
 
 function sigmaLabelColor(theme: ThemeId): { color: string } {
-  return { color: theme === "mo-ye" ? "#f8fafc" : "#1f2937" };
+  return { color: theme === "mo-ye" ? "#f8fafc" : "#6b6256" };
 }
 
 function readCameraState(sigma: SigmaGlobalSigmaLike): SigmaGlobalCameraState | null {
@@ -937,8 +1052,8 @@ function sigmaGlobalNodeAttributes(
 function sigmaGlobalEdgeAttributes(edge: GraphRendererAdapterEdge): SigmaGlobalGraphologyEdgeAttributes {
   return {
     size: Math.max(1, finiteNumber(edge.render.strokeWidth, 1)),
-    color: "#64748b",
-    opacity: clamp(finiteNumber(edge.render.opacity, 1), 0, 1),
+    color: "#8a8175",
+    opacity: clamp(finiteNumber(edge.render.opacity, 1), 0, 1) * 0.3,
     relationType: edge.relationType == null ? null : String(edge.relationType),
     confidence: edge.confidence == null ? null : String(edge.confidence),
     weight: finiteNumber(edge.weight, 0),
@@ -990,12 +1105,12 @@ function sigmaGlobalAggregationAttributes(
 }
 
 function sigmaGlobalNodeSize(node: GraphRendererAdapterNode): number {
-  if (node.pinHint.pinned || node.selected) return 8;
-  if (node.searchHit) return 7;
-  if (node.render.displayMode === "card") return 6;
-  if (node.render.displayMode === "compact-card") return 5;
-  if (node.render.displayMode === "overview") return 4;
-  return 3;
+  if (node.pinHint.pinned || node.selected) return 10;
+  if (node.searchHit) return 9;
+  if (node.render.displayMode === "card") return 8;
+  if (node.render.displayMode === "compact-card") return 7;
+  if (node.render.displayMode === "overview") return 6;
+  return 5;
 }
 
 function sigmaOverlayNodes(nodes: readonly GraphRendererAdapterNode[]): GraphRendererAdapterNode[] {
