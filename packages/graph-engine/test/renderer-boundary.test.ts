@@ -489,7 +489,11 @@ class FakeElement {
   readonly children: FakeElement[] = [];
   private readonly listeners = new Map<string, Array<(event: FakeEvent) => void>>();
   readonly dataset: Record<string, string | undefined> = {};
-  readonly style: Record<string, string> = {};
+  readonly style: Record<string, string> & { setProperty(name: string, value: string): void } = {
+    setProperty(name: string, value: string): void {
+      (this as unknown as Record<string, string>)[name] = value;
+    }
+  };
   readonly classList = {
     add: (...classNames: string[]) => {
       this.className = [...new Set([...this.className.split(/\s+/).filter(Boolean), ...classNames])].join(" ");

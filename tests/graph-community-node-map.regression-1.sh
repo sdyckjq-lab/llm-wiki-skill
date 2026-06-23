@@ -47,12 +47,22 @@ const fillerNodes = Array.from({ length: 18 }, (_, index) => {
   };
 });
 graph.nodes = [...coreNodes, ...fillerNodes];
+const aNeighborEdges = Array.from({ length: 10 }, (_, index) => ({
+  id: `eAN${index + 1}`,
+  from: "A",
+  to: `N${index + 1}`,
+  type: "EXTRACTED",
+  confidence: "EXTRACTED",
+  relation_type: index % 2 === 0 ? "实现" : "依赖",
+  weight: 0.6
+}));
 graph.edges = [
   { id: "eAB", from: "A", to: "B", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "实现", weight: 1 },
   { id: "eAC", from: "A", to: "C", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.8 },
   { id: "eBD", from: "B", to: "D", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.7 },
   { id: "eDE", from: "D", to: "E", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "衍生", weight: 0.5 },
-  { id: "eEF", from: "E", to: "F", type: "AMBIGUOUS", confidence: "AMBIGUOUS", relation_type: "矛盾", weight: 0.4 }
+  { id: "eEF", from: "E", to: "F", type: "AMBIGUOUS", confidence: "AMBIGUOUS", relation_type: "矛盾", weight: 0.4 },
+  ...aNeighborEdges
 ];
 graph.meta.total_nodes = graph.nodes.length;
 graph.meta.total_edges = graph.edges.length;
@@ -83,10 +93,15 @@ if [ -z "$chrome_executable" ] && [ -x "/Applications/Google Chrome.app/Contents
     chrome_executable="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 fi
 
+artifact_dir="${GRAPH_COMMUNITY_NODE_MAP_ARTIFACT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/llm-wiki-community-node-map.XXXXXX")}"
+screenshot_path="${GRAPH_COMMUNITY_NODE_MAP_SCREENSHOT:-$artifact_dir/community-node-map.png}"
+
 GRAPH_COMMUNITY_NODE_MAP_HTML="$tmp_dir/wiki/knowledge-graph.html" \
 GRAPH_COMMUNITY_NODE_MAP_CHROME_EXECUTABLE="$chrome_executable" \
+GRAPH_COMMUNITY_NODE_MAP_SCREENSHOT="$screenshot_path" \
 NODE_PATH="$playwright_node_path" \
 node "$REPO_ROOT/tests/browser/graph-community-node-map.mjs" \
     || fail "community node map browser regression should pass"
 
 echo "PASS: graph community node map regression"
+echo "SCREENSHOT: $screenshot_path"

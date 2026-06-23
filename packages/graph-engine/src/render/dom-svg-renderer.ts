@@ -84,7 +84,9 @@ export function paintDomSvgGraph(input: PaintDomSvgGraphInput): PaintedGraphDom 
     nodeLayer.appendChild(button);
   }
   for (const node of graph.nodes) {
-    const button = createGraphNodeElement(ownerDocument, node, handlers);
+    const button = createGraphNodeElement(ownerDocument, node, handlers, {
+      communityMap: graph.focus?.kind === "community"
+    });
     painted.nodeElements.set(node.id, button);
     painted.basePoints.set(node.id, node.point);
     nodeLayer.appendChild(button);

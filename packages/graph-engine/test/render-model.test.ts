@@ -527,6 +527,12 @@ describe("buildRenderableGraph", () => {
     assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= graph.budget.limits.maxLabels);
     assert.equal(graph.overflow.cards.total, 0);
     assert.equal(graph.overflow.cards.hidden, 0);
+
+    const firstNode = graph.nodes[0];
+    assert.ok(firstNode.communityMapDotSize >= 9, `community map dot should keep a floor size, got ${firstNode.communityMapDotSize}`);
+    assert.ok(firstNode.communityMapDotSize <= 24, `community map dot should respect the importance ceiling, got ${firstNode.communityMapDotSize}`);
+    assert.ok(["left", "right", "top", "bottom"].includes(firstNode.communityMapLabelSide));
+    assert.equal(typeof firstNode.communityMapRelationLabel, "boolean");
   });
 
   it("uses the small community band as a lightweight map with sparse labels", () => {

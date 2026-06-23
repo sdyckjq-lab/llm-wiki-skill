@@ -8,10 +8,15 @@ export interface GraphNodeElementHandlers {
   onNodePreviewLeave: () => void;
 }
 
+export interface GraphNodeElementOptions {
+  communityMap?: boolean;
+}
+
 export function createGraphNodeElement(
   ownerDocument: Document,
   node: RenderableNode,
-  handlers: GraphNodeElementHandlers
+  handlers: GraphNodeElementHandlers,
+  options: GraphNodeElementOptions = {}
 ): HTMLButtonElement {
   const button = ownerDocument.createElement("button");
   button.className = "node";
@@ -45,6 +50,21 @@ export function createGraphNodeElement(
   button.addEventListener("focus", () => handlers.onNodePreviewEnter(node.id));
   button.addEventListener("blur", () => handlers.onNodePreviewLeave());
   bindNodeActivationHandlers(button, node.id, handlers);
+
+  if (options.communityMap) {
+    button.dataset.labelSide = node.communityMapLabelSide;
+    button.dataset.relationLabel = node.communityMapRelationLabel ? "true" : "false";
+    button.style.setProperty("--node-size", `${node.communityMapDotSize}px`);
+
+    const pin = ownerDocument.createElement("span");
+    pin.className = "node-pin";
+    pin.setAttribute("aria-hidden", "true");
+
+    const dot = ownerDocument.createElement("span");
+    dot.className = "dot-core";
+    pin.appendChild(dot);
+    button.appendChild(pin);
+  }
 
   const kind = ownerDocument.createElement("span");
   kind.className = "node-kind";

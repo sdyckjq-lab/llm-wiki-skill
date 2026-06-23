@@ -158,6 +158,10 @@ export interface RenderableNode {
   previewStart: boolean;
   labelVisible: boolean;
   interactionLabelVisible: boolean;
+  communityMapImportance: number;
+  communityMapDotSize: number;
+  communityMapLabelSide: "left" | "right" | "top" | "bottom";
+  communityMapRelationLabel: boolean;
 }
 
 export interface RenderableEdge {
@@ -304,28 +308,28 @@ export const GRAPH_COMMUNITY_FOCUS_BUDGETS: Record<GraphCommunityFocusSizeBand, 
   small: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 1500,
-    maxLabels: 12,
+    maxLabels: 8,
     maxCards: 0,
     maxInteractionUpdates: 1800
   },
   medium: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 1500,
-    maxLabels: 24,
+    maxLabels: 14,
     maxCards: 0,
     maxInteractionUpdates: 1800
   },
   large: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 1200,
-    maxLabels: 32,
+    maxLabels: 18,
     maxCards: 0,
     maxInteractionUpdates: 1500
   },
   oversized: {
     maxVisibleNodes: 2500,
     maxVisibleEdges: 800,
-    maxLabels: 40,
+    maxLabels: 24,
     maxCards: 0,
     maxInteractionUpdates: 1200
   }
@@ -498,6 +502,16 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
     })
   );
 
+  const mapImportanceById = communityMapImportanceById(budgetedVisibleNodes, {
+    labelNodeIds: labelIds,
+    importantNodeIds: importantIds,
+    startNodeIds: startIds,
+    selectedNodeIds: selectedNodeSet,
+    pinnedNodeIds: pinnedNodeSet,
+    searchResultIds: searchResultSet,
+    coreNodeIds: stableCoreNodeSet
+  });
+
   const nodes = budgetedVisibleNodes.map((node) => {
     const isSelected = selectedNodeSet.has(node.id);
     const displayMode = budgetedNodeDisplayMode(node, {
@@ -541,7 +555,11 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
       startNode: startIds[node.id] === true,
       previewStart: node.id === previewNodeId,
       labelVisible: labelNodeSet.has(node.id),
-      interactionLabelVisible: interactionLabelNodeSet.has(node.id)
+      interactionLabelVisible: interactionLabelNodeSet.has(node.id),
+      communityMapImportance: mapImportanceById.get(node.id) ?? 0,
+      communityMapDotSize: communityMapDotSize(mapImportanceById.get(node.id) ?? 0),
+      communityMapLabelSide: communityMapLabelSide(cssPoint),
+      communityMapRelationLabel: communityMapRelationLabel(node, { labelNodeSet })
     };
   });
 
@@ -1185,6 +1203,66 @@ function stableNodeImportance(
   let score = Number(node.priority || 0) * 10 + Number(node.weight || 0);
   if (signals.coreNodeIds.has(node.id)) score += 20000;
   return score;
+}
+
+// Focused community map renders nodes as importance-sized dots. Raw graph weights
+// (e.g. fixture weights 90/70/60 or normalized 0-1 values) would otherwise all clamp
+// to the same maximum dot size and erase any visual hierarchy. We rescale the raw
+// priority/weight across the visible community into a 0-10 importance score before
+// deriving the dot size, so the largest node reads as the largest dot.
+function communityMapImportanceById(
+  nodes: AtlasNode[],
+  options: {
+    labelNodeIds: Record<string, boolean>;
+    importantNodeIds: Record<string, boolean>;
+    startNodeIds: Record<string, boolean>;
+    selectedNodeIds: Set<string>;
+    pinnedNodeIds: Set<string>;
+    searchResultIds: Set<string>;
+    coreNodeIds: Set<string>;
+  }
+): Map<string, number> {
+  const raw = nodes.map((node) => ({
+    id: node.id,
+    value: Math.max(Number(node.priority || 0), Number(node.weight || 0))
+  }));
+  const rawMax = Math.max(0, ...raw.map((entry) => entry.value));
+  const rawScale = rawMax <= 1 ? 10 : rawMax > 10 ? 10 / rawMax : 1;
+  const scores = new Map<string, number>();
+  for (const node of nodes) {
+    let score = Math.max(Number(node.priority || 0), Number(node.weight || 0)) * rawScale;
+    if (options.selectedNodeIds.has(node.id) || options.pinnedNodeIds.has(node.id) || options.searchResultIds.has(node.id)) score += 1.5;
+    if (options.coreNodeIds.has(node.id)) score += 1;
+    if (options.startNodeIds[node.id] || options.importantNodeIds[node.id] || options.labelNodeIds[node.id]) score += .7;
+    scores.set(node.id, round(clamp(score, 0, 10)));
+  }
+  return scores;
+}
+
+function communityMapDotSize(importance: number): number {
+  const clamped = Math.max(0, Math.min(10, importance || 0));
+  return round(9 + clamped * 1.45);
+}
+
+function communityMapLabelSide(point: { x: number; y: number }): "left" | "right" | "top" | "bottom" {
+  if (point.x > 72) return "left";
+  if (point.x < 24) return "right";
+  if (point.y > 68) return "top";
+  if (point.y < 24) return "bottom";
+  return "right";
+}
+
+// A first-degree neighbor earns a hover label only if it already belongs to the
+// budgeted label set. The raw signals (selected / pinned / search / important / start
+// / core) feed into that set, but in a focused community the whole community is
+// selected, so checking those signals directly would label every neighbor. Reusing
+// the budgeted labelNodeSet keeps first-degree labels sparse and consistent with the
+// default label budget.
+function communityMapRelationLabel(
+  node: AtlasNode,
+  options: { labelNodeSet: Set<string> }
+): boolean {
+  return options.labelNodeSet.has(node.id);
 }
 
 function temporaryNodeBoost(

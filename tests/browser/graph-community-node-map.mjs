@@ -7,6 +7,7 @@ const { chromium } = require("playwright");
 
 const html = process.env.GRAPH_COMMUNITY_NODE_MAP_HTML || "";
 assert.notEqual(html, "", "GRAPH_COMMUNITY_NODE_MAP_HTML must point at generated HTML");
+const screenshotPath = process.env.GRAPH_COMMUNITY_NODE_MAP_SCREENSHOT || "";
 
 const executablePath = process.env.GRAPH_COMMUNITY_NODE_MAP_CHROME_EXECUTABLE || "";
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
@@ -30,6 +31,26 @@ try {
   assert.ok(initial.visibleLabelCount > 0 && initial.visibleLabelCount <= 12, `default community map should expose only budgeted key labels, got ${initial.visibleLabelCount}`);
   assert.ok(initial.visibleLabelCount < initial.nodeCount, `default community map should not label every node, got ${initial.visibleLabelCount}/${initial.nodeCount}`);
   assert.ok(initial.defaultEdgeOpacity > 0 && initial.defaultEdgeOpacity < 0.35, `default community edges should stay quiet, got ${initial.defaultEdgeOpacity}`);
+  assert.equal(initial.rootPaperToken.toLowerCase(), "#f8f1e6", "community map should expose the approved warm paper token");
+  assert.match(initial.rootBackgroundSize, /42px 42px/, "community map should render the paper-grid background size");
+  assert.match(initial.rootBackground, /linear-gradient|radial-gradient/, "community map should keep a visible paper-style background treatment");
+  assert.ok(initial.sampleNodeStyles.dot, "community map nodes should render a dot-core element");
+  assert.ok(initial.sampleNodeStyles.label, "community map labels should still be measurable when visible");
+  assert.match(initial.sampleNodeStyles.label.fontFamily, /(Songti|Noto Serif|STSong|serif)/i, "community map labels should use the paper-map serif stack");
+
+  await page.evaluate(() => {
+    window.__LLM_WIKI_GRAPH_ENGINE__?.setTypeFilters?.({ entity: false });
+  });
+  await page.locator('.node[data-id="A"]').hover();
+  await page.waitForFunction(() => document.querySelector('.edge[data-edge-id="eAB"]')?.getAttribute("data-filter-state") === "hidden");
+  const hiddenFilter = await snapshot(page);
+  const hiddenOpacity = Number.parseFloat(hiddenFilter.sampleNodeStyles.hiddenEdge?.opacity || "1");
+  assert.ok(hiddenOpacity <= 0.04, `filtered hidden edge should stay visually hidden, got ${hiddenOpacity}`);
+  await page.evaluate(() => {
+    window.__LLM_WIKI_GRAPH_ENGINE__?.setTypeFilters?.({ entity: true, source: true, topic: true });
+  });
+  await page.mouse.move(20, 20);
+  await page.waitForFunction(() => document.querySelector('.edge[data-edge-id="eAB"]')?.getAttribute("data-filter-state") === "visible");
 
   const beforeHoverCenter = await nodeCenter(page, "B");
   await page.locator('.node[data-id="A"]').hover();
@@ -52,6 +73,23 @@ try {
   assert.ok(hover.secondEdgeOpacity > hover.unrelatedEdgeOpacity, "second-degree edges should remain clearer than unrelated edges");
   assert.ok(Math.abs(beforeHoverCenter.x - afterHoverCenter.x) < 0.5, "hover should not shift node x");
   assert.ok(Math.abs(beforeHoverCenter.y - afterHoverCenter.y) < 0.5, "hover should not shift node y");
+
+  assert.ok(hover.labelSideCount === hover.nodeCount, "each community map node should expose a label-side placement");
+  assert.ok(hover.firstDegreeCount >= 10, "fixture should be dense enough to catch first-degree label walls");
+  assert.ok(hover.visibleFirstLabels < hover.firstDegreeCount, "first-degree labels should stay sparse instead of labeling every direct neighbor");
+  assert.ok(hover.visibleFirstLabels <= hover.visibleLabelCount, "first-degree labels should stay within the visible label budget");
+
+  await page.waitForTimeout(360);
+  const hoverAfterPreviewDelay = await snapshot(page);
+  assert.notEqual(hoverAfterPreviewDelay.hoverPreviewState, "open", "focused community node hover should not open the old content preview card");
+
+  await page.locator('.node[data-id="B"]').hover();
+  await page.waitForFunction(() => (
+    document.querySelector("[data-llm-wiki-graph-root='true']")?.getAttribute("data-relation-focus-node") === "B"
+  ));
+  await page.waitForTimeout(120);
+  const hoverB = await snapshot(page);
+  assert.equal(hoverB.relationFocusNode, "B", "hover should move directly from A focus to B focus");
 
   await page.mouse.move(20, 20);
   await page.waitForFunction(() => (
@@ -88,6 +126,10 @@ try {
   assert.equal(restored.nodeDepths.A, "focus");
 
   console.log(JSON.stringify({ initial, hover, afterLeave, clicked, override, restored }, null, 2));
+
+  if (screenshotPath) {
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+  }
 } finally {
   await browser.close();
 }
@@ -101,6 +143,28 @@ async function snapshot(page) {
       const element = edge(id);
       if (!element) return -1;
       return Number.parseFloat(getComputedStyle(element).opacity || "0");
+    };
+    const stylesFor = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const style = getComputedStyle(element);
+      return {
+        display: style.display,
+        background: style.backgroundColor,
+        boxShadow: style.boxShadow,
+        border: style.border,
+        borderRadius: style.borderRadius,
+        fontFamily: style.fontFamily,
+        fontSize: style.fontSize,
+        left: style.left,
+        right: style.right,
+        top: style.top,
+        bottom: style.bottom,
+        opacity: style.opacity,
+        transform: style.transform,
+        width: style.width,
+        height: style.height
+      };
     };
     return {
       communityMapState: root?.getAttribute("data-community-map-state") || "",
@@ -125,7 +189,23 @@ async function snapshot(page) {
         eAB: edge("eAB")?.getAttribute("data-relation-focus-depth") || "",
         eBD: edge("eBD")?.getAttribute("data-relation-focus-depth") || "",
         eEF: edge("eEF")?.getAttribute("data-relation-focus-depth") || ""
-      }
+      },
+      rootBackground: root ? getComputedStyle(root).backgroundImage : "",
+      rootBackgroundSize: root ? getComputedStyle(root).backgroundSize : "",
+      rootPaperToken: root ? getComputedStyle(root).getPropertyValue("--community-map-paper").trim() : "",
+      sampleNodeStyles: {
+        node: stylesFor('.node[data-id="A"]'),
+        dot: stylesFor('.node[data-id="A"] .dot-core'),
+        label: stylesFor('.node[data-id="A"] .node-name'),
+        hiddenEdge: stylesFor('.edge[data-edge-id="eAB"][data-filter-state="hidden"]'),
+        firstEdge: stylesFor('.edge[data-edge-id="eAB"]')
+      },
+      hoverPreviewState: document.querySelector(".graph-hover-preview")?.getAttribute("data-state") || "",
+      hoverPreviewKind: document.querySelector(".graph-hover-preview")?.getAttribute("data-kind") || "",
+      labelSideCount: Array.from(document.querySelectorAll(".node[data-label-side]")).length,
+      firstDegreeCount: Array.from(document.querySelectorAll('.node[data-relation-focus-depth="first"]')).length,
+      visibleFirstLabels: Array.from(document.querySelectorAll('.node[data-relation-focus-depth="first"] .node-name'))
+        .filter((element) => getComputedStyle(element).display !== "none").length
     };
   });
 }

@@ -54,6 +54,7 @@ export interface GraphRenderCommands {
   scheduleHoverPreview(id: NodeId): void;
   showEdgeHoverPreview(id: string): void;
   clearHoverPreview(): void;
+  cancelHoverPreviewOnly(): void;
 }
 
 export interface GraphRenderOverlayDelegates {
@@ -141,7 +142,9 @@ export function createGraphRenderPipeline(
         },
         onNodePreviewEnter: (id) => {
           options.commands.setNodeHover(id);
-          options.commands.scheduleHoverPreview(id);
+          if (context.graph.focus?.kind !== "community") {
+            options.commands.scheduleHoverPreview(id);
+          }
         },
         onEdgePreviewEnter: (id) => {
           options.commands.showEdgeHoverPreview(id);
@@ -150,8 +153,17 @@ export function createGraphRenderPipeline(
           options.commands.clearHoverPreview();
         },
         onNodePreviewLeave: () => {
-          options.commands.clearHoverPreview();
-          options.commands.setNodeHover(null);
+          if (context.graph.focus?.kind !== "community") {
+            options.commands.clearHoverPreview();
+            options.commands.setNodeHover(null);
+            return;
+          }
+          options.commands.cancelHoverPreviewOnly();
+          if (context.relationFocusClearTimer) clearTimeout(context.relationFocusClearTimer);
+          context.relationFocusClearTimer = setTimeout(() => {
+            context.relationFocusClearTimer = null;
+            options.commands.setNodeHover(null);
+          }, 80);
         },
         onAggregationContainerClick: (container) => {
           options.commands.selectAggregationContainer(container.communityId);
@@ -706,6 +718,8 @@ export function createGraphRenderPipeline(
     context.viewportAnimationTimer = null;
     if (context.interactionDegradationTimer) clearTimeout(context.interactionDegradationTimer);
     context.interactionDegradationTimer = null;
+    if (context.relationFocusClearTimer) clearTimeout(context.relationFocusClearTimer);
+    context.relationFocusClearTimer = null;
   }
 
   return {

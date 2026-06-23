@@ -72,6 +72,7 @@ export interface GraphRenderContext {
   gestureController: GraphGestureController | null;
   viewportAnimationTimer: ReturnType<typeof setTimeout> | null;
   interactionDegradationTimer: ReturnType<typeof setTimeout> | null;
+  relationFocusClearTimer: ReturnType<typeof setTimeout> | null;
   lastEffectiveDensityMode: DensityMode | null;
   lastViewportSize: { width: number; height: number };
   resizeObserver: ResizeObserver | null;

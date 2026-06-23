@@ -225,7 +225,7 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
-  it("applies community relation focus immediately on node hover and clears it on leave", () => {
+  it("applies community relation focus immediately on node hover and clears it on leave", async () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
     const renderer = createGraphRenderer(container as unknown as HTMLElement, {
@@ -249,6 +249,7 @@ describe("graph renderer lifecycle", () => {
     assert.equal(edgeElement(renderer, "d-e")?.dataset.relationFocusDepth, "unrelated");
 
     nodeElement(renderer, "a")?.dispatch("pointerleave");
+    await delay(100);
 
     assert.equal(renderer.root.dataset.relationFocus, "idle");
     assert.equal(renderer.root.dataset.relationFocusNode, "");
@@ -258,7 +259,7 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
-  it("keeps clicked community node as fixed relation focus and lets hover temporarily override it", () => {
+  it("keeps clicked community node as fixed relation focus and lets hover temporarily override it", async () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
     const renderer = createGraphRenderer(container as unknown as HTMLElement, {
@@ -283,6 +284,7 @@ describe("graph renderer lifecycle", () => {
     assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "second");
 
     nodeElement(renderer, "d")?.dispatch("pointerleave");
+    await delay(100);
 
     assert.equal(renderer.root.dataset.relationFocusNode, "a");
     assert.equal(nodeElement(renderer, "a")?.dataset.relationFocusDepth, "focus");
@@ -293,6 +295,48 @@ describe("graph renderer lifecycle", () => {
     assert.equal(renderer.root.dataset.relationFocus, "idle");
     assert.equal(renderer.root.dataset.relationFocusNode, "");
     assert.equal(nodeElement(renderer, "a")?.getAttribute("aria-pressed"), "false");
+
+    renderer.destroy();
+  });
+
+  it("does not open node hover preview cards inside focused community view", async () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    nodeElement(renderer, "a")?.dispatch("pointerenter");
+    await delay(360);
+
+    const preview = findByClass(renderer.root as unknown as FakeElement, "graph-hover-preview")[0];
+    assert.notEqual(preview?.dataset.state, "open");
+    assert.equal(renderer.root.dataset.relationFocusNode, "a");
+
+    renderer.destroy();
+  });
+
+  it("keeps relation focus continuous when hovering between community nodes", async () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createGraphRenderer(container as unknown as HTMLElement, {
+      data: relationFocusGraphData(),
+      theme: "shan-shui",
+      live: false,
+      focus: { kind: "community", id: "community-a" }
+    });
+
+    nodeElement(renderer, "a")?.dispatch("pointerenter");
+    assert.equal(renderer.root.dataset.relationFocusNode, "a");
+
+    nodeElement(renderer, "a")?.dispatch("pointerleave");
+    nodeElement(renderer, "b")?.dispatch("pointerenter");
+
+    assert.equal(renderer.root.dataset.relationFocusNode, "b");
+    assert.notEqual(renderer.root.dataset.relationFocus, "idle");
 
     renderer.destroy();
   });
@@ -1191,6 +1235,10 @@ async function waitForViewportCommit(): Promise<void> {
 
 async function waitForInteractionSettle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 240));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function diff(overrides: Partial<GraphDiff> & { nodeCount: number }): GraphDiff {

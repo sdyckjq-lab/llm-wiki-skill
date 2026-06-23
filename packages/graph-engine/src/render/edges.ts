@@ -29,6 +29,7 @@ export function createGraphEdgeElement(
   path.addEventListener("focus", () => handlers.onEdgePreviewEnter(edge.id));
   path.addEventListener("blur", () => handlers.onEdgePreviewLeave());
   path.style.strokeWidth = String(edge.strokeWidth);
+  path.style.setProperty("--edge-map-width", `${edge.strokeWidth}px`);
   path.style.opacity = String(edge.opacity);
   const title = ownerDocument.createElementNS(SVG_NS, "title");
   title.textContent = `${edge.relationType} · ${edgeConfidenceLabel(edge.confidence)}`;

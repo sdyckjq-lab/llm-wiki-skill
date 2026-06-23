@@ -167,6 +167,7 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
     gestureController: null,
     viewportAnimationTimer: null,
     interactionDegradationTimer: null,
+    relationFocusClearTimer: null,
     lastEffectiveDensityMode: null,
     lastViewportSize: initialViewportSize(root),
     resizeObserver: null,
@@ -228,6 +229,10 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
       handleNodeDoubleClick: (id) => controller.handleNodeDoubleClick(id),
       setNodeFixed: (id, mode) => controller.setNodeFixed(id, mode),
       setNodeHover: (id) => {
+        if (context.relationFocusClearTimer) {
+          clearTimeout(context.relationFocusClearTimer);
+          context.relationFocusClearTimer = null;
+        }
         presenter.setGraphHover(id ? { kind: "node", id } : null);
         pipeline.applyRelationFocus();
       },
@@ -239,6 +244,9 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
       clearHoverPreview: () => {
         presenter.clearHoverPreview();
         pipeline.applyRelationFocus();
+      },
+      cancelHoverPreviewOnly: () => {
+        presenter.cancelHoverPreviewOnly();
       }
     },
     overlays: {
