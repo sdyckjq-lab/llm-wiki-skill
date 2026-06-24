@@ -288,6 +288,16 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
   const sigmaRoot = createSigmaRoot(options.container, currentTheme);
   const overlayRoot = createSigmaOverlayRoot(sigmaRoot);
+  // 云团模糊滤镜内容与帧无关，挂到独立的 filterHost 只建一次，renderSigmaOverlays
+  // 每帧 replaceChildren(overlayRoot) 不会动到它。随 sigmaRoot.remove() 一并回收。
+  const cloudFilterId = `sigma-community-cloud-blur-${nextSigmaCloudFilterSequence()}`;
+  const filterHost = sigmaRoot.ownerDocument.createElement("div");
+  filterHost.setAttribute("aria-hidden", "true");
+  filterHost.style.position = "absolute";
+  filterHost.style.inset = "0";
+  filterHost.style.pointerEvents = "none";
+  filterHost.append(sigmaSharedCloudFilterDef(sigmaRoot.ownerDocument, cloudFilterId));
+  sigmaRoot.append(filterHost);
   let projector = createSigmaGlobalHitProjector({
     adapterData,
     viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
@@ -297,9 +307,6 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let sigma: SigmaGlobalSigmaLike;
   let generation = 0;
   let lastHitTarget: GraphGestureTarget | null = null;
-  // 每个渲染器实例一个唯一的云团模糊滤镜 id：多个渲染器实例同屏不撞 id，
-  // 且全实例共用这一个滤镜（不再每个社区各建一个，减少 DOM 与 GPU 开销）。
-  const cloudFilterId = `sigma-community-cloud-blur-${nextSigmaCloudFilterSequence()}`;
   let activeNodeDrag: SigmaGlobalNodeDragSession | null = null;
   let currentPins: PinMap = { ...(options.pins ?? {}) };
   let suppressNextNodeClickId: string | null = null;
@@ -596,7 +603,6 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function renderSigmaOverlays(): void {
     if (destroyed) return;
     overlayRoot.replaceChildren();
-    overlayRoot.append(sigmaSharedCloudFilterDef(overlayRoot.ownerDocument, cloudFilterId));
     const regionPointsByCommunity = new Map<string, GraphScreenPoint[]>();
     for (const node of adapterData.nodes) {
       if (!node.communityId) continue;
@@ -618,7 +624,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       element.dataset.selected = selected ? "true" : "false";
       element.style.overflow = "visible";
       applyOverlayBox(element, cloud.box);
-      element.append(sigmaCloudSvg(overlayRoot.ownerDocument, community, cloud, dim, cloudFilterId, () => {
+      element.append(sigmaCloudSvg(overlayRoot.ownerDocument, community.color, cloud, dim, cloudFilterId, () => {
         handleSigmaHit({ renderedObject: { kind: "community-wash", id: community.id } });
       }));
       overlayRoot.append(element);
@@ -674,7 +680,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-label", community.id);
       element.className = "sigma-global-community-label";
       element.dataset.communityId = community.id;
-      const labelSelected = adapterData.communities.find((item) => item.id === community.id)?.selected ?? false;
+      const labelSelected = community.id === selectedCommunityId;
       element.dataset.selected = labelSelected ? "true" : "false";
       element.dataset.dim = selectedCommunityId != null && !labelSelected ? "true" : "false";
       element.textContent = community.label || community.id;
@@ -868,7 +874,7 @@ function sigmaSharedCloudFilterDef(ownerDocument: Document, filterId: string): S
 
 function sigmaCloudSvg(
   ownerDocument: Document,
-  community: { id: string; color: string },
+  color: string,
   cloud: SigmaCommunityCloud,
   dim: boolean,
   filterId: string,
@@ -894,7 +900,7 @@ function sigmaCloudSvg(
     ellipse.setAttribute("ry", String(Math.max(8, cloud.box.height / 2)));
     shape = ellipse;
   }
-  shape.setAttribute("fill", community.color);
+  shape.setAttribute("fill", color);
   shape.setAttribute("fill-opacity", dim ? "0.06" : "0.2");
   shape.setAttribute("filter", `url(#${filterId})`);
   shape.style.pointerEvents = "fill";

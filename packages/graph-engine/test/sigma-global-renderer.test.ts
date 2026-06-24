@@ -450,7 +450,7 @@ describe("Sigma global renderer production boundary", () => {
     assert.equal(renderer.id, "sigma-global");
     assert.equal(renderer.updateStrategy, "rebuild-graph-preserve-camera");
     assert.equal(container.children.length, 1);
-    assert.equal(renderer.overlayRoot.children.length, 5);
+    assert.equal(renderer.overlayRoot.children.length, 4);
     assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-node-hit-target").length, 2);
     assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-region").length, 1);
     assert.equal(renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-label").length, 1);
