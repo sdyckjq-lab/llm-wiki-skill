@@ -274,6 +274,8 @@ export function createGraphFacadeRouteManager(
   let destroyed = false;
   let active: GraphFacadeRenderer | undefined;
   let routeTransitionTimer: ReturnType<typeof setTimeout> | undefined;
+  let resettingLayout = false;
+  let rendererResetPins: PinMap | null = null;
 
   const manager: GraphFacadeRouteManager = {
     get routeId() {
@@ -405,7 +407,19 @@ export function createGraphFacadeRouteManager(
     },
     resetLayout() {
       assertActive();
-      currentRenderer().resetLayout();
+      const nextPins: PinMap = {};
+      state.pins = nextPins;
+      resettingLayout = true;
+      rendererResetPins = null;
+      try {
+        currentRenderer().resetLayout();
+      } finally {
+        resettingLayout = false;
+      }
+      const pinsToPersist = rendererResetPins ?? nextPins;
+      rendererResetPins = null;
+      state.pins = pinsToPersist;
+      options.callbacks?.onPinsChanged?.(pinsToPersist);
     },
     destroy() {
       if (destroyed) return;
@@ -558,6 +572,10 @@ export function createGraphFacadeRouteManager(
           },
           onPinsChanged: (pins) => {
             state.pins = pins;
+            if (resettingLayout) {
+              rendererResetPins = pins;
+              return;
+            }
             options.callbacks?.onPinsChanged?.(pins);
           },
           onGlobalResetRequested: () => {

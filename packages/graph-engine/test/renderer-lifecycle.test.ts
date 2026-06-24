@@ -576,6 +576,85 @@ describe("graph renderer lifecycle", () => {
     manager.destroy();
   });
 
+  it("clears saved pins when resetting the Sigma global layout", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const pinsChanged: unknown[] = [];
+    const state = {
+      data: graphDataForReturnGlobal(),
+      pins: { "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } },
+      theme: "shan-shui" as const,
+      focus: null,
+      typeFilters: { entity: true, source: true },
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      callbacks: {
+        onPinsChanged: (pins) => pinsChanged.push(pins)
+      },
+      factories: {
+        createSigmaGlobal: (input) => createSigmaShellRenderer(input)
+      }
+    });
+    const sigmaShell = findByClass(container, "sigma-global-route")[0];
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(sigmaShell?.dataset.pinnedPaths, "wiki/a.md");
+
+    manager.resetLayout();
+
+    assert.deepEqual(pinsChanged, [{}]);
+    assert.deepEqual(state.pins, {});
+    assert.equal(sigmaShell?.dataset.pinnedPaths, "");
+
+    manager.select({ kind: "community", id: "community-a" });
+    assert.deepEqual(state.pins, {});
+    assert.equal(sigmaShell?.dataset.selectedKind, "community");
+    assert.equal(sigmaShell?.dataset.selectedId, "community-a");
+    assert.equal(sigmaShell?.dataset.pinnedPaths, "");
+
+    manager.destroy();
+  });
+
+  it("clears saved pins when resetting the over-limit notice layout", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const pinsChanged: unknown[] = [];
+    const state = {
+      data: largeFallbackGraphData(),
+      pins: { "wiki/large/0.md": { x: 120, y: 140, coordinateSpace: "world" } },
+      theme: "shan-shui" as const,
+      focus: null,
+      typeFilters: {},
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      callbacks: {
+        onPinsChanged: (pins) => pinsChanged.push(pins)
+      }
+    });
+    const overLimitView = findByClass(container, "graph-over-limit-notice-view")[0];
+
+    assert.equal(manager.routeId, "over-limit-notice");
+    assert.equal(overLimitView?.dataset.pinnedCount, "1");
+
+    manager.resetLayout();
+
+    assert.deepEqual(pinsChanged, [{}]);
+    assert.deepEqual(state.pins, {});
+    assert.equal(overLimitView?.dataset.pinnedCount, "0");
+
+    manager.destroy();
+  });
+
   it("keeps DOM/SVG small fallback on the same lightweight global interaction rules", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
@@ -1198,7 +1277,12 @@ function createSigmaShellRenderer(input: GraphFacadeRouteRendererFactoryInput): 
       options = { ...options, pins };
       renderSigmaShellState();
     },
-    resetLayout() {},
+    resetLayout() {
+      const nextPins = {};
+      options = { ...options, pins: nextPins };
+      renderSigmaShellState();
+      input.options.callbacks.onPinsChanged?.(nextPins);
+    },
     destroy() {
       shell.remove();
     }
@@ -1442,6 +1526,12 @@ class FakeElement {
       element.dataset.type !== undefined &&
       hasAncestorClass(element, "graph-type-filter")
     );
+  }
+
+  querySelector(selector: string): FakeElement | null {
+    if (!selector.startsWith(".")) return null;
+    const className = selector.slice(1);
+    return findByClass(this, className)[0] || null;
   }
 }
 
