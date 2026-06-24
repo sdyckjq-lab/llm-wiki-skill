@@ -164,6 +164,26 @@ describe("Sigma global renderer production boundary", () => {
     assert.deepEqual(graph.getAttribute("selection"), adapterData.selection);
   });
 
+  it("passes selected communities into Sigma global focus edge styling", () => {
+    const adapterData = adapterDataFixture({ communityCount: 3, selectedCommunityIds: ["community-1"] });
+    const graph = buildSigmaGlobalGraphologyGraph(
+      adapterData,
+      { GraphologyGraph },
+      "shan-shui",
+      { semanticEmphasis: false, focusHighlight: true }
+    );
+
+    assert.deepEqual(graph.getEdgeAttributes("adapter-edge"), {
+      size: 0.62,
+      color: "rgba(49, 95, 114, 0.05)",
+      relationType: "depends-on-adapter",
+      confidence: "ADAPTER_CONFIDENCE",
+      weight: 0.75,
+      sourceCommunityId: "adapter-community",
+      targetCommunityId: "adapter-community"
+    });
+  });
+
   it("styles Sigma global edges by relation and community scope without confidence opacity", () => {
     const intraNeutral = sigmaGlobalEdgeStyle(sigmaEdgeFixture({
       relationType: "依赖",
@@ -226,6 +246,35 @@ describe("Sigma global renderer production boundary", () => {
     assert.ok(neutralEmphasis.size < neutralBase.size);
     assert.ok(edgeStyleAlpha(contrastEmphasis.color) > edgeStyleAlpha(contrastBase.color));
     assert.ok(contrastEmphasis.size > contrastBase.size);
+  });
+
+  it("uses focus highlight only when selected communities exist", () => {
+    const style = { semanticEmphasis: false, focusHighlight: true };
+    const selectedCommunities = new Set(["c1"]);
+    const touchedEdge = sigmaEdgeFixture({
+      relationType: "依赖",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c2",
+      weight: 0.4
+    });
+    const untouchedEdge = sigmaEdgeFixture({
+      relationType: "依赖",
+      sourceCommunityId: "c2",
+      targetCommunityId: "c3",
+      weight: 0.4
+    });
+
+    const touchedBase = sigmaGlobalEdgeStyle(touchedEdge, "shan-shui");
+    const touchedFocused = sigmaGlobalEdgeStyle(touchedEdge, "shan-shui", style, selectedCommunities);
+    const untouchedBase = sigmaGlobalEdgeStyle(untouchedEdge, "shan-shui");
+    const untouchedFocused = sigmaGlobalEdgeStyle(untouchedEdge, "shan-shui", style, selectedCommunities);
+    const noSelectionFocused = sigmaGlobalEdgeStyle(untouchedEdge, "shan-shui", style, new Set());
+
+    assert.ok(edgeStyleAlpha(touchedFocused.color) >= edgeStyleAlpha(touchedBase.color));
+    assert.ok(touchedFocused.size >= touchedBase.size);
+    assert.ok(edgeStyleAlpha(untouchedFocused.color) < edgeStyleAlpha(untouchedBase.color));
+    assert.ok(untouchedFocused.size < untouchedBase.size);
+    assert.deepEqual(noSelectionFocused, untouchedBase);
   });
 
   it("keeps the production Sigma boundary on GraphRendererAdapterData instead of raw GraphData", async () => {

@@ -1231,7 +1231,7 @@ export function sigmaGlobalEdgeStyle(
   edge: GraphRendererAdapterEdge,
   theme: ThemeId = "shan-shui",
   style?: GraphEdgeStyleOptions,
-  _selectedCommunityIds: ReadonlySet<string> = new Set()
+  selectedCommunityIds: ReadonlySet<string> = new Set()
 ): SigmaGlobalEdgeStyle {
   const relationClass = edgeRelationClass(edge.relationType);
   const semantic = relationClass === "relation-contrast" || relationClass === "relation-conflict";
@@ -1247,6 +1247,19 @@ export function sigmaGlobalEdgeStyle(
     } else {
       alpha *= 0.6;
       size *= 0.75;
+    }
+  }
+
+  if (style?.focusHighlight && selectedCommunityIds.size > 0) {
+    const touchesSelectedCommunity =
+      Boolean(edge.sourceCommunityId && selectedCommunityIds.has(edge.sourceCommunityId))
+      || Boolean(edge.targetCommunityId && selectedCommunityIds.has(edge.targetCommunityId));
+    if (touchesSelectedCommunity) {
+      alpha = alpha * 1.12 + 0.02;
+      size += semantic ? 0.2 : 0.12;
+    } else {
+      alpha *= 0.05;
+      size *= 0.55;
     }
   }
 
