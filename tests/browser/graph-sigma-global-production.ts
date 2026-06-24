@@ -336,8 +336,17 @@ async function writeProductionHtml(
       function routeId() {
         return document.querySelector(".sigma-global-route[data-route]")?.dataset.route ||
           document.querySelector(".graph-over-limit-notice-view[data-route]")?.dataset.route ||
-          (document.querySelector(".llm-wiki-graph-engine") ? "dom-svg-community" : "") ||
+          (domSvgGraphRoot() ? "dom-svg-community" : "") ||
           "unknown";
+      }
+
+      function domSvgGraphRoot() {
+        return Array.from(document.querySelectorAll(".llm-wiki-graph-engine"))
+          .find((element) => !element.closest(".sigma-global-route")) || null;
+      }
+
+      function fallbackRouteElement() {
+        return document.querySelector(".graph-over-limit-notice-view[data-route]") || domSvgGraphRoot();
       }
 
       function waitForProductionSigma(timeoutMs = 10000) {
@@ -372,7 +381,7 @@ async function writeProductionHtml(
               finish();
               return;
             }
-            const fallback = document.querySelector(".graph-over-limit-notice-view[data-route], .llm-wiki-graph-engine");
+            const fallback = fallbackRouteElement();
             if (fallback && !document.querySelector(".sigma-global-route[data-route='sigma-global']")) {
               fail(new Error("production Sigma route fell back before renderer became ready"));
             }
@@ -385,7 +394,7 @@ async function writeProductionHtml(
               finish();
               return;
             }
-            const fallback = document.querySelector(".graph-over-limit-notice-view[data-route], .llm-wiki-graph-engine");
+            const fallback = fallbackRouteElement();
             if (fallback && !document.querySelector(".sigma-global-route[data-route='sigma-global']")) {
               fail(new Error("production Sigma route fell back before renderer became ready"));
               return;
@@ -413,7 +422,7 @@ async function writeProductionHtml(
           visibleSignal: Boolean(sigmaRoot) && hitTargetCount > 0,
           hitTargetCount,
           sigmaRendererCount: document.querySelectorAll(".sigma-global-renderer[data-renderer='sigma-global']").length,
-          fallbackCount: document.querySelectorAll(".graph-over-limit-notice-view, .llm-wiki-graph-engine").length
+          fallbackCount: document.querySelectorAll(".graph-over-limit-notice-view").length + (domSvgGraphRoot() ? 1 : 0)
         };
       }
 
@@ -600,7 +609,7 @@ async function writeProductionHtml(
         lastSelectionKind = "community";
         lastSelection = engine.focusCommunity(id);
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        return { selectedContainerId: id, route: routeId(), domCommunity: Boolean(document.querySelector(".llm-wiki-graph-engine")) };
+        return { selectedContainerId: id, route: routeId(), domCommunity: Boolean(domSvgGraphRoot()) };
       }
 
       async function returnGlobal(waitForReady = true) {

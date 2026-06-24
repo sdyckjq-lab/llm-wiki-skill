@@ -181,6 +181,15 @@ describe("Sigma global renderer production boundary", () => {
     assert.match(styles, /\.sigma-global-community-label\b/);
   });
 
+  it("keeps mo-ye renderer backgrounds on the shared paper texture layers", async () => {
+    const styles = await readFile(new URL("../src/render/render-styles.ts", import.meta.url), "utf8");
+    const block = styles.match(/\.llm-wiki-graph-engine\[data-theme="mo-ye"\]\s*\{[\s\S]*?background:\s*([\s\S]*?);\n\}/)?.[1] ?? "";
+
+    assert.match(block, /var\(--paper-glow/);
+    assert.match(block, /var\(--paper-vignette/);
+    assert.match(block, /var\(--paper-mottle/);
+  });
+
   it("projects Sigma node hits before overlapping community regions", () => {
     const projector = createSigmaGlobalHitProjector({
       adapterData: adapterDataFixture(),
@@ -247,6 +256,120 @@ describe("Sigma global renderer production boundary", () => {
       assert.equal(region.tabIndex, -1);
       assert.equal(region.style.pointerEvents, "none");
     }
+
+    renderer.destroy();
+  });
+
+  it("keeps all selected Sigma communities active instead of dimming later selections", () => {
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({ communityCount: 3, selectedCommunityIds: ["community-1", "community-2"] }),
+      theme: "shan-shui",
+      runtime: fakeRuntime()
+    });
+
+    const selectedOne = renderer.overlayRoot.children.find((child) => child.dataset.communityId === "community-1");
+    const selectedTwo = renderer.overlayRoot.children.find((child) => child.dataset.communityId === "community-2");
+    const unselected = renderer.overlayRoot.children.find((child) => child.dataset.communityId === "community-3");
+    const labels = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-label");
+    const labelOne = labels.find((child) => child.dataset.communityId === "community-1");
+    const labelTwo = labels.find((child) => child.dataset.communityId === "community-2");
+    const labelThree = labels.find((child) => child.dataset.communityId === "community-3");
+
+    assert.equal(selectedOne?.dataset.selected, "true");
+    assert.equal(selectedTwo?.dataset.selected, "true");
+    assert.equal(unselected?.dataset.selected, "false");
+    assert.equal(labelOne?.dataset.dim, "false");
+    assert.equal(labelTwo?.dataset.dim, "false");
+    assert.equal(labelThree?.dataset.dim, "true");
+
+    renderer.destroy();
+  });
+
+  it("renders fallback ellipse clouds and routes SVG shape clicks to community selection", () => {
+    const hits: unknown[] = [];
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime: fakeRuntime(),
+      onHitTarget: (target) => hits.push(target)
+    });
+
+    const shape = sigmaCommunityCloudShape(renderer, "adapter-community");
+
+    assert.equal(shape?.tagName, "ellipse");
+    assert.equal(shape?.getAttribute("fill"), "#123456");
+    assert.equal(shape?.getAttribute("fill-opacity"), "0.2");
+    assert.match(shape?.getAttribute("filter") ?? "", /^url\(#sigma-community-cloud-blur-/);
+
+    shape?.dispatchEvent(new Event("click"));
+
+    assert.deepEqual(hits.at(-1), { kind: "community-wash", id: "adapter-community" });
+
+    renderer.destroy();
+  });
+
+  it("renders polygon clouds from cached community hull points", () => {
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataWithPolygonCommunityCloud(),
+      theme: "shan-shui",
+      runtime: fakeRuntime()
+    });
+
+    const shape = sigmaCommunityCloudShape(renderer, "adapter-community");
+    const points = shape?.getAttribute("points") ?? "";
+
+    assert.equal(shape?.tagName, "polygon");
+    assert.ok(points.split(" ").length >= 3, `polygon should expose hull points, got ${points}`);
+
+    renderer.destroy();
+  });
+
+  it("caps polygon clouds to the computed community wash bounds", () => {
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataWithPolygonCommunityOutlier(),
+      theme: "shan-shui",
+      runtime: fakeRuntime()
+    });
+
+    const region = sigmaCommunityRegion(renderer, "adapter-community");
+    const shape = sigmaCommunityCloudShape(renderer, "adapter-community");
+
+    assert.equal(shape?.tagName, "polygon");
+    assert.ok(Number.parseFloat(region?.style.left ?? "0") >= 170);
+    assert.ok(Number.parseFloat(region?.style.top ?? "0") >= 190);
+    assert.ok(Number.parseFloat(region?.style.width ?? "0") <= 160);
+    assert.ok(Number.parseFloat(region?.style.height ?? "0") <= 120);
+
+    renderer.destroy();
+  });
+
+  it("refreshes community cloud geometry after a node drag commits", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataWithPolygonCommunityCloud(),
+      theme: "shan-shui",
+      runtime,
+      pins: {},
+      onPinsChanged: () => undefined
+    });
+    const sigma = runtime.instances[0];
+    const initialRegion = sigmaCommunityRegion(renderer, "adapter-community");
+    const initialLeft = Number.parseFloat(initialRegion?.style.left ?? "0");
+
+    sigma.emit("downNode", sigmaEventPayload("render-alpha", 111, 222));
+    sigma.emit("moveBody", sigmaEventPayload(null, 151, 222));
+    sigma.emit("upStage", sigmaEventPayload(null, 171, 222));
+
+    const movedRegion = sigmaCommunityRegion(renderer, "adapter-community");
+    const movedLeft = Number.parseFloat(movedRegion?.style.left ?? "0");
+
+    assert.notEqual(movedRegion, initialRegion);
+    assert.ok(movedLeft > initialLeft, `expected cloud to follow dragged node, got ${initialLeft} -> ${movedLeft}`);
 
     renderer.destroy();
   });
@@ -732,13 +855,14 @@ function adapterDataFixture(options: {
   betaPinned?: boolean;
   communityCount?: number;
   selectedCommunityId?: string;
+  selectedCommunityIds?: string[];
 } = {}): GraphRendererAdapterData {
   const selectedNodeId = options.selectedNodeId ?? "render-alpha";
   const searchResultIds = options.searchResultIds ?? ["render-beta"];
   const alphaPinned = options.alphaPinned ?? false;
   const betaPinned = options.betaPinned ?? true;
   const communityCount = options.communityCount ?? 1;
-  const selectedCommunityId = options.selectedCommunityId ?? "adapter-community";
+  const selectedCommunityIds = options.selectedCommunityIds ?? [options.selectedCommunityId ?? "adapter-community"];
   const renderableCommunities = renderableCommunityFixture(communityCount);
   return {
     counts: {
@@ -754,7 +878,7 @@ function adapterDataFixture(options: {
       input: { kind: "node", id: selectedNodeId },
       selectionId: `node:${selectedNodeId}`,
       selectedNodeIds: [selectedNodeId],
-      selectedCommunityIds: [selectedCommunityId],
+      selectedCommunityIds,
       containsCurrentObject: true
     },
     nodes: [
@@ -838,7 +962,7 @@ function adapterDataFixture(options: {
         label: "Adapter Community",
         nodeIds: ["render-alpha", "render-beta"],
         nodeCount: 2,
-        selected: selectedCommunityId === "adapter-community",
+        selected: selectedCommunityIds.includes("adapter-community"),
         searchResultIds,
         pinHints: betaPinned ? [
           {
@@ -863,7 +987,7 @@ function adapterDataFixture(options: {
           label: community.label,
           nodeIds: [],
           nodeCount: community.nodeCount,
-          selected: selectedCommunityId === community.id,
+          selected: selectedCommunityIds.includes(community.id),
           searchResultIds: [],
           pinHints: [],
           aggregationIds: [],
@@ -954,7 +1078,7 @@ function adapterDataFixture(options: {
       minimap: { path: "", nodes: [] },
       relationLegend: [],
       selectedNodeId,
-      selectedCommunityId: "adapter-community",
+      selectedCommunityId: selectedCommunityIds[0] ?? null,
       selectedNodeIds: [selectedNodeId],
       hiddenNodeIds: new Set(),
       searchResultIds,
@@ -992,6 +1116,106 @@ function adapterDataFixture(options: {
       }
     }
   };
+}
+
+function adapterDataWithPolygonCommunityCloud(): GraphRendererAdapterData {
+  const data = adapterDataFixture({ betaPinned: false });
+  const thirdNode: GraphRendererAdapterData["nodes"][number] = {
+    id: "render-gamma",
+    object: { kind: "node", nodeId: "render-gamma" },
+    label: "Adapter Gamma",
+    type: "entity",
+    communityId: "adapter-community",
+    sourcePath: "adapter/gamma.md",
+    point: { x: 180, y: 420 },
+    selected: false,
+    searchHit: false,
+    pinHint: {
+      nodeId: "render-gamma",
+      wikiPath: "adapter/gamma.md",
+      pinned: false,
+      position: null
+    },
+    aggregationIds: [],
+    drawerTarget: {
+      summaryKind: "node-summary",
+      object: { kind: "node", nodeId: "render-gamma" }
+    },
+    render: {
+      displayMode: "point",
+      visualRole: "map-pin",
+      priority: 50,
+      labelVisible: false
+    }
+  };
+
+  return {
+    ...data,
+    counts: { ...data.counts, nodes: 3, renderedNodes: 3 },
+    nodes: [...data.nodes, thirdNode],
+    communities: data.communities.map((community) => community.id === "adapter-community"
+      ? {
+          ...community,
+          nodeIds: [...community.nodeIds, thirdNode.id],
+          nodeCount: community.nodeCount + 1
+        }
+      : community)
+  };
+}
+
+function adapterDataWithPolygonCommunityOutlier(): GraphRendererAdapterData {
+  const data = adapterDataWithPolygonCommunityCloud();
+  const outlierNode: GraphRendererAdapterData["nodes"][number] = {
+    id: "render-outlier",
+    object: { kind: "node", nodeId: "render-outlier" },
+    label: "Adapter Outlier",
+    type: "entity",
+    communityId: "adapter-community",
+    sourcePath: "adapter/outlier.md",
+    point: { x: 1200, y: 1200 },
+    selected: false,
+    searchHit: false,
+    pinHint: {
+      nodeId: "render-outlier",
+      wikiPath: "adapter/outlier.md",
+      pinned: false,
+      position: null
+    },
+    aggregationIds: [],
+    drawerTarget: {
+      summaryKind: "node-summary",
+      object: { kind: "node", nodeId: "render-outlier" }
+    },
+    render: {
+      displayMode: "point",
+      visualRole: "map-pin",
+      priority: 1,
+      labelVisible: false
+    }
+  };
+
+  return {
+    ...data,
+    counts: { ...data.counts, nodes: 4, renderedNodes: 4 },
+    nodes: [...data.nodes, outlierNode],
+    communities: data.communities.map((community) => community.id === "adapter-community"
+      ? {
+          ...community,
+          nodeIds: [...community.nodeIds, outlierNode.id],
+          nodeCount: community.nodeCount + 1
+        }
+      : community)
+  };
+}
+
+function sigmaCommunityCloudShape(renderer: { overlayRoot: HTMLElement & { children: HTMLElement[] } }, communityId: string): HTMLElement | undefined {
+  const region = renderer.overlayRoot.children.find((child) => child.dataset.communityId === communityId);
+  const svg = region?.children[0] as HTMLElement | undefined;
+  return svg?.children[0] as HTMLElement | undefined;
+}
+
+function sigmaCommunityRegion(renderer: { overlayRoot: HTMLElement & { children: HTMLElement[] } }, communityId: string): HTMLElement | undefined {
+  return renderer.overlayRoot.children.find((child) => child.dataset.communityId === communityId);
 }
 
 function densePointMapGraph(): GraphData {
@@ -1123,6 +1347,7 @@ function resizeObserverEntry(width: number, height: number): ResizeObserverEntry
 function fakeElement(_tagName: string, defaultView?: Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">): HTMLElement {
   const children: HTMLElement[] = [];
   const attributes = new Map<string, string>();
+  const listeners = new Map<string, EventListenerOrEventListenerObject[]>();
   const element = {
     tagName: _tagName,
     className: "",
@@ -1141,7 +1366,18 @@ function fakeElement(_tagName: string, defaultView?: Pick<Window, "ResizeObserve
     replaceChildren: (...items: HTMLElement[]) => {
       children.splice(0, children.length, ...items);
     },
-    addEventListener: () => undefined,
+    addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
+      const list = listeners.get(type) ?? [];
+      list.push(listener);
+      listeners.set(type, list);
+    },
+    dispatchEvent: (event: Event) => {
+      for (const listener of listeners.get(event.type) ?? []) {
+        if (typeof listener === "function") listener.call(element, event);
+        else listener.handleEvent(event);
+      }
+      return true;
+    },
     setAttribute: (name: string, value: string) => {
       attributes.set(name, String(value));
     },

@@ -29,6 +29,7 @@ import { createCommunityLegend, createGraphToolbar, createSearchControl } from "
 import { ensureGraphRendererStyles } from "./render/render-styles";
 import { resolveSelectionForCapabilities } from "./select";
 import { graphNodeTypeLabel, wikiPathForGraphNode } from "./graph-node";
+import { getThemeTokens, themeTokensToCssVars } from "./themes";
 import {
   summarizeExcludedGraphObject,
   summarizeGraphCommunity,
@@ -772,8 +773,9 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
   let toolbarPanelState = readToolbarPanelState(input.container.ownerDocument.defaultView?.localStorage);
   let searchStatus: HTMLElement | null = null;
   const shell = input.container.ownerDocument.createElement("div");
-  shell.className = "sigma-global-route";
+  shell.className = "sigma-global-route llm-wiki-graph-engine";
   shell.dataset.route = "sigma-global";
+  applyGraphThemeToElement(shell, options.theme);
   input.container.append(shell);
   ensureGraphRendererStyles(input.container.ownerDocument);
   mountSigmaControls();
@@ -878,7 +880,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     },
     setTheme(theme) {
       options = { ...options, theme };
-      shell.dataset.theme = theme;
+      applyGraphThemeToElement(shell, theme);
       updateSigmaRenderer();
     },
     setPins(pins) {
@@ -1057,6 +1059,15 @@ function adapterDataForSigmaRoute(options: GraphFacadeRouteRendererOptions): Gra
     focus: null,
     typeFilters: options.typeFilters
   });
+}
+
+function applyGraphThemeToElement(element: HTMLElement, theme: ThemeId): void {
+  element.dataset.theme = theme;
+  element.style.colorScheme = getThemeTokens(theme).colorScheme;
+  const vars = themeTokensToCssVars(theme);
+  for (const [key, value] of Object.entries(vars)) {
+    element.style.setProperty(key, value);
+  }
 }
 
 function numericNodeCoordinate(value: GraphNode["x"] | GraphNode["y"]): number {

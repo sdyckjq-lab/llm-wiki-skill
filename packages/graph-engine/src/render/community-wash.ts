@@ -194,12 +194,23 @@ function cappedAxis(min: number, max: number, maxSize: number): { min: number; m
 }
 
 function nearestNeighborScore(point: CommunityWashPoint, points: CommunityWashPoint[]): number {
-  const distances = points
-    .filter((candidate) => candidate !== point)
-    .map((candidate) => distance(point, candidate))
-    .sort((left, right) => left - right);
-  const nearest = distances.slice(0, Math.min(2, distances.length));
-  return nearest.reduce((sum, value) => sum + value, 0) / Math.max(1, nearest.length);
+  let nearest = Number.POSITIVE_INFINITY;
+  let secondNearest = Number.POSITIVE_INFINITY;
+  let neighborCount = 0;
+  for (const candidate of points) {
+    if (candidate === point) continue;
+    neighborCount += 1;
+    const candidateDistance = distance(point, candidate);
+    if (candidateDistance < nearest) {
+      secondNearest = nearest;
+      nearest = candidateDistance;
+    } else if (candidateDistance < secondNearest) {
+      secondNearest = candidateDistance;
+    }
+  }
+  if (neighborCount === 0) return 0;
+  if (neighborCount === 1) return nearest;
+  return (nearest + secondNearest) / 2;
 }
 
 function distance(left: CommunityWashPoint, right: CommunityWashPoint): number {

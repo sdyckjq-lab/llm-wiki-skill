@@ -298,6 +298,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   filterHost.style.pointerEvents = "none";
   filterHost.append(sigmaSharedCloudFilterDef(sigmaRoot.ownerDocument, cloudFilterId));
   sigmaRoot.append(filterHost);
+  let cloudBasisByCommunityId = sigmaCommunityCloudBasisById(adapterData);
   let projector = createSigmaGlobalHitProjector({
     adapterData,
     viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
@@ -347,6 +348,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       cancelNodeDrag();
       generation += 1;
       adapterData = updateOptions.adapterData;
+      cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
       currentTheme = updateOptions.theme ?? currentTheme;
       currentPins = { ...(updateOptions.pins ?? currentPins) };
       graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
@@ -574,7 +576,10 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     });
     adapterData = sigmaAdapterDataWithNodePoint(adapterData, nodeId, point, pinned, pinPosition);
     sigma.refresh?.();
-    if (!dragging) renderSigmaOverlays();
+    if (!dragging) {
+      cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithNodePoint(cloudBasisByCommunityId, adapterData, nodeId);
+      renderSigmaOverlays();
+    }
   }
 
   function sigmaNodeWorldPoint(nodeId: string): { x: number; y: number } {
@@ -603,21 +608,16 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function renderSigmaOverlays(): void {
     if (destroyed) return;
     overlayRoot.replaceChildren();
-    const regionPointsByCommunity = new Map<string, GraphScreenPoint[]>();
-    for (const node of adapterData.nodes) {
-      if (!node.communityId) continue;
-      const screen = sigmaWorldPointToScreenPoint(sigma, node.point, options);
-      const list = regionPointsByCommunity.get(node.communityId);
-      if (list) list.push(screen);
-      else regionPointsByCommunity.set(node.communityId, [screen]);
-    }
-    const selectedCommunityId = adapterData.communities.find((item) => item.selected)?.id ?? null;
+    const selectedCommunityIds = new Set(adapterData.communities.filter((item) => item.selected).map((item) => item.id));
     for (const community of adapterData.renderable.communities) {
       if (!community.wash) continue;
-      const selected = community.id === selectedCommunityId;
-      const dim = selectedCommunityId != null && !selected;
+      const selected = selectedCommunityIds.has(community.id);
+      const dim = selectedCommunityIds.size > 0 && !selected;
       const fallbackBox = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
-      const cloud = sigmaCommunityCloud(regionPointsByCommunity.get(community.id) ?? [], fallbackBox);
+      const cloud = sigmaCommunityCloud(
+        sigmaProjectedCloudHullPoints(cloudBasisByCommunityId.get(community.id), sigma, options),
+        fallbackBox
+      );
       const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id);
       element.className = "sigma-global-community-region";
       element.dataset.communityId = community.id;
@@ -680,9 +680,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-label", community.id);
       element.className = "sigma-global-community-label";
       element.dataset.communityId = community.id;
-      const labelSelected = community.id === selectedCommunityId;
+      const labelSelected = selectedCommunityIds.has(community.id);
       element.dataset.selected = labelSelected ? "true" : "false";
-      element.dataset.dim = selectedCommunityId != null && !labelSelected ? "true" : "false";
+      element.dataset.dim = selectedCommunityIds.size > 0 && !labelSelected ? "true" : "false";
       element.textContent = community.label || community.id;
       const center = sigmaWorldPointToScreenPoint(sigma, {
         x: community.wash.cx,
@@ -789,18 +789,13 @@ function sigmaOverlayButton(ownerDocument: Document, kind: string, id: string, l
   return element;
 }
 
-function sigmaOverlayPassiveElement(
-  ownerDocument: Document,
-  kind: string,
-  id: string,
-  options: { pointerEvents?: "none" | "auto" } = {}
-): HTMLDivElement {
+function sigmaOverlayPassiveElement(ownerDocument: Document, kind: string, id: string): HTMLDivElement {
   const element = ownerDocument.createElement("div");
   element.dataset.kind = kind;
   element.dataset.id = id;
   element.setAttribute("aria-hidden", "true");
   element.tabIndex = -1;
-  element.style.pointerEvents = options.pointerEvents ?? "none";
+  element.style.pointerEvents = "none";
   return element;
 }
 
@@ -818,15 +813,120 @@ interface SigmaCommunityCloud {
   localPoints: Array<{ x: number; y: number }> | null;
 }
 
+interface SigmaCommunityCloudBasis {
+  hullPoints: Array<{ x: number; y: number }>;
+  signature: string;
+}
+
+function sigmaCommunityCloudBasisById(adapterData: GraphRendererAdapterData): Map<string, SigmaCommunityCloudBasis> {
+  const washByCommunityId = new Map(adapterData.renderable.communities.map((community) => [community.id, community.wash]));
+  const pointsByCommunityId = new Map<string, Array<{ x: number; y: number }>>();
+  for (const node of adapterData.nodes) {
+    if (!node.communityId) continue;
+    const wash = washByCommunityId.get(node.communityId);
+    if (!wash) continue;
+    const list = pointsByCommunityId.get(node.communityId);
+    const point = clampPointToWorldEllipse(node.point, wash);
+    if (list) list.push(point);
+    else pointsByCommunityId.set(node.communityId, [point]);
+  }
+  const output = new Map<string, SigmaCommunityCloudBasis>();
+  for (const [communityId, points] of pointsByCommunityId) {
+    output.set(communityId, { hullPoints: convexHull2d(points), signature: sigmaCommunityCloudSignature(points, washByCommunityId.get(communityId)) });
+  }
+  return output;
+}
+
+function sigmaCommunityCloudBasisByIdWithReuse(
+  previous: Map<string, SigmaCommunityCloudBasis>,
+  adapterData: GraphRendererAdapterData
+): Map<string, SigmaCommunityCloudBasis> {
+  const washByCommunityId = new Map(adapterData.renderable.communities.map((community) => [community.id, community.wash]));
+  const pointsByCommunityId = new Map<string, Array<{ x: number; y: number }>>();
+  for (const node of adapterData.nodes) {
+    if (!node.communityId) continue;
+    const wash = washByCommunityId.get(node.communityId);
+    if (!wash) continue;
+    const list = pointsByCommunityId.get(node.communityId);
+    const point = clampPointToWorldEllipse(node.point, wash);
+    if (list) list.push(point);
+    else pointsByCommunityId.set(node.communityId, [point]);
+  }
+  const output = new Map<string, SigmaCommunityCloudBasis>();
+  for (const [communityId, points] of pointsByCommunityId) {
+    const signature = sigmaCommunityCloudSignature(points, washByCommunityId.get(communityId));
+    const cached = previous.get(communityId);
+    output.set(communityId, cached?.signature === signature ? cached : { hullPoints: convexHull2d(points), signature });
+  }
+  return output;
+}
+
+function sigmaCommunityCloudBasisByIdWithNodePoint(
+  previous: Map<string, SigmaCommunityCloudBasis>,
+  adapterData: GraphRendererAdapterData,
+  nodeId: string
+): Map<string, SigmaCommunityCloudBasis> {
+  const changedNode = adapterData.nodes.find((node) => node.id === nodeId);
+  if (!changedNode?.communityId) return previous;
+  const community = adapterData.renderable.communities.find((item) => item.id === changedNode.communityId);
+  if (!community?.wash) return previous;
+  const wash = community.wash;
+  const points = adapterData.nodes
+    .filter((node) => node.communityId === changedNode.communityId)
+    .map((node) => clampPointToWorldEllipse(node.point, wash));
+  const signature = sigmaCommunityCloudSignature(points, wash);
+  const cached = previous.get(changedNode.communityId);
+  if (cached?.signature === signature) return previous;
+  const next = new Map(previous);
+  next.set(changedNode.communityId, { hullPoints: convexHull2d(points), signature });
+  return next;
+}
+
+function sigmaCommunityCloudSignature(
+  points: readonly { x: number; y: number }[],
+  wash: { cx: number; cy: number; rx: number; ry: number } | null | undefined
+): string {
+  const parts = wash ? [wash.cx, wash.cy, wash.rx, wash.ry] : [];
+  for (const point of points) parts.push(point.x, point.y);
+  return parts.map((value) => String(Math.round(value * 1000) / 1000)).join(",");
+}
+
+function sigmaProjectedCloudHullPoints(
+  basis: SigmaCommunityCloudBasis | undefined,
+  sigma: SigmaGlobalSigmaLike,
+  options: Pick<SigmaGlobalRendererCreateOptions, "viewport" | "viewportSize" | "adapterData">
+): GraphScreenPoint[] {
+  return basis?.hullPoints.map((point) => sigmaWorldPointToScreenPoint(sigma, point, options)) ?? [];
+}
+
+function clampPointToWorldEllipse(
+  point: { x: number; y: number },
+  ellipse: { cx: number; cy: number; rx: number; ry: number }
+): { x: number; y: number } {
+  const rx = Math.max(1, ellipse.rx);
+  const ry = Math.max(1, ellipse.ry);
+  const dx = point.x - ellipse.cx;
+  const dy = point.y - ellipse.cy;
+  const distance = Math.hypot(dx / rx, dy / ry);
+  if (distance <= 1) return { x: point.x, y: point.y };
+  return {
+    x: ellipse.cx + dx / distance,
+    y: ellipse.cy + dy / distance
+  };
+}
+
 function sigmaCommunityCloud(
-  screenPoints: GraphScreenPoint[],
+  screenHullPoints: GraphScreenPoint[],
   fallbackBox: { left: number; top: number; width: number; height: number }
 ): SigmaCommunityCloud {
-  const hull = convexHull2d(screenPoints);
+  const hull = screenHullPoints;
   if (hull.length >= 3) {
     const cx = hull.reduce((sum, p) => sum + p.x, 0) / hull.length;
     const cy = hull.reduce((sum, p) => sum + p.y, 0) / hull.length;
-    const expanded = hull.map((p) => ({ x: p.x + (p.x - cx) * 0.4, y: p.y + (p.y - cy) * 0.4 }));
+    const expanded = hull.map((p) => clampPointToScreenEllipse({
+      x: p.x + (p.x - cx) * 0.4,
+      y: p.y + (p.y - cy) * 0.4
+    }, fallbackBox));
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -841,6 +941,24 @@ function sigmaCommunityCloud(
     return { box, localPoints: expanded.map((p) => ({ x: p.x - box.left, y: p.y - box.top })) };
   }
   return { box: fallbackBox, localPoints: null };
+}
+
+function clampPointToScreenEllipse(
+  point: GraphScreenPoint,
+  box: { left: number; top: number; width: number; height: number }
+): GraphScreenPoint {
+  const cx = box.left + box.width / 2;
+  const cy = box.top + box.height / 2;
+  const rx = Math.max(1, box.width / 2);
+  const ry = Math.max(1, box.height / 2);
+  const dx = point.x - cx;
+  const dy = point.y - cy;
+  const distance = Math.hypot(dx / rx, dy / ry);
+  if (distance <= 1) return point;
+  return {
+    x: cx + dx / distance,
+    y: cy + dy / distance
+  };
 }
 
 let sigmaCloudFilterSequence = 0;

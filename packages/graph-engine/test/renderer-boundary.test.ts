@@ -231,6 +231,29 @@ describe("renderer and facade boundary contract", () => {
     assert.equal(stylesText.includes(".llm-wiki-graph-engine[data-llm-wiki-graph-route-transition]"), false);
   });
 
+  it("mounts the Sigma global route on the themed graph root surface", async () => {
+    const facadeText = await readFile(join(SRC, "facade.ts"), "utf8");
+
+    assert.match(facadeText, /shell\.className = "sigma-global-route llm-wiki-graph-engine"/);
+    assert.match(facadeText, /applyGraphThemeToElement\(shell, options\.theme\)/);
+    assert.match(facadeText, /applyGraphThemeToElement\(shell, theme\)/);
+  });
+
+  it("lets Sigma route share theme styles without inheriting the root minimum height", async () => {
+    const stylesText = await readFile(join(SRC, "render/render-styles.ts"), "utf8");
+
+    assert.match(stylesText, /\.llm-wiki-graph-engine\s*\{[\s\S]*?min-height: 520px;/);
+    assert.match(stylesText, /\.sigma-global-route\.llm-wiki-graph-engine\s*\{\s*min-height: 0;\s*\}/);
+  });
+
+  it("keeps Sigma node hit targets above passive community overlays", async () => {
+    const stylesText = await readFile(join(SRC, "render/render-styles.ts"), "utf8");
+    const nodeHitTargetBlock = stylesText.match(/\.sigma-global-node-hit-target\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+
+    assert.match(nodeHitTargetBlock, /pointer-events:\s*auto;/);
+    assert.match(nodeHitTargetBlock, /z-index:\s*2;/);
+  });
+
   it("keeps pipeline and presenter out of semantic selection/focus/pin ownership", async () => {
     const files: Array<[string, RegExp[]]> = [
       ["render/render-pipeline.ts", PIPELINE_FORBIDDEN_STATE_MUTATION_PATTERNS],

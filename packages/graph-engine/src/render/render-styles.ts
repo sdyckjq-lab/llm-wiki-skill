@@ -28,9 +28,12 @@ const STATIC_RENDERER_CSS = `
 }
 .llm-wiki-graph-engine[data-theme="mo-ye"] {
   background:
+    var(--paper-glow, radial-gradient(140% 95% at 50% -25%, color-mix(in srgb, var(--surface-2) 38%, transparent), transparent 55%)),
     linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 38%, transparent), transparent 34%),
     radial-gradient(ellipse at 28% 56%, color-mix(in srgb, var(--night) 13%, transparent), transparent 58%),
     radial-gradient(ellipse at 76% 38%, color-mix(in srgb, var(--cinnabar) 9%, transparent), transparent 54%),
+    var(--paper-vignette, radial-gradient(ellipse 105% 92% at 50% 40%, transparent 52%, rgba(0, 0, 0, .22) 100%)),
+    var(--paper-mottle, none),
     var(--bg);
 }
 [data-llm-wiki-graph-route-transition] > .sigma-global-route,
@@ -62,6 +65,9 @@ const STATIC_RENDERER_CSS = `
   width: 100%;
   height: 100%;
 }
+.sigma-global-route.llm-wiki-graph-engine {
+  min-height: 0;
+}
 .sigma-global-renderer canvas {
   position: absolute;
   inset: 0;
@@ -82,6 +88,7 @@ const STATIC_RENDERER_CSS = `
   border: 1px solid currentColor;
   cursor: pointer;
   pointer-events: auto;
+  z-index: 2;
   border-radius: 999px;
   opacity: 0;
   touch-action: none;
