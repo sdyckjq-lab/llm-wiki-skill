@@ -1,6 +1,7 @@
 import type {
   GraphNode,
   GraphDiff,
+  GraphEdgeStyleOptions,
   GraphEngine,
   GraphEngineOptions,
   GraphData,
@@ -86,6 +87,7 @@ export interface GraphFacadeRenderer {
   applyDiff(diff: GraphDiff, options?: { reducedMotion?: boolean; durationMs?: number }): Promise<void>;
   isDragging(): boolean;
   setData(data: GraphEngineOptions["data"], pins?: GraphEngineOptions["pins"]): void;
+  setEdgeStyle(style: GraphEdgeStyleOptions): void;
   setAggregationMarkers(markers: NonNullable<GraphEngineOptions["aggregationMarkers"]>): void;
   focusNode(path: string): void;
   focusCommunity(id: string): void;
@@ -131,6 +133,7 @@ export interface GraphFacadeRouteRendererOptions {
   data: GraphData;
   pins: NonNullable<GraphEngineOptions["pins"]>;
   theme: ThemeId;
+  edgeStyle?: GraphEdgeStyleOptions;
   focus: GraphEngineOptions["focus"];
   typeFilters: NonNullable<GraphEngineOptions["typeFilters"]>;
   aggregationMarkers: NonNullable<GraphEngineOptions["aggregationMarkers"]>;
@@ -174,6 +177,7 @@ export interface GraphFacadeState {
   data: GraphData;
   pins: NonNullable<GraphEngineOptions["pins"]>;
   theme?: ThemeId;
+  edgeStyle?: GraphEdgeStyleOptions;
   focus?: GraphEngineOptions["focus"];
   typeFilters?: NonNullable<GraphEngineOptions["typeFilters"]>;
   aggregationMarkers?: NonNullable<GraphEngineOptions["aggregationMarkers"]>;
@@ -193,6 +197,7 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
     data: options.data,
     pins: options.pins || {},
     theme: options.theme,
+    edgeStyle: options.edgeStyle,
     focus: options.focus || null,
     typeFilters: options.typeFilters || {},
     aggregationMarkers: options.aggregationMarkers || [],
@@ -252,6 +257,7 @@ export function createGraphFacadeRouteManager(
 ): GraphFacadeRouteManager {
   const state = options.state;
   state.theme = state.theme || "shan-shui";
+  state.edgeStyle = state.edgeStyle || undefined;
   state.focus = state.focus || null;
   state.typeFilters = state.typeFilters || {};
   state.aggregationMarkers = state.aggregationMarkers || [];
@@ -325,6 +331,11 @@ export function createGraphFacadeRouteManager(
         return;
       }
       currentRenderer().setData(data, pins);
+    },
+    setEdgeStyle(style) {
+      assertActive();
+      state.edgeStyle = style;
+      currentRenderer().setEdgeStyle(style);
     },
     setAggregationMarkers(markers) {
       assertActive();
@@ -552,6 +563,7 @@ export function createGraphFacadeRouteManager(
         data: state.data,
         pins: state.pins,
         theme: state.theme || "shan-shui",
+        edgeStyle: state.edgeStyle,
         focus: state.focus || null,
         typeFilters: state.typeFilters || {},
         aggregationMarkers: state.aggregationMarkers || [],
@@ -637,7 +649,10 @@ function createDomSvgFacadeRenderer(
   });
   if (input.options.selection) renderer.select(input.options.selection);
   if (input.options.temporaryObject) renderer.showTemporaryObject(input.options.temporaryObject);
-  return renderer;
+  return {
+    ...renderer,
+    setEdgeStyle() {}
+  };
 }
 
 export function graphExceedsGlobalNodeLimit(data: GraphData): boolean {
@@ -686,6 +701,9 @@ function createOverLimitNoticeRenderer(input: GraphFacadeRouteRendererFactoryInp
     setData(data, pins) {
       options = { ...options, data, pins: pins || options.pins };
       render();
+    },
+    setEdgeStyle(style) {
+      options = { ...options, edgeStyle: style };
     },
     setAggregationMarkers(markers) {
       options = { ...options, aggregationMarkers: markers };
@@ -806,6 +824,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
           container: shell,
           adapterData: adapterDataForSigmaRoute(options),
           theme: options.theme,
+          edgeStyle: options.edgeStyle,
           runtime: runtime as unknown as SigmaGlobalRendererRuntime,
           pins: options.pins,
           onPinsChanged: handleSigmaPinsChanged,
@@ -830,6 +849,10 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       options = { ...options, data, pins: pins || options.pins };
       syncVisibilityState();
       mountSigmaControls();
+      updateSigmaRenderer();
+    },
+    setEdgeStyle(style) {
+      options = { ...options, edgeStyle: style };
       updateSigmaRenderer();
     },
     setAggregationMarkers(markers) {
@@ -923,6 +946,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     renderer.update({
       adapterData: adapterDataForSigmaRoute(options),
       theme: options.theme,
+      edgeStyle: options.edgeStyle,
       pins: options.pins
     });
   }
@@ -1125,6 +1149,12 @@ export function createGraphFacadeFromRenderer(
       facadeState.data = data;
       if (pins) facadeState.pins = pins;
       renderer.setData(data, pins);
+    },
+
+    setEdgeStyle(style): void {
+      assertActive();
+      facadeState.edgeStyle = style;
+      renderer.setEdgeStyle(style);
     },
 
     setAggregationMarkers(markers): void {

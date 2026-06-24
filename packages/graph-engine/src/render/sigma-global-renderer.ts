@@ -1,4 +1,4 @@
-import type { PinMap, PinPosition, ThemeId } from "../types";
+import type { GraphEdgeStyleOptions, PinMap, PinPosition, ThemeId } from "../types";
 import { createGraphSpatialIndex, type GraphSpatialIndex, type GraphSpatialIndexInput } from "../layout";
 import type {
   GraphRendererAdapterAggregation,
@@ -170,6 +170,7 @@ export interface SigmaGlobalRendererCreateOptions {
   container: HTMLElement;
   adapterData: GraphRendererAdapterData;
   theme: ThemeId;
+  edgeStyle?: GraphEdgeStyleOptions;
   onHitTarget?: (target: GraphGestureTarget) => void;
   onPinsChanged?: (pins: PinMap) => void;
   onDragActiveChange?: (dragging: boolean) => void;
@@ -183,6 +184,7 @@ export interface SigmaGlobalRendererCreateOptions {
 export interface SigmaGlobalRendererUpdateOptions {
   adapterData: GraphRendererAdapterData;
   theme?: ThemeId;
+  edgeStyle?: GraphEdgeStyleOptions;
   pins?: PinMap;
 }
 
@@ -212,7 +214,9 @@ export async function sigmaGlobalRendererRuntimeBoundary(): Promise<SigmaGlobalR
 
 export function buildSigmaGlobalGraphologyGraph(
   adapterData: GraphRendererAdapterData,
-  runtime: SigmaGlobalGraphologyRuntime
+  runtime: SigmaGlobalGraphologyRuntime,
+  _theme?: ThemeId,
+  _edgeStyle?: GraphEdgeStyleOptions
 ): SigmaGlobalGraphologyGraph {
   const graph = new runtime.GraphologyGraph({ multi: true, type: "mixed" });
   const communityColorById = new Map(adapterData.renderable.communities.map((community) => [community.id, community.color]));
@@ -284,8 +288,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   const runtime = options.runtime;
   let destroyed = false;
   let currentTheme = options.theme;
+  let currentEdgeStyle = options.edgeStyle;
   let adapterData = options.adapterData;
-  let graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
+  let graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime, currentTheme, currentEdgeStyle);
   const sigmaRoot = createSigmaRoot(options.container, currentTheme);
   const overlayRoot = createSigmaOverlayRoot(sigmaRoot);
   // 云团模糊滤镜内容与帧无关，挂到独立的 filterHost 只建一次，renderSigmaOverlays
@@ -350,8 +355,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       adapterData = updateOptions.adapterData;
       cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
       currentTheme = updateOptions.theme ?? currentTheme;
+      currentEdgeStyle = updateOptions.edgeStyle ?? currentEdgeStyle;
       currentPins = { ...(updateOptions.pins ?? currentPins) };
-      graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime);
+      graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime, currentTheme, currentEdgeStyle);
       projector = createSigmaGlobalHitProjector({
         adapterData,
         viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,

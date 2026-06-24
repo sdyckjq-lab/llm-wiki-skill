@@ -73,6 +73,9 @@ describe("GraphFacade", () => {
     assert.equal(container.dataset.llmWikiGraphTheme, "mo-ye");
     assert.deepEqual(renderer.calls.at(-1), ["setTheme", "mo-ye"]);
 
+    engine.setEdgeStyle({ semanticEmphasis: true, focusHighlight: false });
+    assert.deepEqual(renderer.calls.at(-1), ["setEdgeStyle", { semanticEmphasis: true, focusHighlight: false }]);
+
     engine.focusNode("wiki/a.md");
     assert.equal(container.dataset.llmWikiGraphFocus, "wiki/a.md");
     assert.deepEqual(renderer.calls.at(-1), ["focusNode", "wiki/a.md"]);
@@ -978,6 +981,9 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
     },
     setData(data: GraphData, pins?: PinMap) {
       calls.push(["setData", data, pins]);
+    },
+    setEdgeStyle(style) {
+      calls.push(["setEdgeStyle", style]);
     },
     setAggregationMarkers(markers) {
       calls.push(["setAggregationMarkers", markers]);

@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import React from "react";
 
 import { GraphPanel } from "../src/components/GraphPanel";
-import { render, screen, waitFor } from "./render";
+import { click, render, screen, waitFor } from "./render";
 
 describe("GraphPanel Paper shell", () => {
 	const originalFetch = globalThis.fetch;
@@ -29,6 +29,7 @@ describe("GraphPanel Paper shell", () => {
 		assert.equal(toolbar.classList.contains("graph-shell-toolbar"), true);
 		assert.match(toolbar.textContent ?? "", /图谱活地图/);
 		assert.ok(screen.getByRole("button", { name: /重置布局/ }));
+		assert.ok(screen.getByRole("button", { name: /调参/ }));
 		assert.ok(screen.getByRole("button", { name: /重构/ }));
 		assert.notEqual(toolbar.querySelector(".graph-shell-legend"), null);
 
@@ -46,6 +47,32 @@ describe("GraphPanel Paper shell", () => {
 		assert.notEqual(screen.queryByLabelText("图谱图例"), null);
 		assert.equal(document.querySelector(".graph-legend"), null);
 		assert.ok(document.querySelector(".graph-host"));
+	});
+
+	it("opens graph edge tuning controls from the toolbar", async () => {
+		mockGraphFetch();
+
+		render(
+			<GraphPanel
+				currentKnowledgeBaseName="AI 学习库"
+				currentKnowledgeBasePath="/kb"
+				theme="light"
+			/>,
+		);
+
+		await click(screen.getByRole("button", { name: /调参/ }));
+
+		const panel = screen.getByRole("dialog", { name: "图谱调参" });
+		assert.match(panel.textContent ?? "", /分主次/);
+		const semanticToggle = screen.getByRole("checkbox", { name: "语义强调" });
+		const focusToggle = screen.getByRole("checkbox", { name: "聚焦点亮" });
+		assert.equal((semanticToggle as HTMLInputElement).checked, false);
+		assert.equal((focusToggle as HTMLInputElement).checked, false);
+
+		await click(semanticToggle);
+
+		assert.equal((semanticToggle as HTMLInputElement).checked, true);
+		assert.equal(localStorage.getItem("llm-wiki.graph.edge-style"), "{\"semanticEmphasis\":true,\"focusHighlight\":false}");
 	});
 
 	it("surfaces graph build errors in the graph panel", async () => {

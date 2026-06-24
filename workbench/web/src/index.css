@@ -1454,6 +1454,80 @@
     height: 14px;
   }
 
+  .graph-shell-toolbar-button[data-active="true"] {
+    border-color: color-mix(in srgb, var(--app-accent) 62%, var(--app-border));
+    background: color-mix(in srgb, var(--app-accent) 20%, var(--app-surface));
+    color: var(--app-accent-deep);
+  }
+
+  .graph-edge-tuning {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  .graph-edge-tuning-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 10;
+    display: grid;
+    width: min(220px, calc(100vw - 28px));
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 68%, transparent);
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 96%, transparent), color-mix(in srgb, var(--app-bg) 88%, var(--app-surface))),
+      var(--paper-grain);
+    background-size: auto, 180px 180px;
+    box-shadow: var(--shadow);
+  }
+
+  .graph-edge-tuning-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--app-fg);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .graph-edge-tuning-base {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--app-surface) 72%, transparent);
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .graph-edge-tuning-toggle {
+    display: flex;
+    min-height: 30px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    color: var(--app-fg);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .graph-edge-tuning-toggle:hover {
+    background: color-mix(in srgb, var(--app-accent) 10%, transparent);
+  }
+
+  .graph-edge-tuning-toggle input {
+    order: 2;
+    margin: 0;
+    accent-color: var(--app-accent);
+  }
+
   .graph-shell-legend {
     display: flex;
     min-width: 0;

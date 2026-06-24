@@ -5,6 +5,11 @@ export type WikiPath = string;
 
 export type ThemeId = "shan-shui" | "mo-ye";
 
+export interface GraphEdgeStyleOptions {
+  semanticEmphasis: boolean;
+  focusHighlight: boolean;
+}
+
 export type GraphNodeType =
   | "entity"
   | "topic"
@@ -477,6 +482,7 @@ export interface GraphEngineOptions {
   data: GraphData;
   pins?: PinMap;
   theme: ThemeId;
+  edgeStyle?: GraphEdgeStyleOptions;
   focus?: GraphFocusInput;
   typeFilters?: GraphTypeFilters;
   aggregationMarkers?: GraphAggregationMarker[];
@@ -488,6 +494,7 @@ export interface GraphEngine {
   applyDiff(diff: GraphDiff, options?: { reducedMotion?: boolean; durationMs?: number }): Promise<void>;
   isDragging(): boolean;
   setData(data: GraphData, pins?: PinMap): void;
+  setEdgeStyle(style: GraphEdgeStyleOptions): void;
   setAggregationMarkers(markers: GraphAggregationMarker[]): void;
   focusNode(path: WikiPath): void;
   focusCommunity(id: CommunityId): Selection;
