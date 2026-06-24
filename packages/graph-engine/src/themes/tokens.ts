@@ -29,6 +29,9 @@ const SHAN_SHUI_ROOT = `
   --shadow: 0 18px 36px rgba(36, 31, 26, .11);
   --soft-shadow: 0 10px 24px rgba(36, 31, 26, .08);
   --radius: 12px;
+  --paper-glow: radial-gradient(140% 95% at 50% -25%, rgba(255, 251, 240, .7), rgba(255, 251, 240, 0) 55%);
+  --paper-vignette: radial-gradient(ellipse 105% 92% at 50% 40%, rgba(255, 255, 255, 0) 52%, rgba(120, 98, 70, .05) 100%);
+  --paper-mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='620' height='620'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.33 0 0 0 0.13 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
   --font-serif: "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   --font-ui: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
@@ -56,6 +59,9 @@ const MO_YE_ROOT = `
   --shadow: 0 22px 44px rgba(0, 0, 0, .48);
   --soft-shadow: 0 12px 28px rgba(0, 0, 0, .36);
   --radius: 12px;
+  --paper-glow: radial-gradient(140% 95% at 50% -25%, rgba(40, 46, 42, .55), rgba(40, 46, 42, 0) 55%);
+  --paper-vignette: radial-gradient(ellipse 105% 92% at 50% 40%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, .22) 100%);
+  --paper-mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='620' height='620'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.7 0 0 0 0 0.72 0 0 0 0 0.68 0 0 0 0.1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
   --font-serif: "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   --font-ui: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;

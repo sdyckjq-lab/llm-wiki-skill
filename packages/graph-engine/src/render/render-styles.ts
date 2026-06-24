@@ -21,8 +21,9 @@ const STATIC_RENDERER_CSS = `
   color: var(--ink);
   font-family: var(--font-ui);
   background:
-    radial-gradient(ellipse at 28% 55%, color-mix(in srgb, var(--surface) 56%, transparent), transparent 56%),
-    radial-gradient(ellipse at 70% 48%, color-mix(in srgb, var(--mist) 60%, transparent), transparent 58%),
+    var(--paper-glow, radial-gradient(ellipse at 28% 55%, color-mix(in srgb, var(--surface) 56%, transparent), transparent 56%)),
+    var(--paper-vignette, radial-gradient(ellipse at 70% 48%, color-mix(in srgb, var(--mist) 60%, transparent), transparent 58%)),
+    var(--paper-mottle, none),
     var(--bg);
 }
 .llm-wiki-graph-engine[data-theme="mo-ye"] {
@@ -111,6 +112,9 @@ const STATIC_RENDERER_CSS = `
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: var(--ink);
   font-weight: 600;
+}
+.sigma-global-community-label[data-dim="true"] {
+  opacity: .45;
 }
 .graph-content-layer {
   position: absolute;

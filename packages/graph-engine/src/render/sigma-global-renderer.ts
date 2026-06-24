@@ -297,6 +297,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let sigma: SigmaGlobalSigmaLike;
   let generation = 0;
   let lastHitTarget: GraphGestureTarget | null = null;
+  // 每个渲染器实例一个唯一的云团模糊滤镜 id：多个渲染器实例同屏不撞 id，
+  // 且全实例共用这一个滤镜（不再每个社区各建一个，减少 DOM 与 GPU 开销）。
+  const cloudFilterId = `sigma-community-cloud-blur-${nextSigmaCloudFilterSequence()}`;
   let activeNodeDrag: SigmaGlobalNodeDragSession | null = null;
   let currentPins: PinMap = { ...(options.pins ?? {}) };
   let suppressNextNodeClickId: string | null = null;
@@ -593,6 +596,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function renderSigmaOverlays(): void {
     if (destroyed) return;
     overlayRoot.replaceChildren();
+    overlayRoot.append(sigmaSharedCloudFilterDef(overlayRoot.ownerDocument, cloudFilterId));
     const regionPointsByCommunity = new Map<string, GraphScreenPoint[]>();
     for (const node of adapterData.nodes) {
       if (!node.communityId) continue;
@@ -614,7 +618,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       element.dataset.selected = selected ? "true" : "false";
       element.style.overflow = "visible";
       applyOverlayBox(element, cloud.box);
-      element.append(sigmaCloudSvg(overlayRoot.ownerDocument, community, cloud, dim, () => {
+      element.append(sigmaCloudSvg(overlayRoot.ownerDocument, community, cloud, dim, cloudFilterId, () => {
         handleSigmaHit({ renderedObject: { kind: "community-wash", id: community.id } });
       }));
       overlayRoot.append(element);
@@ -670,7 +674,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-label", community.id);
       element.className = "sigma-global-community-label";
       element.dataset.communityId = community.id;
-      element.dataset.selected = adapterData.communities.find((item) => item.id === community.id)?.selected ? "true" : "false";
+      const labelSelected = adapterData.communities.find((item) => item.id === community.id)?.selected ?? false;
+      element.dataset.selected = labelSelected ? "true" : "false";
+      element.dataset.dim = selectedCommunityId != null && !labelSelected ? "true" : "false";
       element.textContent = community.label || community.id;
       const center = sigmaWorldPointToScreenPoint(sigma, {
         x: community.wash.cx,
@@ -831,11 +837,41 @@ function sigmaCommunityCloud(
   return { box: fallbackBox, localPoints: null };
 }
 
+let sigmaCloudFilterSequence = 0;
+
+function nextSigmaCloudFilterSequence(): number {
+  sigmaCloudFilterSequence += 1;
+  return sigmaCloudFilterSequence;
+}
+
+function sigmaSharedCloudFilterDef(ownerDocument: Document, filterId: string): SVGSVGElement {
+  const svg = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "svg");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.position = "absolute";
+  svg.style.width = "0";
+  svg.style.height = "0";
+  svg.style.overflow = "hidden";
+  const defs = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "defs");
+  const filter = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "filter");
+  filter.setAttribute("id", filterId);
+  filter.setAttribute("x", "-50%");
+  filter.setAttribute("y", "-50%");
+  filter.setAttribute("width", "200%");
+  filter.setAttribute("height", "200%");
+  const blur = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "feGaussianBlur");
+  blur.setAttribute("stdDeviation", "20");
+  filter.append(blur);
+  defs.append(filter);
+  svg.append(defs);
+  return svg;
+}
+
 function sigmaCloudSvg(
   ownerDocument: Document,
   community: { id: string; color: string },
   cloud: SigmaCommunityCloud,
   dim: boolean,
+  filterId: string,
   onSelect: () => void
 ): SVGSVGElement {
   const svg = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "svg");
@@ -845,19 +881,6 @@ function sigmaCloudSvg(
   svg.style.inset = "0";
   svg.style.overflow = "visible";
   svg.style.pointerEvents = "none";
-  const filterId = `sigma-cloud-${community.id}`;
-  const defs = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "defs");
-  const filter = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "filter");
-  filter.setAttribute("id", filterId);
-  filter.setAttribute("x", "-50%");
-  filter.setAttribute("y", "-50%");
-  filter.setAttribute("width", "200%");
-  filter.setAttribute("height", "200%");
-  const blur = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "feGaussianBlur");
-  blur.setAttribute("stdDeviation", "16");
-  filter.append(blur);
-  defs.append(filter);
-  svg.append(defs);
   let shape: SVGElement;
   if (cloud.localPoints) {
     const polygon = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "polygon");
