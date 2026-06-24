@@ -1,5 +1,6 @@
 import type { GraphEdgeStyleOptions, PinMap, PinPosition, ThemeId } from "../types";
 import { createGraphSpatialIndex, type GraphSpatialIndex, type GraphSpatialIndexInput } from "../layout";
+import { getThemeTokens } from "../themes";
 import type {
   GraphRendererAdapterAggregation,
   GraphRendererAdapterCommunity,
@@ -20,6 +21,7 @@ import {
 } from "./sigma-global-drag";
 import { rootClientPointToScreenPoint, screenPointToWorldPoint, worldPointToCssPercentPoint, type GraphScreenPoint } from "./geometry";
 import { graphSpatialHitToGestureTarget, type GraphGestureTarget } from "./gestures";
+import { edgeRelationClass } from "./model";
 import { DEFAULT_RENDERER_VIEWPORT, type RendererViewport, type RendererViewportSize } from "./viewport";
 
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
@@ -101,7 +103,6 @@ export interface SigmaGlobalGraphologyNodeAttributes {
 export interface SigmaGlobalGraphologyEdgeAttributes {
   size: number;
   color: string;
-  opacity: number;
   relationType: string | null;
   confidence: string | null;
   weight: number;
@@ -200,6 +201,11 @@ export interface SigmaGlobalRenderer {
   destroy(): void;
 }
 
+export interface SigmaGlobalEdgeStyle {
+  color: string;
+  size: number;
+}
+
 export async function sigmaGlobalRendererRuntimeBoundary(): Promise<SigmaGlobalRendererRuntimeBoundary> {
   const [{ default: Sigma }, { default: GraphologyGraph }] = await Promise.all([
     import("sigma"),
@@ -215,19 +221,20 @@ export async function sigmaGlobalRendererRuntimeBoundary(): Promise<SigmaGlobalR
 export function buildSigmaGlobalGraphologyGraph(
   adapterData: GraphRendererAdapterData,
   runtime: SigmaGlobalGraphologyRuntime,
-  _theme?: ThemeId,
-  _edgeStyle?: GraphEdgeStyleOptions
+  theme: ThemeId = "shan-shui",
+  edgeStyle?: GraphEdgeStyleOptions
 ): SigmaGlobalGraphologyGraph {
   const graph = new runtime.GraphologyGraph({ multi: true, type: "mixed" });
   const communityColorById = new Map(adapterData.renderable.communities.map((community) => [community.id, community.color]));
   const aggregationRenderById = new Map(adapterData.renderable.aggregationContainers.map((aggregation) => [aggregation.id, aggregation]));
+  const selectedCommunityIds = new Set(adapterData.communities.filter((community) => community.selected).map((community) => community.id));
 
   for (const node of adapterData.nodes) {
     graph.addNode(node.id, sigmaGlobalNodeAttributes(node, communityColorById));
   }
 
   for (const edge of adapterData.edges) {
-    graph.addEdgeWithKey(edge.id, edge.sourceNodeId, edge.targetNodeId, sigmaGlobalEdgeAttributes(edge));
+    graph.addEdgeWithKey(edge.id, edge.sourceNodeId, edge.targetNodeId, sigmaGlobalEdgeAttributes(edge, theme, edgeStyle, selectedCommunityIds));
   }
 
   graph.setAttribute("counts", adapterData.counts);
@@ -1202,17 +1209,74 @@ function sigmaGlobalNodeAttributes(
   };
 }
 
-function sigmaGlobalEdgeAttributes(edge: GraphRendererAdapterEdge): SigmaGlobalGraphologyEdgeAttributes {
+function sigmaGlobalEdgeAttributes(
+  edge: GraphRendererAdapterEdge,
+  theme: ThemeId = "shan-shui",
+  style?: GraphEdgeStyleOptions,
+  selectedCommunityIds: ReadonlySet<string> = new Set()
+): SigmaGlobalGraphologyEdgeAttributes {
+  const edgeStyle = sigmaGlobalEdgeStyle(edge, theme, style, selectedCommunityIds);
   return {
-    size: Math.max(1, finiteNumber(edge.render.strokeWidth, 1)),
-    color: "#8a8175",
-    opacity: clamp(finiteNumber(edge.render.opacity, 1), 0, 1) * 0.3,
+    size: edgeStyle.size,
+    color: edgeStyle.color,
     relationType: edge.relationType == null ? null : String(edge.relationType),
     confidence: edge.confidence == null ? null : String(edge.confidence),
     weight: finiteNumber(edge.weight, 0),
     sourceCommunityId: edge.sourceCommunityId,
     targetCommunityId: edge.targetCommunityId
   };
+}
+
+export function sigmaGlobalEdgeStyle(
+  edge: GraphRendererAdapterEdge,
+  theme: ThemeId = "shan-shui",
+  style?: GraphEdgeStyleOptions,
+  _selectedCommunityIds: ReadonlySet<string> = new Set()
+): SigmaGlobalEdgeStyle {
+  const relationClass = edgeRelationClass(edge.relationType);
+  const semantic = relationClass === "relation-contrast" || relationClass === "relation-conflict";
+  const bridge = Boolean(edge.sourceCommunityId && edge.targetCommunityId && edge.sourceCommunityId !== edge.targetCommunityId);
+  const weight = clamp(finiteNumber(edge.weight, 0), 0, 1);
+  let alpha = semantic ? (bridge ? 0.58 : 0.5) + weight * 0.08 : (bridge ? 0.34 : 0.1) + weight * (bridge ? 0.08 : 0.06);
+  let size = semantic ? (bridge ? 1.65 : 1.25) + weight * 0.6 : (bridge ? 1.1 : 0.72) + weight * (bridge ? 0.85 : 0.55);
+
+  if (style?.semanticEmphasis) {
+    if (semantic) {
+      alpha = alpha * 1.16 + 0.04;
+      size += 0.45;
+    } else {
+      alpha *= 0.6;
+      size *= 0.75;
+    }
+  }
+
+  alpha = roundNumber(clamp(alpha, 0.05, 0.7), 3);
+  size = roundNumber(clamp(size, 0.6, 4), 2);
+
+  return {
+    color: rgbaColor(sigmaGlobalEdgeRelationColor(relationClass, theme), alpha),
+    size
+  };
+}
+
+function sigmaGlobalEdgeRelationColor(relationClass: string, theme: ThemeId): string {
+  const vars = getThemeTokens(theme).vars;
+  if (relationClass === "relation-contrast") return vars["--amber"] ?? (theme === "mo-ye" ? "#e0b35e" : "#b7791f");
+  if (relationClass === "relation-conflict") return theme === "mo-ye" ? "#f472b6" : "#d94693";
+  if (theme === "mo-ye") return vars["--line"] ?? "#8e8778";
+  return vars["--night"] ?? "#315f72";
+}
+
+function rgbaColor(hexColor: string, alpha: number): string {
+  const hex = hexColor.trim().replace(/^#/, "");
+  const normalized = hex.length === 3
+    ? hex.split("").map((part) => `${part}${part}`).join("")
+    : hex;
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  if (![red, green, blue].every(Number.isFinite)) return `rgba(49, 95, 114, ${alpha})`;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function sigmaGlobalCommunityAttributes(
@@ -1301,4 +1365,9 @@ function sameRendererViewportSize(left: RendererViewportSize, right: RendererVie
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function roundNumber(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
 }

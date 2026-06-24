@@ -331,6 +331,9 @@ const STATIC_RENDERER_CSS = `
 .graph-edge-legend-confidence.confidence-ambiguous .graph-edge-legend-line {
   border-top-style: dotted;
 }
+.sigma-global-route .graph-edge-legend-group:has(.graph-edge-legend-confidence) {
+  display: none;
+}
 .llm-wiki-graph-engine[data-theme="mo-ye"] .graph-edge-legend-swatch,
 .llm-wiki-graph-engine[data-theme="mo-ye"] .graph-edge-legend-line {
   border-top-color: color-mix(in srgb, var(--line) 70%, transparent);
