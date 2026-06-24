@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>全局图边线方案对比 · llm-wiki</title>
+<style>
+  :root {
+    --bg: #f4efe4;
+    --canvas: #f6f1e6;
+    --panel: #fffdf7;
+    --panel-2: #f8f1e4;
+    --ink: #241f1a;
+    --muted: #6f6559;
+    --faint: #9b8f7e;
+    --rule: #d8cdbb;
+    --accent: #315f72;
+    --shadow: 0 18px 36px rgba(36, 31, 26, .12);
+    /* 边线配色（亮色）—— 复用项目 token */
+    --edge-neutral: 49, 95, 114;   /* --night #315f72 */
+    --edge-contrast: 183, 121, 31; /* --amber #b7791f */
+    --edge-conflict: 217, 70, 147; /* #d94693 */
+    --edge-current: 138, 129, 117; /* 现状写死的灰 #8a8175 */
+  }
+  [data-theme="dark"] {
+    --bg: #0d0f0e;
+    --canvas: #121413;
+    --panel: #181a18;
+    --panel-2: #21231f;
+    --ink: #f5f0e6;
+    --muted: #c6bbab;
+    --faint: #8f8677;
+    --rule: #3b3932;
+    --accent: #a9bfcb;
+    --shadow: 0 22px 44px rgba(0, 0, 0, .5);
+    --edge-neutral: 142, 135, 120;  /* --line #8e8778 */
+    --edge-contrast: 224, 179, 94;  /* --amber #e0b35e */
+    --edge-conflict: 244, 114, 182; /* #f472b6 */
+    --edge-current: 138, 129, 117;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 22px 24px 60px; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: .2px; }
+  h1 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--rule); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px;
+    padding: 6px 11px; border-radius: 7px; cursor: pointer; white-space: nowrap; transition: all .15s ease;
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 600; }
+  [data-theme="dark"] .seg button.active { box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .chip-toggle { display: inline-flex; align-items: center; gap: 7px; background: var(--panel-2); border: 1px solid var(--rule); border-radius: 10px; padding: 7px 12px; cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .chip-toggle:hover { color: var(--ink); }
+
+  .stage { position: relative; display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .canvas-card {
+    position: relative; background: var(--canvas); border: 1px solid var(--rule); border-radius: 16px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  svg { display: block; width: 100%; height: auto; }
+  .variant-note {
+    position: absolute; left: 16px; bottom: 14px; max-width: 60%;
+    font-size: 12.5px; color: var(--muted); background: color-mix(in srgb, var(--panel) 86%, transparent);
+    border: 1px solid var(--rule); border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(6px);
+  }
+  .variant-note b { color: var(--ink); font-weight: 650; }
+  .focus-hint {
+    position: absolute; right: 16px; top: 14px; font-size: 12px; color: var(--accent);
+    background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--rule);
+    border-radius: 999px; padding: 5px 12px; display: none;
+  }
+  .focus-hint.show { display: block; }
+
+  /* 图例 */
+  .legend { position: absolute; left: 16px; top: 14px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--rule); border-radius: 12px; padding: 11px 13px; backdrop-filter: blur(6px); width: 184px; }
+  .legend h4 { margin: 0 0 7px; font-size: 11px; font-weight: 600; color: var(--faint); letter-spacing: .4px; }
+  .legend .row { display: grid; grid-template-columns: 30px 1fr; align-items: center; gap: 8px; font-size: 12px; min-height: 21px; }
+  .legend .ln { height: 0; border-top-width: 2.5px; border-top-style: solid; }
+  .legend hr { border: 0; border-top: 1px solid var(--rule); margin: 9px 0 7px; }
+
+  /* 调参面板 */
+  .tweaks {
+    position: fixed; right: 22px; top: 92px; width: 252px; background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 14px; box-shadow: var(--shadow); padding: 14px 15px; z-index: 30; transition: transform .22s ease, opacity .22s ease;
+  }
+  .tweaks.hidden { transform: translateX(20px); opacity: 0; pointer-events: none; }
+  .tweaks h3 { margin: 0 0 4px; font-size: 13px; font-weight: 650; display: flex; justify-content: space-between; align-items: center; }
+  .tweaks h3 .x { cursor: pointer; color: var(--faint); font-weight: 400; }
+  .tweaks .sub { font-size: 11.5px; color: var(--faint); margin: 0 0 12px; }
+  .control { margin-bottom: 13px; }
+  .control label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .control label b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .tweaks .reset { width: 100%; margin-top: 4px; padding: 7px; border: 1px solid var(--rule); background: var(--panel-2); color: var(--muted); border-radius: 8px; cursor: pointer; font: inherit; font-size: 12px; }
+  .tweaks .reset:hover { color: var(--ink); }
+  .tweaks .disabledHint { font-size: 11px; color: var(--faint); margin-top: 2px; }
+
+  .readme { margin-top: 22px; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 22px; }
+  .readme h2 { font-size: 15px; margin: 0 0 10px; }
+  .readme p, .readme li { font-size: 13px; color: var(--muted); }
+  .readme b { color: var(--ink); }
+  .readme ul { margin: 6px 0 14px; padding-left: 18px; }
+  .readme code { background: var(--panel-2); border: 1px solid var(--rule); border-radius: 5px; padding: 1px 6px; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 26px; }
+  @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; } .tweaks{ position: static; width: auto; margin-bottom: 16px; } }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+  <header class="top">
+    <h1>全局图边线方案对比<small>llm-wiki · Sigma 全景</small></h1>
+    <div class="toolbar">
+      <div class="seg" id="variantSeg"></div>
+      <button class="chip-toggle" id="themeBtn">◐ 暗色</button>
+      <button class="chip-toggle" id="tweakBtn">⚙ 调参</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="canvas-card">
+      <svg id="graph" viewBox="0 0 1180 720" role="img" aria-label="图谱边线方案预览">
+        <rect id="bg" x="0" y="0" width="1180" height="720" fill="var(--canvas)"></rect>
+        <defs id="defs"></defs>
+        <g id="edges"></g>
+        <g id="nodes"></g>
+        <g id="labels"></g>
+      </svg>
+      <div class="legend" id="legend"></div>
+      <div class="focus-hint" id="focusHint">把鼠标移到某个圈子上 → 只点亮它的连线</div>
+      <div class="variant-note" id="note"></div>
+    </div>
+  </div>
+
+  <aside class="tweaks hidden" id="tweaks">
+    <h3>实时调参 <span class="x" id="tweakClose">✕</span></h3>
+    <p class="sub">拖动滑块即时看效果（主要作用于「分主次」类方案）</p>
+    <div class="control"><label>整体不透明度 <b id="vBase">1.00</b></label><input type="range" id="rBase" min="0.4" max="1.6" step="0.05" value="1"></div>
+    <div class="control"><label>圈内边·淡化 <b id="vIntra">0.10</b></label><input type="range" id="rIntra" min="0.03" max="0.4" step="0.01" value="0.10"></div>
+    <div class="control"><label>跨圈边·亮度 <b id="vInter">0.34</b></label><input type="range" id="rInter" min="0.12" max="0.7" step="0.02" value="0.34"></div>
+    <div class="control"><label>语义边·强调 <b id="vSem">1.30</b></label><input type="range" id="rSem" min="1" max="2.2" step="0.05" value="1.3"></div>
+    <div class="control"><label>线宽 <b id="vWidth">1.00</b></label><input type="range" id="rWidth" min="0.5" max="2" step="0.05" value="1"></div>
+    <button class="reset" id="resetBtn">恢复推荐值</button>
+    <p class="disabledHint" id="tweakHint"></p>
+  </aside>
+
+  <section class="readme">
+    <h2>设计说明：为什么这样处理</h2>
+    <p>全局图（这张全景）几百条边一起出现，边的任务是表达<b>结构</b>，不是逐条讲清关系细节——细节属于点进单个社区后那张放大图。所以核心是<b>分主次</b>，而不是把图例那套精细分类硬塞进全景。</p>
+    <div class="grid2">
+      <div>
+        <p><b>三层视觉层级（从背景到主角）</b></p>
+        <ul>
+          <li><b>圈内普通边</b> → 极淡背景。和社区色块信息冗余，<code>α≈0.10</code></li>
+          <li><b>跨圈桥接边</b> → 中等亮度、略粗。全景里真正有用的「桥」，<code>α≈0.34</code></li>
+          <li><b>对比 / 矛盾边</b> → 上色跳出。对比=琥珀，矛盾=粉红，<code>α≈0.5</code></li>
+        </ul>
+      </div>
+      <div>
+        <p><b>颜色与置信度</b></p>
+        <ul>
+          <li>配色全部复用项目 token（<code>--night / --amber / 矛盾色 / --line</code>），与社区图、图例三处同源</li>
+          <li>置信度用<b>深浅</b>表达（全景画不出虚线）：原文最实，推断 ×0.8，待确认 ×0.62</li>
+          <li>透明度<b>烤进颜色的 alpha</b>，不再留一个没人读的 opacity 死字段</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-bottom:0"><b>潜在陷阱（已规避）</b>：① 不要用 5 种细线颜色+虚线，全景里读不出来只会更乱；② 圈内边别一刀切全隐藏，会让社区显得孤立——保留极淡的「底纹感」；③ 语义边上色要克制，只给对比/矛盾，否则又变花；④ 暗色主题中性边改用 <code>--line</code> 灰，避免深蓝在黑底上糊掉。</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // ---------- 确定性随机，保证布局稳定 ----------
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  const rnd = mulberry32(20260624);
+
+  const NS = "http://www.w3.org/2000/svg";
+  const COMM_COLORS = {
+    light: ["#bf6b4f", "#7a9b86", "#9580a6", "#c39a3e", "#5f8aa6", "#b07084"],
+    dark:  ["#e08a66", "#9cc0a6", "#bba6d0", "#e6c156", "#86b3cf", "#d098ab"]
+  };
+  const COMMUNITIES = [
+    { id: "cc",    name: "Claude Code 工具生态", cx: 305, cy: 250, n: 11 },
+    { id: "agent", name: "AI Agent 架构",        cx: 845, cy: 205, n: 10 },
+    { id: "auto",  name: "AI 自动化",            cx: 995, cy: 430, n: 9  },
+    { id: "ctx",   name: "上下文 / 省 Token",     cx: 720, cy: 575, n: 10 },
+    { id: "team",  name: "AI 团队管理",          cx: 405, cy: 545, n: 9  },
+    { id: "cmp",   name: "对比分析",              cx: 600, cy: 360, n: 8  }
+  ];
+
+  // ---------- 生成节点 ----------
+  const nodes = [];   // {id, cid, x, y, god}
+  const idxByComm = {};
+  COMMUNITIES.forEach((c, ci) => {
+    idxByComm[c.id] = [];
+    for (let i = 0; i < c.n; i++) {
+      const god = i === 0;
+      const ang = rnd() * Math.PI * 2;
+      const rad = god ? 0 : 38 + rnd() * 78;
+      const x = c.cx + Math.cos(ang) * rad * (0.9 + rnd() * 0.5);
+      const y = c.cy + Math.sin(ang) * rad * (0.8 + rnd() * 0.4);
+      const k = nodes.length;
+      nodes.push({ id: c.id + "-" + i, cid: c.id, ci, x, y, god });
+      idxByComm[c.id].push(k);
+    }
+  });
+
+  // ---------- 生成边 ----------
+  const edges = []; // {a, b, rel, conf, bridge}
+  const CONF = ["extracted", "extracted", "extracted", "inferred", "inferred", "ambiguous"];
+  function pickConf() { return CONF[Math.floor(rnd() * CONF.length)]; }
+
+  // 圈内：god 连所有成员 + 少量成员互连（形成密网）
+  COMMUNITIES.forEach((c) => {
+    const arr = idxByComm[c.id];
+    const god = arr[0];
+    for (let i = 1; i < arr.length; i++) {
+      edges.push({ a: god, b: arr[i], rel: "neutral", conf: pickConf(), bridge: false });
+    }
+    for (let i = 1; i < arr.length; i++) {
+      if (rnd() < 0.5) edges.push({ a: arr[i], b: arr[1 + Math.floor(rnd() * (arr.length - 1))], rel: "neutral", conf: pickConf(), bridge: false });
+    }
+  });
+
+  // 跨圈：少量桥接，部分是对比/矛盾
+  const BRIDGES = [
+    ["cc", "cmp", "contrast"], ["team", "cmp", "contrast"], ["agent", "cmp", "neutral"],
+    ["auto", "agent", "neutral"], ["ctx", "cmp", "neutral"], ["auto", "cmp", "neutral"],
+    ["team", "cc", "neutral"], ["ctx", "cc", "conflict"], ["agent", "ctx", "conflict"],
+    ["agent", "auto", "neutral"], ["cmp", "ctx", "neutral"], ["cc", "agent", "neutral"]
+  ];
+  BRIDGES.forEach(([s, t, rel]) => {
+    edges.push({ a: idxByComm[s][0], b: idxByComm[t][0], rel, conf: pickConf(), bridge: true });
+    // 再补一条非 god 的跨圈细边，增加真实感
+    if (rnd() < 0.6) {
+      const sa = idxByComm[s][1 + Math.floor(rnd() * (idxByComm[s].length - 1))];
+      const tb = idxByComm[t][1 + Math.floor(rnd() * (idxByComm[t].length - 1))];
+      edges.push({ a: sa, b: tb, rel: "neutral", conf: pickConf(), bridge: true });
+    }
+  });
+
+  // ---------- 状态 ----------
+  const RECOMMEND = { base: 1, intra: 0.10, inter: 0.34, sem: 1.3, width: 1 };
+  let tweaks = Object.assign({}, RECOMMEND);
+  let theme = "light";
+  let variant = "current";
+  let focusComm = null;
+
+  const VARIANTS = [
+    { id: "current",  label: "现状",        note: "<b>现状</b>：所有边同一种灰、同一种粗、全实线，几百条堆叠 → 扑脸，也分不出主次。" },
+    { id: "hier",     label: "分主次 ★",    note: "<b>分主次（推荐）</b>：圈内边退为背景，跨圈桥接边留亮，对比=琥珀、矛盾=粉红跳出来，置信度用深浅。" },
+    { id: "focus",    label: "聚焦点亮",    note: "<b>聚焦点亮</b>：边默认极淡当底纹，鼠标移到某个圈子才点亮它的连线。最干净，但需交互。" },
+    { id: "curved",   label: "曲线",        note: "<b>曲线</b>：在分主次基础上把边画成弧线，减少直线交叉，密集处更透气。" },
+    { id: "semantic", label: "语义强调",    note: "<b>语义强调</b>：普通边压到发丝级，只让对比/矛盾边加粗、带箭头，强调「关系」而非「连接」。" }
+  ];
+
+  const confFactor = { extracted: 1, inferred: 0.8, ambiguous: 0.62 };
+
+  // ---------- DOM ----------
+  const svg = document.getElementById("graph");
+  const gEdges = document.getElementById("edges");
+  const gNodes = document.getElementById("nodes");
+  const gLabels = document.getElementById("labels");
+  const defs = document.getElementById("defs");
+  const note = document.getElementById("note");
+  const focusHint = document.getElementById("focusHint");
+  const legend = document.getElementById("legend");
+
+  function edgeRGB(rel) {
+    if (rel === "contrast") return "var(--edge-contrast)";
+    if (rel === "conflict") return "var(--edge-conflict)";
+    return "var(--edge-neutral)";
+  }
+
+  function styleFor(e) {
+    // 返回 {rgb, alpha, width, curve, marker}
+    const cf = confFactor[e.conf] || 1;
+    const base = tweaks.base, wS = tweaks.width;
+    if (variant === "current") {
+      return { rgb: "var(--edge-current)", alpha: 0.6 * base, width: 1.5 * wS, curve: false, marker: false };
+    }
+    const semantic = e.rel !== "neutral";
+    let alpha, width, curve = false, marker = false;
+    if (semantic) {
+      alpha = (e.bridge ? 0.55 : 0.4) * cf * base * (variant === "semantic" ? 1.15 : 1) * (tweaks.sem / 1.3);
+      width = (e.bridge ? 1.7 : 1.4) * wS * (variant === "semantic" ? tweaks.sem : (0.6 + 0.5 * tweaks.sem));
+      if (variant === "semantic") marker = true;
+    } else if (e.bridge) {
+      alpha = tweaks.inter * cf * base;
+      width = 1.35 * wS * (variant === "semantic" ? 0.85 : 1);
+    } else {
+      alpha = tweaks.intra * cf * base;
+      width = 0.85 * wS * (variant === "semantic" ? 0.6 : 1);
+    }
+    curve = (variant === "curved");
+
+    if (variant === "focus") {
+      if (focusComm == null) {
+        alpha *= 0.16; // 默认全部压成底纹
+      } else {
+        const touch = nodes[e.a].cid === focusComm || nodes[e.b].cid === focusComm;
+        alpha *= touch ? 1.45 : 0.05;
+        if (touch) width *= 1.1;
+      }
+    }
+    alpha = Math.max(0.015, Math.min(alpha, 0.85));
+    width = Math.max(0.5, Math.min(width, 4.2));
+    return { rgb: edgeRGB(e.rel), alpha, width, curve, marker };
+  }
+
+  function pathD(e, curve) {
+    const A = nodes[e.a], B = nodes[e.b];
+    if (!curve) return "M" + A.x + " " + A.y + " L" + B.x + " " + B.y;
+    const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+    const dx = B.x - A.x, dy = B.y - A.y;
+    const off = 0.18;
+    const cx = mx - dy * off, cy = my + dx * off;
+    return "M" + A.x + " " + A.y + " Q" + cx + " " + cy + " " + B.x + " " + B.y;
+  }
+
+  function renderDefs() {
+    defs.innerHTML = "";
+    [["contrast", "var(--edge-contrast)"], ["conflict", "var(--edge-conflict)"]].forEach(([id, rgb]) => {
+      const m = document.createElementNS(NS, "marker");
+      m.setAttribute("id", "arr-" + id);
+      m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
+      m.setAttribute("markerWidth", "6"); m.setAttribute("markerHeight", "6"); m.setAttribute("orient", "auto-start-reverse");
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", "M0 0 L10 5 L0 10 z");
+      p.setAttribute("fill", "rgb(" + rgb + ")");
+      m.appendChild(p); defs.appendChild(m);
+    });
+  }
+
+  function renderEdges() {
+    gEdges.innerHTML = "";
+    // 先画淡的，再画亮的，保证语义边在最上层
+    const ordered = edges.slice().sort((a, b) => styleFor(a).alpha - styleFor(b).alpha);
+    ordered.forEach((e) => {
+      const s = styleFor(e);
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", pathD(e, s.curve));
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", "rgb(" + s.rgb + ")");
+      p.setAttribute("stroke-opacity", s.alpha.toFixed(3));
+      p.setAttribute("stroke-width", s.width.toFixed(2));
+      p.setAttribute("stroke-linecap", "round");
+      if (s.marker && e.rel !== "neutral") p.setAttribute("marker-end", "url(#arr-" + e.rel + ")");
+      gEdges.appendChild(p);
+    });
+  }
+
+  function renderNodes() {
+    gNodes.innerHTML = "";
+    gLabels.innerHTML = "";
+    const pal = COMM_COLORS[theme];
+    nodes.forEach((n) => {
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", n.x); c.setAttribute("cy", n.y);
+      c.setAttribute("r", n.god ? 9 : 4.6);
+      c.setAttribute("fill", pal[n.ci]);
+      c.setAttribute("stroke", "var(--canvas)");
+      c.setAttribute("stroke-width", n.god ? 2 : 1.2);
+      c.setAttribute("opacity", (variant === "focus" && focusComm && n.cid !== focusComm) ? 0.4 : 1);
+      c.style.cursor = "pointer";
+      c.addEventListener("mouseenter", () => { if (variant === "focus") { focusComm = n.cid; renderEdges(); renderNodes(); } });
+      gNodes.appendChild(c);
+    });
+    COMMUNITIES.forEach((cm) => {
+      const g = nodes[idxByComm[cm.id][0]];
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", g.x + 12); t.setAttribute("y", g.y + 4);
+      t.setAttribute("font-size", "12.5"); t.setAttribute("font-weight", "600");
+      t.setAttribute("fill", "var(--ink)");
+      t.setAttribute("opacity", (variant === "focus" && focusComm && cm.id !== focusComm) ? 0.35 : 0.92);
+      t.textContent = cm.name;
+      gLabels.appendChild(t);
+    });
+  }
+
+  function renderLegend() {
+    const dash = variant === "current";
+    legend.innerHTML =
+      '<h4>关系类型</h4>' +
+      legRow("rgb(var(--edge-neutral))", dash ? "rgb(var(--edge-current))" : null, "实现 / 依赖 / 衍生") +
+      legRow("rgb(var(--edge-contrast))", null, "对比") +
+      legRow("rgb(var(--edge-conflict))", null, "矛盾") +
+      '<hr><h4>置信度（用深浅）</h4>' +
+      legConf(1, "原文") + legConf(0.6, "推断") + legConf(0.32, "待确认");
+    if (variant === "current") {
+      legend.innerHTML = '<h4>关系类型</h4>' +
+        '<div class="row"><span class="ln" style="border-top-color:rgb(var(--edge-current));opacity:.6"></span><span>全部一种灰实线</span></div>' +
+        '<div class="row" style="color:var(--faint);font-size:11.5px;margin-top:4px"><span></span><span>图例承诺的区分没兑现</span></div>';
+    }
+  }
+  function legRow(color, override, label) {
+    return '<div class="row"><span class="ln" style="border-top-color:' + (override || color) + '"></span><span>' + label + '</span></div>';
+  }
+  function legConf(op, label) {
+    return '<div class="row"><span class="ln" style="border-top-color:rgb(var(--edge-neutral));opacity:' + op + '"></span><span>' + label + '</span></div>';
+  }
+
+  function render() {
+    renderDefs();
+    renderEdges();
+    renderNodes();
+    renderLegend();
+    const v = VARIANTS.find((x) => x.id === variant);
+    note.innerHTML = v.note;
+    focusHint.classList.toggle("show", variant === "focus");
+    if (variant === "focus" && focusComm) focusHint.textContent = "已聚焦：" + COMMUNITIES.find((c) => c.id === focusComm).name + " · 移开恢复";
+    else if (variant === "focus") focusHint.textContent = "把鼠标移到某个圈子上 → 只点亮它的连线";
+    // 调参面板对哪些方案有效
+    const hint = document.getElementById("tweakHint");
+    hint.textContent = (variant === "current") ? "「现状」仅整体不透明度/线宽生效（故意保留它的“笨”）。" :
+      (variant === "focus") ? "「聚焦点亮」下，圈内/跨圈滑块仍生效，叠加聚焦逻辑。" : "圈内/跨圈/语义滑块全部生效。";
+  }
+
+  // ---------- 控件 ----------
+  const seg = document.getElementById("variantSeg");
+  VARIANTS.forEach((v) => {
+    const b = document.createElement("button");
+    b.textContent = v.label; b.dataset.id = v.id;
+    if (v.id === variant) b.classList.add("active");
+    b.addEventListener("click", () => {
+      variant = v.id; focusComm = null;
+      [...seg.children].forEach((c) => c.classList.toggle("active", c.dataset.id === variant));
+      render();
+    });
+    seg.appendChild(b);
+  });
+
+  document.getElementById("themeBtn").addEventListener("click", (e) => {
+    theme = theme === "light" ? "dark" : "light";
+    document.body.dataset.theme = theme;
+    e.currentTarget.textContent = theme === "light" ? "◐ 暗色" : "◑ 亮色";
+    render();
+  });
+
+  const tweaksEl = document.getElementById("tweaks");
+  document.getElementById("tweakBtn").addEventListener("click", () => tweaksEl.classList.toggle("hidden"));
+  document.getElementById("tweakClose").addEventListener("click", () => tweaksEl.classList.add("hidden"));
+
+  function bind(rangeId, valId, key, dec) {
+    const r = document.getElementById(rangeId), out = document.getElementById(valId);
+    r.addEventListener("input", () => { tweaks[key] = parseFloat(r.value); out.textContent = parseFloat(r.value).toFixed(dec); renderEdges(); });
+  }
+  bind("rBase", "vBase", "base", 2);
+  bind("rIntra", "vIntra", "intra", 2);
+  bind("rInter", "vInter", "inter", 2);
+  bind("rSem", "vSem", "sem", 2);
+  bind("rWidth", "vWidth", "width", 2);
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    tweaks = Object.assign({}, RECOMMEND);
+    [["rBase", "vBase", "base", 2], ["rIntra", "vIntra", "intra", 2], ["rInter", "vInter", "inter", 2], ["rSem", "vSem", "sem", 2], ["rWidth", "vWidth", "width", 2]]
+      .forEach(([rid, vid, k, d]) => { document.getElementById(rid).value = tweaks[k]; document.getElementById(vid).textContent = tweaks[k].toFixed(d); });
+    renderEdges();
+  });
+
+  svg.addEventListener("mouseleave", () => { if (variant === "focus" && focusComm) { focusComm = null; renderEdges(); renderNodes(); render(); } });
+
+  render();
+})();
+</script>
+</body>
+</html>
+</content>
+</invoke>
