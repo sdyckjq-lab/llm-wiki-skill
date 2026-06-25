@@ -10,7 +10,7 @@
 
 把碎片化的信息变成持续积累、互相链接的知识库
 
-[![version](https://img.shields.io/badge/v3.6.12-全局图谱打磨-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.14-全局边线调参-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-多平台-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -63,6 +63,7 @@ bash install.sh --platform hermes
 | ✨ | **图谱阅读体验打磨** | 节点按地名、索引签条、朱砂批注分层；默认画面更轻，悬停可预览，点击先看摘要，再通过明确动作进入阅读 |
 | 🎓 | **本地阅读动线** | 社区图例、聚焦筛选、图谱搜索、右侧摘要/阅读抽屉和选区抽屉保持联动；社区先摘要再进入聚焦 |
 | 🧭 | **社区轻量地图** | 进入社区后改用更松弛的点状地图；节点按类型区分颜色，悬停或点击时只突出相关节点和关系 |
+| 🪶 | **全局边线调参** | 工作台全局图谱边线会自动分主次，可打开语义强调和聚焦点亮，让关键关系更容易看清 |
 | 📦 | **零配置初始化** | 一句话创建完整知识库，自动生成目录结构、模板和研究方向页 |
 | 🔗 | **结构化 Wiki** | 自动生成实体页、主题页、素材摘要，用 `[[双向链接]]` 互相关联 |
 | 🏷️ | **置信度标注** | EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED，一眼看出哪些需要核实 |
@@ -115,6 +116,7 @@ bash install.sh --platform claude --with-optional-adapters
 - **素材删除** — 级联删除时自动清理关联页面、断链和缓存
 - **图谱运行时兜底更稳** — helper 同时支持浏览器全局与 CommonJS，旧运行时下的复杂 emoji 截断和离线 HTML 失败回滚都更可靠
 - **大图谱全局路线** — 全局视角以 Sigma/Graphology 承接地图级浏览和轻量摘要；DOM/SVG 保留给社区阅读、离线细节和小图异常兜底
+- **全局边线调参** — 工作台全局图谱边线自动分主次，调参面板支持语义强调和聚焦点亮；社区图谱保留原有边线和图例
 - **社区轻量地图** — 进入社区后默认显示更小、更松的节点；不同类型节点用不同颜色区分，悬停或点击节点时只突出一度、二度关系
 - **图谱视野稳定** — 点击社区摘要或重复点击同一位置时，图谱保持原视角，不会被右侧抽屉挤动
 - **工作台 Paper 视觉** — Paper v2 暖纸配色覆盖工作台默认主题、新对话按钮、消息气泡、侧栏和图谱控件，长标题和长消息保持在页面内部
