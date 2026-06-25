@@ -29,13 +29,16 @@ import {
   sigmaCommunityCloudBasisById,
   sigmaCommunityCloudBasisByIdWithNodePoint,
   sigmaCommunityCloudBasisByIdWithReuse,
-  sigmaProjectedCloudHullPoints
+  sigmaProjectedCloudHullPoints,
+  type SigmaCommunityCloud
 } from "./community-cloud-geometry";
 import {
   applyOverlayBox,
+  applySigmaCloudColor,
+  applySigmaCloudGeometry,
+  createSigmaCloudSvg,
   createSigmaOverlayRoot,
   nextSigmaCloudFilterSequence,
-  sigmaCloudSvg,
   sigmaOverlayButton,
   sigmaOverlayPassiveElement,
   sigmaSharedCloudFilterDef
@@ -345,12 +348,17 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let resizeObserver: ResizeObserver | null = null;
   let resizeAnimationFrame: number | null = null;
   let lastObservedRootSize: RendererViewportSize | null = null;
+  // 覆盖层元素按 id 复用：rebuild 维护这三张表（增删元素、绑监听一次），
+  // reposition 只读它们更新位置，相机移动时不重建 DOM。
+  const overlayRegionEntries = new Map<string, { element: HTMLElement; shape: SVGElement; kind: "polygon" | "ellipse" }>();
+  const overlayNodeEntries = new Map<string, HTMLButtonElement>();
+  const overlayLabelEntries = new Map<string, HTMLElement>();
 
   try {
     sigma = new runtime.Sigma(graph, sigmaRoot, sigmaSettingsForTheme(currentTheme));
     bindSigmaEvents();
     bindSigmaResizeObserver();
-    renderSigmaOverlays();
+    rebuildSigmaOverlays();
   } catch (error) {
     options.onFatalError?.(error);
     sigmaRoot.remove();
@@ -396,7 +404,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         }
         restoreCameraState(sigma, cameraState);
         sigma.refresh?.();
-        renderSigmaOverlays();
+        rebuildSigmaOverlays();
       } catch (error) {
         options.onFatalError?.(error);
       }
@@ -416,6 +424,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         options.onFatalError?.(error);
       }
       sigmaRoot.remove();
+      overlayRegionEntries.clear();
+      overlayNodeEntries.clear();
+      overlayLabelEntries.clear();
     }
   };
 
@@ -428,7 +439,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       handleSigmaHit({ nodeId });
     };
     const stageClick = (payload?: unknown): void => handleSigmaHit({ screenPoint: sigmaScreenPointFromPayload(payload) });
-    const cameraUpdated = (): void => renderSigmaOverlays();
+    const cameraUpdated = (): void => repositionSigmaOverlays();
     const nodeDown = (payload?: unknown): void => beginNodeDrag(sigmaNodeIdFromPayload(payload), sigmaScreenPointFromPayload(payload), payload);
     const nodeMove = (payload?: unknown): void => moveNodeDrag(sigmaScreenPointFromPayload(payload), payload);
     const nodeUp = (payload?: unknown): void => commitNodeDrag(sigmaScreenPointFromPayload(payload), payload);
@@ -477,7 +488,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       try {
         if (destroyed) return;
         sigma.refresh?.();
-        renderSigmaOverlays();
+        repositionSigmaOverlays();
       } catch (error) {
         options.onFatalError?.(error);
       }
@@ -608,7 +619,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     sigma.refresh?.();
     if (!dragging) {
       cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithNodePoint(cloudBasisByCommunityId, adapterData, nodeId);
-      renderSigmaOverlays();
+      // 拖拽提交/取消是终态数据变化（pin 状态、永久坐标），走 rebuild 刷新 dataset 等属性；
+      // 拖拽过程中的每帧位置更新由 afterRender → reposition 负责。
+      rebuildSigmaOverlays();
     }
   }
 
@@ -635,85 +648,108 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     return true;
   }
 
-  function renderSigmaOverlays(): void {
+  // 结构更新：仅在数据/选中变化时调用。按 id 复用元素、绑监听一次、写数据态属性，
+  // 最后调用 reposition 完成定位（定位逻辑只存在于 reposition，避免两条路径分叉）。
+  function rebuildSigmaOverlays(): void {
     if (destroyed) return;
-    overlayRoot.replaceChildren();
+    const ordered: HTMLElement[] = [];
     const selectedCommunityIds = new Set(adapterData.communities.filter((item) => item.selected).map((item) => item.id));
+
+    const nextRegionIds = new Set<string>();
     for (const community of adapterData.renderable.communities) {
       if (!community.wash) continue;
+      nextRegionIds.add(community.id);
+      const cloud = sigmaCommunityCloudFor(community.id, community.wash);
+      const kind: "polygon" | "ellipse" = cloud.localPoints ? "polygon" : "ellipse";
+      let entry = overlayRegionEntries.get(community.id);
+      if (!entry || entry.kind !== kind) {
+        const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id);
+        element.className = "sigma-global-community-region";
+        element.dataset.communityId = community.id;
+        element.style.overflow = "visible";
+        const handle = createSigmaCloudSvg(overlayRoot.ownerDocument, cloud, cloudFilterId, () => {
+          handleSigmaHit({ renderedObject: { kind: "community-wash", id: community.id } });
+        });
+        element.append(handle.svg);
+        entry = { element, shape: handle.shape, kind: handle.kind };
+        overlayRegionEntries.set(community.id, entry);
+      }
       const selected = selectedCommunityIds.has(community.id);
       const dim = selectedCommunityIds.size > 0 && !selected;
-      const fallbackBox = overlayBoxFromWorldEllipse(community.wash.cx, community.wash.cy, community.wash.rx, community.wash.ry);
-      const cloud = sigmaCommunityCloud(
-        sigmaProjectedCloudHullPoints(cloudBasisByCommunityId.get(community.id), sigma, options),
-        fallbackBox
-      );
-      const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id);
-      element.className = "sigma-global-community-region";
-      element.dataset.communityId = community.id;
-      element.dataset.selected = selected ? "true" : "false";
-      element.style.overflow = "visible";
-      applyOverlayBox(element, cloud.box);
-      element.append(sigmaCloudSvg(overlayRoot.ownerDocument, community.color, cloud, dim, cloudFilterId, () => {
-        handleSigmaHit({ renderedObject: { kind: "community-wash", id: community.id } });
-      }));
-      overlayRoot.append(element);
+      entry.element.dataset.selected = selected ? "true" : "false";
+      applySigmaCloudColor(entry.shape, community.color, dim);
+      ordered.push(entry.element);
     }
+    pruneOverlayEntries(overlayRegionEntries, nextRegionIds);
+
+    const nextNodeIds = new Set<string>();
     for (const node of sigmaOverlayNodes(adapterData.nodes)) {
-      const element = sigmaOverlayButton(overlayRoot.ownerDocument, "node", node.id, node.label || node.id);
-      const size = Math.max(16, sigmaGlobalNodeSize(node) * 3);
-      const center = sigmaWorldPointToScreenPoint(sigma, node.point, options);
-      element.className = "sigma-global-node-hit-target";
+      nextNodeIds.add(node.id);
+      let element = overlayNodeEntries.get(node.id);
+      if (!element) {
+        element = createSigmaNodeHitTarget(node.id, node.label || node.id);
+        overlayNodeEntries.set(node.id, element);
+      }
+      element.setAttribute("aria-label", node.label || node.id);
       element.dataset.nodeId = node.id;
       element.dataset.searchHit = node.searchHit ? "true" : "false";
       element.dataset.selected = node.selected ? "true" : "false";
       element.dataset.pinned = node.pinHint.pinned ? "true" : "false";
+      ordered.push(element);
+    }
+    pruneOverlayEntries(overlayNodeEntries, nextNodeIds);
+
+    const nextLabelIds = new Set<string>();
+    for (const community of sigmaCommunityLabels(adapterData, SIGMA_GLOBAL_COMMUNITY_LABEL_LIMIT)) {
+      if (!community.wash) continue;
+      nextLabelIds.add(community.id);
+      let element = overlayLabelEntries.get(community.id);
+      if (!element) {
+        element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-label", community.id);
+        element.className = "sigma-global-community-label";
+        element.dataset.communityId = community.id;
+        overlayLabelEntries.set(community.id, element);
+      }
+      const labelSelected = selectedCommunityIds.has(community.id);
+      element.dataset.selected = labelSelected ? "true" : "false";
+      element.dataset.dim = selectedCommunityIds.size > 0 && !labelSelected ? "true" : "false";
+      element.textContent = community.label || community.id;
+      ordered.push(element);
+    }
+    pruneOverlayEntries(overlayLabelEntries, nextLabelIds);
+
+    overlayRoot.replaceChildren(...ordered);
+    repositionSigmaOverlays();
+  }
+
+  // 位置更新：相机/缩放/拖拽每帧调用。只读已存在元素更新位置与云层几何，
+  // 不创建元素、不重绑监听、不调用 replaceChildren；缺失的 id 安全跳过。
+  function repositionSigmaOverlays(): void {
+    if (destroyed) return;
+    for (const community of adapterData.renderable.communities) {
+      if (!community.wash) continue;
+      const entry = overlayRegionEntries.get(community.id);
+      if (!entry) continue;
+      const cloud = sigmaCommunityCloudFor(community.id, community.wash);
+      applyOverlayBox(entry.element, cloud.box);
+      applySigmaCloudGeometry(entry.shape, entry.kind, cloud);
+    }
+    for (const node of sigmaOverlayNodes(adapterData.nodes)) {
+      const element = overlayNodeEntries.get(node.id);
+      if (!element) continue;
+      const size = Math.max(16, sigmaGlobalNodeSize(node) * 3);
+      const center = sigmaWorldPointToScreenPoint(sigma, node.point, options);
       applyOverlayBox(element, {
         left: center.x - size / 2,
         top: center.y - size / 2,
         width: size,
         height: size
       });
-      element.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (consumeSuppressedNodeClick(node.id)) return;
-        handleSigmaHit({ renderedObject: { kind: "node", id: node.id } });
-      });
-      element.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        beginNodeDrag(node.id, overlayPointerScreenPoint(event, sigmaRoot), event);
-        if (activeNodeDrag?.nodeId === node.id) {
-          bindOverlayPointerDragListeners(element.ownerDocument, element, node.id, event.pointerId);
-        }
-      });
-      element.addEventListener("mousedown", (event) => {
-        if (event.button !== 0) return;
-        if (element.ownerDocument.defaultView?.PointerEvent) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (activeNodeDrag?.nodeId !== node.id) {
-          beginNodeDrag(node.id, overlayPointerScreenPoint(event, sigmaRoot), event);
-        }
-        if (activeNodeDrag?.nodeId === node.id) {
-          bindOverlayMouseDragListeners(element.ownerDocument, node.id);
-        }
-      });
-      element.addEventListener("dragstart", (event) => {
-        event.preventDefault();
-      });
-      overlayRoot.append(element);
     }
     for (const community of sigmaCommunityLabels(adapterData, SIGMA_GLOBAL_COMMUNITY_LABEL_LIMIT)) {
       if (!community.wash) continue;
-      const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-label", community.id);
-      element.className = "sigma-global-community-label";
-      element.dataset.communityId = community.id;
-      const labelSelected = selectedCommunityIds.has(community.id);
-      element.dataset.selected = labelSelected ? "true" : "false";
-      element.dataset.dim = selectedCommunityIds.size > 0 && !labelSelected ? "true" : "false";
-      element.textContent = community.label || community.id;
+      const element = overlayLabelEntries.get(community.id);
+      if (!element) continue;
       const center = sigmaWorldPointToScreenPoint(sigma, {
         x: community.wash.cx,
         y: community.wash.cy - community.wash.ry * 0.16
@@ -724,7 +760,55 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         width: 160,
         height: 22
       });
-      overlayRoot.append(element);
+    }
+  }
+
+  function sigmaCommunityCloudFor(communityId: string, wash: { cx: number; cy: number; rx: number; ry: number }): SigmaCommunityCloud {
+    const fallbackBox = overlayBoxFromWorldEllipse(wash.cx, wash.cy, wash.rx, wash.ry);
+    return sigmaCommunityCloud(
+      sigmaProjectedCloudHullPoints(cloudBasisByCommunityId.get(communityId), sigma, options),
+      fallbackBox
+    );
+  }
+
+  function createSigmaNodeHitTarget(nodeId: string, label: string): HTMLButtonElement {
+    const element = sigmaOverlayButton(overlayRoot.ownerDocument, "node", nodeId, label);
+    element.className = "sigma-global-node-hit-target";
+    element.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (consumeSuppressedNodeClick(nodeId)) return;
+      handleSigmaHit({ renderedObject: { kind: "node", id: nodeId } });
+    });
+    element.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      beginNodeDrag(nodeId, overlayPointerScreenPoint(event, sigmaRoot), event);
+      if (activeNodeDrag?.nodeId === nodeId) {
+        bindOverlayPointerDragListeners(element.ownerDocument, element, nodeId, event.pointerId);
+      }
+    });
+    element.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      if (element.ownerDocument.defaultView?.PointerEvent) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (activeNodeDrag?.nodeId !== nodeId) {
+        beginNodeDrag(nodeId, overlayPointerScreenPoint(event, sigmaRoot), event);
+      }
+      if (activeNodeDrag?.nodeId === nodeId) {
+        bindOverlayMouseDragListeners(element.ownerDocument, nodeId);
+      }
+    });
+    element.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
+    return element;
+  }
+
+  function pruneOverlayEntries(entries: Map<string, unknown>, keep: Set<string>): void {
+    for (const id of [...entries.keys()]) {
+      if (!keep.has(id)) entries.delete(id);
     }
   }
 

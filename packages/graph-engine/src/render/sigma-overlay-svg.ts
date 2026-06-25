@@ -65,14 +65,20 @@ export function sigmaSharedCloudFilterDef(ownerDocument: Document, filterId: str
   return svg;
 }
 
-export function sigmaCloudSvg(
+export interface SigmaCloudSvgHandle {
+  svg: SVGSVGElement;
+  shape: SVGElement;
+  kind: "polygon" | "ellipse";
+}
+
+// 创建一次：svg 容器 + 形状元素 + 点击监听（只绑一次）。颜色/几何随后通过
+// applySigmaCloudColor / applySigmaCloudGeometry 更新，相机移动时无需重建。
+export function createSigmaCloudSvg(
   ownerDocument: Document,
-  color: string,
   cloud: SigmaCommunityCloud,
-  dim: boolean,
   filterId: string,
   onSelect: () => void
-): SVGSVGElement {
+): SigmaCloudSvgHandle {
   const svg = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "svg");
   svg.setAttribute("width", "100%");
   svg.setAttribute("height", "100%");
@@ -80,21 +86,8 @@ export function sigmaCloudSvg(
   svg.style.inset = "0";
   svg.style.overflow = "visible";
   svg.style.pointerEvents = "none";
-  let shape: SVGElement;
-  if (cloud.localPoints) {
-    const polygon = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "polygon");
-    polygon.setAttribute("points", cloud.localPoints.map((p) => `${p.x},${p.y}`).join(" "));
-    shape = polygon;
-  } else {
-    const ellipse = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, "ellipse");
-    ellipse.setAttribute("cx", String(cloud.box.width / 2));
-    ellipse.setAttribute("cy", String(cloud.box.height / 2));
-    ellipse.setAttribute("rx", String(Math.max(8, cloud.box.width / 2)));
-    ellipse.setAttribute("ry", String(Math.max(8, cloud.box.height / 2)));
-    shape = ellipse;
-  }
-  shape.setAttribute("fill", color);
-  shape.setAttribute("fill-opacity", dim ? "0.06" : "0.2");
+  const kind: "polygon" | "ellipse" = cloud.localPoints ? "polygon" : "ellipse";
+  const shape = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, kind);
   shape.setAttribute("filter", `url(#${filterId})`);
   shape.style.pointerEvents = "fill";
   shape.style.cursor = "pointer";
@@ -102,6 +95,25 @@ export function sigmaCloudSvg(
     event.stopPropagation();
     onSelect();
   });
+  applySigmaCloudGeometry(shape, kind, cloud);
   svg.append(shape);
-  return svg;
+  return { svg, shape, kind };
+}
+
+export function applySigmaCloudColor(shape: SVGElement, color: string, dim: boolean): void {
+  shape.setAttribute("fill", color);
+  shape.setAttribute("fill-opacity", dim ? "0.06" : "0.2");
+}
+
+export function applySigmaCloudGeometry(shape: SVGElement, kind: "polygon" | "ellipse", cloud: SigmaCommunityCloud): void {
+  if (kind === "polygon") {
+    if (cloud.localPoints) {
+      shape.setAttribute("points", cloud.localPoints.map((p) => `${p.x},${p.y}`).join(" "));
+    }
+    return;
+  }
+  shape.setAttribute("cx", String(cloud.box.width / 2));
+  shape.setAttribute("cy", String(cloud.box.height / 2));
+  shape.setAttribute("rx", String(Math.max(8, cloud.box.width / 2)));
+  shape.setAttribute("ry", String(Math.max(8, cloud.box.height / 2)));
 }

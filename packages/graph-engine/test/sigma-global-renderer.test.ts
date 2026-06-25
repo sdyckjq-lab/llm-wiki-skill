@@ -525,7 +525,8 @@ describe("Sigma global renderer production boundary", () => {
     const movedRegion = sigmaCommunityRegion(renderer, "adapter-community");
     const movedLeft = Number.parseFloat(movedRegion?.style.left ?? "0");
 
-    assert.notEqual(movedRegion, initialRegion);
+    // Phase 2：region 元素按 id 复用（同一实例），拖拽提交后只更新位置/几何。
+    assert.equal(movedRegion, initialRegion);
     assert.ok(movedLeft > initialLeft, `expected cloud to follow dragged node, got ${initialLeft} -> ${movedLeft}`);
 
     renderer.destroy();
@@ -571,7 +572,8 @@ describe("Sigma global renderer production boundary", () => {
 
     assert.equal(sigma.settings.refreshed, true);
     assert.equal(refreshCount, 1);
-    assert.notEqual(renderer.overlayRoot.children[0], previousOverlayElement);
+    // Phase 2：resize 走 reposition 路径，复用已有覆盖层元素（不再重建）。
+    assert.equal(renderer.overlayRoot.children[0], previousOverlayElement);
     const resizedOverlayElement = renderer.overlayRoot.children[0];
 
     resizeCallback?.([resizeObserverEntry(480, 320)], {} as ResizeObserver);
@@ -581,6 +583,63 @@ describe("Sigma global renderer production boundary", () => {
 
     renderer.destroy();
     assert.equal(disconnected, true);
+  });
+
+  it("repositions overlays on camera updates without rebuilding DOM or rebinding listeners", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    const doc = renderer.root.ownerDocument as unknown as {
+      createElement: (tag: string) => HTMLElement;
+      createElementNS: (ns: string, tag: string) => HTMLElement;
+    };
+    let created = 0;
+    const originalCreate = doc.createElement;
+    const originalCreateNS = doc.createElementNS;
+    doc.createElement = (tag) => {
+      created += 1;
+      return originalCreate(tag);
+    };
+    doc.createElementNS = (ns, tag) => {
+      created += 1;
+      return originalCreateNS(ns, tag);
+    };
+
+    const overlay = renderer.overlayRoot as unknown as { replaceChildren: (...items: HTMLElement[]) => void };
+    let replaced = 0;
+    const originalReplace = overlay.replaceChildren.bind(overlay);
+    overlay.replaceChildren = (...items) => {
+      replaced += 1;
+      originalReplace(...items);
+    };
+
+    const before = [...renderer.overlayRoot.children];
+    const nodeBefore = before.find((child) => child.dataset.nodeId);
+    assert.ok(nodeBefore, "fixture should render at least one node hit target");
+
+    sigma.emit("afterRender");
+    sigma.emit("afterRender");
+    sigma.emit("afterRender");
+
+    assert.equal(created, 0, "camera updates must not create overlay elements");
+    assert.equal(replaced, 0, "camera updates must not replace overlay children");
+    assert.equal(renderer.overlayRoot.children.length, before.length);
+    assert.ok(
+      before.every((child, index) => renderer.overlayRoot.children[index] === child),
+      "overlay element instances must be reused across camera updates"
+    );
+    assert.equal(
+      renderer.overlayRoot.children.find((child) => child.dataset.nodeId === nodeBefore?.dataset.nodeId),
+      nodeBefore
+    );
+
+    renderer.destroy();
   });
 
   it("coalesces rapid host resize notifications into one animation frame", () => {
