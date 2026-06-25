@@ -642,6 +642,44 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("reuses overlay elements across data updates and prunes removed communities", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture({ communityCount: 3 }),
+      theme: "shan-shui",
+      runtime
+    });
+
+    const regionsBefore = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-region");
+    const alphaBefore = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha");
+    assert.equal(regionsBefore.length, 3);
+    assert.ok(alphaBefore, "alpha node hit target should render initially");
+
+    // Update: collapse to a single community (community-1..3 removed, adapter-community added),
+    // keep alpha qualifying for the overlay via searchHit so its element can be reused.
+    renderer.update({
+      adapterData: adapterDataFixture({ communityCount: 1, selectedNodeId: "render-beta", searchResultIds: ["render-alpha"] })
+    });
+
+    const regionsAfter = renderer.overlayRoot.children.filter((child) => child.className === "sigma-global-community-region");
+    assert.equal(regionsAfter.length, 1, "removed community regions must be pruned");
+    assert.equal(regionsAfter[0].dataset.communityId, "adapter-community");
+    assert.ok(
+      !renderer.overlayRoot.children.some((child) => child.dataset.communityId === "community-1"),
+      "stale community-1 region must be gone from the DOM"
+    );
+
+    const alphaAfter = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha");
+    assert.equal(alphaAfter, alphaBefore, "node hit target must be reused across update, not recreated");
+    assert.equal(alphaAfter?.dataset.selected, "false", "reused element must refresh data-derived attributes");
+    assert.equal(alphaAfter?.dataset.searchHit, "true");
+    const betaAfter = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-beta");
+    assert.equal(betaAfter?.dataset.selected, "true");
+
+    renderer.destroy();
+  });
+
   it("coalesces rapid host resize notifications into one animation frame", () => {
     let resizeCallback: ResizeObserverCallback | null = null;
     const animationFrames: FrameRequestCallback[] = [];

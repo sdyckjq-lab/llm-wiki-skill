@@ -41,7 +41,8 @@ import {
   nextSigmaCloudFilterSequence,
   sigmaOverlayButton,
   sigmaOverlayPassiveElement,
-  sigmaSharedCloudFilterDef
+  sigmaSharedCloudFilterDef,
+  type SigmaCloudKind
 } from "./sigma-overlay-svg";
 
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
@@ -350,7 +351,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let lastObservedRootSize: RendererViewportSize | null = null;
   // 覆盖层元素按 id 复用：rebuild 维护这三张表（增删元素、绑监听一次），
   // reposition 只读它们更新位置，相机移动时不重建 DOM。
-  const overlayRegionEntries = new Map<string, { element: HTMLElement; shape: SVGElement; kind: "polygon" | "ellipse" }>();
+  const overlayRegionEntries = new Map<string, { element: HTMLElement; shape: SVGElement; kind: SigmaCloudKind }>();
   const overlayNodeEntries = new Map<string, HTMLButtonElement>();
   const overlayLabelEntries = new Map<string, HTMLElement>();
 
@@ -660,7 +661,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       if (!community.wash) continue;
       nextRegionIds.add(community.id);
       const cloud = sigmaCommunityCloudFor(community.id, community.wash);
-      const kind: "polygon" | "ellipse" = cloud.localPoints ? "polygon" : "ellipse";
+      const kind: SigmaCloudKind = cloud.localPoints ? "polygon" : "ellipse";
       let entry = overlayRegionEntries.get(community.id);
       if (!entry || entry.kind !== kind) {
         const element = sigmaOverlayPassiveElement(overlayRoot.ownerDocument, "community-region", community.id);

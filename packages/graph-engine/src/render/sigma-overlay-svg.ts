@@ -65,10 +65,12 @@ export function sigmaSharedCloudFilterDef(ownerDocument: Document, filterId: str
   return svg;
 }
 
+export type SigmaCloudKind = "polygon" | "ellipse";
+
 export interface SigmaCloudSvgHandle {
   svg: SVGSVGElement;
   shape: SVGElement;
-  kind: "polygon" | "ellipse";
+  kind: SigmaCloudKind;
 }
 
 // 创建一次：svg 容器 + 形状元素 + 点击监听（只绑一次）。颜色/几何随后通过
@@ -86,7 +88,7 @@ export function createSigmaCloudSvg(
   svg.style.inset = "0";
   svg.style.overflow = "visible";
   svg.style.pointerEvents = "none";
-  const kind: "polygon" | "ellipse" = cloud.localPoints ? "polygon" : "ellipse";
+  const kind: SigmaCloudKind = cloud.localPoints ? "polygon" : "ellipse";
   const shape = ownerDocument.createElementNS(SIGMA_OVERLAY_SVG_NS, kind);
   shape.setAttribute("filter", `url(#${filterId})`);
   shape.style.pointerEvents = "fill";
@@ -105,7 +107,7 @@ export function applySigmaCloudColor(shape: SVGElement, color: string, dim: bool
   shape.setAttribute("fill-opacity", dim ? "0.06" : "0.2");
 }
 
-export function applySigmaCloudGeometry(shape: SVGElement, kind: "polygon" | "ellipse", cloud: SigmaCommunityCloud): void {
+export function applySigmaCloudGeometry(shape: SVGElement, kind: SigmaCloudKind, cloud: SigmaCommunityCloud): void {
   if (kind === "polygon") {
     if (cloud.localPoints) {
       shape.setAttribute("points", cloud.localPoints.map((p) => `${p.x},${p.y}`).join(" "));
