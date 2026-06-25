@@ -53,6 +53,11 @@
 - 现有 8 个 graph-engine 测试全绿（`npm test`），`npm run typecheck` 通过。
 - 几何纯函数补独立单测（凸包、签名、clamp、坐标往返）——这些此前埋在主文件内未单独测。
 
+> 这些函数当前均为**模块私有、未对外导出**，搬到新 helper 后由新 helper 各自 `export`（供单测直接
+> import），主文件再 import 回来使用。**公开 API（`SigmaGlobalRenderer` 等）与 `src/index.ts`
+> barrel 不变**，workbench 侧零感知。模块级计数器 `sigmaCloudFilterSequence` 随 SVG 函数整组搬走，
+> 仍是同一个计数器，行为不变。
+
 ---
 
 ## 3. Phase 2（#63.2）：拆"结构更新"与"位置更新"
@@ -65,6 +70,9 @@
   `Map<id, element>`（节点命中框、社区云层 region、社区标签各一张）。
 - 监听器（click / pointerdown / mousedown / dragstart）**只在元素创建时绑一次**。
 - 处理由数据决定的状态：selected / dim / searchHit / pinned、label 文本等。
+
+> 覆盖层只渲染**这 3 类** DOM 元素。aggregation 容器画在 Sigma canvas 上（走 Graphology
+> 属性），不属于本覆盖层，本改造不涉及。
 
 ### `repositionSigmaOverlays()` — 绑 `afterRender` / resize / 拖拽移动，每帧调用
 
@@ -82,6 +90,22 @@
 | 拖拽移动（`:594`） | `renderSigmaOverlays()` | `repositionSigmaOverlays()` |
 
 选中变化走数据更新路径（触发 rebuild），因此 dim / selected 不进每帧热路径。
+
+### 状态归属与不变量（防止双路径打架）
+
+覆盖层完全自封闭：生产代码里只有本文件操作 `overlayRoot` 与几何/SVG 函数，无第二处
+监听 `afterRender`。因此冲突风险只在文件内部的 rebuild / reposition 之间，必须守住以下不变量：
+
+- **rebuild 是元素生命周期的唯一权威**：只有它能增删元素、维护三张 `Map<id, element>`、绑监听。
+- **reposition 对结构只读、且幂等**：只改已存在元素的位置/box 与云 hull 投影；遇到表里有、
+  但当前 `adapterData` 已无的 id，安全跳过（不报错、不创建）。
+- **reposition 每帧从 `cloudBasisByCommunityId` 重新投影云 hull**：拖拽中 basis 冻结、松手才重算，
+  reposition 必须每次重投影才能让云层跟手（与现有行为一致）。
+- **`update()` 的执行顺序安全前提**：现状 `sigma.refresh()`（`:381`）→ 真实 Sigma 触发 `afterRender`
+  → reposition，**早于** 紧随其后的 rebuild（`:382`）。因 reposition 满足"只读+容忍不同步+幂等"，
+  这次提前的 reposition 至多对旧元素做一次无害定位，rebuild 随后纠正为准。
+- **`afterRender` 与 `cameraUpdated` 都绑同一处理器**（`:425-426`），reposition 一帧可能跑 2 次；
+  因幂等无害，暂不做 rAF 去重（YAGNI，后续按需）。
 
 ### 关键风险点
 
@@ -115,7 +139,10 @@
    `replaceChildren` 在 reposition 路径未被调用**。
 2. **行为保持**：点击云层 → 社区选中、点击节点 → 节点选中、拖拽仍生效（沿用现有 emit 用例）。
 3. **结构 diff**：数据更新增 / 删节点后，元素表正确增删。
-4. **第三层手动回归**：在 codex 跑 1000 节点平移 / 缩放，主观确认不卡 + 基线测试通过
+4. **需更新的现有断言**：现有 resize 测试（`test/sigma-global-renderer.test.ts:574`）当前断言
+   resize 后覆盖层元素被**新建**（`assert.notEqual`）。Phase 2 后元素改为**复用**，这条须改成
+   `assert.equal`。这是**预期内的行为变更，不是回归**——它恰好验证了"reposition 不再重建元素"。
+5. **第三层手动回归**：在 codex 跑 1000 节点平移 / 缩放，主观确认不卡 + 基线测试通过
    （按 CLAUDE.md 推送前测试规则）。
 
 ---
