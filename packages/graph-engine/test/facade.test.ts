@@ -316,6 +316,57 @@ describe("GraphFacade", () => {
     ]);
   });
 
+  it("keeps edge style on the Sigma route and ignores it on DOM/SVG community routes", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: { topic: true, source: true },
+      aggregationMarkers: [],
+      selection: null,
+      searchResultIds: [],
+      temporaryObject: null
+    };
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return trackRenderer(renderers, "sigma");
+        },
+        createDomSvgCommunity: () => trackRenderer(renderers, "dom-community"),
+        createDomSvgSmallFallback: () => trackRenderer(renderers, "small-fallback"),
+        createOverLimitNotice: () => trackRenderer(renderers, "over-limit-notice")
+      }
+    });
+    const baseStyle = { semanticEmphasis: true, focusHighlight: false };
+    const focusStyle = { semanticEmphasis: true, focusHighlight: true };
+
+    manager.setEdgeStyle(baseStyle);
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.deepEqual(renderers[0].calls.at(-1), ["setEdgeStyle", baseStyle]);
+
+    manager.focusCommunity("c1");
+    const communityRenderer = renderers.at(-1);
+    const communityCallCount = communityRenderer?.calls.length ?? 0;
+
+    manager.setEdgeStyle(focusStyle);
+
+    assert.equal(manager.routeId, "dom-svg-community");
+    assert.equal(communityRenderer?.calls.length, communityCallCount);
+
+    manager.resetView();
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(sigmaInputs.length, 2);
+    assert.deepEqual(sigmaInputs[1].options.edgeStyle, focusStyle);
+  });
+
   it("marks route continuity on the stable facade host and clears transition markers", async () => {
     const route = createRouteMarkerHarness();
 

@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import React from "react";
 
 import { GraphPanel } from "../src/components/GraphPanel";
-import { click, render, screen, waitFor } from "./render";
+import { click, pressKey, render, screen, waitFor } from "./render";
 
 describe("GraphPanel Paper shell", () => {
 	const originalFetch = globalThis.fetch;
@@ -60,7 +60,11 @@ describe("GraphPanel Paper shell", () => {
 			/>,
 		);
 
-		await click(screen.getByRole("button", { name: /调参/ }));
+		const tuningButton = screen.getByRole("button", { name: /调参/ }) as HTMLButtonElement;
+		await waitFor(() => {
+			assert.equal(tuningButton.disabled, false);
+		});
+		await click(tuningButton);
 
 		const panel = screen.getByRole("dialog", { name: "图谱调参" });
 		assert.match(panel.textContent ?? "", /分主次/);
@@ -68,11 +72,26 @@ describe("GraphPanel Paper shell", () => {
 		const focusToggle = screen.getByRole("checkbox", { name: "聚焦点亮" });
 		assert.equal((semanticToggle as HTMLInputElement).checked, false);
 		assert.equal((focusToggle as HTMLInputElement).checked, false);
+		assert.equal(document.activeElement, semanticToggle);
 
 		await click(semanticToggle);
 
-		assert.equal((semanticToggle as HTMLInputElement).checked, true);
-		assert.equal(localStorage.getItem("llm-wiki.graph.edge-style"), "{\"semanticEmphasis\":true,\"focusHighlight\":false}");
+		await waitFor(() => {
+			assert.equal((semanticToggle as HTMLInputElement).checked, true);
+			assert.equal(localStorage.getItem("llm-wiki.graph.edge-style"), "{\"semanticEmphasis\":true,\"focusHighlight\":false}");
+		});
+
+		await click(focusToggle);
+
+		await waitFor(() => {
+			assert.equal((focusToggle as HTMLInputElement).checked, true);
+			assert.equal(localStorage.getItem("llm-wiki.graph.edge-style"), "{\"semanticEmphasis\":true,\"focusHighlight\":true}");
+		});
+
+		await pressKey(document, "Escape");
+
+		assert.equal(screen.queryByRole("dialog", { name: "图谱调参" }), null);
+		assert.equal(document.activeElement, tuningButton);
 	});
 
 	it("surfaces graph build errors in the graph panel", async () => {

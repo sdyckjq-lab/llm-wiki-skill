@@ -213,11 +213,19 @@ describe("Sigma global renderer production boundary", () => {
       confidence: "EXTRACTED",
       weight: 1
     }), "mo-ye");
+    const neutralDark = sigmaGlobalEdgeStyle(sigmaEdgeFixture({
+      relationType: "依赖",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c1",
+      confidence: "EXTRACTED",
+      weight: 0
+    }), "mo-ye");
 
     assert.deepEqual(intraNeutral, { color: "rgba(49, 95, 114, 0.1)", size: 0.72 });
     assert.deepEqual(bridgeNeutral, { color: "rgba(49, 95, 114, 0.34)", size: 1.1 });
     assert.deepEqual(contrast, { color: "rgba(183, 121, 31, 0.54)", size: 1.55 });
     assert.deepEqual(conflictDark, { color: "rgba(244, 114, 182, 0.66)", size: 2.25 });
+    assert.deepEqual(neutralDark, { color: "rgba(142, 135, 120, 0.1)", size: 0.72 });
   });
 
   it("keeps global confidence out of Sigma edge styling", () => {
@@ -277,6 +285,31 @@ describe("Sigma global renderer production boundary", () => {
     assert.deepEqual(noSelectionFocused, untouchedBase);
   });
 
+  it("treats missing community ids as non-bridge edges without accidental focus lift", () => {
+    const style = { semanticEmphasis: false, focusHighlight: true };
+    const partialCommunityEdge = sigmaEdgeFixture({
+      sourceCommunityId: null,
+      targetCommunityId: "c2",
+      relationType: "依赖",
+      weight: 0
+    });
+    const missingCommunityEdge = sigmaEdgeFixture({
+      sourceCommunityId: null,
+      targetCommunityId: null,
+      relationType: "依赖",
+      weight: 0
+    });
+
+    assert.deepEqual(
+      sigmaGlobalEdgeStyle(partialCommunityEdge, "shan-shui"),
+      { color: "rgba(49, 95, 114, 0.1)", size: 0.72 }
+    );
+    assert.deepEqual(
+      sigmaGlobalEdgeStyle(missingCommunityEdge, "shan-shui", style, new Set(["c1"])),
+      { color: "rgba(49, 95, 114, 0.05)", size: 0.6 }
+    );
+  });
+
   it("keeps the production Sigma boundary on GraphRendererAdapterData instead of raw GraphData", async () => {
     const source = await readFile(new URL("../src/render/sigma-global-renderer.ts", import.meta.url), "utf8");
     assert.match(source, /buildSigmaGlobalGraphologyGraph\(\s*adapterData: GraphRendererAdapterData/);
@@ -305,8 +338,13 @@ describe("Sigma global renderer production boundary", () => {
 
   it("hides confidence rows only inside the Sigma global route legend", async () => {
     const styles = await readFile(new URL("../src/render/render-styles.ts", import.meta.url), "utf8");
+    const hiddenConfidenceSelectors = [...styles.matchAll(/^\s*([^{}\n]*\.graph-edge-legend-group:has\(\.graph-edge-legend-confidence\)[^{}\n]*)\s*\{[^}]*display:\s*none/gm)]
+      .map((match) => match[1].replace(/\s+/g, " ").trim());
 
     assert.match(styles, /\.sigma-global-route\s+\.graph-edge-legend-group:has\(\.graph-edge-legend-confidence\)\s*\{[\s\S]*display:\s*none/);
+    assert.deepEqual(hiddenConfidenceSelectors, [
+      ".sigma-global-route .graph-edge-legend-group:has(.graph-edge-legend-confidence)"
+    ]);
   });
 
   it("projects Sigma node hits before overlapping community regions", () => {

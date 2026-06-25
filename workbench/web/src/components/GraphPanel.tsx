@@ -104,6 +104,8 @@ export function GraphPanel({
 	const [edgeStyle, setEdgeStyle] = useState<GraphEdgeStyleOptions>(() => readGraphEdgeStylePreference());
 	const edgeStyleRef = useRef<GraphEdgeStyleOptions>(edgeStyle);
 	const edgeTuningRef = useRef<HTMLDivElement | null>(null);
+	const edgeTuningButtonRef = useRef<HTMLButtonElement | null>(null);
+	const edgeTuningFirstToggleRef = useRef<HTMLInputElement | null>(null);
 	const [edgeTuningOpen, setEdgeTuningOpen] = useState(false);
 	const [dataKnowledgeBasePath, setDataKnowledgeBasePath] = useState<string | null>(currentKnowledgeBasePath);
 	const [resetNotice, setResetNotice] = useState<ResetNotice | null>(null);
@@ -120,6 +122,8 @@ export function GraphPanel({
 	);
 
 	const graphTheme: ThemeId = theme === "dark" ? "mo-ye" : "shan-shui";
+	const readyGraph = status === "ready" ? data : null;
+	const edgeTuningAvailable = Boolean(readyGraph);
 
 	useLayoutEffect(() => {
 		activeKbPathRef.current = currentKnowledgeBasePath;
@@ -160,9 +164,24 @@ export function GraphPanel({
 			if (target instanceof Node && edgeTuningRef.current?.contains(target)) return;
 			setEdgeTuningOpen(false);
 		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			setEdgeTuningOpen(false);
+			edgeTuningButtonRef.current?.focus();
+		};
 		document.addEventListener("pointerdown", handlePointerDown);
-		return () => document.removeEventListener("pointerdown", handlePointerDown);
+		document.addEventListener("keydown", handleKeyDown);
+		edgeTuningFirstToggleRef.current?.focus();
+		return () => {
+			document.removeEventListener("pointerdown", handlePointerDown);
+			document.removeEventListener("keydown", handleKeyDown);
+		};
 	}, [edgeTuningOpen]);
+
+	useEffect(() => {
+		if (!edgeTuningAvailable) setEdgeTuningOpen(false);
+	}, [edgeTuningAvailable]);
 
 	useLayoutEffect(() => {
 		graphThemeRef.current = graphTheme;
@@ -543,7 +562,6 @@ export function GraphPanel({
 		});
 	}, [data, status]);
 
-	const hasReadyGraph = status === "ready" && data;
 	return (
 		<div className="graph-screen" data-graph-status={status} data-graph-theme={graphTheme} data-graph-animation={animationState}>
 			<div className="graph-shell">
@@ -555,9 +573,9 @@ export function GraphPanel({
 							<small>图谱活地图</small>
 						</div>
 						<span className="graph-shell-toolbar-chip">{statusLabel(status)}</span>
-						{hasReadyGraph && (
+						{readyGraph && (
 							<span className="graph-shell-toolbar-chip graph-shell-toolbar-chip-muted">
-								{data.nodes.length} 节点 · {data.edges.length} 关联
+								{readyGraph.nodes.length} 节点 · {readyGraph.edges.length} 关联
 							</span>
 						)}
 						<div className="graph-shell-legend" aria-label="图谱图例">
@@ -570,10 +588,12 @@ export function GraphPanel({
 						<div className="graph-edge-tuning" ref={edgeTuningRef}>
 							<button
 								type="button"
+								ref={edgeTuningButtonRef}
 								className="graph-shell-toolbar-button"
 								data-active={edgeTuningOpen ? "true" : undefined}
 								aria-expanded={edgeTuningOpen}
 								aria-controls="graph-edge-tuning-panel"
+								disabled={!edgeTuningAvailable}
 								onClick={() => setEdgeTuningOpen((open) => !open)}
 								title="调参"
 							>
@@ -594,6 +614,7 @@ export function GraphPanel({
 									<label className="graph-edge-tuning-toggle">
 										<input
 											type="checkbox"
+											ref={edgeTuningFirstToggleRef}
 											checked={edgeStyle.semanticEmphasis}
 											onChange={(event) => {
 												const checked = event.currentTarget.checked;

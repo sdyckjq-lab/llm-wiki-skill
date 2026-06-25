@@ -335,7 +335,7 @@ export function createGraphFacadeRouteManager(
     setEdgeStyle(style) {
       assertActive();
       state.edgeStyle = style;
-      currentRenderer().setEdgeStyle(style);
+      if (routeId === "sigma-global") currentRenderer().setEdgeStyle(style);
     },
     setAggregationMarkers(markers) {
       assertActive();

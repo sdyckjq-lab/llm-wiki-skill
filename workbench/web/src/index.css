@@ -1507,11 +1507,11 @@
 
   .graph-edge-tuning-toggle {
     display: flex;
-    min-height: 30px;
+    min-height: 44px;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 5px 8px;
+    padding: 7px 8px;
     border-radius: 8px;
     color: var(--app-fg);
     font-size: 12px;
