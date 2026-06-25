@@ -1067,7 +1067,28 @@ function App() {
 							onSelectView={setMainView}
 						/>
 						<div className="main-view-content">
-							{mainView === "graph" ? (
+							<div className={mainView === "graph" ? "chat-host chat-host-hidden" : "chat-host"}>
+								<ChatPanel
+									key={chatKey}
+									hidden={mainView === "graph"}
+									currentKnowledgeBaseName={active?.kb.name ?? null}
+									initialMessages={initialMessages}
+									onMessageSent={handleMessageSent}
+									onStatusChange={setChatStatus}
+									currentKnowledgeBasePath={active?.kb.path ?? null}
+									onOpenPage={handleOpenPage}
+									onWikiLinkSeen={handleWikiLinkSeen}
+									onArtifactCreated={handleArtifactCreated}
+									artifactCount={artifacts.length}
+									onOpenArtifacts={handleOpenArtifacts}
+									onStartBatchDigest={handleStartBatchDigest}
+									pendingPrompt={pendingGraphPrompt}
+									onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
+									pendingInsertRef={pendingInsertRef}
+									onPendingInsertRefConsumed={() => setPendingInsertRef(null)}
+								/>
+							</div>
+							{mainView === "graph" && (
 								<GraphPanel
 									currentKnowledgeBaseName={active?.kb.name ?? null}
 									currentKnowledgeBasePath={active?.kb.path ?? null}
@@ -1085,25 +1106,6 @@ function App() {
 									pendingDiff={pendingGraphDiff}
 									refreshToken={graphRefreshToken}
 									onDiffConsumed={() => setPendingGraphDiff(null)}
-								/>
-							) : (
-								<ChatPanel
-									key={chatKey}
-									currentKnowledgeBaseName={active?.kb.name ?? null}
-									initialMessages={initialMessages}
-									onMessageSent={handleMessageSent}
-									onStatusChange={setChatStatus}
-									currentKnowledgeBasePath={active?.kb.path ?? null}
-									onOpenPage={handleOpenPage}
-									onWikiLinkSeen={handleWikiLinkSeen}
-									onArtifactCreated={handleArtifactCreated}
-									artifactCount={artifacts.length}
-									onOpenArtifacts={handleOpenArtifacts}
-									onStartBatchDigest={handleStartBatchDigest}
-									pendingPrompt={pendingGraphPrompt}
-									onPendingPromptConsumed={() => setPendingGraphPrompt(null)}
-									pendingInsertRef={pendingInsertRef}
-									onPendingInsertRefConsumed={() => setPendingInsertRef(null)}
 								/>
 							)}
 						</div>

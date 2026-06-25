@@ -73,6 +73,7 @@ function isExportCommand(name: string): name is ExportKind {
  *   - 删除"等待 agent 响应…"文字，改用 ▍ 光标
  */
 interface Props {
+	hidden?: boolean;
 	currentKnowledgeBaseName: string | null;
 	currentKnowledgeBasePath: string | null;
 	initialMessages: UIMessage[];
@@ -103,6 +104,7 @@ interface Props {
 }
 
 export function ChatPanel({
+	hidden = false,
 	currentKnowledgeBaseName,
 	currentKnowledgeBasePath,
 	initialMessages,
@@ -231,6 +233,13 @@ export function ChatPanel({
 			scrollMessagesToBottom("auto");
 		}
 	}, [messages, scrollMessagesToBottom]);
+
+	// 隐藏（display:none）期间 scrollHeight 为 0，流式输出滚不动；重新显示时若仍在跟随底部，补一次滚到底。
+	useEffect(() => {
+		if (!hidden && followBottomRef.current) {
+			scrollMessagesToBottom("auto");
+		}
+	}, [hidden, scrollMessagesToBottom]);
 
 	useEffect(() => {
 		if (!refMenu.open || !currentKnowledgeBasePath) {

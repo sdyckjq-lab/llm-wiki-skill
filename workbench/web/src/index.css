@@ -965,6 +965,15 @@
     overflow: hidden;
   }
 
+  .chat-host {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .chat-host-hidden {
+    display: none;
+  }
+
   .sidebar-header {
     position: absolute;
     top: 10px;
