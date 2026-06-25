@@ -88,6 +88,44 @@ test("piMessagesToUIMessages redacts private paths in historical tool results", 
 	]);
 });
 
+test("piMessagesToUIMessages 把多步 assistant 轮合并成一个气泡", () => {
+	const messages = piMessagesToUIMessages([
+		userMessage("介绍一下"),
+		assistantMessage("让我先看看。", [
+			{ type: "toolCall", id: "t1", name: "read", arguments: { path: "a.md" } },
+		]),
+		toolResultMessage("t1", "read", "内容A", false),
+		assistantMessage("", [
+			{ type: "toolCall", id: "t2", name: "read", arguments: { path: "b.md" } },
+		]),
+		toolResultMessage("t2", "read", "内容B", false),
+		assistantMessage("## 总览\n这是结论。", []),
+	]);
+
+	assert.equal(messages.length, 2);
+	assert.equal(messages[0]?.role, "user");
+	assert.equal(messages[1]?.role, "assistant");
+	assert.equal(messages[1]?.tools.length, 2);
+	assert.match(messages[1]?.content ?? "", /让我先看看/);
+	assert.match(messages[1]?.content ?? "", /这是结论/);
+});
+
+test("piMessagesToUIMessages 不跨 user 边界合并（多轮保持独立）", () => {
+	const messages = piMessagesToUIMessages([
+		userMessage("Q1"),
+		assistantMessage("A1", []),
+		userMessage("Q2"),
+		assistantMessage("A2", []),
+	]);
+
+	assert.deepEqual(
+		messages.map((m) => m.role),
+		["user", "assistant", "user", "assistant"],
+	);
+	assert.equal(messages[1]?.content, "A1");
+	assert.equal(messages[3]?.content, "A2");
+});
+
 function userMessage(text: string): AgentMessage {
 	return {
 		role: "user",

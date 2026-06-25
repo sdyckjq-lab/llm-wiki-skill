@@ -92,8 +92,27 @@ export function piMessagesToUIMessages(messages: AgentMessage[]): UIMessage[] {
 	const result: UIMessage[] = [];
 	const toolResults = indexToolResults(messages);
 
+	// 一轮（两条 user 消息之间）里 pi 往往产出多条 assistant 消息：文字 → 工具调用 →
+	// 续写 …… 直播态把整轮聚合进一个气泡，这里合并成一个 UIMessage 以与直播保持一致。
+	let pending: { texts: string[]; tools: string[] } | null = null;
+	const flushAssistant = () => {
+		if (!pending) return;
+		const content = pending.texts.filter((t) => t.trim()).join("\n\n");
+		const tools = pending.tools;
+		if (content.trim() || tools.length > 0) {
+			result.push({
+				id: `a-${result.length}`,
+				role: "assistant",
+				content,
+				tools: tools.map((name) => ({ name, status: "done" as const })),
+			});
+		}
+		pending = null;
+	};
+
 	for (const msg of messages) {
 		if (msg.role === "user") {
+			flushAssistant();
 			const text = stripKnowledgeContextForDisplay(extractText(msg));
 			if (text.trim()) {
 				result.push({
@@ -106,17 +125,13 @@ export function piMessagesToUIMessages(messages: AgentMessage[]): UIMessage[] {
 		} else if (msg.role === "assistant") {
 			const text = extractText(msg);
 			const tools = extractToolSummaries(msg, toolResults);
-			if (text.trim() || tools.length > 0) {
-				result.push({
-					id: `a-${result.length}`,
-					role: "assistant",
-					content: text,
-					tools: tools.map((name) => ({ name, status: "done" as const })),
-				});
-			}
+			if (!pending) pending = { texts: [], tools: [] };
+			if (text.trim()) pending.texts.push(text);
+			pending.tools.push(...tools);
 		}
-		// 忽略 toolResult 等其他类型
+		// toolResult 等：忽略，且不 flush（它夹在 assistant 工具调用与续写之间，flush 会错误拆轮）
 	}
+	flushAssistant();
 
 	return result;
 }
