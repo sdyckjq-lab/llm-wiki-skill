@@ -85,11 +85,16 @@
 |---|---|---|
 | 初始渲染（`:336`） | `renderSigmaOverlays()` | `rebuildSigmaOverlays()` |
 | 数据更新（`:382`） | `renderSigmaOverlays()` | `rebuildSigmaOverlays()` |
-| `afterRender` 相机移动（`:426`） | `renderSigmaOverlays()` | `repositionSigmaOverlays()` |
-| resize raf（`:463`） | `renderSigmaOverlays()` | `repositionSigmaOverlays()` |
-| 拖拽移动（`:594`） | `renderSigmaOverlays()` | `repositionSigmaOverlays()` |
+| `afterRender` 相机移动 | `renderSigmaOverlays()` | `repositionSigmaOverlays()` |
+| resize raf | `renderSigmaOverlays()` | `repositionSigmaOverlays()` |
+| 拖拽提交/取消（`applyNodeDragPoint` 终态） | `renderSigmaOverlays()` | `rebuildSigmaOverlays()` |
 
 选中变化走数据更新路径（触发 rebuild），因此 dim / selected 不进每帧热路径。
+
+> 实现修正（TDD 发现）：原以为"拖拽 → reposition"。实际上拖拽**过程中**的每帧位置更新由
+> `sigma.refresh()` → `afterRender` → reposition 负责；而 `applyNodeDragPoint` 里那处直接调用是
+> 拖拽**提交/取消的终态**，此时 pin 状态与永久坐标已变（数据变化），必须 rebuild 才能刷新
+> `dataset.pinned` 等属性。
 
 ### 状态归属与不变量（防止双路径打架）
 
