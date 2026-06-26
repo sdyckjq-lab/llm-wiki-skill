@@ -198,7 +198,8 @@ describe("graph route state continuity", () => {
 
     assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(manager.sigmaKnownUnavailable, true);
-    assert.deepEqual(fallbackInputs.at(-1)?.options.selection, { kind: "community", id: "c1" });
+    assert.equal(state.selection, null);
+    assert.deepEqual(fallbackInputs.at(-1)?.options.selection, null);
     assert.equal(fallbackInputs.at(-1)?.options.searchQuery, "Alpha");
     assert.deepEqual(fallbackInputs.at(-1)?.options.searchResultIds, ["a"]);
     assert.deepEqual(Object.keys(fallbackInputs.at(-1)?.options.pins || {}), ["wiki/a.md"]);

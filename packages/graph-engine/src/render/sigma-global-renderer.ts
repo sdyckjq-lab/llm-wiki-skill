@@ -76,6 +76,7 @@ export interface SigmaGlobalCameraState {
 export interface SigmaGlobalCameraLike {
   getState?: () => SigmaGlobalCameraState;
   setState?: (state: Partial<SigmaGlobalCameraState>) => unknown;
+  isAnimated?: () => boolean;
   animate?: (
     state: Partial<SigmaGlobalCameraState>,
     options?: { duration?: number; easing?: string }
@@ -408,6 +409,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         adapterData = nextAdapterData;
         currentEdgeStyle = nextEdgeStyle;
         currentPins = nextPins;
+        cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
         patchSigmaGlobalGraphAttributes(graph, adapterData, currentTheme, currentEdgeStyle);
         projector = createSigmaGlobalHitProjector({
           adapterData,
@@ -736,7 +738,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     pruneOverlayEntries(overlayRegionEntries, nextRegionIds);
 
     const nextNodeIds = new Set<string>();
-    for (const node of sigmaOverlayNodes(adapterData.nodes)) {
+    for (const node of sigmaOverlayNodes(adapterData)) {
       nextNodeIds.add(node.id);
       let element = overlayNodeEntries.get(node.id);
       if (!element) {
@@ -788,7 +790,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       applyOverlayBox(entry.element, cloud.box);
       applySigmaCloudGeometry(entry.shape, entry.kind, cloud);
     }
-    for (const node of sigmaOverlayNodes(adapterData.nodes)) {
+    for (const node of sigmaOverlayNodes(adapterData)) {
       const element = overlayNodeEntries.get(node.id);
       if (!element) continue;
       const size = Math.max(16, sigmaGlobalNodeSize(node) * 3);
@@ -1348,7 +1350,8 @@ function sigmaGlobalNodeSize(node: GraphRendererAdapterNode): number {
   return 5;
 }
 
-function sigmaOverlayNodes(nodes: readonly GraphRendererAdapterNode[]): GraphRendererAdapterNode[] {
+function sigmaOverlayNodes(adapterData: GraphRendererAdapterData): GraphRendererAdapterNode[] {
+  const nodes = adapterData.nodes;
   const seen = new Set<string>();
   const output: GraphRendererAdapterNode[] = [];
   const append = (candidates: GraphRendererAdapterNode[], limit: number) => {
@@ -1360,7 +1363,9 @@ function sigmaOverlayNodes(nodes: readonly GraphRendererAdapterNode[]): GraphRen
       count += 1;
     }
   };
-  append(nodes.filter((node) => node.selected), Number.POSITIVE_INFINITY);
+  if (adapterData.selection.input?.kind !== "community") {
+    append(nodes.filter((node) => node.selected), Number.POSITIVE_INFINITY);
+  }
   append(nodes.filter((node) => node.searchHit), 80);
   append(nodes.filter((node) => node.pinHint.pinned), 80);
   return output;

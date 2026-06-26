@@ -470,6 +470,23 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("keeps community spotlight overlays at community level without expanding every selected node", () => {
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }),
+      theme: "shan-shui",
+      runtime: fakeRuntime()
+    });
+
+    const nodeTargets = renderer.overlayRoot.children
+      .filter((child) => child.className === "sigma-global-node-hit-target")
+      .map((child) => child.dataset.nodeId);
+
+    assert.deepEqual(nodeTargets.sort(), ["beta-pinned", "beta-search"]);
+
+    renderer.destroy();
+  });
+
   it("renders fallback ellipse clouds and routes SVG shape clicks to community selection", () => {
     const hits: unknown[] = [];
     const renderer = createSigmaGlobalRenderer({
@@ -555,6 +572,38 @@ describe("Sigma global renderer production boundary", () => {
     // Phase 2：region 元素按 id 复用（同一实例），拖拽提交后只更新位置/几何。
     assert.equal(movedRegion, initialRegion);
     assert.ok(movedLeft > initialLeft, `expected cloud to follow dragged node, got ${initialLeft} -> ${movedLeft}`);
+
+    renderer.destroy();
+  });
+
+  it("refreshes community cloud geometry across same-id data updates", () => {
+    const runtime = fakeRuntime();
+    const initialData = adapterDataWithPolygonCommunityCloud();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: initialData,
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    const initialRegion = sigmaCommunityRegion(renderer, "adapter-community");
+    const initialLeft = Number.parseFloat(initialRegion?.style.left ?? "0");
+    const movedData: GraphRendererAdapterData = {
+      ...initialData,
+      nodes: initialData.nodes.map((node) => node.id === "render-alpha"
+        ? { ...node, point: { x: 171, y: node.point.y } }
+        : node)
+    };
+
+    renderer.update({ adapterData: movedData });
+
+    const movedRegion = sigmaCommunityRegion(renderer, "adapter-community");
+    const movedLeft = Number.parseFloat(movedRegion?.style.left ?? "0");
+
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "x"), 171);
+    assert.equal(sigma.setGraphCalls.length, 0);
+    assert.equal(movedRegion, initialRegion);
+    assert.ok(movedLeft > initialLeft, `expected cloud to follow updated node, got ${initialLeft} -> ${movedLeft}`);
 
     renderer.destroy();
   });
@@ -903,6 +952,14 @@ describe("Sigma global renderer production boundary", () => {
     });
     const sigma = runtime.instances[0];
     const originalGraph = renderer.graph;
+    const overlay = renderer.overlayRoot as unknown as { replaceChildren: (...items: HTMLElement[]) => void };
+    let replaced = 0;
+    const originalReplace = overlay.replaceChildren.bind(overlay);
+    overlay.replaceChildren = (...items) => {
+      replaced += 1;
+      originalReplace(...items);
+    };
+    const originalChildren = [...renderer.overlayRoot.children];
 
     assert.equal(renderer.graph.getNodeAttribute("beta-ordinary", "communityDimmed"), true);
 
@@ -915,6 +972,8 @@ describe("Sigma global renderer production boundary", () => {
     assert.equal(renderer.graph.getNodeAttribute("alpha-ordinary", "communityDimmed"), true);
     assert.equal(renderer.graph.getNodeAttribute("beta-ordinary", "communityDimmed"), false);
     assert.deepEqual(renderer.graph.getAttribute("selection").input, { kind: "community", id: "community-2" });
+    assert.equal(replaced, 1);
+    assert.equal(renderer.overlayRoot.children.length, originalChildren.length);
 
     renderer.destroy();
   });

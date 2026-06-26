@@ -408,6 +408,41 @@ async function writeProductionHtml(
         });
       }
 
+      function waitForSelectionState(kind, id, timeoutMs = 10000) {
+        const started = performance.now();
+        return new Promise((resolve, reject) => {
+          function selectedCommunityRegionReady() {
+            if (kind !== "community") return true;
+            return Array.from(document.querySelectorAll(".sigma-global-community-region"))
+              .some((element) => element.dataset.communityId === id && element.dataset.selected === "true");
+          }
+          function done() {
+            if (kind === "community") {
+              return routeId() === "sigma-global"
+                && lastSelectionKind === "community"
+                && selectedContainerId === id
+                && selectedCommunityRegionReady();
+            }
+            if (kind === "node") {
+              return lastSelectionKind === "node" && selectedNodeId === id;
+            }
+            return false;
+          }
+          function tick() {
+            if (done()) {
+              resolve(productionProbe({ canvasSignal: false }));
+              return;
+            }
+            if (performance.now() - started > timeoutMs) {
+              reject(new Error("timed out waiting for " + kind + " selection " + id));
+              return;
+            }
+            requestAnimationFrame(tick);
+          }
+          tick();
+        });
+      }
+
       function productionProbe(options = {}) {
         const includeCanvasSignal = options.canvasSignal === true;
         const sigmaRoot = document.querySelector(".sigma-global-renderer[data-renderer='sigma-global']");
@@ -602,7 +637,7 @@ async function writeProductionHtml(
             selectedNodeId = null;
             engine.setAggregationMarkers(markersFor(searchResultIds, selection?.nodeIds || []));
           }
-          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await waitForSelectionState("community", id, 10000);
           return { selectedContainerId, route: routeId(), aggregationPath: true };
         }
         selectedContainerId = id;
@@ -614,11 +649,11 @@ async function writeProductionHtml(
 
       async function returnGlobal(waitForReady = true) {
         if (largestCommunitySize() > 500 && hasProductionSigma()) {
+          engine.resetView();
           selectedContainerId = null;
           selectedNodeId = null;
           lastSelection = null;
           lastSelectionKind = null;
-          engine.clearSelection();
           if (!waitForReady) return { selectedContainerId, route: routeId(), production: productionProbe({ canvasSignal: false }) };
           return { selectedContainerId, route: routeId(), production: productionProbe({ canvasSignal: false }) };
         }
@@ -884,7 +919,7 @@ async function measureContainerSelect(page: PageLike, metadata: LargeGraphFixtur
 async function measureDrawerOpen(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
   const result = await page.evaluate(() => (window as any).__sigmaProduction.openDrawer());
-  await waitForAnimationFrames(page);
+  await waitForAnimationFrames(page, 1);
   const card = await page.evaluate(() => {
     const drawer = document.getElementById("drawer");
     return {
@@ -927,8 +962,6 @@ async function measureEnterCommunity(page: PageLike, metadata: LargeGraphFixture
 async function measureReturnGlobal(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
   const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal(false));
-  await page.waitForFunction(() => Boolean((window as any).__sigmaProduction?.productionProbe?.({ canvasSignal: false }).productionPath));
-  await waitForAnimationFrames(page);
   const duration = performance.now() - started;
   const probe = (result as { production?: { productionPath?: boolean }; selectedContainerId?: string | null }).production;
   const selectedContainerId = (result as { selectedContainerId?: string | null }).selectedContainerId;

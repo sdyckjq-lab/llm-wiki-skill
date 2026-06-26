@@ -461,6 +461,7 @@ export function createGraphFacadeRouteManager(
 
   function requestGlobalRouteFromRenderer(): { shouldNotifyViewReset: boolean } {
     state.focus = null;
+    clearCommunitySelectionForGlobalReset();
     switchToGlobalRoute();
     if (routeId === "sigma-global") return { shouldNotifyViewReset: true };
     currentRenderer().resetView();
@@ -470,15 +471,21 @@ export function createGraphFacadeRouteManager(
   function resetViewToGlobalRoute(): void {
     const previousRouteId = routeId;
     if (previousRouteId === "sigma-global" && state.selection?.kind === "community") {
-      state.selection = null;
-      state.temporaryObject = null;
-      currentRenderer().clearSelection();
+      clearCommunitySelectionForGlobalReset();
       currentRenderer().resetView();
       return;
     }
     state.focus = null;
+    clearCommunitySelectionForGlobalReset();
     switchToGlobalRoute();
     if (previousRouteId === routeId) currentRenderer().resetView();
+  }
+
+  function clearCommunitySelectionForGlobalReset(): void {
+    if (state.selection?.kind !== "community") return;
+    state.selection = null;
+    state.temporaryObject = null;
+    options.callbacks?.onSelectionClearRequested?.();
   }
 
   function activateGlobalRoute(): GraphFacadeRenderer {
@@ -815,6 +822,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
   let legendCollapsed = false;
   let toolbarPanelState = readToolbarPanelState(input.container.ownerDocument.defaultView?.localStorage);
   let searchStatus: HTMLElement | null = null;
+  let currentSigmaAdapterData = adapterDataForSigmaRoute(options);
   const shell = input.container.ownerDocument.createElement("div");
   shell.className = "sigma-global-route llm-wiki-graph-engine";
   shell.dataset.route = "sigma-global";
@@ -829,7 +837,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       try {
         renderer = createSigmaGlobalRenderer({
           container: shell,
-          adapterData: adapterDataForSigmaRoute(options),
+          adapterData: currentSigmaAdapterData,
           theme: options.theme,
           edgeStyle: options.edgeStyle,
           runtime: runtime as unknown as SigmaGlobalRendererRuntime,
@@ -889,19 +897,17 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       updateSigmaRenderer();
     },
     resetView() {
-      options = { ...options, focus: null, selection: null };
-      updateSigmaRenderer();
+      options = { ...options, focus: null };
+      updateSigmaSelection(null);
       renderer?.resetView();
     },
     select(selection) {
-      options = { ...options, selection };
-      updateSigmaRenderer();
+      updateSigmaSelection(selection);
     },
     previewNode() {},
     clearSelection() {
-      options = { ...options, selection: null };
+      updateSigmaSelection(null);
       input.options.callbacks.onSelectionClearRequested?.();
-      updateSigmaRenderer();
     },
     clearInteraction() {
       options = { ...options, focus: null, selection: null, temporaryObject: null };
@@ -950,9 +956,22 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
   };
 
   function updateSigmaRenderer(): void {
+    currentSigmaAdapterData = adapterDataForSigmaRoute(options);
     if (!renderer || destroyed) return;
     renderer.update({
-      adapterData: adapterDataForSigmaRoute(options),
+      adapterData: currentSigmaAdapterData,
+      theme: options.theme,
+      edgeStyle: options.edgeStyle,
+      pins: options.pins
+    });
+  }
+
+  function updateSigmaSelection(selection: SelectionInput | null): void {
+    options = { ...options, selection };
+    currentSigmaAdapterData = adapterDataForSigmaRoute(options);
+    if (!renderer || destroyed) return;
+    renderer.update({
+      adapterData: currentSigmaAdapterData,
       theme: options.theme,
       edgeStyle: options.edgeStyle,
       pins: options.pins
@@ -980,18 +999,17 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
         break;
       case "graph-blank":
         const shouldResetCamera = options.selection?.kind === "community";
-        options = { ...options, selection: null, temporaryObject: null };
+        options = { ...options, temporaryObject: null };
         input.options.callbacks.onSelectionClearRequested?.();
-        updateSigmaRenderer();
+        updateSigmaSelection(null);
         if (shouldResetCamera) renderer?.resetView();
         break;
     }
   }
 
   function selectOnSigma(selection: SelectionInput): void {
-    options = { ...options, selection };
     input.options.callbacks.onSelectionInput?.(selection);
-    updateSigmaRenderer();
+    updateSigmaSelection(selection);
   }
 
   function mountSigmaControls(): void {
@@ -1020,7 +1038,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     searchStatus = search.status;
     updateSearchStatus(search.status);
 
-    const adapterData = adapterDataForSigmaRoute(options);
+    const adapterData = currentSigmaAdapterData;
     const legendRows = buildCommunityLegend(adapterData.renderable.communities, adapterData.renderable.nodes);
     const communityLegend = createCommunityLegend(input.container.ownerDocument, {
       rows: legendRows,
@@ -1049,10 +1067,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
         updateSigmaRenderer();
       },
       onReset: () => {
-        options = { ...options, focus: null, selection: null };
-        input.options.callbacks.onSelectionClearRequested?.();
-        updateSigmaRenderer();
-        renderer?.resetView();
+        input.options.callbacks.onGlobalResetRequested?.();
       }
     });
     toolbar.filtersPanel.appendChild(communityLegend.element);
@@ -1213,6 +1228,11 @@ export function createGraphFacadeFromRenderer(
     resetView(): void {
       assertActive();
       delete container.dataset.llmWikiGraphFocus;
+      if (facadeState.selection?.kind === "community") {
+        facadeState.selection = null;
+        facadeState.temporaryObject = null;
+        capabilities?.onSelectionClear?.();
+      }
       facadeState.focus = null;
       renderer.resetView();
       capabilities?.onViewReset?.();
