@@ -469,6 +469,13 @@ export function createGraphFacadeRouteManager(
 
   function resetViewToGlobalRoute(): void {
     const previousRouteId = routeId;
+    if (previousRouteId === "sigma-global" && state.selection?.kind === "community") {
+      state.selection = null;
+      state.temporaryObject = null;
+      currentRenderer().clearSelection();
+      currentRenderer().resetView();
+      return;
+    }
     state.focus = null;
     switchToGlobalRoute();
     if (previousRouteId === routeId) currentRenderer().resetView();
@@ -884,6 +891,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
     resetView() {
       options = { ...options, focus: null, selection: null };
       updateSigmaRenderer();
+      renderer?.resetView();
     },
     select(selection) {
       options = { ...options, selection };
@@ -971,9 +979,11 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       case "edge":
         break;
       case "graph-blank":
+        const shouldResetCamera = options.selection?.kind === "community";
         options = { ...options, selection: null, temporaryObject: null };
         input.options.callbacks.onSelectionClearRequested?.();
         updateSigmaRenderer();
+        if (shouldResetCamera) renderer?.resetView();
         break;
     }
   }
@@ -1040,7 +1050,9 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
       },
       onReset: () => {
         options = { ...options, focus: null, selection: null };
+        input.options.callbacks.onSelectionClearRequested?.();
         updateSigmaRenderer();
+        renderer?.resetView();
       }
     });
     toolbar.filtersPanel.appendChild(communityLegend.element);

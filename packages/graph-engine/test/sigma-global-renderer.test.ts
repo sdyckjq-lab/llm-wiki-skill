@@ -983,6 +983,25 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("resets the Sigma camera back to the full global composition", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+    renderer.resetView();
+
+    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 100, y: 100, angle: 0, ratio: 1 });
+    assert.deepEqual(sigma.camera.getState(), { x: 100, y: 100, angle: 0, ratio: 1 });
+
+    renderer.destroy();
+  });
+
   it("keeps the full graph rebuild path for theme changes", () => {
     const runtime = fakeRuntime();
     const renderer = createSigmaGlobalRenderer({

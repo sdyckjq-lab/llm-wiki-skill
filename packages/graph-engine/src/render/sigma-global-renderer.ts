@@ -224,6 +224,7 @@ export interface SigmaGlobalRenderer {
   readonly updateStrategy: "rebuild-graph-preserve-camera";
   readonly lastHitTarget: GraphGestureTarget | null;
   isDragging(): boolean;
+  resetView(): void;
   update(options: SigmaGlobalRendererUpdateOptions): void;
   destroy(): void;
 }
@@ -387,6 +388,15 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     },
     isDragging() {
       return Boolean(activeNodeDrag);
+    },
+    resetView() {
+      assertActive();
+      cameraSpotlightCommunityId = null;
+      moveSigmaCamera(
+        sigma,
+        sigmaGlobalCameraState(adapterData),
+        prefersReducedMotion(sigmaRoot.ownerDocument.defaultView)
+      );
     },
     update(updateOptions) {
       assertActive();
@@ -1018,6 +1028,16 @@ function sigmaCommunitySpotlightCameraState(
   const settled = positionSettled
     && Math.abs(current.ratio - target.ratio) <= 0.025;
   return settled ? null : target;
+}
+
+function sigmaGlobalCameraState(adapterData: GraphRendererAdapterData): Partial<SigmaGlobalCameraState> {
+  const bounds = adapterData.renderable.worldBounds;
+  return {
+    x: roundNumber((finiteNumber(bounds.minX, 0) + finiteNumber(bounds.maxX, 0)) / 2, 3),
+    y: roundNumber((finiteNumber(bounds.minY, 0) + finiteNumber(bounds.maxY, 0)) / 2, 3),
+    angle: 0,
+    ratio: 1
+  };
 }
 
 function sigmaCommunitySpotlightCenter(
