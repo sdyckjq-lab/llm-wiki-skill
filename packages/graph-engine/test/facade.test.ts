@@ -488,6 +488,50 @@ describe("GraphFacade", () => {
     assert.deepEqual(selectionClears, [1]);
   });
 
+  it("lets the Sigma toolbar global reset clear the active renderer spotlight", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: { topic: true, source: true },
+      aggregationMarkers: [],
+      selection: { kind: "community", id: "c1" },
+      searchResultIds: [],
+      temporaryObject: { kind: "community", communityId: "c1" }
+    };
+    const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const renderers: Array<GraphFacadeRenderer & { calls: unknown[][] }> = [];
+    const selectionClears: number[] = [];
+    const viewResets: number[] = [];
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      callbacks: {
+        onSelectionClearRequested: () => selectionClears.push(1),
+        onViewReset: () => viewResets.push(1)
+      },
+      factories: {
+        createSigmaGlobal: (input) => {
+          sigmaInputs.push(input);
+          return trackRenderer(renderers, "sigma");
+        },
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => createFakeRenderer()
+      }
+    });
+
+    sigmaInputs[0].options.callbacks.onGlobalResetRequested?.();
+
+    assert.equal(manager.routeId, "sigma-global");
+    assert.equal(state.selection, null);
+    assert.equal(state.temporaryObject, null);
+    assert.deepEqual(selectionClears, [1]);
+    assert.deepEqual(viewResets, [1]);
+    assert.deepEqual(renderers[0].calls.slice(-1), [["resetView"]]);
+  });
+
   it("returns from DOM/SVG community reading to a plain global map after community selection", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {

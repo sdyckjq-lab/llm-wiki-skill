@@ -978,8 +978,8 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
-  it("animates the Sigma camera to the latest selected community spotlight", () => {
-    const runtime = fakeRuntime();
+  it("animates the Sigma camera to the latest selected community spotlight in Sigma camera coordinates", () => {
+    const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({
       container: fakeContainer(),
       adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
@@ -993,17 +993,17 @@ describe("Sigma global renderer production boundary", () => {
 
     assert.equal(sigma.camera.animateCalls.length, 2);
     assert.deepEqual(sigma.camera.animateCalls.at(0), {
-      state: { x: 96, y: 120, angle: 0, ratio: 0.92 },
+      state: { x: 0.48, y: 0.6, angle: 0, ratio: 0.92 },
       options: { duration: 380, easing: "quadraticInOut" }
     });
-    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 126, y: 140, angle: 0, ratio: 0.846 });
-    assert.deepEqual(sigma.camera.getState(), { x: 126, y: 140, angle: 0, ratio: 0.846 });
+    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 0.63, y: 0.7, angle: 0, ratio: 0.846 });
+    assert.deepEqual(sigma.camera.getState(), { x: 0.63, y: 0.7, angle: 0, ratio: 0.846 });
 
     renderer.destroy();
   });
 
   it("sets the Sigma camera instantly when reduced motion is requested", () => {
-    const runtime = fakeRuntime();
+    const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({
       container: fakeContainer({
         matchMedia: () => ({ matches: true }) as MediaQueryList
@@ -1017,14 +1017,14 @@ describe("Sigma global renderer production boundary", () => {
     renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
 
     assert.equal(sigma.camera.animateCalls.length, 0);
-    assert.deepEqual(sigma.camera.setStateCalls.at(-1), { x: 96, y: 120, angle: 0, ratio: 0.92 });
-    assert.deepEqual(sigma.camera.getState(), { x: 96, y: 120, angle: 0, ratio: 0.92 });
+    assert.deepEqual(sigma.camera.setStateCalls.at(-1), { x: 0.48, y: 0.6, angle: 0, ratio: 0.92 });
+    assert.deepEqual(sigma.camera.getState(), { x: 0.48, y: 0.6, angle: 0, ratio: 0.92 });
 
     renderer.destroy();
   });
 
   it("does not move the Sigma camera when the selected community is already framed", () => {
-    const runtime = fakeRuntime();
+    const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({
       container: fakeContainer(),
       adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
@@ -1032,18 +1032,18 @@ describe("Sigma global renderer production boundary", () => {
       runtime
     });
     const sigma = runtime.instances[0];
-    sigma.camera.setState({ x: 96, y: 120, ratio: 0.92 });
+    sigma.camera.setState({ x: 0.48, y: 0.6, ratio: 0.92 });
 
     renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
 
     assert.equal(sigma.camera.animateCalls.length, 0);
-    assert.deepEqual(sigma.camera.getState(), { x: 96, y: 120, angle: 0, ratio: 0.92 });
+    assert.deepEqual(sigma.camera.getState(), { x: 0.48, y: 0.6, angle: 0, ratio: 0.92 });
 
     renderer.destroy();
   });
 
   it("resets the Sigma camera back to the full global composition", () => {
-    const runtime = fakeRuntime();
+    const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({
       container: fakeContainer(),
       adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
@@ -1055,8 +1055,8 @@ describe("Sigma global renderer production boundary", () => {
     renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
     renderer.resetView();
 
-    assert.deepEqual(sigma.camera.setStateCalls.at(-1), { x: 100, y: 100, angle: 0, ratio: 1 });
-    assert.deepEqual(sigma.camera.getState(), { x: 100, y: 100, angle: 0, ratio: 1 });
+    assert.deepEqual(sigma.camera.setStateCalls.at(-1), { x: 0.5, y: 0.5, angle: 0, ratio: 1 });
+    assert.deepEqual(sigma.camera.getState(), { x: 0.5, y: 0.5, angle: 0, ratio: 1 });
 
     renderer.destroy();
   });
@@ -2070,6 +2070,7 @@ function fakeRuntime(options: {
   constructError?: Error;
   setGraphError?: Error;
   killError?: Error;
+  worldScale?: number;
 } = {}): SigmaGlobalRendererRuntime & { instances: FakeSigma[] } {
   const instances: FakeSigma[] = [];
   class RuntimeSigma extends FakeSigma {
@@ -2116,7 +2117,7 @@ class FakeSigma implements SigmaGlobalSigmaLike {
     graph: SigmaGlobalGraphologyGraph,
     container: HTMLElement,
     settings: Record<string, unknown> = {},
-    private readonly options: { setGraphError?: Error; killError?: Error } = {}
+    private readonly options: { setGraphError?: Error; killError?: Error; worldScale?: number } = {}
   ) {
     this.graph = graph;
     this.container = container;
@@ -2146,11 +2147,17 @@ class FakeSigma implements SigmaGlobalSigmaLike {
   }
 
   viewportToGraph(point: { x: number; y: number }): { x: number; y: number } {
+    const scale = this.options.worldScale ?? 1;
+    return { x: point.x * scale, y: point.y * scale };
+  }
+
+  viewportToFramedGraph(point: { x: number; y: number }): { x: number; y: number } {
     return { x: point.x, y: point.y };
   }
 
   graphToViewport(point: { x: number; y: number }): { x: number; y: number } {
-    return { x: point.x, y: point.y };
+    const scale = this.options.worldScale ?? 1;
+    return { x: point.x / scale, y: point.y / scale };
   }
 
   on(event: string, listener: (payload?: unknown) => void): void {

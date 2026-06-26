@@ -460,10 +460,14 @@ export function createGraphFacadeRouteManager(
   }
 
   function requestGlobalRouteFromRenderer(): { shouldNotifyViewReset: boolean } {
+    const previousRouteId = routeId;
     state.focus = null;
     clearCommunitySelectionForGlobalReset();
     switchToGlobalRoute();
-    if (routeId === "sigma-global") return { shouldNotifyViewReset: true };
+    if (routeId === "sigma-global") {
+      if (previousRouteId === routeId) currentRenderer().resetView();
+      return { shouldNotifyViewReset: true };
+    }
     currentRenderer().resetView();
     return { shouldNotifyViewReset: routeId !== "dom-svg-small-fallback" };
   }

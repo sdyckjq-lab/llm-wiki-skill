@@ -90,6 +90,7 @@ export interface SigmaGlobalSigmaLike {
   getSetting?: (key: string) => unknown;
   setSetting?: (key: string, value: unknown) => unknown;
   viewportToGraph?: (point: GraphScreenPoint) => { x: number; y: number };
+  viewportToFramedGraph?: (point: GraphScreenPoint) => { x: number; y: number };
   graphToViewport?: (point: { x: number; y: number }) => GraphScreenPoint;
   refresh?: () => unknown;
   on?: (event: string, listener: (payload?: unknown) => void) => unknown;
@@ -393,7 +394,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     resetView() {
       assertActive();
       cameraSpotlightCommunityId = null;
-      sigma.getCamera?.().setState?.(sigmaGlobalCameraState(adapterData));
+      sigma.getCamera?.().setState?.(sigmaGlobalCameraState(sigma, adapterData));
     },
     update(updateOptions) {
       assertActive();
@@ -1005,9 +1006,11 @@ function sigmaCommunitySpotlightCameraState(
   const bounds = adapterData.renderable.worldBounds;
   const worldWidth = Math.max(0, finiteNumber(bounds.maxX, center.x) - finiteNumber(bounds.minX, center.x));
   const drawerOffset = worldWidth * 0.08;
-  const targetX = roundNumber(center.x + drawerOffset, 3);
-  const targetY = roundNumber(center.y, 3);
-  const settledThreshold = Math.max(worldWidth * 0.015, 4);
+  const graphTargetPoint = { x: center.x + drawerOffset, y: center.y };
+  const targetPoint = sigmaGraphPointToCameraPoint(sigma, graphTargetPoint);
+  const targetX = roundNumber(targetPoint.x, 3);
+  const targetY = roundNumber(targetPoint.y, 3);
+  const settledThreshold = sigmaCameraDistanceForGraphDistance(sigma, graphTargetPoint, Math.max(worldWidth * 0.015, 4));
   const positionSettled = Math.abs(current.x - targetX) <= settledThreshold
     && Math.abs(current.y - targetY) <= settledThreshold;
   const target = {
@@ -1023,14 +1026,45 @@ function sigmaCommunitySpotlightCameraState(
   return settled ? null : target;
 }
 
-function sigmaGlobalCameraState(adapterData: GraphRendererAdapterData): Partial<SigmaGlobalCameraState> {
+function sigmaGlobalCameraState(
+  sigma: SigmaGlobalSigmaLike,
+  adapterData: GraphRendererAdapterData
+): Partial<SigmaGlobalCameraState> {
   const bounds = adapterData.renderable.worldBounds;
+  const center = sigmaGraphPointToCameraPoint(sigma, {
+    x: (finiteNumber(bounds.minX, 0) + finiteNumber(bounds.maxX, 0)) / 2,
+    y: (finiteNumber(bounds.minY, 0) + finiteNumber(bounds.maxY, 0)) / 2
+  });
   return {
-    x: roundNumber((finiteNumber(bounds.minX, 0) + finiteNumber(bounds.maxX, 0)) / 2, 3),
-    y: roundNumber((finiteNumber(bounds.minY, 0) + finiteNumber(bounds.maxY, 0)) / 2, 3),
+    x: roundNumber(center.x, 3),
+    y: roundNumber(center.y, 3),
     angle: 0,
     ratio: 1
   };
+}
+
+function sigmaGraphPointToCameraPoint(
+  sigma: SigmaGlobalSigmaLike,
+  point: { x: number; y: number }
+): { x: number; y: number } {
+  const viewportPoint = sigma.graphToViewport?.(point);
+  const cameraPoint = viewportPoint ? sigma.viewportToFramedGraph?.(viewportPoint) : null;
+  if (cameraPoint && Number.isFinite(cameraPoint.x) && Number.isFinite(cameraPoint.y)) {
+    return cameraPoint;
+  }
+  return point;
+}
+
+function sigmaCameraDistanceForGraphDistance(
+  sigma: SigmaGlobalSigmaLike,
+  point: { x: number; y: number },
+  graphDistance: number
+): number {
+  if (graphDistance <= 0) return 0;
+  const base = sigmaGraphPointToCameraPoint(sigma, point);
+  const shifted = sigmaGraphPointToCameraPoint(sigma, { x: point.x + graphDistance, y: point.y });
+  const distance = Math.abs(shifted.x - base.x);
+  return Number.isFinite(distance) && distance > 0 ? distance : graphDistance;
 }
 
 function sigmaCommunitySpotlightCenter(
