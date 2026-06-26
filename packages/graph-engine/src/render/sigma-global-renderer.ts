@@ -401,6 +401,21 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const previousCameraSpotlightCommunityId = cameraSpotlightCommunityId;
       cancelNodeDrag();
       generation += 1;
+      const finalizeUpdate = (): void => {
+        try {
+          restoreCameraState(sigma, cameraState);
+          sigma.refresh?.();
+          rebuildSigmaOverlays();
+          cameraSpotlightCommunityId = maybeAnimateSigmaCommunitySpotlightCamera(
+            sigma,
+            sigmaRoot,
+            adapterData,
+            previousCameraSpotlightCommunityId
+          );
+        } catch (error) {
+          options.onFatalError?.(error);
+        }
+      };
       const nextAdapterData = updateOptions.adapterData;
       const nextTheme = updateOptions.theme ?? currentTheme;
       const nextEdgeStyle = updateOptions.edgeStyle ?? currentEdgeStyle;
@@ -417,19 +432,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
           viewportSize: options.viewportSize ?? { width: 1, height: 1 },
           screenPointToWorldPoint: (point) => sigmaScreenPointToWorldPoint(sigma, point, options)
         });
-        try {
-          restoreCameraState(sigma, cameraState);
-          sigma.refresh?.();
-          rebuildSigmaOverlays();
-          cameraSpotlightCommunityId = maybeAnimateSigmaCommunitySpotlightCamera(
-            sigma,
-            sigmaRoot,
-            adapterData,
-            previousCameraSpotlightCommunityId
-          );
-        } catch (error) {
-          options.onFatalError?.(error);
-        }
+        finalizeUpdate();
         return;
       }
       adapterData = updateOptions.adapterData;
@@ -450,15 +453,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
           sigmaRoot.dataset.theme = currentTheme;
           sigma.setSetting?.("labelColor", sigmaLabelColor(currentTheme));
         }
-        restoreCameraState(sigma, cameraState);
-        sigma.refresh?.();
-        rebuildSigmaOverlays();
-        cameraSpotlightCommunityId = maybeAnimateSigmaCommunitySpotlightCamera(
-          sigma,
-          sigmaRoot,
-          adapterData,
-          previousCameraSpotlightCommunityId
-        );
+        finalizeUpdate();
       } catch (error) {
         options.onFatalError?.(error);
       }

@@ -968,14 +968,7 @@ function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryI
 
   function updateSigmaSelection(selection: SelectionInput | null): void {
     options = { ...options, selection };
-    currentSigmaAdapterData = adapterDataForSigmaRoute(options);
-    if (!renderer || destroyed) return;
-    renderer.update({
-      adapterData: currentSigmaAdapterData,
-      theme: options.theme,
-      edgeStyle: options.edgeStyle,
-      pins: options.pins
-    });
+    updateSigmaRenderer();
   }
 
   function handleSigmaPinsChanged(pins: PinMap): void {
