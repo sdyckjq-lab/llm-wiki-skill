@@ -392,11 +392,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     resetView() {
       assertActive();
       cameraSpotlightCommunityId = null;
-      moveSigmaCamera(
-        sigma,
-        sigmaGlobalCameraState(adapterData),
-        prefersReducedMotion(sigmaRoot.ownerDocument.defaultView)
-      );
+      sigma.getCamera?.().setState?.(sigmaGlobalCameraState(adapterData));
     },
     update(updateOptions) {
       assertActive();

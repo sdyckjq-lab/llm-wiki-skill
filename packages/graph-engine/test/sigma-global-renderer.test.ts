@@ -996,7 +996,7 @@ describe("Sigma global renderer production boundary", () => {
     renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
     renderer.resetView();
 
-    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 100, y: 100, angle: 0, ratio: 1 });
+    assert.deepEqual(sigma.camera.setStateCalls.at(-1), { x: 100, y: 100, angle: 0, ratio: 1 });
     assert.deepEqual(sigma.camera.getState(), { x: 100, y: 100, angle: 0, ratio: 1 });
 
     renderer.destroy();
