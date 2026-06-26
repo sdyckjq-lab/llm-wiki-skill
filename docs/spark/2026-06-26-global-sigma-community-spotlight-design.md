@@ -4,6 +4,10 @@
 状态：已确认方向，待用户复核
 当前分支：`codex/global-sigma-community-spotlight-design`
 
+> **实现勘误（plan-eng-review 2026-06-26）**：核实代码后两点收口，实现以 `workbench/docs/global-sigma-community-spotlight-plan.md` 为准。
+> 1. 本文“点社区后地图几乎没有反馈”部分不成立——现状点社区已驱动云团/标签/边 dim（`selection`→`community.selected`，sigma-global-renderer.ts:251/679/716/1034）。真正缺的只有：其他社区**节点** dim + 相机轻量动画。
+> 2. 下文“新增 `spotlightCommunityId` 独立状态”按 plan 收口为**复用现有 `selection`**（高亮社区与选中社区始终同步，无需平行字段）；正文 `spotlightCommunityId` 字样一律读作“selection 的社区视觉态”。`focusCommunity()` 仍绝不复用。
+
 ## 目的
 
 这份设计用于补齐 llm-wiki 全局图谱里“点击社区之后，图本身几乎没有反馈”的体验缺口。
