@@ -919,6 +919,70 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("animates the Sigma camera to the latest selected community spotlight", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-2" }) });
+
+    assert.equal(sigma.camera.animateCalls.length, 2);
+    assert.deepEqual(sigma.camera.animateCalls.at(0), {
+      state: { x: 96, y: 120, angle: 0, ratio: 0.92 },
+      options: { duration: 380, easing: "quadraticInOut" }
+    });
+    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 126, y: 140, angle: 0, ratio: 0.846 });
+    assert.deepEqual(sigma.camera.getState(), { x: 126, y: 140, angle: 0, ratio: 0.846 });
+
+    renderer.destroy();
+  });
+
+  it("sets the Sigma camera instantly when reduced motion is requested", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer({
+        matchMedia: () => ({ matches: true }) as MediaQueryList
+      } as FakeDefaultView),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+
+    assert.equal(sigma.camera.animateCalls.length, 0);
+    assert.deepEqual(sigma.camera.setStateCalls.at(-1), { x: 96, y: 120, angle: 0, ratio: 0.92 });
+    assert.deepEqual(sigma.camera.getState(), { x: 96, y: 120, angle: 0, ratio: 0.92 });
+
+    renderer.destroy();
+  });
+
+  it("does not move the Sigma camera when the selected community is already framed", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    sigma.camera.setState({ x: 96, y: 120, ratio: 0.92 });
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+
+    assert.equal(sigma.camera.animateCalls.length, 0);
+    assert.deepEqual(sigma.camera.getState(), { x: 96, y: 120, angle: 0, ratio: 0.92 });
+
+    renderer.destroy();
+  });
+
   it("keeps the full graph rebuild path for theme changes", () => {
     const runtime = fakeRuntime();
     const renderer = createSigmaGlobalRenderer({
@@ -1449,7 +1513,7 @@ function nodeSpotlightAdapterData(options: {
   selectionKind?: "community" | "node" | null;
 } = {}): GraphRendererAdapterData {
   const selectedCommunityId = options.selectedCommunityId ?? "community-1";
-  const selectionKind = options.selectionKind ?? "community";
+  const selectionKind = options.selectionKind === undefined ? "community" : options.selectionKind;
   const renderableCommunities = renderableCommunityFixture(2);
   const nodes: GraphRendererAdapterData["nodes"] = [
     spotlightNodeFixture("alpha-ordinary", "community-1", { point: { x: 10, y: 20 } }),
@@ -1461,7 +1525,11 @@ function nodeSpotlightAdapterData(options: {
   const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
   const searchResultIds = nodes.filter((node) => node.searchHit).map((node) => node.id);
   const pinnedNodeIds = nodes.filter((node) => node.pinHint.pinned).map((node) => node.id);
-  const selectedCommunityIds = selectionKind === "community" ? [selectedCommunityId] : ["community-1"];
+  const selectedCommunityIds = selectionKind === "community"
+    ? [selectedCommunityId]
+    : selectionKind === "node"
+      ? ["community-1"]
+      : [];
   const selectionInput = selectionKind === "community"
     ? { kind: "community" as const, id: selectedCommunityId }
     : selectionKind === "node"
@@ -1825,7 +1893,11 @@ function renderableCommunityFixture(count: number): GraphRendererAdapterData["re
   });
 }
 
-function fakeContainer(defaultView?: Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">): HTMLElement & { children: HTMLElement[] } {
+type FakeDefaultView = Partial<Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">> & {
+  matchMedia?: Window["matchMedia"];
+};
+
+function fakeContainer(defaultView?: FakeDefaultView): HTMLElement & { children: HTMLElement[] } {
   const children: HTMLElement[] = [];
   const container = {
     ownerDocument: {
@@ -1846,7 +1918,7 @@ function resizeObserverEntry(width: number, height: number): ResizeObserverEntry
   return { contentRect: { width, height } as DOMRectReadOnly } as ResizeObserverEntry;
 }
 
-function fakeElement(_tagName: string, defaultView?: Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">): HTMLElement {
+function fakeElement(_tagName: string, defaultView?: FakeDefaultView): HTMLElement {
   const children: HTMLElement[] = [];
   const attributes = new Map<string, string>();
   const listeners = new Map<string, EventListenerOrEventListenerObject[]>();
@@ -2025,12 +2097,29 @@ class FakeSigma implements SigmaGlobalSigmaLike {
 
 class FakeCamera {
   private state = { x: 0, y: 0, angle: 0, ratio: 1 };
+  readonly setStateCalls: Array<Partial<{ x: number; y: number; angle: number; ratio: number }>> = [];
+  readonly animateCalls: Array<{
+    state: Partial<{ x: number; y: number; angle: number; ratio: number }>;
+    options?: { duration?: number; easing?: string };
+  }> = [];
+  activeAnimationTarget: Partial<{ x: number; y: number; angle: number; ratio: number }> | null = null;
 
   getState(): { x: number; y: number; angle: number; ratio: number } {
     return { ...this.state };
   }
 
   setState(state: Partial<{ x: number; y: number; angle: number; ratio: number }>): void {
+    this.setStateCalls.push({ ...state });
     this.state = { ...this.state, ...state };
+  }
+
+  animate(
+    state: Partial<{ x: number; y: number; angle: number; ratio: number }>,
+    options?: { duration?: number; easing?: string }
+  ): Promise<void> {
+    this.animateCalls.push({ state: { ...state }, options: options ? { ...options } : undefined });
+    this.activeAnimationTarget = { ...state };
+    this.setState(state);
+    return Promise.resolve();
   }
 }
