@@ -113,6 +113,8 @@ export interface SigmaGlobalGraphologyNodeAttributes {
   selected: boolean;
   searchHit: boolean;
   pinned: boolean;
+  communityDimmed: boolean;
+  communitySpotlightVisible: boolean;
   aggregationIds: string[];
   labelVisible: boolean;
   displayMode: string;
@@ -248,10 +250,11 @@ export function buildSigmaGlobalGraphologyGraph(
   const graph = new runtime.GraphologyGraph({ multi: true, type: "mixed" });
   const communityColorById = new Map(adapterData.renderable.communities.map((community) => [community.id, community.color]));
   const aggregationRenderById = new Map(adapterData.renderable.aggregationContainers.map((aggregation) => [aggregation.id, aggregation]));
-  const selectedCommunityIds = new Set(adapterData.communities.filter((community) => community.selected).map((community) => community.id));
+  const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
+  const spotlightCommunityIds = sigmaSpotlightCommunityIds(adapterData);
 
   for (const node of adapterData.nodes) {
-    graph.addNode(node.id, sigmaGlobalNodeAttributes(node, communityColorById));
+    graph.addNode(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds));
   }
 
   for (const edge of adapterData.edges) {
@@ -385,6 +388,30 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const cameraState = readCameraState(sigma);
       cancelNodeDrag();
       generation += 1;
+      const nextAdapterData = updateOptions.adapterData;
+      const nextTheme = updateOptions.theme ?? currentTheme;
+      const nextEdgeStyle = updateOptions.edgeStyle ?? currentEdgeStyle;
+      const nextPins = { ...(updateOptions.pins ?? currentPins) };
+      if (canPatchSigmaGlobalGraphAttributes(adapterData, nextAdapterData, currentTheme, nextTheme)) {
+        adapterData = nextAdapterData;
+        currentEdgeStyle = nextEdgeStyle;
+        currentPins = nextPins;
+        patchSigmaGlobalGraphAttributes(graph, adapterData, currentTheme, currentEdgeStyle);
+        projector = createSigmaGlobalHitProjector({
+          adapterData,
+          viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
+          viewportSize: options.viewportSize ?? { width: 1, height: 1 },
+          screenPointToWorldPoint: (point) => sigmaScreenPointToWorldPoint(sigma, point, options)
+        });
+        try {
+          restoreCameraState(sigma, cameraState);
+          sigma.refresh?.();
+          rebuildSigmaOverlays();
+        } catch (error) {
+          options.onFatalError?.(error);
+        }
+        return;
+      }
       adapterData = updateOptions.adapterData;
       cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
       currentTheme = updateOptions.theme ?? currentTheme;
@@ -654,7 +681,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function rebuildSigmaOverlays(): void {
     if (destroyed) return;
     const ordered: HTMLElement[] = [];
-    const selectedCommunityIds = new Set(adapterData.communities.filter((item) => item.selected).map((item) => item.id));
+    const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
+    const spotlightCommunityIds = sigmaSpotlightCommunityIds(adapterData);
 
     const nextRegionIds = new Set<string>();
     for (const community of adapterData.renderable.communities) {
@@ -696,6 +724,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       element.dataset.searchHit = node.searchHit ? "true" : "false";
       element.dataset.selected = node.selected ? "true" : "false";
       element.dataset.pinned = node.pinHint.pinned ? "true" : "false";
+      element.dataset.communityDimmed = sigmaGlobalNodeSpotlightState(node, spotlightCommunityIds).dimmed ? "true" : "false";
       ordered.push(element);
     }
     pruneOverlayEntries(overlayNodeEntries, nextNodeIds);
@@ -915,6 +944,54 @@ function restoreCameraState(sigma: SigmaGlobalSigmaLike, state: SigmaGlobalCamer
   sigma.getCamera?.().setState?.(state);
 }
 
+function canPatchSigmaGlobalGraphAttributes(
+  current: GraphRendererAdapterData,
+  next: GraphRendererAdapterData,
+  currentTheme: ThemeId,
+  nextTheme: ThemeId
+): boolean {
+  if (currentTheme !== nextTheme) return false;
+  if (current.nodes.length !== next.nodes.length || current.edges.length !== next.edges.length) return false;
+  return current.nodes.every((node, index) => node.id === next.nodes[index]?.id)
+    && current.edges.every((edge, index) => {
+      const nextEdge = next.edges[index];
+      return Boolean(nextEdge)
+        && edge.id === nextEdge.id
+        && edge.sourceNodeId === nextEdge.sourceNodeId
+        && edge.targetNodeId === nextEdge.targetNodeId;
+    });
+}
+
+function patchSigmaGlobalGraphAttributes(
+  graph: SigmaGlobalGraphologyGraph,
+  adapterData: GraphRendererAdapterData,
+  theme: ThemeId,
+  edgeStyle?: GraphEdgeStyleOptions
+): void {
+  const communityColorById = new Map(adapterData.renderable.communities.map((community) => [community.id, community.color]));
+  const aggregationRenderById = new Map(adapterData.renderable.aggregationContainers.map((aggregation) => [aggregation.id, aggregation]));
+  const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
+  const spotlightCommunityIds = sigmaSpotlightCommunityIds(adapterData);
+
+  for (const node of adapterData.nodes) {
+    if (!graph.hasNode(node.id)) continue;
+    graph.mergeNodeAttributes(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds));
+  }
+  for (const edge of adapterData.edges) {
+    graph.mergeEdgeAttributes(edge.id, sigmaGlobalEdgeAttributes(edge, theme, edgeStyle, selectedCommunityIds));
+  }
+  graph.setAttribute("counts", adapterData.counts);
+  graph.setAttribute("selection", adapterData.selection);
+  graph.setAttribute(
+    "communities",
+    adapterData.communities.map((community) => sigmaGlobalCommunityAttributes(community, communityColorById))
+  );
+  graph.setAttribute(
+    "aggregations",
+    adapterData.aggregations.map((aggregation) => sigmaGlobalAggregationAttributes(aggregation, aggregationRenderById))
+  );
+}
+
 function sigmaNodeIdFromPayload(payload: unknown): string | null {
   const candidate = payload as { node?: unknown } | null;
   return typeof candidate?.node === "string" ? candidate.node : null;
@@ -966,14 +1043,18 @@ function spatialInputFromAdapterData(adapterData: GraphRendererAdapterData): Gra
 
 function sigmaGlobalNodeAttributes(
   node: GraphRendererAdapterNode,
-  communityColorById: Map<string, string>
+  communityColorById: Map<string, string>,
+  selectedCommunityIds: ReadonlySet<string> = new Set()
 ): SigmaGlobalGraphologyNodeAttributes {
+  const spotlight = sigmaGlobalNodeSpotlightState(node, selectedCommunityIds);
+  const baseSize = sigmaGlobalNodeSize(node);
+  const baseColor = sigmaGlobalNodeColor(node, communityColorById);
   return {
     x: finiteNumber(node.point.x, 0),
     y: finiteNumber(node.point.y, 0),
     label: node.render.labelVisible ? node.label : "",
-    size: sigmaGlobalNodeSize(node),
-    color: sigmaGlobalNodeColor(node, communityColorById),
+    size: spotlight.dimmed ? roundNumber(baseSize * 0.72, 2) : baseSize,
+    color: spotlight.dimmed ? rgbaColor(baseColor, 0.2) : baseColor,
     type: "circle",
     graphNodeType: node.type,
     communityId: node.communityId,
@@ -981,12 +1062,35 @@ function sigmaGlobalNodeAttributes(
     selected: node.selected,
     searchHit: node.searchHit,
     pinned: node.pinHint.pinned,
+    communityDimmed: spotlight.dimmed,
+    communitySpotlightVisible: spotlight.forceVisible,
     aggregationIds: [...node.aggregationIds],
     labelVisible: node.render.labelVisible,
     displayMode: node.render.displayMode,
     visualRole: node.render.visualRole,
     priority: finiteNumber(node.render.priority, 0),
     drawerTarget: node.drawerTarget
+  };
+}
+
+function sigmaSelectedCommunityIds(adapterData: GraphRendererAdapterData): Set<string> {
+  return new Set(adapterData.communities.filter((community) => community.selected).map((community) => community.id));
+}
+
+function sigmaSpotlightCommunityIds(adapterData: GraphRendererAdapterData): Set<string> {
+  if (adapterData.selection.input?.kind !== "community") return new Set();
+  return sigmaSelectedCommunityIds(adapterData);
+}
+
+function sigmaGlobalNodeSpotlightState(
+  node: GraphRendererAdapterNode,
+  selectedCommunityIds: ReadonlySet<string>
+): { dimmed: boolean; forceVisible: boolean } {
+  const forceVisible = node.selected || node.searchHit || node.pinHint.pinned;
+  const inSelectedCommunity = Boolean(node.communityId && selectedCommunityIds.has(node.communityId));
+  return {
+    forceVisible,
+    dimmed: selectedCommunityIds.size > 0 && !inSelectedCommunity && !forceVisible
   };
 }
 

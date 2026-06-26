@@ -66,6 +66,8 @@ describe("Sigma global renderer production boundary", () => {
       selected: true,
       searchHit: false,
       pinned: false,
+      communityDimmed: false,
+      communitySpotlightVisible: true,
       aggregationIds: ["adapter-aggregation"],
       labelVisible: true,
       displayMode: "card",
@@ -89,6 +91,8 @@ describe("Sigma global renderer production boundary", () => {
       selected: false,
       searchHit: true,
       pinned: true,
+      communityDimmed: false,
+      communitySpotlightVisible: true,
       aggregationIds: ["adapter-aggregation"],
       labelVisible: false,
       displayMode: "point",
@@ -182,6 +186,29 @@ describe("Sigma global renderer production boundary", () => {
       sourceCommunityId: "adapter-community",
       targetCommunityId: "adapter-community"
     });
+  });
+
+  it("dims ordinary nodes outside the selected community while keeping priority nodes visible", () => {
+    const adapterData = nodeSpotlightAdapterData();
+    const graph = buildSigmaGlobalGraphologyGraph(adapterData, { GraphologyGraph });
+
+    assert.equal(graph.getNodeAttribute("alpha-ordinary", "communityDimmed"), false);
+    assert.equal(graph.getNodeAttribute("beta-ordinary", "communityDimmed"), true);
+    assert.equal(graph.getNodeAttribute("beta-ordinary", "color"), "rgba(18, 52, 1, 0.2)");
+    assert.equal(graph.getNodeAttribute("beta-ordinary", "size"), 3.6);
+    assert.equal(graph.getNodeAttribute("beta-search", "communityDimmed"), false);
+    assert.equal(graph.getNodeAttribute("beta-search", "communitySpotlightVisible"), true);
+    assert.equal(graph.getNodeAttribute("beta-pinned", "communityDimmed"), false);
+    assert.equal(graph.getNodeAttribute("alpha-selected", "communityDimmed"), false);
+  });
+
+  it("does not dim nodes when there is no community selection spotlight", () => {
+    const adapterData = nodeSpotlightAdapterData({ selectionKind: "node" });
+    const graph = buildSigmaGlobalGraphologyGraph(adapterData, { GraphologyGraph });
+
+    assert.equal(graph.getNodeAttribute("beta-ordinary", "communityDimmed"), false);
+    assert.equal(graph.getNodeAttribute("beta-ordinary", "color"), "#123401");
+    assert.equal(graph.getNodeAttribute("beta-ordinary", "size"), 5);
   });
 
   it("styles Sigma global edges by relation and community scope without confidence opacity", () => {
@@ -866,6 +893,51 @@ describe("Sigma global renderer production boundary", () => {
     assert.deepEqual(renderer.lastHitTarget, { kind: "node", id: "render-beta" });
   });
 
+  it("patches node spotlight attributes in place when community selection changes", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    const originalGraph = renderer.graph;
+
+    assert.equal(renderer.graph.getNodeAttribute("beta-ordinary", "communityDimmed"), true);
+
+    renderer.update({
+      adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-2" })
+    });
+
+    assert.equal(renderer.graph, originalGraph);
+    assert.equal(sigma.setGraphCalls.length, 0);
+    assert.equal(renderer.graph.getNodeAttribute("alpha-ordinary", "communityDimmed"), true);
+    assert.equal(renderer.graph.getNodeAttribute("beta-ordinary", "communityDimmed"), false);
+    assert.deepEqual(renderer.graph.getAttribute("selection").input, { kind: "community", id: "community-2" });
+
+    renderer.destroy();
+  });
+
+  it("keeps the full graph rebuild path for theme changes", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }),
+      theme: "shan-shui",
+      runtime
+    });
+
+    renderer.update({
+      adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-2" }),
+      theme: "mo-ye"
+    });
+
+    assert.equal(runtime.instances[0].setGraphCalls.length, 1);
+
+    renderer.destroy();
+  });
+
   it("reports Sigma initialization failure to the route layer", () => {
     const failure = new Error("webgl unavailable");
     const errors: unknown[] = [];
@@ -924,7 +996,7 @@ describe("Sigma global renderer production boundary", () => {
       onFatalError: (error) => errors.push(error)
     });
 
-    renderer.update({ adapterData: adapterDataFixture({ selectedNodeId: "render-beta" }) });
+    renderer.update({ adapterData: adapterDataFixture({ selectedNodeId: "render-beta" }), theme: "mo-ye" });
     renderer.destroy();
 
     assert.deepEqual(errors.map((error) => String(error)), ["Error: graph swap failed", "Error: kill failed"]);
@@ -1368,6 +1440,157 @@ function adapterDataFixture(options: {
         stableSkeletonEdgeIds: ["adapter-edge"],
         temporaryBoostNodeIds: []
       }
+    }
+  };
+}
+
+function nodeSpotlightAdapterData(options: {
+  selectedCommunityId?: "community-1" | "community-2";
+  selectionKind?: "community" | "node" | null;
+} = {}): GraphRendererAdapterData {
+  const selectedCommunityId = options.selectedCommunityId ?? "community-1";
+  const selectionKind = options.selectionKind ?? "community";
+  const renderableCommunities = renderableCommunityFixture(2);
+  const nodes: GraphRendererAdapterData["nodes"] = [
+    spotlightNodeFixture("alpha-ordinary", "community-1", { point: { x: 10, y: 20 } }),
+    spotlightNodeFixture("alpha-selected", "community-1", { selected: true, point: { x: 20, y: 30 } }),
+    spotlightNodeFixture("beta-ordinary", "community-2", { point: { x: 110, y: 120 } }),
+    spotlightNodeFixture("beta-search", "community-2", { searchHit: true, point: { x: 120, y: 130 } }),
+    spotlightNodeFixture("beta-pinned", "community-2", { pinned: true, point: { x: 130, y: 140 } })
+  ];
+  const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
+  const searchResultIds = nodes.filter((node) => node.searchHit).map((node) => node.id);
+  const pinnedNodeIds = nodes.filter((node) => node.pinHint.pinned).map((node) => node.id);
+  const selectedCommunityIds = selectionKind === "community" ? [selectedCommunityId] : ["community-1"];
+  const selectionInput = selectionKind === "community"
+    ? { kind: "community" as const, id: selectedCommunityId }
+    : selectionKind === "node"
+      ? { kind: "node" as const, id: "alpha-selected" }
+      : null;
+
+  return {
+    counts: {
+      nodes: nodes.length,
+      edges: 0,
+      communities: 2,
+      hidden: 0,
+      renderedNodes: nodes.length,
+      renderedEdges: 0,
+      aggregationContainers: 0
+    },
+    selection: {
+      input: selectionInput,
+      selectionId: selectionInput ? `${selectionInput.kind}:${selectionInput.id}` : null,
+      selectedNodeIds,
+      selectedCommunityIds,
+      containsCurrentObject: Boolean(selectionInput)
+    },
+    nodes,
+    edges: [],
+    communities: renderableCommunities.map((community) => ({
+      id: community.id,
+      object: { kind: "community", communityId: community.id },
+      label: community.label,
+      nodeIds: nodes.filter((node) => node.communityId === community.id).map((node) => node.id),
+      nodeCount: nodes.filter((node) => node.communityId === community.id).length,
+      selected: selectedCommunityIds.includes(community.id),
+      searchResultIds: searchResultIds.filter((id) => nodes.find((node) => node.id === id)?.communityId === community.id),
+      pinHints: nodes
+        .filter((node) => node.communityId === community.id && node.pinHint.pinned)
+        .map((node) => node.pinHint),
+      aggregationIds: [],
+      drawerTarget: {
+        summaryKind: "community-summary",
+        object: { kind: "community", communityId: community.id }
+      },
+      commands: [{ kind: "enter-community", communityId: community.id, label: "进入社区" }]
+    })),
+    aggregations: [],
+    renderable: {
+      nodes: [],
+      edges: [],
+      communities: renderableCommunities,
+      aggregationContainers: [],
+      minimap: { path: "", nodes: [] },
+      relationLegend: [],
+      selectedNodeId: selectedNodeIds[0] ?? null,
+      selectedCommunityId,
+      selectedNodeIds,
+      hiddenNodeIds: new Set(),
+      searchResultIds,
+      worldBounds: { minX: 0, maxX: 200, minY: 0, maxY: 200 },
+      budgets: {
+        limits: {
+          maxNodes: nodes.length,
+          maxEdges: 0,
+          maxLabels: 0,
+          maxCards: 0,
+          maxInteractionUpdates: nodes.length,
+          maxVisibleCommunities: 2
+        },
+        usage: {
+          nodes: nodes.length,
+          edges: 0,
+          labels: 0,
+          cards: 0,
+          interactionUpdate: nodes.length,
+          activeInteraction: nodes.length,
+          communities: 2,
+          aggregationContainers: 0
+        }
+      },
+      qualityNotice: null,
+      communityFocus: null,
+      communityQuality: {
+        boundaryCertainty: "high",
+        skeletonLabel: "stable",
+        hiddenNodeCount: 0,
+        hiddenEdgeCount: 0,
+        stableCoreNodeIds: [],
+        stableSkeletonEdgeIds: [],
+        temporaryBoostNodeIds: []
+      }
+    }
+  };
+
+}
+
+function spotlightNodeFixture(
+  id: string,
+  communityId: string,
+  options: {
+    point: { x: number; y: number };
+    selected?: boolean;
+    searchHit?: boolean;
+    pinned?: boolean;
+  }
+): GraphRendererAdapterData["nodes"][number] {
+  return {
+    id,
+    object: { kind: "node", nodeId: id },
+    label: id,
+    type: "topic",
+    communityId,
+    sourcePath: `spotlight/${id}.md`,
+    point: options.point,
+    selected: Boolean(options.selected),
+    searchHit: Boolean(options.searchHit),
+    pinHint: {
+      nodeId: id,
+      wikiPath: `spotlight/${id}.md`,
+      pinned: Boolean(options.pinned),
+      position: options.pinned ? { x: options.point.x, y: options.point.y, coordinateSpace: "world" } : null
+    },
+    aggregationIds: [],
+    drawerTarget: {
+      summaryKind: "node-summary",
+      object: { kind: "node", nodeId: id }
+    },
+    render: {
+      displayMode: "point",
+      visualRole: "map-pin",
+      priority: 10,
+      labelVisible: false
     }
   };
 }
