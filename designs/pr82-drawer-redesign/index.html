@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PR82 统一社区抽屉重设计</title>
+    <style>
+      :root {
+        --app-bg: #fdfaf2;
+        --app-surface: #fffdf7;
+        --app-raised: #f4ede0;
+        --app-fg: #3a3530;
+        --app-muted: #8a8175;
+        --app-faint: #b3a48c;
+        --app-border: #ece3d2;
+        --app-border-strong: #e1d5bf;
+        --app-accent: #e07a5f;
+        --app-accent-deep: #c0573f;
+        --app-accent-soft: #fff1ef;
+        --app-hover: rgba(224, 122, 95, 0.07);
+        --app-success: #7ea868;
+        --app-warn: #c98e3a;
+        --paper-grain:
+          radial-gradient(circle at 18% 20%, rgba(125, 94, 52, 0.035) 0 1px, transparent 1px),
+          radial-gradient(circle at 68% 42%, rgba(125, 94, 52, 0.03) 0 1px, transparent 1px);
+        --shadow: 0 1px 2px rgba(70, 55, 40, 0.05), 0 8px 18px rgba(70, 55, 40, 0.06);
+        --shadow-lg: 0 8px 24px rgba(70, 55, 40, 0.10), 0 28px 70px rgba(70, 55, 40, 0.14);
+        font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(140% 95% at 50% -25%, rgba(255, 251, 240, 0.78), rgba(255, 251, 240, 0) 55%),
+          radial-gradient(ellipse 105% 92% at 50% 40%, rgba(255, 255, 255, 0) 52%, rgba(120, 98, 70, 0.05) 100%),
+          var(--app-bg);
+        color: var(--app-fg);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      button,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .prototype {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        height: 100vh;
+        min-height: 720px;
+      }
+
+      .review-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 58px;
+        padding: 0 20px;
+        border-bottom: 1px solid rgba(120, 98, 70, 0.12);
+        background: rgba(255, 253, 247, 0.86);
+        backdrop-filter: blur(16px);
+      }
+
+      .review-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .review-title strong {
+        overflow: hidden;
+        font-size: 15px;
+        font-weight: 800;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .review-title span {
+        color: var(--app-muted);
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .review-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .segmented {
+        display: inline-flex;
+        gap: 3px;
+        padding: 3px;
+        border: 1px solid var(--app-border);
+        border-radius: 10px;
+        background: rgba(255, 253, 247, 0.72);
+      }
+
+      .segmented button {
+        min-height: 30px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--app-muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .segmented button[aria-pressed="true"] {
+        background: var(--app-surface);
+        color: var(--app-accent-deep);
+        box-shadow: var(--shadow);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr) 390px;
+        min-height: 0;
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 14px;
+        padding: 18px 10px 16px;
+        border-right: 1px solid var(--app-border);
+        background: rgba(255, 253, 247, 0.58);
+      }
+
+      .kb-title {
+        display: grid;
+        gap: 4px;
+        padding: 0 4px;
+      }
+
+      .kb-title strong {
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .kb-title span {
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .nav-list {
+        display: grid;
+        align-content: start;
+        gap: 7px;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 31px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        color: var(--app-muted);
+        font-size: 12px;
+        font-weight: 680;
+      }
+
+      .nav-item.active {
+        border-color: color-mix(in srgb, var(--app-accent) 35%, var(--app-border));
+        background: var(--app-accent-soft);
+        color: var(--app-accent-deep);
+      }
+
+      .new-kb {
+        min-height: 34px;
+        border: 1px solid color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--app-accent-soft) 45%, transparent);
+        color: var(--app-accent-deep);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .graph-area {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-width: 0;
+        min-height: 0;
+        padding: 18px;
+      }
+
+      .graph-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border: 1px solid var(--app-border);
+        border-radius: 14px;
+        background: rgba(255, 253, 247, 0.76);
+        box-shadow: var(--shadow);
+      }
+
+      .graph-toolbar-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--app-success);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-success) 15%, transparent);
+      }
+
+      .graph-toolbar-title strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .graph-toolbar-title span {
+        display: block;
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .toolbar-buttons {
+        display: flex;
+        gap: 8px;
+      }
+
+      .toolbar-buttons button {
+        min-height: 30px;
+        padding: 0 10px;
+        border: 1px solid var(--app-border);
+        border-radius: 8px;
+        background: rgba(255, 253, 247, 0.78);
+        color: var(--app-muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .graph-canvas {
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--app-border) 74%, transparent);
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 48% 52%, rgba(224, 122, 95, 0.08), transparent 22%),
+          radial-gradient(circle at 64% 42%, rgba(126, 168, 104, 0.09), transparent 21%),
+          radial-gradient(circle at 34% 49%, rgba(201, 142, 58, 0.08), transparent 19%),
+          rgba(255, 253, 247, 0.52);
+      }
+
+      .graph-line {
+        position: absolute;
+        height: 1px;
+        transform-origin: left center;
+        background: rgba(128, 179, 180, 0.28);
+      }
+
+      .node {
+        position: absolute;
+        display: grid;
+        place-items: center;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--node-color, var(--app-accent));
+        box-shadow: 0 0 0 5px rgba(255, 253, 247, 0.78);
+      }
+
+      .node.selected,
+      .node.preview {
+        width: 14px;
+        height: 14px;
+        box-shadow:
+          0 0 0 5px rgba(255, 253, 247, 0.84),
+          0 0 0 10px color-mix(in srgb, var(--app-accent) 17%, transparent);
+      }
+
+      .node-label {
+        position: absolute;
+        left: 14px;
+        top: -7px;
+        min-width: max-content;
+        color: rgba(58, 53, 48, 0.65);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .community-cloud {
+        position: absolute;
+        border: 1px solid rgba(224, 122, 95, 0.18);
+        border-radius: 999px;
+        background: rgba(224, 122, 95, 0.035);
+      }
+
+      .community-label {
+        position: absolute;
+        left: 42%;
+        top: 42%;
+        padding: 4px 8px;
+        border: 1px solid color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+        border-radius: 999px;
+        background: rgba(255, 253, 247, 0.82);
+        color: var(--app-accent-deep);
+        font-size: 11px;
+        font-weight: 800;
+        box-shadow: var(--shadow);
+      }
+
+      .drawer-rail {
+        min-height: 0;
+        overflow: auto;
+        padding: 18px 16px 18px 0;
+      }
+
+      .drawer {
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+        min-height: calc(100vh - 94px);
+        padding: 16px;
+        border: 1px solid color-mix(in srgb, var(--app-border-strong) 70%, transparent);
+        border-radius: 16px;
+        background:
+          linear-gradient(180deg, rgba(255, 253, 247, 0.96), color-mix(in srgb, var(--app-bg) 84%, var(--app-surface))),
+          var(--paper-grain);
+        background-size: auto, 180px 180px;
+        box-shadow: var(--shadow-lg);
+      }
+
+      .drawer-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .kicker-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .kicker {
+        min-height: 23px;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--app-accent) 27%, var(--app-border));
+        border-radius: 999px;
+        background: var(--app-accent-soft);
+        color: var(--app-accent-deep);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .soft-chip {
+        min-height: 23px;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--app-surface) 70%, transparent);
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .drawer-title {
+        margin: 0;
+        color: var(--app-fg);
+        font-size: 20px;
+        font-weight: 850;
+        line-height: 1.22;
+      }
+
+      .drawer-desc {
+        margin: 9px 0 0;
+        color: color-mix(in srgb, var(--app-fg) 74%, var(--app-muted));
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .enter-button {
+        min-height: 32px;
+        padding: 0 11px;
+        border: 1px solid color-mix(in srgb, var(--app-border-strong) 86%, transparent);
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+        color: var(--app-fg);
+        font-size: 12px;
+        font-weight: 780;
+        box-shadow: 0 1px 2px rgba(70, 55, 40, 0.04);
+        transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+      }
+
+      .enter-button:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
+        background: var(--app-accent-soft);
+        color: var(--app-accent-deep);
+      }
+
+      .fact-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+      }
+
+      .fact {
+        min-width: 0;
+        padding: 9px 8px;
+        border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--app-surface) 72%, transparent);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+      }
+
+      .fact strong {
+        display: block;
+        color: var(--app-accent-deep);
+        font-size: 17px;
+        line-height: 1;
+      }
+
+      .fact span {
+        display: block;
+        margin-top: 5px;
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .section {
+        display: grid;
+        gap: 9px;
+        padding: 11px;
+        border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+        border-radius: 13px;
+        background: color-mix(in srgb, var(--app-surface) 50%, transparent);
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+      }
+
+      .section-title h3 {
+        margin: 0;
+        color: var(--app-fg);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .section-title span {
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .text-link {
+        min-height: 28px;
+        padding: 0 4px;
+        border: 0;
+        background: transparent;
+        color: var(--app-accent-deep);
+        font-size: 12px;
+        font-weight: 820;
+      }
+
+      .action-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .action-button {
+        display: grid;
+        gap: 3px;
+        min-height: 50px;
+        padding: 8px 10px;
+        border: 1px solid color-mix(in srgb, var(--app-border-strong) 76%, transparent);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--app-surface) 76%, transparent);
+        color: var(--app-fg);
+        text-align: left;
+        box-shadow: 0 1px 2px rgba(70, 55, 40, 0.04);
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+      }
+
+      .action-button strong {
+        font-size: 12px;
+        font-weight: 820;
+        line-height: 1.25;
+      }
+
+      .action-button span {
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .action-button:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+        background: rgba(255, 253, 247, 0.92);
+      }
+
+      .action-button.recommended {
+        border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+        background: color-mix(in srgb, var(--app-accent-soft) 72%, var(--app-surface));
+        color: var(--app-accent-deep);
+        box-shadow: inset 3px 0 0 var(--app-accent), 0 6px 14px color-mix(in srgb, var(--app-accent) 8%, transparent);
+      }
+
+      .action-button.recommended span {
+        color: color-mix(in srgb, var(--app-accent-deep) 72%, var(--app-muted));
+      }
+
+      .core-list {
+        display: grid;
+        gap: 7px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .core-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 39px;
+        padding: 8px 9px;
+        border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--app-bg) 45%, transparent);
+        color: var(--app-fg);
+        text-align: left;
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+      }
+
+      .core-row:hover,
+      .core-row:focus-visible {
+        transform: translateX(-2px);
+        border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+        background:
+          linear-gradient(90deg, var(--app-accent-soft), rgba(255, 253, 247, 0.92) 88%);
+        box-shadow: inset 3px 0 0 var(--app-accent), 0 8px 18px color-mix(in srgb, var(--app-accent) 10%, transparent);
+        outline: 0;
+      }
+
+      .core-name {
+        overflow: hidden;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .role-chip {
+        min-width: 42px;
+        padding: 3px 8px;
+        border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+        border-radius: 999px;
+        background: rgba(255, 253, 247, 0.72);
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 780;
+        text-align: center;
+      }
+
+      .row-affordance {
+        opacity: 0;
+        color: var(--app-accent-deep);
+        font-size: 13px;
+        font-weight: 900;
+        transition: opacity 0.14s ease;
+      }
+
+      .core-row:hover .row-affordance,
+      .core-row:focus-visible .row-affordance {
+        opacity: 1;
+      }
+
+      .dialogue {
+        display: grid;
+        gap: 8px;
+        margin-top: auto;
+      }
+
+      .textarea {
+        width: 100%;
+        min-height: 78px;
+        resize: none;
+        padding: 10px 11px;
+        border: 1px solid color-mix(in srgb, var(--app-border) 80%, transparent);
+        border-radius: 11px;
+        background: color-mix(in srgb, var(--app-raised) 48%, var(--app-surface));
+        color: var(--app-fg);
+        font-size: 13px;
+        line-height: 1.55;
+        outline: 0;
+        transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+      }
+
+      .textarea:focus {
+        border-color: color-mix(in srgb, var(--app-accent) 58%, var(--app-border));
+        background: var(--app-surface);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 13%, transparent);
+      }
+
+      .dialogue-footer {
+        display: grid;
+        gap: 8px;
+      }
+
+      .hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        color: var(--app-muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .hint-mark {
+        width: 6px;
+        height: 6px;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: var(--app-success);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-success) 14%, transparent);
+      }
+
+      .dialogue-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .secondary-button,
+      .send-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 820;
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+      }
+
+      .secondary-button svg,
+      .send-button svg {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+      }
+
+      .secondary-button {
+        border: 1px solid color-mix(in srgb, var(--app-border-strong) 82%, transparent);
+        background: color-mix(in srgb, var(--app-surface) 76%, transparent);
+        color: var(--app-fg);
+      }
+
+      .send-button {
+        border: 1px solid color-mix(in srgb, var(--app-accent) 64%, var(--app-border));
+        background:
+          linear-gradient(180deg, color-mix(in srgb, var(--app-accent) 88%, #fff4ef), var(--app-accent));
+        color: #fffdf7;
+        box-shadow: 0 8px 18px color-mix(in srgb, var(--app-accent) 22%, transparent);
+      }
+
+      .secondary-button:hover,
+      .send-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .secondary-button:hover {
+        border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+        background: rgba(255, 253, 247, 0.92);
+      }
+
+      .send-button:hover {
+        box-shadow: 0 11px 22px color-mix(in srgb, var(--app-accent) 25%, transparent);
+      }
+
+      .send-button[disabled] {
+        border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
+        background:
+          linear-gradient(180deg, color-mix(in srgb, var(--app-accent-soft) 84%, var(--app-surface)), color-mix(in srgb, var(--app-accent-soft) 72%, var(--app-raised)));
+        color: color-mix(in srgb, var(--app-accent-deep) 52%, var(--app-faint));
+        box-shadow: 0 5px 12px color-mix(in srgb, var(--app-accent) 9%, transparent);
+      }
+
+      @media (max-width: 1000px) {
+        body {
+          overflow: auto;
+        }
+
+        .prototype {
+          height: auto;
+          min-height: 100vh;
+        }
+
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .drawer-rail {
+          padding: 0 18px 18px;
+        }
+
+        .drawer {
+          min-height: auto;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .review-bar {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 12px;
+        }
+
+        .review-controls,
+        .segmented {
+          width: 100%;
+        }
+
+        .segmented button {
+          flex: 1;
+        }
+
+        .graph-area {
+          padding: 12px;
+        }
+
+        .drawer-head,
+        .fact-strip,
+        .action-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .enter-button {
+          justify-self: start;
+        }
+
+        .dialogue-actions {
+          width: 100%;
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .dialogue-actions button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+    <script type="text/babel">
+      const community = {
+        kind: "community",
+        kicker: "社区",
+        title: "知识库构建",
+        desc: "这组页面围绕同一主题聚在一起。你可以先看结构，也可以直接让 agent 基于这一组页面继续工作。",
+        canEnter: true,
+        status: "结构清晰",
+        recommended: "summary",
+        facts: [
+          ["6", "页"],
+          ["11", "链接"],
+          ["5", "核心"],
+          ["0", "孤立"],
+        ],
+        nodes: [
+          ["llm-wiki-skill", "核心"],
+          ["Andrej Karpathy", "相关"],
+          ["知识库构建", "主题"],
+          ["分层记忆", "相关"],
+          ["RAG vs llm-wiki", "相关"],
+        ],
+      };
+
+      const ungrouped = {
+        kind: "community",
+        kicker: "社区",
+        title: "未分组",
+        desc: "这些页面暂未形成明确社区。你可以让 agent 探索它们之间是否存在潜在关系。",
+        canEnter: false,
+        status: "暂未成组",
+        recommended: "explore",
+        facts: [
+          ["4", "页"],
+          ["1", "链接"],
+          ["1", "核心"],
+          ["3", "孤立"],
+        ],
+        nodes: [
+          ["个人公司：项目立项", "已选"],
+          ["提示词炼金术", "已选"],
+          ["一人公司工具链", "已选"],
+          ["OpenClaw 调研摘要", "已选"],
+        ],
+      };
+
+      const actionCopy = [
+        ["summary", "总结这一簇", "先形成概览"],
+        ["gap", "找知识缺口", "发现薄弱处"],
+        ["topic", "生成主题页", "沉淀为页面"],
+        ["explore", "探索潜在关系", "找隐藏连接"],
+      ];
+
+      function App() {
+        const [mode, setMode] = React.useState("community");
+        const [expanded, setExpanded] = React.useState(false);
+        const [hoverNode, setHoverNode] = React.useState("Andrej Karpathy");
+        const [note, setNote] = React.useState("");
+        const data = mode === "community" ? community : ungrouped;
+        const visibleNodes = expanded ? data.nodes : data.nodes.slice(0, 3);
+
+        React.useEffect(() => {
+          setExpanded(false);
+          setHoverNode(data.nodes[1]?.[0] || data.nodes[0]?.[0] || "");
+          setNote("");
+        }, [mode]);
+
+        return (
+          <main className="prototype" data-screen-label="PR82 抽屉重设计">
+            <header className="review-bar">
+              <div className="review-title">
+                <strong>PR82 抽屉重设计</strong>
+                <span>只加回核心节点展开、鼠标反馈、对话轻提示</span>
+              </div>
+              <div className="review-controls">
+                <div className="segmented" aria-label="场景切换">
+                  <button type="button" aria-pressed={mode === "community"} onClick={() => setMode("community")}>普通社区</button>
+                  <button type="button" aria-pressed={mode === "ungrouped"} onClick={() => setMode("ungrouped")}>未分组</button>
+                </div>
+              </div>
+            </header>
+
+            <section className="shell">
+              <aside className="sidebar" aria-label="笔记本">
+                <div className="kb-title">
+                  <strong>kiro 小红书爆款文章</strong>
+                  <span>外部 · 可用</span>
+                </div>
+                <nav className="nav-list">
+                  <div className="nav-item">AI工具系列 <span>外部</span></div>
+                  <div className="nav-item">AI学习知识库 <span>外部</span></div>
+                  <div className="nav-item active">kiro 小红书爆款文章 <span>外部</span></div>
+                  <div className="nav-item">测试 <span>6/28</span></div>
+                  <div className="nav-item">当前知识库下的文章 <span>6/15</span></div>
+                </nav>
+                <button className="new-kb" type="button">新建知识库</button>
+              </aside>
+
+              <section className="graph-area" aria-label="图谱">
+                <div className="graph-toolbar">
+                  <div className="graph-toolbar-title">
+                    <span className="status-dot"></span>
+                    <div>
+                      <strong>kiro 小红书爆款文章</strong>
+                      <span>图谱就绪 · 32 节点 · 64 关联</span>
+                    </div>
+                  </div>
+                  <div className="toolbar-buttons">
+                    <button type="button">筛选</button>
+                    <button type="button">图例</button>
+                    <button type="button">重布局</button>
+                  </div>
+                </div>
+                <GraphCanvas hoverNode={hoverNode} mode={mode} />
+              </section>
+
+              <aside className="drawer-rail" aria-label="右侧抽屉">
+                <Drawer
+                  data={data}
+                  expanded={expanded}
+                  note={note}
+                  visibleNodes={visibleNodes}
+                  setExpanded={setExpanded}
+                  setHoverNode={setHoverNode}
+                  setNote={setNote}
+                />
+              </aside>
+            </section>
+          </main>
+        );
+      }
+
+      function Drawer({ data, expanded, note, visibleNodes, setExpanded, setHoverNode, setNote }) {
+        return (
+          <article className="drawer" data-screen-label="统一社区抽屉">
+            <div className="drawer-head">
+              <div>
+                <div className="kicker-row">
+                  <span className="kicker">{data.kicker}</span>
+                  <span className="soft-chip">{data.status}</span>
+                </div>
+                <h2 className="drawer-title">{data.title}</h2>
+                <p className="drawer-desc">{data.desc}</p>
+              </div>
+              {data.canEnter ? <button type="button" className="enter-button">进入社区</button> : null}
+            </div>
+
+            <div className="fact-strip" aria-label="社区统计">
+              {data.facts.map(([value, label]) => (
+                <div className="fact" key={label}>
+                  <strong>{value}</strong>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+
+            <section className="section">
+              <div className="section-header">
+                <div className="section-title">
+                  <h3>下一步</h3>
+                  <span>让 agent 继续工作</span>
+                </div>
+              </div>
+              <div className="action-grid">
+                {actionCopy.map(([id, title, detail]) => (
+                  <button type="button" className={"action-button" + (data.recommended === id ? " recommended" : "")} key={id}>
+                    <strong>{title}</strong>
+                    <span>{data.recommended === id ? "推荐" : detail}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="section">
+              <div className="section-header">
+                <div className="section-title">
+                  <h3>核心节点</h3>
+                  <span>{data.nodes.length} 个</span>
+                </div>
+                {data.nodes.length > 3 ? (
+                  <button type="button" className="text-link" onClick={() => setExpanded(!expanded)}>
+                    {expanded ? "收起" : "查看全部"}
+                  </button>
+                ) : null}
+              </div>
+              <ul className="core-list">
+                {visibleNodes.map(([name, role]) => (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      className="core-row"
+                      onMouseEnter={() => setHoverNode(name)}
+                      onFocus={() => setHoverNode(name)}
+                    >
+                      <span className="core-name">{name}</span>
+                      <span className="role-chip">{role}</span>
+                      <span className="row-affordance" aria-hidden="true">›</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="dialogue" aria-label="对话区">
+              <textarea
+                className="textarea"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="补充说明（可选）"
+              ></textarea>
+              <div className="dialogue-footer">
+                <div className="hint">
+                  <span className="hint-mark"></span>
+                  <span>{data.kind === "community" ? "当前社区会带入对话" : "当前选区会带入对话"}</span>
+                </div>
+                <div className="dialogue-actions">
+                  <button type="button" className="send-button" disabled={note.trim().length === 0}>
+                    <SendIcon />
+                    <span>发送</span>
+                  </button>
+                  <button type="button" className="secondary-button">
+                    <NewChatIcon />
+                    <span>新对话</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+          </article>
+        );
+      }
+
+      function SendIcon() {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m22 2-7 20-4-9-9-4Z"></path>
+            <path d="M22 2 11 13"></path>
+          </svg>
+        );
+      }
+
+      function NewChatIcon() {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 8v8"></path>
+            <path d="M8 12h8"></path>
+            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path>
+          </svg>
+        );
+      }
+
+      function GraphCanvas({ hoverNode, mode }) {
+        const nodes = [
+          ["llm-wiki-skill", 48, 58, "#e07a5f"],
+          ["Andrej Karpathy", 55, 50, "#e07a5f"],
+          ["知识库构建", 44, 49, "#e07a5f"],
+          ["分层记忆", 38, 61, "#c98e3a"],
+          ["RAG vs llm-wiki", 51, 66, "#c98e3a"],
+          ["个人公司", 71, 46, "#7ea868"],
+          ["提示词炼金术", 76, 39, "#7ea868"],
+          ["OpenClaw", 31, 45, "#d8b15d"],
+          ["dontbesilent", 66, 29, "#b69ad7"],
+        ];
+        const lines = [
+          [43, 49, 13, -5, 18],
+          [50, 58, -12, 7, -24],
+          [55, 50, 16, -3, -10],
+          [49, 58, 23, -12, -17],
+          [39, 61, 16, 5, 12],
+          [31, 45, 18, 12, 28],
+          [66, 29, 11, 10, 35],
+        ];
+        return (
+          <div className="graph-canvas">
+            <div className="community-cloud" style={{ left: "33%", top: "38%", width: "29%", height: "36%" }}></div>
+            <div className="community-label">{mode === "community" ? "知识库构建" : "未分组"}</div>
+            {lines.map(([left, top, width, y, rotate], index) => (
+              <span
+                className="graph-line"
+                key={index}
+                style={{
+                  left: `${left}%`,
+                  top: `${top}%`,
+                  width: `${Math.abs(width) * 1.8}%`,
+                  transform: `rotate(${rotate + y}deg)`,
+                }}
+              ></span>
+            ))}
+            {nodes.map(([name, left, top, color]) => (
+              <span
+                className={"node " + (name === hoverNode ? "preview" : "") + (name === "Andrej Karpathy" && mode === "community" ? " selected" : "")}
+                key={name}
+                style={{ left: `${left}%`, top: `${top}%`, "--node-color": color }}
+              >
+                <span className="node-label">{name}</span>
+              </span>
+            ))}
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>

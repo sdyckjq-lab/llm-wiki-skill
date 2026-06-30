@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "PR82 抽屉重设计": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-06-30T02:17:10.605Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-06-30T02:17:10.607Z",
+  "updatedAt": "2026-06-30T02:49:09.801Z"
+}
