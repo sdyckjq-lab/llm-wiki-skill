@@ -46,6 +46,10 @@ describe("RightDrawer graph lightweight summaries", () => {
 
 		assert.match(html, /data-testid="graph-community-summary"/);
 		assert.match(html, /Alpha community/);
+		assert.match(html, /graph-group-meta-row/);
+		assert.match(html, /graph-group-meta-row[\s\S]*graph-summary-kicker[^>]*>社区<\/span>/);
+		assert.match(html, /graph-group-meta-row[\s\S]*graph-group-status-chip[^>]*>结构清晰<\/span>/);
+		assert.match(html, /graph-group-hero[\s\S]*graph-group-enter[^>]*>进入社区<\/button>/);
 		assert.match(html, /进入社区/);
 		assert.match(html, /总结这一簇/);
 		assert.match(html, /找知识缺口/);
@@ -160,6 +164,18 @@ describe("RightDrawer graph lightweight summaries", () => {
 		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
 
 		assert.match(css, /\.graph-group-node-toggle[\s\S]*color:\s*var\(--app-accent-deep\)/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-facts[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*display:\s*inline-flex/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*align-items:\s*center/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*justify-content:\s*center/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact strong,[\s\S]*\.graph-group-drawer \.graph-summary-fact span[\s\S]*display:\s*inline-flex/);
+		assert.match(css, /\.graph-group-status-chip::before[\s\S]*background:\s*var\(--app-accent\)/);
+		assert.match(css, /\.graph-group-enter[\s\S]*border-radius:\s*999px/);
+		assert.match(css, /\.graph-group-action\[data-recommended="true"\][\s\S]*background:\s*color-mix\(in srgb, var\(--app-accent-soft\) 72%, var\(--app-raised\)\)/);
+		assert.doesNotMatch(css, /\.graph-group-action\[data-recommended="true"\][\s\S]{0,260}background:\s*var\(--app-accent\)/);
+		assert.doesNotMatch(css, /\.graph-group-enter[\s\S]{0,260}background:\s*var\(--app-accent\)/);
+		assert.match(css, /\.graph-group-drawer[\s\S]*container-type:\s*inline-size/);
+		assert.match(css, /@container \(max-width:\s*380px\)[\s\S]*\.graph-group-hero-row[\s\S]*grid-template-columns:\s*1fr/);
 		assert.match(css, /\.graph-group-node:hover[\s\S]*border-color:\s*color-mix\(in srgb, var\(--app-accent\)/);
 		assert.match(css, /\.graph-group-node:focus-visible[\s\S]*(box-shadow|outline)/);
 		assert.match(css, /\.graph-selection-context-hint[\s\S]*color:\s*var\(--app-muted\)/);

@@ -3012,6 +3012,68 @@
     font-size: 11px;
   }
 
+  .graph-group-drawer .graph-summary-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .graph-group-drawer .graph-summary-fact {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 30px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 8px;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 76%, transparent);
+    color: var(--app-muted);
+    line-height: 1;
+  }
+
+  .graph-group-drawer .graph-summary-fact strong,
+  .graph-group-drawer .graph-summary-fact span {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    line-height: 1;
+  }
+
+  .graph-group-drawer .graph-summary-fact strong {
+    color: var(--app-accent-deep);
+    font-size: 14px;
+  }
+
+  .graph-group-drawer .graph-summary-fact span {
+    color: var(--app-muted);
+    font-size: 11px;
+    transform: translateY(0.5px);
+  }
+
+  @container (max-width: 380px) {
+    .graph-group-hero-row {
+      grid-template-columns: 1fr;
+    }
+
+    .graph-group-enter {
+      justify-self: start;
+    }
+
+    .graph-group-drawer .graph-summary-facts {
+      gap: 4px;
+    }
+
+    .graph-group-drawer .graph-summary-fact {
+      padding: 0 5px;
+    }
+
+    .graph-group-drawer .graph-summary-fact strong {
+      font-size: 13px;
+    }
+  }
+
   .graph-summary-meta,
   .graph-summary-actions {
     display: flex;
@@ -3182,6 +3244,7 @@
   .graph-group-drawer {
     display: flex;
     flex-direction: column;
+    container-type: inline-size;
     gap: 14px;
     border-radius: 16px;
     border: 1px solid rgba(94, 72, 48, 0.14);
@@ -3192,13 +3255,71 @@
 
   .graph-group-overview {
     display: grid;
+    gap: 13px;
+  }
+
+  .graph-group-hero {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+    border-radius: 14px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 76%, transparent), color-mix(in srgb, var(--app-bg) 46%, transparent));
+  }
+
+  .graph-group-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .graph-group-hero-row {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
     gap: 12px;
-    align-items: start;
   }
 
   .graph-group-overview-main {
+    display: grid;
     min-width: 0;
+    gap: 7px;
+  }
+
+  .graph-group-meta-row .graph-summary-kicker,
+  .graph-group-status-chip {
+    display: inline-flex;
+    min-height: 22px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface) 86%, var(--app-accent-soft));
+    color: var(--app-accent-deep);
+    font-size: 11px;
+    font-weight: 850;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .graph-group-status-chip::before {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--app-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 14%, transparent);
+    content: "";
+  }
+
+  .graph-group-hero .graph-summary-excerpt {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    line-height: 1.72;
   }
 
   .graph-group-enter,
@@ -3207,15 +3328,34 @@
     align-items: center;
     justify-content: center;
     gap: 7px;
-    min-height: 36px;
+    min-height: 32px;
     border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
-    border-radius: 8px;
+    border-radius: 999px;
     background: color-mix(in srgb, var(--app-raised) 82%, transparent);
     color: var(--app-fg);
-    font-size: 13px;
-    font-weight: 650;
+    font-size: 12px;
+    font-weight: 820;
     line-height: 1.2;
     box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: border-color 0.14s, background 0.14s, box-shadow 0.14s, transform 0.14s;
+  }
+
+  .graph-group-enter {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 0 12px;
+    border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+    background: var(--app-surface);
+    color: var(--app-accent-deep);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 58%, transparent), 0 5px 13px color-mix(in srgb, var(--app-accent) 10%, transparent);
+  }
+
+  .graph-group-enter::after {
+    color: currentColor;
+    content: "→";
+    font-weight: 900;
+    transform: translateY(-0.5px);
   }
 
   .graph-group-enter svg,
@@ -3227,8 +3367,8 @@
 
   .graph-group-enter:hover,
   .graph-group-action:hover {
-    background: color-mix(in srgb, var(--app-raised) 92%, var(--app-accent-soft));
     border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
+    background: color-mix(in srgb, var(--app-raised) 92%, var(--app-accent-soft));
   }
 
   .graph-group-action-grid {
@@ -3238,9 +3378,10 @@
   }
 
   .graph-group-action[data-recommended="true"] {
-    border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
-    background: var(--app-accent-soft);
+    border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
+    background: color-mix(in srgb, var(--app-accent-soft) 72%, var(--app-raised));
     color: var(--app-accent-deep);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 54%, transparent), 0 4px 10px color-mix(in srgb, var(--app-accent) 8%, transparent);
   }
 
   .graph-group-node-toggle {
@@ -3320,12 +3461,6 @@
     border-radius: 999px;
     background: var(--app-success);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-success) 14%, transparent);
-  }
-
-  .graph-group-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
   }
 
   .batch-panel {

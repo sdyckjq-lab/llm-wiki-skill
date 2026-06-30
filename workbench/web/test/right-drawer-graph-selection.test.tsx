@@ -13,6 +13,10 @@ describe("RightDrawer graph selection group drawer", () => {
 
 		assert.match(html, /data-testid="graph-selection-drawer"/);
 		assert.match(html, /选区/);
+		assert.match(html, /graph-group-meta-row/);
+		assert.match(html, /graph-group-meta-row[\s\S]*graph-summary-kicker[^>]*>选区<\/span>/);
+		assert.match(html, /graph-group-meta-row[\s\S]*graph-group-status-chip[^>]*>Shift\+点击增删节点<\/span>/);
+		assert.doesNotMatch(html, /graph-group-enter/);
 		assert.match(html, /总结这一簇/);
 		assert.match(html, /找知识缺口/);
 		assert.match(html, /生成主题页/);

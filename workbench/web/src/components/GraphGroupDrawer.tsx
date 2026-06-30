@@ -40,35 +40,39 @@ export function GraphGroupDrawer({
 		<React.Fragment>
 			<article className="graph-group-drawer" data-group-drawer="true" data-testid={testId}>
 				<div className="graph-group-overview">
-					<div className="graph-group-overview-main">
-						<div className="graph-summary-kicker">{view.kicker}</div>
-						<h2 className="graph-summary-title">{view.title}</h2>
-						{view.description && <p className="graph-summary-excerpt">{view.description}</p>}
-						<div className="graph-summary-facts">
-							{view.facts.map((fact) => (
-								<div className="graph-summary-fact" key={fact.label}>
-									<strong>{fact.value}</strong>
-									<span>{fact.label}</span>
-								</div>
+					<div className="graph-group-hero">
+						<div className="graph-group-meta-row">
+							<span className="graph-summary-kicker">{view.kicker}</span>
+							{view.tags.map((tag) => (
+								<span key={tag} className="graph-summary-community-chip graph-group-status-chip">
+									{tag}
+								</span>
 							))}
 						</div>
-						{view.tags.length > 0 && (
-							<div className="graph-group-tags">
-								{view.tags.map((tag) => (
-									<span key={tag} className="graph-summary-community-chip">{tag}</span>
-								))}
+						<div className="graph-group-hero-row">
+							<div className="graph-group-overview-main">
+								<h2 className="graph-summary-title">{view.title}</h2>
+								{view.description && <p className="graph-summary-excerpt">{view.description}</p>}
 							</div>
-						)}
+							{enterCommand && (
+								<button
+									type="button"
+									className="graph-group-enter"
+									onClick={() => onCommand?.(enterCommand)}
+								>
+									{enterCommand.label}
+								</button>
+							)}
+						</div>
 					</div>
-					{enterCommand && (
-						<button
-							type="button"
-							className="graph-group-enter"
-							onClick={() => onCommand?.(enterCommand)}
-						>
-							{enterCommand.label}
-						</button>
-					)}
+					<div className="graph-summary-facts">
+						{view.facts.map((fact) => (
+							<div className="graph-summary-fact" key={fact.label}>
+								<strong>{fact.value}</strong>
+								<span>{fact.label}</span>
+							</div>
+						))}
+					</div>
 				</div>
 				<div className="graph-group-action-grid">
 					{view.actions.map((action) => (
