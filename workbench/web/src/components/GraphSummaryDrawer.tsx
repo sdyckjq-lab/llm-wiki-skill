@@ -75,6 +75,7 @@ export function GraphCommunitySummary({
 	const enterCommand = payload.commands.find((c) => c.kind === "enter-community") ?? null;
 	return (
 		<GraphGroupDrawer
+			key={view.nodeListKey}
 			testId="graph-community-summary"
 			view={view}
 			freeText={freeText}

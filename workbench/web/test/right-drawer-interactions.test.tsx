@@ -215,6 +215,22 @@ describe("RightDrawer interactions", () => {
 		assert.deepEqual(previews, ["alpha-node", null, "alpha-node", null]);
 	});
 
+	it("clears core node preview before opening the node summary drawer", async () => {
+		const previews: Array<string | null> = [];
+		const selectedNodeIds: string[] = [];
+		renderDrawer(graphCommunitySummaryDrawer(communitySummaryFixture()), {
+			onGraphSummaryNodePreview: (nodeId) => previews.push(nodeId),
+			onGraphSummaryNodeSelect: (nodeId) => selectedNodeIds.push(nodeId),
+		});
+
+		const row = screen.getByRole("button", { name: /Alpha node/ });
+		fireEvent.mouseEnter(row);
+		await click(row);
+
+		assert.deepEqual(previews, ["alpha-node", null]);
+		assert.deepEqual(selectedNodeIds, ["alpha-node"]);
+	});
+
 	it("resets expanded core nodes when the node-list identity changes", async () => {
 		const first = communitySummaryFixture({
 			communityId: "alpha",
@@ -247,6 +263,12 @@ describe("RightDrawer interactions", () => {
 		assert.ok(screen.getByRole("button", { name: /One node/ }));
 		assert.ok(screen.getByRole("button", { name: /Three node/ }));
 		assert.equal(screen.queryByRole("button", { name: /Four node/ }), null);
+		assert.ok(screen.getByRole("button", { name: "查看全部" }));
+
+		rerender(drawerElement(graphCommunitySummaryDrawer(first)));
+		assert.ok(screen.getByRole("button", { name: /Alpha node/ }));
+		assert.ok(screen.getByRole("button", { name: /Gamma node/ }));
+		assert.equal(screen.queryByRole("button", { name: /Delta node/ }), null);
 		assert.ok(screen.getByRole("button", { name: "查看全部" }));
 	});
 });

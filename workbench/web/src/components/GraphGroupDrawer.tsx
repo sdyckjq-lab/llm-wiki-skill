@@ -36,7 +36,6 @@ export function GraphGroupDrawer({
 	const canToggleNodes = view.nodeListExpandable && view.nodes.length > 3;
 	const showAllNodes = nodeListState.key === view.nodeListKey ? nodeListState.showAll : false;
 	const visibleNodes = canToggleNodes && !showAllNodes ? view.nodes.slice(0, 3) : view.nodes;
-	const dialogueHint = view.kicker === "选区" ? "当前选区会带入对话" : "当前社区会带入对话";
 	return (
 		<React.Fragment>
 			<article className="graph-group-drawer" data-group-drawer="true" data-testid={testId}>
@@ -111,7 +110,10 @@ export function GraphGroupDrawer({
 										onMouseLeave={() => onPreviewNode?.(null)}
 										onFocus={() => onPreviewNode?.(node.nodeId)}
 										onBlur={() => onPreviewNode?.(null)}
-										onClick={() => onShowNodeSummary?.(node.nodeId)}
+										onClick={() => {
+											onPreviewNode?.(null);
+											onShowNodeSummary?.(node.nodeId);
+										}}
 									>
 										<span>{node.label}</span>
 										<small>{node.role}</small>
@@ -131,7 +133,7 @@ export function GraphGroupDrawer({
 					/>
 					<div className="graph-selection-context-hint">
 						<span aria-hidden="true" />
-						{dialogueHint}
+						{view.dialogueHint}
 					</div>
 					<div className="graph-selection-footer">
 						<button

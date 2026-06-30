@@ -25,6 +25,7 @@ export function GraphSelection({
 	return (
 		<React.Fragment>
 			<GraphGroupDrawer
+				key={view.nodeListKey}
 				testId="graph-selection-drawer"
 				view={view}
 				freeText={freeText}

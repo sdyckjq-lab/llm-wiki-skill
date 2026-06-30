@@ -26,7 +26,8 @@ describe("graph group drawer view model", () => {
 		assert.equal(view.canEnterCommunity, true);
 		assert.equal(view.recommendedActionId, "summarize_cluster");
 		assert.equal(view.nodeListExpandable, true);
-		assert.equal(view.nodeListKey, "community:build:a,b,c,d");
+		assert.equal(view.nodeListKey, JSON.stringify(["community", "build", ["a", "b", "c", "d"]]));
+		assert.equal(view.dialogueHint, "当前社区会带入对话");
 		assert.deepEqual(view.facts, [
 			{ label: "页", value: 6 },
 			{ label: "链接", value: 5 },
@@ -82,7 +83,8 @@ describe("graph group drawer view model", () => {
 		assert.equal(view.canEnterCommunity, false);
 		assert.equal(view.recommendedActionId, "explore_potential_links");
 		assert.equal(view.nodeListExpandable, false);
-		assert.equal(view.nodeListKey, "selection:nodes:a,b,c,d");
+		assert.equal(view.nodeListKey, JSON.stringify(["selection", "nodes:a,b,c,d"]));
+		assert.equal(view.dialogueHint, "当前选区会带入对话");
 		assert.deepEqual(view.nodes.map((node) => node.nodeId), ["a", "b", "c"]);
 		assert.deepEqual(view.facts, [
 			{ label: "页", value: 3 },
@@ -102,6 +104,17 @@ describe("graph group drawer view model", () => {
 		assert.equal(groupDrawerActionById("find_knowledge_gaps")?.label, "找知识缺口");
 		assert.equal(groupDrawerActionById("missing"), null);
 		assert.equal(groupDrawerActionById(null), null);
+	});
+
+	it("uses unambiguous community node-list keys when node ids contain separators", () => {
+		const first = graphCommunityDrawerViewModel(summaryFixture({
+			coreNodeIds: ["wiki/a,b.md", "wiki/c.md"],
+		}));
+		const second = graphCommunityDrawerViewModel(summaryFixture({
+			coreNodeIds: ["wiki/a.md", "wiki/b,c.md"],
+		}));
+
+		assert.notEqual(first.nodeListKey, second.nodeListKey);
 	});
 
 	it("keeps free-text sends free and uses the recommended action only for empty new conversations", () => {
