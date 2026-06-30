@@ -168,7 +168,11 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*display:\s*inline-flex/);
 		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*align-items:\s*center/);
 		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*justify-content:\s*center/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*overflow:\s*hidden/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact[\s\S]*white-space:\s*nowrap/);
 		assert.match(css, /\.graph-group-drawer \.graph-summary-fact strong,[\s\S]*\.graph-group-drawer \.graph-summary-fact span[\s\S]*display:\s*inline-flex/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact strong[\s\S]*text-overflow:\s*ellipsis/);
+		assert.match(css, /\.graph-group-drawer \.graph-summary-fact span[\s\S]*flex:\s*0 0 auto/);
 		assert.match(css, /\.graph-group-status-chip::before[\s\S]*background:\s*var\(--app-accent\)/);
 		assert.match(css, /\.graph-group-enter[\s\S]*border-radius:\s*999px/);
 		assert.match(css, /\.graph-group-action\[data-recommended="true"\][\s\S]*background:\s*color-mix\(in srgb, var\(--app-accent-soft\) 72%, var\(--app-raised\)\)/);

@@ -3025,28 +3025,34 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
+    overflow: hidden;
     padding: 0 8px;
     border: 1px solid var(--app-border);
     border-radius: 999px;
     background: color-mix(in srgb, var(--app-surface) 76%, transparent);
     color: var(--app-muted);
     line-height: 1;
+    white-space: nowrap;
   }
 
   .graph-group-drawer .graph-summary-fact strong,
   .graph-group-drawer .graph-summary-fact span {
     display: inline-flex;
+    min-width: 0;
     align-items: center;
     margin: 0;
     line-height: 1;
   }
 
   .graph-group-drawer .graph-summary-fact strong {
+    overflow: hidden;
     color: var(--app-accent-deep);
     font-size: 14px;
+    text-overflow: ellipsis;
   }
 
   .graph-group-drawer .graph-summary-fact span {
+    flex: 0 0 auto;
     color: var(--app-muted);
     font-size: 11px;
     transform: translateY(0.5px);
