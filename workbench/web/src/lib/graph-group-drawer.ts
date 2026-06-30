@@ -38,6 +38,8 @@ export interface GraphGroupDrawerViewModel {
 	tags: string[];
 	actions: GraphGroupDrawerAction[];
 	nodes: GraphGroupDrawerNode[];
+	nodeListExpandable: boolean;
+	nodeListKey: string;
 }
 
 export function graphCommunityDrawerViewModel(payload: GraphCommunitySummaryPayload): GraphGroupDrawerViewModel {
@@ -59,11 +61,13 @@ export function graphCommunityDrawerViewModel(payload: GraphCommunitySummaryPayl
 			...action,
 			recommended: action.id === recommendedActionId
 		})),
-		nodes: payload.coreNodes.slice(0, 3).map((node) => ({
+		nodes: payload.coreNodes.map((node) => ({
 			nodeId: node.nodeId,
 			label: node.label,
 			role: node.role
-		}))
+		})),
+		nodeListExpandable: true,
+		nodeListKey: `community:${payload.communityId}:${payload.coreNodeIds.join(",")}`
 	};
 }
 
@@ -90,7 +94,9 @@ export function graphSelectionGroupDrawerViewModel(title: string, selection: Sel
 			nodeId,
 			label: nodeId,
 			role: "已选"
-		}))
+		})),
+		nodeListExpandable: false,
+		nodeListKey: `selection:${selection.id}`
 	};
 }
 

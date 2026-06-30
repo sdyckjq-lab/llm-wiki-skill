@@ -1860,23 +1860,30 @@
 
   .graph-selection-footer {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .graph-selection-send {
-    min-height: 32px;
+    min-height: 34px;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 64%, var(--app-border));
     background: var(--app-accent);
     padding: 7px 10px;
-    color: white;
+    color: var(--app-bg);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--app-accent) 22%, transparent);
   }
 
   .graph-selection-secondary {
-    min-height: 32px;
+    min-height: 34px;
     border: 1px solid var(--app-border);
     background: var(--app-raised);
     padding: 7px 10px;
     color: var(--app-muted);
+  }
+
+  .graph-selection-send:hover:not(:disabled),
+  .graph-selection-send:focus-visible {
+    background: var(--app-accent-deep);
   }
 
   .chat-messages {
@@ -3201,10 +3208,10 @@
     justify-content: center;
     gap: 7px;
     min-height: 36px;
-    border: 1px solid rgba(94, 72, 48, 0.16);
+    border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.72);
-    color: var(--foreground);
+    background: color-mix(in srgb, var(--app-raised) 82%, transparent);
+    color: var(--app-fg);
     font-size: 13px;
     font-weight: 650;
     line-height: 1.2;
@@ -3220,8 +3227,8 @@
 
   .graph-group-enter:hover,
   .graph-group-action:hover {
-    background: rgba(255, 255, 255, 0.92);
-    border-color: rgba(94, 72, 48, 0.28);
+    background: color-mix(in srgb, var(--app-raised) 92%, var(--app-accent-soft));
+    border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border));
   }
 
   .graph-group-action-grid {
@@ -3231,8 +3238,20 @@
   }
 
   .graph-group-action[data-recommended="true"] {
-    border-color: rgba(124, 92, 46, 0.42);
-    background: rgba(238, 220, 184, 0.54);
+    border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+    background: var(--app-accent-soft);
+    color: var(--app-accent-deep);
+  }
+
+  .graph-group-node-toggle {
+    min-height: 28px;
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    color: var(--app-accent-deep);
+    font-size: 12px;
+    font-weight: 820;
+    cursor: pointer;
   }
 
   .graph-group-node-list {
@@ -3249,12 +3268,23 @@
     gap: 10px;
     align-items: center;
     width: 100%;
-    border: 1px solid rgba(94, 72, 48, 0.12);
+    border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.52);
+    background: color-mix(in srgb, var(--app-raised) 72%, transparent);
     padding: 9px 10px;
     color: inherit;
+    cursor: pointer;
     text-align: left;
+    transition: transform 0.14s, border-color 0.14s, background 0.14s, box-shadow 0.14s;
+  }
+
+  .graph-group-node:hover,
+  .graph-group-node:focus-visible {
+    transform: translateX(-2px);
+    border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
+    background: linear-gradient(90deg, var(--app-accent-soft), color-mix(in srgb, var(--app-bg) 92%, var(--app-surface)) 88%);
+    box-shadow: inset 3px 0 0 var(--app-accent), 0 8px 18px color-mix(in srgb, var(--app-accent) 10%, transparent);
+    outline: none;
   }
 
   .graph-group-node span {
@@ -3271,6 +3301,25 @@
   .graph-group-dialogue {
     display: grid;
     gap: 10px;
+  }
+
+  .graph-selection-context-hint {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    color: var(--app-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .graph-selection-context-hint span {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--app-success);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-success) 14%, transparent);
   }
 
   .graph-group-tags {

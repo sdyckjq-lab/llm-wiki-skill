@@ -55,6 +55,10 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.match(html, /发送/);
 		assert.match(html, /新对话/);
 		assert.match(html, /Alpha node/);
+		assert.match(html, /当前社区会带入对话/);
+		assert.match(html, /graph-group-node-toggle/);
+		assert.match(html, /data-group-drawer="send"[\s\S]*<svg/);
+		assert.match(html, /data-group-drawer="new-conversation"[\s\S]*<svg/);
 		assert.doesNotMatch(html, /暂无搜索命中/);
 		assert.doesNotMatch(html, /暂无固定节点/);
 		assert.doesNotMatch(html, /暂无桥接关系/);
@@ -72,6 +76,7 @@ describe("RightDrawer graph lightweight summaries", () => {
 
 		assert.match(html, /未分组/);
 		assert.match(html, /暂未形成明确社区/);
+		assert.match(html, /当前社区会带入对话/);
 		assert.match(html, /data-recommended="true"[^>]*>[\s\S]*探索潜在关系/);
 		assert.doesNotMatch(html, /进入社区/);
 	});
@@ -149,6 +154,23 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.match(css, /\.graph-summary-action[\s\S]*box-shadow:\s*var\(--shadow\)/);
 		assert.doesNotMatch(css, /--app-shadow-color/);
 		assert.doesNotMatch(css, /summary-left-rail|ai-slop/);
+	});
+
+	it("keeps the graph group drawer visual contract", () => {
+		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
+
+		assert.match(css, /\.graph-group-node-toggle[\s\S]*color:\s*var\(--app-accent-deep\)/);
+		assert.match(css, /\.graph-group-node:hover[\s\S]*border-color:\s*color-mix\(in srgb, var\(--app-accent\)/);
+		assert.match(css, /\.graph-group-node:focus-visible[\s\S]*(box-shadow|outline)/);
+		assert.match(css, /\.graph-selection-context-hint[\s\S]*color:\s*var\(--app-muted\)/);
+		assert.match(css, /\.graph-selection-context-hint span[\s\S]*background:\s*var\(--app-success\)/);
+		assert.match(css, /\.graph-selection-footer[\s\S]*grid-template-columns:/);
+		assert.match(css, /\.graph-selection-footer[\s\S]*minmax\(0,\s*1fr\)/);
+		assert.match(css, /\.graph-selection-send[\s\S]*background:\s*var\(--app-accent\)/);
+		assert.match(css, /\.graph-selection-send svg[\s\S]*width:\s*13px/);
+		assert.match(css, /\.graph-selection-secondary[\s\S]*background:\s*var\(--app-raised\)/);
+		assert.match(css, /\.graph-selection-send:hover:not\(:disabled\)|\.graph-selection-send:focus-visible/);
+		assert.doesNotMatch(css, /搜索命中明细|桥接关系列表|固定节点明细/);
 	});
 });
 

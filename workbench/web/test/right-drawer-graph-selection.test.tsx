@@ -20,8 +20,10 @@ describe("RightDrawer graph selection group drawer", () => {
 		assert.match(html, /补充说明（可选）/);
 		assert.match(html, /发送/);
 		assert.match(html, /新对话/);
+		assert.match(html, /当前选区会带入对话/);
 		assert.match(html, /data-group-drawer="true"/);
 		assert.doesNotMatch(html, /graph-selection-actions/);
+		assert.doesNotMatch(html, /查看全部|收起/);
 	});
 
 	it("disables send until free text exists and enables it once typed", () => {

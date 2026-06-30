@@ -168,6 +168,87 @@ describe("RightDrawer interactions", () => {
 
 		assert.deepEqual(asks, [{ actionId: null, newConversation: true }]);
 	});
+
+	it("expands and collapses community core nodes without changing node click behavior", async () => {
+		const selectedNodeIds: string[] = [];
+		const payload = communitySummaryFixture({
+			coreNodeIds: ["alpha-node", "beta-node", "gamma-node", "delta-node"],
+			coreNodes: [
+				{ nodeId: "alpha-node", label: "Alpha node", type: "topic", role: "核心" },
+				{ nodeId: "beta-node", label: "Beta node", type: "entity", role: "相关" },
+				{ nodeId: "gamma-node", label: "Gamma node", type: "source", role: "相关" },
+				{ nodeId: "delta-node", label: "Delta node", type: "entity", role: "相关" },
+			],
+		});
+		renderDrawer(graphCommunitySummaryDrawer(payload), {
+			onGraphSummaryNodeSelect: (nodeId) => selectedNodeIds.push(nodeId),
+		});
+
+		assert.ok(screen.getByRole("button", { name: /Alpha node/ }));
+		assert.ok(screen.getByRole("button", { name: /Beta node/ }));
+		assert.ok(screen.getByRole("button", { name: /Gamma node/ }));
+		assert.equal(screen.queryByRole("button", { name: /Delta node/ }), null);
+
+		await click(screen.getByRole("button", { name: "查看全部" }));
+		assert.ok(screen.getByRole("button", { name: /Delta node/ }));
+		assert.ok(screen.getByRole("button", { name: "收起" }));
+
+		await click(screen.getByRole("button", { name: /Delta node/ }));
+		assert.deepEqual(selectedNodeIds, ["delta-node"]);
+
+		await click(screen.getByRole("button", { name: "收起" }));
+		assert.equal(screen.queryByRole("button", { name: /Delta node/ }), null);
+	});
+
+	it("preserves community core node preview callbacks", () => {
+		const previews: Array<string | null> = [];
+		renderDrawer(graphCommunitySummaryDrawer(communitySummaryFixture()), {
+			onGraphSummaryNodePreview: (nodeId) => previews.push(nodeId),
+		});
+
+		const row = screen.getByRole("button", { name: /Alpha node/ });
+		fireEvent.mouseEnter(row);
+		fireEvent.mouseLeave(row);
+		fireEvent.focus(row);
+		fireEvent.blur(row);
+
+		assert.deepEqual(previews, ["alpha-node", null, "alpha-node", null]);
+	});
+
+	it("resets expanded core nodes when the node-list identity changes", async () => {
+		const first = communitySummaryFixture({
+			communityId: "alpha",
+			label: "Alpha community",
+			coreNodeIds: ["alpha-node", "beta-node", "gamma-node", "delta-node"],
+			coreNodes: [
+				{ nodeId: "alpha-node", label: "Alpha node", type: "topic", role: "核心" },
+				{ nodeId: "beta-node", label: "Beta node", type: "entity", role: "相关" },
+				{ nodeId: "gamma-node", label: "Gamma node", type: "source", role: "相关" },
+				{ nodeId: "delta-node", label: "Delta node", type: "entity", role: "相关" },
+			],
+		});
+		const second = communitySummaryFixture({
+			communityId: "alpha",
+			label: "Alpha community",
+			coreNodeIds: ["one-node", "two-node", "three-node", "four-node"],
+			coreNodes: [
+				{ nodeId: "one-node", label: "One node", type: "topic", role: "核心" },
+				{ nodeId: "two-node", label: "Two node", type: "entity", role: "相关" },
+				{ nodeId: "three-node", label: "Three node", type: "source", role: "相关" },
+				{ nodeId: "four-node", label: "Four node", type: "entity", role: "相关" },
+			],
+		});
+		const { rerender } = renderDrawer(graphCommunitySummaryDrawer(first));
+
+		await click(screen.getByRole("button", { name: "查看全部" }));
+		assert.ok(screen.getByRole("button", { name: /Delta node/ }));
+
+		rerender(drawerElement(graphCommunitySummaryDrawer(second)));
+		assert.ok(screen.getByRole("button", { name: /One node/ }));
+		assert.ok(screen.getByRole("button", { name: /Three node/ }));
+		assert.equal(screen.queryByRole("button", { name: /Four node/ }), null);
+		assert.ok(screen.getByRole("button", { name: "查看全部" }));
+	});
 });
 
 function nodeSummaryFixture(): GraphNodeSummaryPayload {
@@ -201,7 +282,7 @@ function nodeSummaryFixture(): GraphNodeSummaryPayload {
 	};
 }
 
-function communitySummaryFixture(): GraphCommunitySummaryPayload {
+function communitySummaryFixture(overrides: Partial<GraphCommunitySummaryPayload> = {}): GraphCommunitySummaryPayload {
 	return {
 		kind: "community-summary",
 		object: { kind: "community", communityId: "alpha" },
@@ -230,6 +311,7 @@ function communitySummaryFixture(): GraphCommunitySummaryPayload {
 		bridgeRelations: [],
 		aggregationMarkers: [],
 		commands: [{ kind: "enter-community", communityId: "alpha", label: "进入社区" }],
+		...overrides,
 	};
 }
 
@@ -260,7 +342,8 @@ function drawerElement(drawer: DrawerState, props: Partial<RightDrawerProps> = {
 			onWikiLinkSeen={noopString}
 			onGraphReaderAction={noopString}
 			onGraphSummaryCommand={props.onGraphSummaryCommand ?? noop}
-			onGraphSummaryNodePreview={noopPreviewNode}
+			onGraphSummaryNodeSelect={props.onGraphSummaryNodeSelect ?? noopString}
+			onGraphSummaryNodePreview={props.onGraphSummaryNodePreview ?? noopPreviewNode}
 			onGraphSelectionTextChange={noopString}
 			onGraphSelectionAsk={props.onGraphSelectionAsk ?? noopSelectionAsk}
 			onGraphCommunityTextChange={noopString}
