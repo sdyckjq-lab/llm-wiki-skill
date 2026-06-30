@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restore the PR82 drawer capabilities that were lost, while keeping the unified community/selection drawer scope and applying the approved visual polish.
+**Goal:** Restore only the three low-interruption PR82 drawer regressions: community core-node `查看全部 / 收起`, core-node hover/focus feedback while preserving click-to-summary, and community/selection dialogue hints. Also apply the approved send/new-chat visual polish without restoring search/fixed/bridge detail blocks, selected-page expansion, or node/page detail changes.
 
-**Architecture:** Keep the existing shared `GraphGroupDrawer` skeleton. Move core-node truncation out of the community view model so the component can own expand/collapse state, add stable node-list metadata to reset that state, and update drawer markup/CSS without touching graph data, selection generation, prompt payloads, node detail drawers, search, community reading, or graph layout.
+**Architecture:** Keep the existing shared `GraphGroupDrawer` skeleton. Move core-node truncation out of the community view model so the component can own expand/collapse state for `payload.coreNodes`, add stable node-list metadata to reset that state, and update drawer markup/CSS without touching graph data, selection generation, prompt payloads, node detail drawers, search, community reading, or graph layout.
 
 **Tech Stack:** React 19, TypeScript, lucide-react icons, CSS in `workbench/web/src/index.css`, Node built-in `node --test`, jsdom + Testing Library for DOM tests.
 
@@ -14,19 +14,20 @@
 
 - Modify: `workbench/web/src/lib/graph-group-drawer.ts`
   - Owns the drawer view model.
-  - Must preserve full community core nodes and add `nodeListExpandable` / `nodeListKey`.
+  - Must preserve the full `payload.coreNodes` list already supplied by the graph summary layer and add `nodeListExpandable` / `nodeListKey`.
   - Must keep selection drawer node list capped at 3.
 
 - Modify: `workbench/web/src/components/GraphGroupDrawer.tsx`
-  - Owns expand/collapse UI, node-row feedback hooks, dialogue hint, and send/new-chat button markup.
+  - Owns the new expand/collapse UI and dialogue hint.
+  - Already owns node preview/click hooks and send/new-chat icon markup; preserve those paths instead of rebuilding them.
   - Must not alter prompt dispatch behavior.
 
 - Modify: `workbench/web/src/index.css`
   - Owns approved drawer visual treatment.
-  - Must use existing theme variables only.
+  - Must use existing theme variables only. New drawer color changes should use existing variables and `color-mix`, not new literal hex/rgb/rgba colors.
 
 - Modify: `workbench/web/test/graph-group-drawer.test.ts`
-  - Unit coverage for full community node list, expandable metadata, and capped selection nodes.
+  - Unit coverage for the full `payload.coreNodes` list, expandable metadata, and capped selection nodes.
 
 - Modify: `workbench/web/test/right-drawer-graph-summary.test.tsx`
   - Static rendering and CSS-contract coverage for community drawer hints, no unwanted sections, icons, and visual style hooks.
@@ -39,15 +40,105 @@
 
 ---
 
+## Review-Locked Boundaries
+
+This plan is a recovery and polish pass, not a new drawer redesign.
+
+Do:
+
+- Restore community core-node `查看全部 / 收起`.
+- Restore visible hover/focus feedback for core-node rows while preserving the existing preview and click callbacks.
+- Add the low-noise dialogue hint for community/ungrouped and selection drawers.
+- Keep the existing `Send` / `MessageSquarePlus` icons and tune the footer styles so the two buttons are visually balanced.
+
+Do not:
+
+- Add search-hit detail blocks back into the community drawer first screen.
+- Add fixed-node detail blocks back into the community drawer first screen.
+- Add bridge-relation lists back into the community drawer first screen.
+- Add a selected-pages `查看全部` interaction to selection drawers.
+- Touch node/page detail drawers, global search, community reader, graph layout, graph colors, graph edge rendering, selection generation, or prompt payload construction.
+
+## What Already Exists
+
+- `GraphGroupDrawer` already shares the community and selection drawer skeleton.
+- `GraphGroupDrawer` already imports and renders `Send` and `MessageSquarePlus`; this work preserves that icon path and adjusts the surrounding visual treatment.
+- Core-node rows already call `onPreviewNode` on mouse/focus events and `onShowNodeSummary` on click. The missing piece is visible feedback plus tests that lock the existing behavior.
+- Community core-node clicks flow through `RightDrawer` -> `onGraphSummaryNodeSelect` -> `App.handleGraphSummaryNodeSelect` -> `drawerForGraphSummaryNode()`. They are not `GraphSummaryCommand`s.
+- Selection drawers intentionally do not receive `onShowNodeSummary` / `onPreviewNode`; this plan keeps selection node rows capped and non-expandable.
+- Node summary drawers still own node-specific search hit, fixed-position, and bridge-relation information. This plan does not remove those existing detail surfaces.
+
+## Execution Map
+
+```text
+Community summary payload
+  -> graphCommunityDrawerViewModel()
+       keeps all payload.coreNodes
+       adds nodeListExpandable=true
+       adds nodeListKey=community:<id>:<coreNodeIds>
+  -> GraphCommunitySummary
+  -> GraphGroupDrawer
+       default visible nodes = first 3
+       if >3: show 查看全部 / 收起
+       hover/focus: existing onPreviewNode(nodeId/null)
+       click: existing onShowNodeSummary(nodeId)
+       hint: 当前社区会带入对话
+
+Selection payload
+  -> graphSelectionGroupDrawerViewModel()
+       keeps nodes capped at 3
+       adds nodeListExpandable=false
+       adds nodeListKey=selection:<id>
+  -> GraphSelection
+  -> GraphGroupDrawer
+       no 查看全部 / 收起
+       no node-summary click restoration
+       hint: 当前选区会带入对话
+```
+
+## Test Coverage Map
+
+```text
+CODE PATHS                                      USER FLOWS
+[+] community view model                        [+] click normal community
+  -> full payload.coreNodes retained               -> first 3 core nodes visible
+  -> stats still show total core count             -> 查看全部 reveals all nodes
+  -> nodeListKey resets component state            -> 收起 returns to first 3
+
+[+] selection view model                         [+] Shift multi-select / neighbor selection
+  -> selected nodes still capped at 3              -> same drawer skeleton
+  -> nodeListExpandable=false                      -> no selected-page expand control
+
+[+] GraphGroupDrawer interactions                [+] inspect core node
+  -> toggle expands/collapses                      -> hover/focus gives visual feedback
+  -> target change resets expanded state           -> graph preview still fires
+  -> click calls onGraphSummaryNodeSelect path     -> click opens node summary
+
+[+] dialogue footer                              [+] ask agent from drawer
+  -> community hint rendered                       -> current community goes into prompt
+  -> selection hint rendered                       -> current selection goes into prompt
+  -> send/new-conversation handlers unchanged      -> existing dispatch behavior preserved
+```
+
+## Failure Modes To Guard
+
+- View model keeps slicing community nodes, so the component never knows the hidden nodes exist.
+- Expand state leaks from one community or refreshed core-node list to another because it resets from title text or community id alone instead of stable `nodeListKey`.
+- Node rows look clickable but no longer fire preview or node-summary selection callbacks.
+- Selection drawers accidentally inherit community expansion and create a new “selected pages view all” feature.
+- Footer polish changes the send/new-conversation handler behavior or disables the empty-new-conversation recommended action path.
+
+---
+
 ### Task 1: Update View Model Contract
 
 **Files:**
 - Modify: `workbench/web/src/lib/graph-group-drawer.ts`
 - Test: `workbench/web/test/graph-group-drawer.test.ts`
 
-- [ ] **Step 1: Write failing unit tests for full community core nodes and node-list metadata**
+- [ ] **Step 1: Write failing unit tests for full payload core nodes and node-list metadata**
 
-In `workbench/web/test/graph-group-drawer.test.ts`, update the normal community test fixture to have four core nodes and add assertions for full nodes, expandability, and stable key:
+In `workbench/web/test/graph-group-drawer.test.ts`, update the normal community test fixture to have four `payload.coreNodes` and add assertions for full payload nodes, expandability, and stable key:
 
 ```ts
 it("keeps normal community actions stable and enter-community available", () => {
@@ -66,7 +157,7 @@ it("keeps normal community actions stable and enter-community available", () => 
 	assert.equal(view.canEnterCommunity, true);
 	assert.equal(view.recommendedActionId, "summarize_cluster");
 	assert.equal(view.nodeListExpandable, true);
-	assert.equal(view.nodeListKey, "community:build");
+	assert.equal(view.nodeListKey, "community:build:a,b,c,d");
 	assert.deepEqual(view.facts, [
 		{ label: "页", value: 6 },
 		{ label: "链接", value: 5 },
@@ -147,7 +238,7 @@ export interface GraphGroupDrawerViewModel {
 }
 ```
 
-Update `graphCommunityDrawerViewModel()` so it keeps all core nodes:
+Update `graphCommunityDrawerViewModel()` so it keeps every node already present in `payload.coreNodes`. This does not expand the graph-engine summary payload beyond its existing core-node budget:
 
 ```ts
 export function graphCommunityDrawerViewModel(payload: GraphCommunitySummaryPayload): GraphGroupDrawerViewModel {
@@ -175,7 +266,7 @@ export function graphCommunityDrawerViewModel(payload: GraphCommunitySummaryPayl
 			role: node.role
 		})),
 		nodeListExpandable: true,
-		nodeListKey: `community:${payload.communityId}`
+		nodeListKey: `community:${payload.communityId}:${payload.coreNodeIds.join(",")}`
 	};
 }
 ```
@@ -234,7 +325,7 @@ git commit -m "fix: preserve graph drawer core nodes"
 
 ---
 
-### Task 2: Restore Drawer Interactions and Dialogue Hint
+### Task 2: Restore Missing Drawer Interactions and Dialogue Hint
 
 **Files:**
 - Modify: `workbench/web/src/components/GraphGroupDrawer.tsx`
@@ -242,7 +333,9 @@ git commit -m "fix: preserve graph drawer core nodes"
 - Test: `workbench/web/test/right-drawer-graph-summary.test.tsx`
 - Test: `workbench/web/test/right-drawer-graph-selection.test.tsx`
 
-- [ ] **Step 1: Write failing DOM tests for expand/collapse and node click behavior**
+- [ ] **Step 1: Write failing DOM tests for expand/collapse while preserving node behavior**
+
+These tests must prove that the lost expand/collapse affordance returns without replacing the existing node preview/click path.
 
 In `workbench/web/test/right-drawer-interactions.test.tsx`, change `communitySummaryFixture()` to accept overrides:
 
@@ -328,27 +421,46 @@ it("expands and collapses community core nodes without changing node click behav
 		onGraphSummaryNodeSelect: (nodeId) => selectedNodeIds.push(nodeId),
 	});
 
-	assert.ok(screen.getByRole("button", { name: "Alpha node 核心" }));
-	assert.ok(screen.getByRole("button", { name: "Beta node 相关" }));
-	assert.ok(screen.getByRole("button", { name: "Gamma node 相关" }));
-	assert.equal(screen.queryByRole("button", { name: "Delta node 相关" }), null);
+	assert.ok(screen.getByRole("button", { name: /Alpha node/ }));
+	assert.ok(screen.getByRole("button", { name: /Beta node/ }));
+	assert.ok(screen.getByRole("button", { name: /Gamma node/ }));
+	assert.equal(screen.queryByRole("button", { name: /Delta node/ }), null);
 
 	await click(screen.getByRole("button", { name: "查看全部" }));
-	assert.ok(screen.getByRole("button", { name: "Delta node 相关" }));
+	assert.ok(screen.getByRole("button", { name: /Delta node/ }));
 	assert.ok(screen.getByRole("button", { name: "收起" }));
 
-	await click(screen.getByRole("button", { name: "Delta node 相关" }));
+	await click(screen.getByRole("button", { name: /Delta node/ }));
 	assert.deepEqual(selectedNodeIds, ["delta-node"]);
 
 	await click(screen.getByRole("button", { name: "收起" }));
-	assert.equal(screen.queryByRole("button", { name: "Delta node 相关" }), null);
+	assert.equal(screen.queryByRole("button", { name: /Delta node/ }), null);
 });
 ```
 
-Add reset coverage:
+Add preview preservation coverage:
 
 ```tsx
-it("resets expanded core nodes when the drawer target changes", async () => {
+it("preserves community core node preview callbacks", async () => {
+	const previews: Array<string | null> = [];
+	renderDrawer(graphCommunitySummaryDrawer(communitySummaryFixture()), {
+		onGraphSummaryNodePreview: (nodeId) => previews.push(nodeId),
+	});
+
+	const row = screen.getByRole("button", { name: /Alpha node/ });
+	fireEvent.mouseEnter(row);
+	fireEvent.mouseLeave(row);
+	fireEvent.focus(row);
+	fireEvent.blur(row);
+
+	assert.deepEqual(previews, ["alpha-node", null, "alpha-node", null]);
+});
+```
+
+Add reset coverage for the same community whose core-node list changed after graph data refresh:
+
+```tsx
+it("resets expanded core nodes when the node-list identity changes", async () => {
 	const first = communitySummaryFixture({
 		communityId: "alpha",
 		label: "Alpha community",
@@ -361,7 +473,7 @@ it("resets expanded core nodes when the drawer target changes", async () => {
 		],
 	});
 	const second = communitySummaryFixture({
-		communityId: "omega",
+		communityId: "alpha",
 		label: "Alpha community",
 		coreNodeIds: ["one-node", "two-node", "three-node", "four-node"],
 		coreNodes: [
@@ -374,12 +486,12 @@ it("resets expanded core nodes when the drawer target changes", async () => {
 	const { rerender } = renderDrawer(graphCommunitySummaryDrawer(first));
 
 	await click(screen.getByRole("button", { name: "查看全部" }));
-	assert.ok(screen.getByRole("button", { name: "Delta node 相关" }));
+	assert.ok(screen.getByRole("button", { name: /Delta node/ }));
 
 	rerender(drawerElement(graphCommunitySummaryDrawer(second)));
-	assert.ok(screen.getByRole("button", { name: "One node 核心" }));
-	assert.ok(screen.getByRole("button", { name: "Three node 相关" }));
-	assert.equal(screen.queryByRole("button", { name: "Four node 相关" }), null);
+	assert.ok(screen.getByRole("button", { name: /One node/ }));
+	assert.ok(screen.getByRole("button", { name: /Three node/ }));
+	assert.equal(screen.queryByRole("button", { name: /Four node/ }), null);
 	assert.ok(screen.getByRole("button", { name: "查看全部" }));
 });
 ```
@@ -391,6 +503,8 @@ In `workbench/web/test/right-drawer-graph-summary.test.tsx`, extend the unified 
 ```ts
 assert.match(html, /当前社区会带入对话/);
 assert.match(html, /graph-group-node-toggle/);
+assert.match(html, /data-group-drawer="send"[\s\S]*<svg/);
+assert.match(html, /data-group-drawer="new-conversation"[\s\S]*<svg/);
 ```
 
 In the ungrouped community test, assert the same community hint:
@@ -411,7 +525,7 @@ assert.doesNotMatch(html, /查看全部|收起/);
 Run:
 
 ```bash
-node --test-concurrency=1 --import tsx --import workbench/web/test/setup-dom.ts --test \
+node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test \
   workbench/web/test/right-drawer-interactions.test.tsx \
   workbench/web/test/right-drawer-graph-summary.test.tsx \
   workbench/web/test/right-drawer-graph-selection.test.tsx
@@ -421,24 +535,20 @@ Expected: FAIL because expand/collapse controls and dialogue hints are not imple
 
 - [ ] **Step 4: Implement expand/collapse and dialogue hints**
 
-In `workbench/web/src/components/GraphGroupDrawer.tsx`, update imports:
+In `workbench/web/src/components/GraphGroupDrawer.tsx`, keep the existing `Send` and `MessageSquarePlus` imports. If the file being edited no longer has them, restore this import shape:
 
 ```ts
 import React from "react";
 import { MessageSquarePlus, Send } from "lucide-react";
 ```
 
-Inside `GraphGroupDrawer`, add state and derived node list before `return`:
+Inside `GraphGroupDrawer`, add key-bound state and derived node list before `return`. Do not reset expansion in a `useEffect`; treating a new `view.nodeListKey` as collapsed during render avoids a one-frame expanded flash when the same community refreshes with different core nodes:
 
 ```ts
 const canSendFreeText = freeText.trim().length > 0;
-const [showAllNodes, setShowAllNodes] = React.useState(false);
-
-React.useEffect(() => {
-	setShowAllNodes(false);
-}, [view.nodeListKey]);
-
+const [nodeListState, setNodeListState] = React.useState({ key: view.nodeListKey, showAll: false });
 const canToggleNodes = view.nodeListExpandable && view.nodes.length > 3;
+const showAllNodes = nodeListState.key === view.nodeListKey ? nodeListState.showAll : false;
 const visibleNodes = canToggleNodes && !showAllNodes ? view.nodes.slice(0, 3) : view.nodes;
 const dialogueHint = view.kicker === "选区" ? "当前选区会带入对话" : "当前社区会带入对话";
 ```
@@ -453,7 +563,7 @@ Replace the node section header and list with:
 			<button
 				type="button"
 				className="graph-group-node-toggle"
-				onClick={() => setShowAllNodes((current) => !current)}
+				onClick={() => setNodeListState({ key: view.nodeListKey, showAll: !showAllNodes })}
 			>
 				{showAllNodes ? "收起" : "查看全部"}
 			</button>
@@ -514,18 +624,18 @@ Replace the dialogue footer with:
 </div>
 ```
 
-- [ ] **Step 5: Run DOM tests and verify they pass or expose only test-harness mismatch**
+- [ ] **Step 5: Run DOM tests and verify they pass**
 
 Run:
 
 ```bash
-node --test-concurrency=1 --import tsx --import workbench/web/test/setup-dom.ts --test \
+node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test \
   workbench/web/test/right-drawer-interactions.test.tsx \
   workbench/web/test/right-drawer-graph-summary.test.tsx \
   workbench/web/test/right-drawer-graph-selection.test.tsx
 ```
 
-Expected: PASS.
+Expected: PASS. If a failure is only a test-harness mismatch, fix or update the test harness, rerun, and continue only after the listed tests pass.
 
 - [ ] **Step 6: Commit the interaction restoration**
 
@@ -549,7 +659,7 @@ git commit -m "fix: restore graph drawer node expansion"
 
 - [ ] **Step 1: Write failing CSS contract assertions**
 
-In `workbench/web/test/right-drawer-graph-summary.test.tsx`, add a new test near the existing Paper summary styling contract:
+In `workbench/web/test/right-drawer-graph-summary.test.tsx`, add a new test near the existing Paper summary styling contract. Keep these as token-level contract checks, not pixel-perfect snapshots: the goal is to lock the approved visual intent and prevent PR82-style drift, not to make harmless spacing edits painful.
 
 ```ts
 it("keeps the graph group drawer visual contract", () => {
@@ -557,13 +667,15 @@ it("keeps the graph group drawer visual contract", () => {
 
 	assert.match(css, /\.graph-group-node-toggle[\s\S]*color:\s*var\(--app-accent-deep\)/);
 	assert.match(css, /\.graph-group-node:hover[\s\S]*border-color:\s*color-mix\(in srgb, var\(--app-accent\)/);
-	assert.match(css, /\.graph-group-node:focus-visible[\s\S]*outline:\s*none/);
+	assert.match(css, /\.graph-group-node:focus-visible[\s\S]*(box-shadow|outline)/);
 	assert.match(css, /\.graph-selection-context-hint[\s\S]*color:\s*var\(--app-muted\)/);
 	assert.match(css, /\.graph-selection-context-hint span[\s\S]*background:\s*var\(--app-success\)/);
-	assert.match(css, /\.graph-selection-footer[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+	assert.match(css, /\.graph-selection-footer[\s\S]*grid-template-columns:/);
+	assert.match(css, /\.graph-selection-footer[\s\S]*minmax\(0,\s*1fr\)/);
 	assert.match(css, /\.graph-selection-send[\s\S]*background:\s*var\(--app-accent\)/);
 	assert.match(css, /\.graph-selection-send svg[\s\S]*width:\s*13px/);
 	assert.match(css, /\.graph-selection-secondary[\s\S]*background:\s*var\(--app-raised\)/);
+	assert.match(css, /\.graph-selection-send:hover:not\(:disabled\)|\.graph-selection-send:focus-visible/);
 	assert.doesNotMatch(css, /搜索命中明细|桥接关系列表|固定节点明细/);
 });
 ```
@@ -573,7 +685,7 @@ it("keeps the graph group drawer visual contract", () => {
 Run:
 
 ```bash
-node --test-concurrency=1 --import tsx --import workbench/web/test/setup-dom.ts --test workbench/web/test/right-drawer-graph-summary.test.tsx
+node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test workbench/web/test/right-drawer-graph-summary.test.tsx
 ```
 
 Expected: FAIL because the new style hooks do not exist yet.
@@ -604,9 +716,9 @@ Extend `.graph-group-node`:
   gap: 10px;
   align-items: center;
   width: 100%;
-  border: 1px solid rgba(94, 72, 48, 0.12);
+  border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.52);
+  background: color-mix(in srgb, var(--app-raised) 72%, transparent);
   padding: 9px 10px;
   color: inherit;
   text-align: left;
@@ -617,7 +729,7 @@ Extend `.graph-group-node`:
 .graph-group-node:focus-visible {
   transform: translateX(-2px);
   border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border));
-  background: linear-gradient(90deg, var(--app-accent-soft), rgba(255, 253, 247, 0.92) 88%);
+  background: linear-gradient(90deg, var(--app-accent-soft), color-mix(in srgb, var(--app-bg) 92%, var(--app-surface)) 88%);
   box-shadow: inset 3px 0 0 var(--app-accent), 0 8px 18px color-mix(in srgb, var(--app-accent) 10%, transparent);
   outline: none;
 }
@@ -665,7 +777,7 @@ Update footer/buttons:
 .graph-selection-send {
   border: 1px solid color-mix(in srgb, var(--app-accent) 64%, var(--app-border));
   background: var(--app-accent);
-  color: #fffdf7;
+  color: var(--app-bg);
   box-shadow: 0 8px 18px color-mix(in srgb, var(--app-accent) 22%, transparent);
 }
 
@@ -673,6 +785,11 @@ Update footer/buttons:
   border: 1px solid var(--app-border);
   background: var(--app-raised);
   color: var(--app-muted);
+}
+
+.graph-selection-send:hover:not(:disabled),
+.graph-selection-send:focus-visible {
+  background: var(--app-accent-deep);
 }
 ```
 
@@ -683,7 +800,7 @@ Keep the existing disabled opacity rule for disabled buttons so empty send is vi
 Run:
 
 ```bash
-node --test-concurrency=1 --import tsx --import workbench/web/test/setup-dom.ts --test \
+node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test \
   workbench/web/test/right-drawer-graph-summary.test.tsx \
   workbench/web/test/right-drawer-graph-selection.test.tsx \
   workbench/web/test/right-drawer-interactions.test.tsx
@@ -714,7 +831,7 @@ Run:
 
 ```bash
 node --import tsx --test workbench/web/test/graph-group-drawer.test.ts
-node --test-concurrency=1 --import tsx --import workbench/web/test/setup-dom.ts --test \
+node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test \
   workbench/web/test/right-drawer-graph-summary.test.tsx \
   workbench/web/test/right-drawer-graph-selection.test.tsx \
   workbench/web/test/right-drawer-interactions.test.tsx
@@ -761,7 +878,7 @@ Check:
 - Click a normal graph community with more than 3 core nodes.
 - Drawer shows only 3 core rows at first.
 - “查看全部” appears in the core-node section header.
-- Clicking “查看全部” shows all core nodes and changes the control to “收起”.
+- Clicking “查看全部” shows every core node provided by the summary payload and changes the control to “收起”.
 - Clicking “收起” returns to 3 visible core rows.
 - Hovering a core row gives visible row feedback and graph preview remains active.
 - Clicking a core row opens the node summary drawer.
@@ -805,6 +922,71 @@ git commit -m "test: cover graph drawer recovery regression"
 
 ---
 
+## NOT In Scope
+
+- Community drawer search-hit detail lists: deferred because PR82 intentionally compressed them out of the first screen; node/search result detail surfaces still exist elsewhere.
+- Community drawer fixed-node detail lists: deferred because fixed state remains a light tag in this drawer and detailed fixed behavior belongs to node/graph interactions.
+- Community drawer bridge-relation lists: deferred because bridge relations are still available in node summary/detail contexts and would overload this drawer first screen.
+- Selection drawer selected-page `查看全部`: deferred because the confirmed scope keeps selection rows capped at 3 and only restores the dialogue hint/visual balance.
+- Graph data, graph layout, node colors, edges, community reader, global search, and prompt payloads: deferred because this branch is a drawer recovery/polish pass.
+
+## Eng Review Findings
+
+Scope challenge: accepted as minimal recovery. The plan touches one view-model helper, one shared drawer component, CSS, and existing tests. No new service, data model, or graph-engine payload change is needed.
+
+Architecture review:
+
+- `[P1] node-list reset key was too narrow` — using only `communityId` can leak expanded state when the same community refreshes with a changed core-node list. Folded into Task 1/2 by using `community:<id>:<coreNodeIds>` and key-bound render state.
+- `[P2] "all core nodes" wording was too broad` — graph-engine already caps `payload.coreNodes`; this plan now says it restores every core node already supplied by the summary payload, not every page in the community.
+
+Code quality review:
+
+- `[P2] plan sounded like adding existing behavior from scratch` — `GraphGroupDrawer` already owns shared structure, icons, node preview hooks, and click hooks. The plan now explicitly says to preserve those paths and restore only the missing affordances.
+- `[P2] CSS examples conflicted with theme-variable rule` — literal new `rgba` / hex colors were replaced with existing variables plus `color-mix`.
+
+Test review:
+
+- `[P1] DOM test commands were wrong from repo root` — all `setup-dom.ts` commands now use `./workbench/...`.
+- `[P1] preview preservation was not locked` — Task 2 now tests mouse enter/leave and focus/blur callbacks.
+- `[P2] icon presence was only implied by CSS` — static render tests now assert the send and new-conversation buttons actually render SVG icons.
+- `[P2] CSS contract was too exact` — CSS assertions now lock critical tokens and hooks instead of pixel-perfect declarations.
+
+Performance review:
+
+- No new performance issue found. The only added runtime work is slicing an already-small `payload.coreNodes` array and toggling local component state.
+
+Failure-mode review:
+
+- Critical silent gap found and folded: same-community data refresh must not keep the previous expanded state.
+- No unresolved prompt, selection, graph layout, or node-detail risk remains in this plan.
+
+Outside voices:
+
+- Coherence reviewer: main boundaries are consistent after goal/CSS/test wording corrections.
+- Feasibility reviewer: no wrong prompt, preview, or click code path found after the plan acknowledges existing `onGraphSummaryNodeSelect` flow.
+- Testing reviewer: command path, preview test, icon test, and brittle CSS concerns were all folded into the plan.
+
+Parallelization:
+
+- Sequential implementation, no parallelization opportunity. The source edits all converge on the same small drawer/view-model/CSS surface; splitting this would increase coordination cost.
+
+## Implementation Tasks From Review
+
+- [ ] **T1 (P1, human: ~20min / CC: ~5min)** — Plan execution — Keep `nodeListKey` tied to community id plus core-node ids.
+  - Surfaced by: Architecture review.
+  - Files: `workbench/web/src/lib/graph-group-drawer.ts`, `workbench/web/src/components/GraphGroupDrawer.tsx`, related tests.
+  - Verify: focused unit and DOM tests listed in Task 4.
+- [ ] **T2 (P1, human: ~15min / CC: ~5min)** — Test commands — Run DOM tests from repo root with `./workbench/.../setup-dom.ts`.
+  - Surfaced by: Test review.
+  - Files: plan/test execution only.
+  - Verify: the corrected command starts and runs tests instead of failing module resolution.
+- [ ] **T3 (P2, human: ~30min / CC: ~10min)** — Existing behavior protection — Preserve preview/click/icon/prompt paths while restoring the three missing affordances.
+  - Surfaced by: Code quality and test review.
+  - Files: `GraphGroupDrawer.tsx`, `RightDrawer.tsx` tests, summary/selection render tests.
+  - Verify: preview callback test, node click test, icon render test, send/new-conversation dispatch tests.
+
+---
+
 ## Final Checks Before PR
 
 - [ ] Run:
@@ -833,7 +1015,7 @@ Expected: commits include the spec, plan, and implementation commits in logical 
 
 ## Tests
 - node --import tsx --test workbench/web/test/graph-group-drawer.test.ts
-- node --test-concurrency=1 --import tsx --import workbench/web/test/setup-dom.ts --test workbench/web/test/right-drawer-graph-summary.test.tsx workbench/web/test/right-drawer-graph-selection.test.tsx workbench/web/test/right-drawer-interactions.test.tsx
+- node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test workbench/web/test/right-drawer-graph-summary.test.tsx workbench/web/test/right-drawer-graph-selection.test.tsx workbench/web/test/right-drawer-interactions.test.tsx
 - npm run test -w @llm-wiki-agent/web
 - npm run typecheck -w @llm-wiki-agent/web
 ```
@@ -845,3 +1027,16 @@ Expected: commits include the spec, plan, and implementation commits in logical 
 - Spec coverage: covered core-node expansion, node hover/focus feedback, dialogue hints, send/new-chat visual treatment, no selection-page expand, no search/fixed/bridge first-screen restoration, and existing PR82 paths.
 - Placeholder scan: no placeholder tasks; all test and implementation steps include exact files, commands, and expected outcomes.
 - Type consistency: `nodeListExpandable` and `nodeListKey` are introduced in Task 1 and consumed in Task 2 with the same names.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | Not run; scope was already explicitly confirmed as Option A minimal recovery |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | Not run |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 8 issues found and folded into the plan; 0 critical gaps remain |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | Not run in this review; approved HTML design remains the visual reference |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | Not run |
+
+- **VERDICT:** ENG CLEARED — ready to implement this scoped recovery plan.
+NO UNRESOLVED DECISIONS
