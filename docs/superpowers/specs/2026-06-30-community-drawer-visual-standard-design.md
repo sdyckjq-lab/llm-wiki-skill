@@ -1,7 +1,7 @@
 # 图谱分组抽屉视觉统一设计
 
-日期：2026-06-30  
-范围：llm-wiki-agent 图谱右侧社区抽屉与选区抽屉  
+日期：2026-06-30
+范围：llm-wiki-agent 图谱右侧社区抽屉与选区抽屉
 视觉定稿：`designs/community-drawer-visual-options/index.html`，以 `preview-selected-centered.png` 中的「B 方案：更克制主色版 / 3 更克制」为准
 
 ## 背景

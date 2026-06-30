@@ -871,7 +871,7 @@ Write a short final summary for the user covering:
 
 ## Engineering Review Addendum
 
-Review date: 2026-06-30  
+Review date: 2026-06-30
 Review target: current branch diff, including this plan and `docs/superpowers/specs/2026-06-30-community-drawer-visual-standard-design.md`
 
 ### Step 0 Scope Challenge
