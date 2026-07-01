@@ -775,6 +775,51 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("fake camera advances intermediate animation frames and emits updated events", () => {
+    const camera = new FakeCamera();
+    const updates: Array<{ x: number; y: number; angle: number; ratio: number }> = [];
+    camera.on("updated", (state) => updates.push(state));
+
+    void camera.animate({ x: 10, y: 20, ratio: 0.5 }, { duration: 380, easing: "quadraticInOut" });
+    assert.equal(camera.isAnimated(), true);
+
+    camera.advanceAnimation(0.5);
+
+    assert.equal(camera.isAnimated(), true);
+    assert.deepEqual(camera.getState(), { x: 5, y: 10, angle: 0, ratio: 0.75 });
+    assert.deepEqual(updates.at(-1), { x: 5, y: 10, angle: 0, ratio: 0.75 });
+
+    camera.finishAnimation();
+
+    assert.equal(camera.isAnimated(), false);
+    assert.deepEqual(camera.getState(), { x: 10, y: 20, angle: 0, ratio: 0.5 });
+    assert.deepEqual(updates.at(-1), { x: 10, y: 20, angle: 0, ratio: 0.5 });
+  });
+
+  it("fake sigma keeps the render matrix stale until afterRender unless cameraState override is passed", () => {
+    const runtime = fakeRuntime({ worldScale: 100 });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    const before = sigma.graphToViewport({ x: 100, y: 100 });
+    sigma.camera.setState({ x: 10, y: 20, ratio: 0.5 });
+    const stale = sigma.graphToViewport({ x: 100, y: 100 });
+    const current = sigma.graphToViewport({ x: 100, y: 100 }, { cameraState: sigma.camera.getState() });
+
+    assert.deepEqual(stale, before);
+    assert.notDeepEqual(current, stale);
+
+    sigma.emit("afterRender");
+    assert.deepEqual(sigma.graphToViewport({ x: 100, y: 100 }), current);
+
+    renderer.destroy();
+  });
+
   it("uses the overlay animation fast path while the Sigma camera is animated and settles exactly afterward", () => {
     const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({
@@ -2679,6 +2724,7 @@ class FakeSigma implements SigmaGlobalSigmaLike {
   readonly container: HTMLElement;
   readonly settings: Record<string, unknown>;
   readonly camera = new FakeCamera();
+  private renderedCameraState = this.camera.getState();
   readonly listeners = new Map<string, Set<(payload?: unknown) => void>>();
   readonly setGraphCalls: SigmaGlobalGraphologyGraph[] = [];
   readonly mouseCaptor = new FakeMouseCaptor();
@@ -2727,9 +2773,17 @@ class FakeSigma implements SigmaGlobalSigmaLike {
     return { x: point.x, y: point.y };
   }
 
-  graphToViewport(point: { x: number; y: number }): { x: number; y: number } {
+  graphToViewport(
+    point: { x: number; y: number },
+    override: { cameraState?: Partial<{ x: number; y: number; angle: number; ratio: number }> } = {}
+  ): { x: number; y: number } {
     const scale = this.options.worldScale ?? 1;
-    return { x: point.x / scale, y: point.y / scale };
+    const cameraState = { ...this.renderedCameraState, ...(override.cameraState ?? {}) };
+    const ratio = cameraState.ratio || 1;
+    return {
+      x: (point.x / scale - cameraState.x) / ratio,
+      y: (point.y / scale - cameraState.y) / ratio
+    };
   }
 
   getMouseCaptor(): FakeMouseCaptor {
@@ -2767,6 +2821,9 @@ class FakeSigma implements SigmaGlobalSigmaLike {
   }
 
   emit(event: string, payload?: unknown): void {
+    if (event === "afterRender") {
+      this.renderedCameraState = this.camera.getState();
+    }
     for (const listener of this.listeners.get(event) ?? []) listener(payload);
   }
 
@@ -2778,6 +2835,9 @@ class FakeSigma implements SigmaGlobalSigmaLike {
 
 class FakeCamera {
   private state = { x: 0, y: 0, angle: 0, ratio: 1 };
+  private animationStart = { x: 0, y: 0, angle: 0, ratio: 1 };
+  private nextAnimationError: Error | null = null;
+  private readonly listeners = new Map<"updated", Set<(state: { x: number; y: number; angle: number; ratio: number }) => void>>();
   readonly setStateCalls: Array<Partial<{ x: number; y: number; angle: number; ratio: number }>> = [];
   readonly animateCalls: Array<{
     state: Partial<{ x: number; y: number; angle: number; ratio: number }>;
@@ -2792,30 +2852,73 @@ class FakeCamera {
 
   setState(state: Partial<{ x: number; y: number; angle: number; ratio: number }>): void {
     this.setStateCalls.push({ ...state });
-    this.state = { ...this.state, ...state };
+    const next = { ...this.state, ...state };
+    const changed = next.x !== this.state.x
+      || next.y !== this.state.y
+      || next.angle !== this.state.angle
+      || next.ratio !== this.state.ratio;
+    this.state = next;
+    if (changed) this.emit("updated", this.getState());
   }
 
   isAnimated(): boolean {
     return this.animated;
   }
 
-  finishAnimation(): void {
-    this.animated = false;
+  on(event: "updated", listener: (state: { x: number; y: number; angle: number; ratio: number }) => void): void {
+    const listeners = this.listeners.get(event) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(event, listeners);
   }
 
-  // 乐观同步模拟：animate 立刻 setState 到目标，animated 仅在 duration>1 时为 true。
-  // 这不反映真实 Sigma 3.x camera.animate 的逐帧 rAF 插值（见 sigma.esm.js），因此
-  // "wheel 不积压动画""按钮动画被滚轮即时接管"等设计 §5 语义在单测层无法真正证伪
-  // ——FakeCamera 抹平了动画的进行中状态。这类交互由浏览器回归（smallMove<largeMove）
-  // 与实机手感兜底。
+  off(event: "updated", listener: (state: { x: number; y: number; angle: number; ratio: number }) => void): void {
+    this.listeners.get(event)?.delete(listener);
+  }
+
+  rejectNextAnimation(error: Error): void {
+    this.nextAnimationError = error;
+  }
+
+  advanceAnimation(progress: number): void {
+    if (!this.activeAnimationTarget) return;
+    const clamped = Math.max(0, Math.min(1, progress));
+    const target = { ...this.animationStart, ...this.activeAnimationTarget };
+    this.setState({
+      x: this.animationStart.x + (target.x - this.animationStart.x) * clamped,
+      y: this.animationStart.y + (target.y - this.animationStart.y) * clamped,
+      angle: this.animationStart.angle + (target.angle - this.animationStart.angle) * clamped,
+      ratio: this.animationStart.ratio + (target.ratio - this.animationStart.ratio) * clamped
+    });
+  }
+
+  finishAnimation(): void {
+    if (this.activeAnimationTarget) {
+      this.setState(this.activeAnimationTarget);
+    }
+    this.animated = false;
+    this.activeAnimationTarget = null;
+  }
+
   animate(
     state: Partial<{ x: number; y: number; angle: number; ratio: number }>,
     options?: { duration?: number; easing?: string }
   ): Promise<void> {
-    this.animated = Boolean(options?.duration && options.duration > 1);
     this.animateCalls.push({ state: { ...state }, options: options ? { ...options } : undefined });
+    if (this.nextAnimationError) {
+      const error = this.nextAnimationError;
+      this.nextAnimationError = null;
+      return Promise.reject(error);
+    }
+    this.animationStart = this.getState();
     this.activeAnimationTarget = { ...state };
-    this.setState(state);
+    this.animated = Boolean(options?.duration && options.duration > 1);
+    if (!this.animated) {
+      this.setState(state);
+    }
     return Promise.resolve();
+  }
+
+  private emit(event: "updated", state: { x: number; y: number; angle: number; ratio: number }): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(state);
   }
 }
