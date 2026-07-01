@@ -269,18 +269,39 @@ describe("renderer and facade boundary contract", () => {
   });
 
   it("mounts the Sigma global route on the themed graph root surface", async () => {
-    const facadeText = await readFile(join(SRC, "facade.ts"), "utf8");
+    const sigmaRouteText = await readFile(join(SRC, "graph-routes/sigma-global-route.ts"), "utf8");
 
-    assert.match(facadeText, /shell\.className = "sigma-global-route llm-wiki-graph-engine"/);
-    assert.match(facadeText, /applyGraphThemeToElement\(shell, options\.theme\)/);
-    assert.match(facadeText, /applyGraphThemeToElement\(shell, theme\)/);
+    assert.match(sigmaRouteText, /shell\.className = "sigma-global-route llm-wiki-graph-engine"/);
+    assert.match(sigmaRouteText, /applyGraphThemeToElement\(shell, options\.theme\)/);
+    assert.match(sigmaRouteText, /applyGraphThemeToElement\(shell, theme\)/);
+  });
+
+  it("keeps Sigma global route shell and controls out of the facade route manager", async () => {
+    const facadeText = await readFile(join(SRC, "facade.ts"), "utf8");
+    const sigmaRouteText = await readFile(join(SRC, "graph-routes/sigma-global-route.ts"), "utf8");
+
+    assert.match(facadeText, /from "\.\/graph-routes\/sigma-global-route"/);
+    assert.doesNotMatch(facadeText, /\bcreateSigmaGlobalRenderer\b/);
+    assert.doesNotMatch(facadeText, /\bcreateSearchControl\b/);
+    assert.doesNotMatch(facadeText, /\bcreateGraphToolbar\b/);
+    assert.doesNotMatch(facadeText, /\bcreateCommunityLegend\b/);
+    assert.doesNotMatch(facadeText, /\bcreateSigmaZoomControls\b/);
+    assertSourceContainsAll(sigmaRouteText, [
+      "function createSigmaGlobalFacadeRenderer",
+      "function mountSigmaControls",
+      "createSigmaGlobalRenderer",
+      "createSearchControl",
+      "createGraphToolbar",
+      "createCommunityLegend",
+      "createSigmaZoomControls"
+    ]);
   });
 
   it("mounts and styles Sigma zoom controls outside the main graph toolbar", async () => {
-    const facadeText = await readFile(join(SRC, "facade.ts"), "utf8");
+    const sigmaRouteText = await readFile(join(SRC, "graph-routes/sigma-global-route.ts"), "utf8");
     const stylesText = await readFile(join(SRC, "render/render-styles.ts"), "utf8");
 
-    assertSourceContainsAll(facadeText, [
+    assertSourceContainsAll(sigmaRouteText, [
       "createSigmaZoomControls",
       "shell.querySelector(\".graph-zoom-controls\")?.remove();",
       "onZoomIn: () => renderer?.zoomIn()",
