@@ -880,9 +880,10 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
-  it("drives project-owned spotlight frames when Sigma does not report camera animation state", () => {
+  it("keeps one fast-path spotlight frame when the browser skips the animation window", () => {
     const animationFrames: FrameRequestCallback[] = [];
-    const runtime = fakeRuntime({ worldScale: 200, cameraReportsAnimated: false });
+    let now = 0;
+    const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({
       container: fakeContainer({
         requestAnimationFrame: (callback: FrameRequestCallback) => {
@@ -890,7 +891,7 @@ describe("Sigma global renderer production boundary", () => {
           return animationFrames.length;
         },
         cancelAnimationFrame: () => undefined,
-        performance: { now: () => 0 }
+        performance: { now: () => now }
       }),
       adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
       theme: "shan-shui",
@@ -902,10 +903,55 @@ describe("Sigma global renderer production boundary", () => {
     animationFrames.shift()?.(0);
     assert.equal(sigma.camera.animateCalls.length, 1);
 
+    now = 900;
+    sigma.camera.finishAnimation();
+    animationFrames.shift()?.(900);
+
+    assert.match(renderer.overlayRoot.style.transform || "", /^translate\(/);
+
+    animationFrames.shift()?.(916);
+
+    assert.equal(renderer.overlayRoot.style.transform, "");
+    assert.equal(renderer.overlayRoot.style.willChange, "");
+
+    renderer.destroy();
+  });
+
+  it("drives project-owned spotlight frames when Sigma does not report camera animation state", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    let now = 0;
+    const runtime = fakeRuntime({ worldScale: 200, cameraReportsAnimated: false });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer({
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          animationFrames.push(callback);
+          return animationFrames.length;
+        },
+        cancelAnimationFrame: () => undefined,
+        performance: { now: () => now }
+      }),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+    animationFrames.shift()?.(0);
+    assert.equal(sigma.camera.animateCalls.length, 1);
+
+    now = 16;
     sigma.camera.advanceAnimation(0.5);
     animationFrames.shift()?.(16);
 
     assert.match(renderer.overlayRoot.style.transform || "", /^translate\(/);
+
+    now = 381;
+    animationFrames.shift()?.(381);
+
+    assert.equal(renderer.overlayRoot.style.transform, "");
+    assert.equal(renderer.overlayRoot.style.willChange, "");
+    assert.equal(animationFrames.length, 0);
 
     renderer.destroy();
   });
@@ -925,6 +971,42 @@ describe("Sigma global renderer production boundary", () => {
 
     renderer.destroy();
     assert.equal(sigma.camera.listenerCount("updated"), 0);
+  });
+
+  it("uses camera updated events to schedule an overlay refresh", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const runtime = fakeRuntime({ worldScale: 100 });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer({
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          animationFrames.push(callback);
+          return animationFrames.length;
+        },
+        cancelAnimationFrame: () => undefined
+      }),
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    const node = renderer.overlayRoot.children.find((child) => child.dataset.nodeId === "render-alpha");
+    assert.ok(node, "fixture should render a node hit target");
+    const beforeLeft = node.style.left;
+    sigma.graphToViewport = (point: { x: number; y: number }) => {
+      const cameraState = sigma.camera.getState();
+      return {
+        x: point.x / 100 - cameraState.x,
+        y: point.y / 100 - cameraState.y
+      };
+    };
+
+    sigma.camera.setState({ x: 0.5, y: 0.25 });
+
+    assert.equal(animationFrames.length, 1);
+    animationFrames.shift()?.(16);
+    assert.notEqual(node.style.left, beforeLeft);
+
+    renderer.destroy();
   });
 
   it("ignores stale animation frame owners after wheel invalidates the baseline", () => {

@@ -47,7 +47,7 @@ const SIGMA_GLOBAL_NODE_HIT_TARGET_LIMIT = 160;
 export interface SigmaOverlayDomController {
   rebuild(): void;
   reposition(): void;
-  repositionForCameraAnimation(): void;
+  repositionForCameraAnimation(): boolean;
   invalidateAnimationBaseline(): void;
   clearActiveDragListeners(): void;
   destroy(): void;
@@ -209,11 +209,11 @@ export function createSigmaOverlayDomController(input: SigmaOverlayDomController
     refreshCameraAnimationBaseline(adapterData, sigma, options);
   }
 
-  function repositionForCameraAnimation(): void {
-    if (input.isDestroyed()) return;
+  function repositionForCameraAnimation(): boolean {
+    if (input.isDestroyed()) return false;
     if (!cameraAnimationBaseline) {
       reposition();
-      return;
+      return false;
     }
     const sigma = input.getSigma();
     const options = input.getOptions();
@@ -228,11 +228,12 @@ export function createSigmaOverlayDomController(input: SigmaOverlayDomController
     const css = sigmaOverlayCameraTransformCss(transform);
     if (!css) {
       reposition();
-      return;
+      return false;
     }
     input.overlayRoot.style.transformOrigin = "0 0";
     input.overlayRoot.style.transform = css;
     input.overlayRoot.style.willChange = "transform";
+    return true;
   }
 
   function invalidateAnimationBaseline(): void {

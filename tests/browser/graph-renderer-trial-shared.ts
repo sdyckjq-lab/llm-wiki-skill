@@ -31,7 +31,8 @@ export const REQUIRED_TRIAL_ACTIONS = [
 
 export type TrialAction = typeof REQUIRED_TRIAL_ACTIONS[number];
 
-// Actions where fps + frame p95 are mandatory-to-measure (wheel/drag).
+// Actions where fps + frame p95 are hard gates. Spotlight records those metrics
+// too, but gates on mid-animation visual following because click/rebuild timing is noisy.
 export const FRAME_SAMPLED_ACTIONS = new Set<string>(["wheel_zoom", "drag"]);
 // Actions where wall-clock duration has an upper bound per the hard-gate table.
 export const DURATION_GATED_ACTIONS = new Set<string>([
@@ -229,6 +230,8 @@ export function validateTrialResults(input: {
   resultPath: string;
 }): void {
   const requiredActions = input.requiredActions ?? REQUIRED_TRIAL_ACTIONS;
+  const requiredActionSet = new Set(requiredActions);
+  const hasFocusedActions = Boolean(input.requiredActions);
   const requireSchema = input.requireSchema !== false;
   const failures: string[] = [];
 
@@ -251,6 +254,7 @@ export function validateTrialResults(input: {
 
   if (requireSchema) for (const record of input.records) {
     const shapeAction = `${record.graph_shape}/${record.action}`;
+    const shouldGateAction = !hasFocusedActions || requiredActionSet.has(record.action);
     // Schema completeness: every record must carry the documented fields.
     if (!record.schema_version) failures.push(`${shapeAction}: missing schema_version`);
     if (typeof record.production_path !== "boolean") failures.push(`${shapeAction}: missing production_path`);
@@ -262,21 +266,22 @@ export function validateTrialResults(input: {
 
     // Mandatory-metric gates: a null or not-run value on a mandatory metric
     // blocks pass (the artifact is treated as incomplete), per the hard gate.
-    if (FRAME_SAMPLED_ACTIONS.has(record.action)) {
+    if (shouldGateAction && FRAME_SAMPLED_ACTIONS.has(record.action)) {
       const frameFailure = frameSampleFailureClass(record);
       if (frameFailure) failures.push(`${shapeAction}: ${frameFailure}; fps=${record.fps ?? "null"}; frame_p95_ms=${record.frame_p95_ms ?? "null"}`);
     }
-    if (DURATION_GATED_ACTIONS.has(record.action)) {
+    if (shouldGateAction && DURATION_GATED_ACTIONS.has(record.action)) {
       const metadata = { nodes: typeof record.nodes === "number" ? record.nodes : 0 };
       const durationFailure = durationFailureClass(record, metadata, record.action);
       if (durationFailure) failures.push(`${shapeAction}: ${durationFailure}; duration_ms=${record.duration_ms ?? "null"}`);
     }
-    if (record.action === MEMORY_GATED_ACTION && record.memory_growth_mb == null) {
+    if (shouldGateAction && record.action === MEMORY_GATED_ACTION && record.memory_growth_mb == null) {
       failures.push(`${shapeAction}: memory_growth_missing`);
     }
   }
 
   for (const record of input.records) {
+    if (hasFocusedActions && !requiredActionSet.has(record.action)) continue;
     if (record.pass === false || record.failure_class) {
       failures.push(`${record.graph_shape}/${record.action}: pass=${record.pass}; failure=${record.failure_class ?? "none"}; detail=${record.failure_detail ?? "none"}`);
     }

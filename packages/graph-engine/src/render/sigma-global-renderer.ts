@@ -89,6 +89,7 @@ export type {
 export const SIGMA_GLOBAL_RENDERER_ID = "sigma-global" as const;
 
 export const SIGMA_GLOBAL_RENDERER_ROUTE_MANAGER_OWNER = "facade" as const;
+const SIGMA_CAMERA_MINIMUM_FAST_PATH_FRAMES = 1;
 
 export const SIGMA_GLOBAL_RENDERER_BUNDLE_BOUNDARY = {
   sigma: "runtime-loaded-by-sigma-global-renderer",
@@ -159,6 +160,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let suppressOverlayAnimationFastPathUntilCameraSettles = false;
   let projectCameraAnimationUntilMs = 0;
   let projectCameraAnimationSawSigmaAnimated = false;
+  let projectCameraAnimationFastPathFrames = 0;
+  let projectCameraAnimationMinimumFastPathFrames = 0;
   let overlayAnimationSettleFrame: number | null = null;
   let overlayAnimationFrameOwner = 0;
   let scheduledOverlayAnimationFrameOwner: number | null = null;
@@ -362,13 +365,18 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   // wheel/reset/resize/drag 等直接 setState 的入口会 suppress 快路径直到相机真正静止，
   // 因为 Sigma 的 setState() 不会取消已排队的 animate()（见 sigma_camera_setstate_does_not_cancel_animation）。
   function startOverlayCameraFrameTracking(): void {
-    startProjectCameraFrameTracking(SIGMA_BUTTON_ZOOM_DURATION_MS);
+    startProjectCameraFrameTracking(SIGMA_BUTTON_ZOOM_DURATION_MS, SIGMA_CAMERA_MINIMUM_FAST_PATH_FRAMES);
   }
 
-  function startProjectCameraFrameTracking(durationMs: number): void {
+  function startProjectCameraFrameTracking(durationMs: number, minimumFastPathFrames = 0): void {
     overlayAnimationFrameOwner += 1;
     projectCameraAnimationUntilMs = Math.max(projectCameraAnimationUntilMs, nowMs() + durationMs);
     projectCameraAnimationSawSigmaAnimated = false;
+    projectCameraAnimationFastPathFrames = 0;
+    projectCameraAnimationMinimumFastPathFrames = Math.max(
+      projectCameraAnimationMinimumFastPathFrames,
+      minimumFastPathFrames
+    );
     requestOverlayAnimationFrame(overlayAnimationFrameOwner);
   }
 
@@ -397,13 +405,17 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const camera = sigma.getCamera?.();
       const sigmaAnimated = Boolean(camera?.isAnimated?.());
       if (sigmaAnimated) projectCameraAnimationSawSigmaAnimated = true;
-      const ownedAnimationActive = projectCameraAnimationUntilMs > nowMs() && !projectCameraAnimationSawSigmaAnimated;
+      const needsMinimumFastPathFrame = projectCameraAnimationFastPathFrames < projectCameraAnimationMinimumFastPathFrames;
+      const ownedAnimationActive = (projectCameraAnimationUntilMs > nowMs() && !projectCameraAnimationSawSigmaAnimated)
+        || needsMinimumFastPathFrame;
       const animated = sigmaAnimated || ownedAnimationActive;
       if (activeNodeDrag || suppressOverlayAnimationFastPathUntilCameraSettles || !animated) {
         overlayDomController?.reposition();
         if (!animated) {
           projectCameraAnimationUntilMs = 0;
           projectCameraAnimationSawSigmaAnimated = false;
+          projectCameraAnimationFastPathFrames = 0;
+          projectCameraAnimationMinimumFastPathFrames = 0;
           suppressOverlayAnimationFastPathUntilCameraSettles = false;
           cancelOverlayAnimationSettleCheck();
           return;
@@ -411,7 +423,12 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         if (continueScheduling) requestOverlayAnimationFrame(owner);
         return;
       }
-      overlayDomController?.repositionForCameraAnimation();
+      const usedFastPath = overlayDomController?.repositionForCameraAnimation() ?? false;
+      if (usedFastPath) {
+        projectCameraAnimationFastPathFrames += 1;
+      } else {
+        projectCameraAnimationMinimumFastPathFrames = projectCameraAnimationFastPathFrames;
+      }
       if (continueScheduling) requestOverlayAnimationFrame(owner);
     } catch (error) {
       options.onFatalError?.(error);
@@ -422,6 +439,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     overlayAnimationFrameOwner += 1;
     projectCameraAnimationUntilMs = 0;
     projectCameraAnimationSawSigmaAnimated = false;
+    projectCameraAnimationFastPathFrames = 0;
+    projectCameraAnimationMinimumFastPathFrames = 0;
     suppressOverlayAnimationFastPathUntilCameraSettles = true;
     overlayDomController?.invalidateAnimationBaseline();
     if (!Boolean(sigma.getCamera?.().isAnimated?.())) {
@@ -445,7 +464,10 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function applySpotlightCameraResult(result: SigmaCommunitySpotlightCameraResult): void {
     cameraSpotlightCommunityId = result.communityId;
     if (result.movement === "animated") {
-      startProjectCameraFrameTracking(SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS);
+      startProjectCameraFrameTracking(
+        SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS,
+        SIGMA_CAMERA_MINIMUM_FAST_PATH_FRAMES
+      );
       return;
     }
     if (result.movement === "immediate") {

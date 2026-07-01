@@ -114,6 +114,27 @@ describe("Sigma global camera helpers", () => {
     assert.deepEqual(observed, [error]);
   });
 
+  it("routes synchronous camera animation failures to the fatal error callback", () => {
+    const error = new Error("animation threw");
+    const observed: unknown[] = [];
+    const result = moveSigmaCamera(
+      {
+        getCamera: () => ({
+          getState: () => ({ x: 0, y: 0, angle: 0, ratio: 1 }),
+          animate: () => {
+            throw error;
+          }
+        })
+      },
+      { x: 10 },
+      false,
+      (caught) => observed.push(caught)
+    );
+
+    assert.deepEqual(result, { movement: "skipped", skipReason: "animate-error" });
+    assert.deepEqual(observed, [error]);
+  });
+
   it("falls back to raw graph points when Sigma projection is unavailable or invalid", () => {
     assert.deepEqual(sigmaGraphPointToCameraPoint({}, { x: 10, y: 20 }), { x: 10, y: 20 });
     assert.deepEqual(

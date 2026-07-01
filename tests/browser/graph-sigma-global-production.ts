@@ -172,6 +172,7 @@ async function writeResult(records: PerformanceRecord[], errors: string[]): Prom
     },
     artifact_dir: artifactDir,
     shapes: requestedShapes,
+    requested_actions: requestedActions ? [...requestedActions] : null,
     records,
     errors
   }, null, 2)}\n`);
@@ -1149,8 +1150,8 @@ async function measureSpotlightAnimation(page: PageLike, metadata: LargeGraphFix
     }));
   }) as Record<string, SigmaSpotlightRegionState>;
 
+  await startSpotlightAnimationFrameSampler(page, 1800, sampleCommunityId, initialRegionsById);
   await clickPoint(page, target);
-  const runPromise = sampleSpotlightAnimationFrames(page, 360, sampleCommunityId, initialRegionsById);
   await page.waitForFunction(
     () => {
       const counts = (window as any).__sigmaProduction?.counts?.();
@@ -1161,7 +1162,7 @@ async function measureSpotlightAnimation(page: PageLike, metadata: LargeGraphFix
   );
   const selectionCounts = await page.evaluate(() => (window as any).__sigmaProduction.counts()) as { lastSelectionCommunityIds?: string[] };
   const selectedId = selectionCounts.lastSelectionCommunityIds?.[0] ?? null;
-  const run = await runPromise;
+  const run = await readSpotlightAnimationFrameSample(page);
   await waitForSpotlightSettled(page, selectedId);
   const region = await page.evaluate((id: string | null) => {
     const trial = (window as any).__sigmaProduction;
@@ -1171,6 +1172,7 @@ async function measureSpotlightAnimation(page: PageLike, metadata: LargeGraphFix
   if (!region.exists) failures.push("region_missing");
   if (!region.selected) failures.push("region_not_selected");
   if (region.width <= 0 || region.height <= 0) failures.push(`region_size=${region.width}x${region.height}`);
+  if (!run.sawTransform) failures.push("overlay_transform_missing");
   if (run.visualMovePx <= 0.5) failures.push(`region_not_moving=${run.visualMovePx}`);
   if (region.overlayTransform) failures.push(`overlay_transform_not_cleared=${region.overlayTransform}`);
 
@@ -1490,6 +1492,7 @@ function productionSignalFailureDetail(record: PerformanceRecord): string {
 }
 
 function applyDurationGate(metadata: LargeGraphFixtureMetadata, record: PerformanceRecord): PerformanceRecord {
+  if (requestedActions && !requestedActions.has(record.action)) return record;
   if (!DURATION_GATED_ACTIONS.has(record.action) || record.failure_class) return record;
   const failure = durationFailureClass({ duration_ms: record.duration_ms }, metadata, record.action);
   if (!failure) return record;
@@ -1688,20 +1691,21 @@ async function sampleAnimationFrames(page: PageLike, durationMs: number): Promis
   }))()`) as Promise<{ durationMs: number; fps: number; p95: number }>;
 }
 
-async function sampleSpotlightAnimationFrames(
+async function startSpotlightAnimationFrameSampler(
   page: PageLike,
   durationMs: number,
   selectedId: string | null,
   initialRegionsById: Record<string, SigmaSpotlightRegionState>
-): Promise<SigmaSpotlightAnimationSample> {
-  return page.evaluate(`(() => new Promise((resolve) => {
-    const durationMs = ${JSON.stringify(durationMs)};
+): Promise<void> {
+  await page.evaluate(`(() => {
+    const maxDurationMs = ${JSON.stringify(durationMs)};
     let activeId = ${JSON.stringify(selectedId)};
     const initialRegionsById = ${JSON.stringify(initialRegionsById)};
     const trial = window.__sigmaProduction;
     let started = 0;
     const deltas = [];
     const transforms = [];
+    let sawTransform = false;
     let firstRegion = null;
     let lastRegion = null;
     let last = 0;
@@ -1720,22 +1724,26 @@ async function sampleSpotlightAnimationFrames(
       if (!firstRegion && activeId && initialRegionsById[activeId]) firstRegion = initialRegionsById[activeId];
       if (!firstRegion && region && region.exists) firstRegion = region;
       if (region && region.exists) lastRegion = region;
-      if (region && region.overlayTransform) transforms.push(region.overlayTransform);
+      if (region && region.overlayTransform) {
+        sawTransform = true;
+        transforms.push(region.overlayTransform);
+      }
       const delta = now - last;
       if (delta > 0) deltas.push(delta);
       last = now;
       const elapsed = now - started;
-      if (elapsed >= durationMs) {
+      const transformSettled = sawTransform && region && region.exists && !region.overlayTransform;
+      if (transformSettled || elapsed >= maxDurationMs) {
         const sorted = [...deltas].sort((a, b) => a - b);
         const p95 = sorted[Math.max(0, Math.floor(sorted.length * 0.95) - 1)] || 0;
         const move = firstRegion && lastRegion
           ? Math.hypot(lastRegion.left - firstRegion.left, lastRegion.top - firstRegion.top)
           : 0;
-        resolve({
+        window.__sigmaSpotlightAnimationFrameSampleResolve({
           durationMs: elapsed,
           fps: deltas.length / (elapsed / 1000),
           p95,
-          sawTransform: transforms.length > 0,
+          sawTransform,
           visualMovePx: move,
           firstRegion,
           lastRegion,
@@ -1745,8 +1753,15 @@ async function sampleSpotlightAnimationFrames(
       }
       requestAnimationFrame(tick);
     }
+    window.__sigmaSpotlightAnimationFrameSample = new Promise((resolve) => {
+      window.__sigmaSpotlightAnimationFrameSampleResolve = resolve;
+    });
     requestAnimationFrame(tick);
-  }))()`) as Promise<SigmaSpotlightAnimationSample>;
+  })()`);
+}
+
+async function readSpotlightAnimationFrameSample(page: PageLike): Promise<SigmaSpotlightAnimationSample> {
+  return page.evaluate(`(() => window.__sigmaSpotlightAnimationFrameSample)()`) as Promise<SigmaSpotlightAnimationSample>;
 }
 
 function classifyError(error: unknown): string {
