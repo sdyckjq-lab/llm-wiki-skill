@@ -5,6 +5,7 @@ import type { GraphRendererAdapterData } from "../src";
 import type { SigmaGlobalCameraState, SigmaGlobalSigmaLike } from "../src/render/sigma-global-types";
 import {
   maybeAnimateSigmaCommunitySpotlightCamera,
+  moveSigmaCamera,
   readCameraState,
   restoreCameraState,
   sigmaCommunitySpotlightCenter,
@@ -33,19 +34,84 @@ describe("Sigma global camera helpers", () => {
     const reducedMotionRoot = rootWithReducedMotion(true);
     const animatedSigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 });
 
-    assert.equal(
+    assert.deepEqual(
       maybeAnimateSigmaCommunitySpotlightCamera(animatedSigma, reducedMotionRoot, adapterDataFixture(), "community-a", null),
-      "community-a"
+      { communityId: "community-a", movement: "immediate", skipReason: undefined }
     );
     assert.equal(animatedSigma.animateCalls, 0);
     assert.equal(animatedSigma.setStateCalls, 1);
 
     const noAnimateSigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 }, false);
-    assert.equal(
+    assert.deepEqual(
       maybeAnimateSigmaCommunitySpotlightCamera(noAnimateSigma, rootWithReducedMotion(false), adapterDataFixture(), "community-a", null),
-      "community-a"
+      { communityId: "community-a", movement: "immediate", skipReason: "animate-unavailable" }
     );
     assert.equal(noAnimateSigma.setStateCalls, 1);
+  });
+
+  it("returns community id and animated movement when spotlight starts camera animation", () => {
+    const sigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 });
+
+    const result = maybeAnimateSigmaCommunitySpotlightCamera(
+      sigma,
+      rootWithReducedMotion(false),
+      adapterDataFixture(),
+      "community-a",
+      null
+    );
+
+    assert.equal(result.communityId, "community-a");
+    assert.equal(result.movement, "animated");
+    assert.equal(result.skipReason, undefined);
+    assert.equal(sigma.animateCalls, 1);
+  });
+
+  it("distinguishes settled spotlight from unavailable camera", () => {
+    const settled = maybeAnimateSigmaCommunitySpotlightCamera(
+      sigmaLike({ x: 28, y: 30, angle: 0, ratio: 1 }),
+      rootWithReducedMotion(false),
+      adapterDataFixture(),
+      "community-a",
+      "community-a"
+    );
+    const unavailable = maybeAnimateSigmaCommunitySpotlightCamera(
+      {},
+      rootWithReducedMotion(false),
+      adapterDataFixture(),
+      "community-a",
+      null
+    );
+
+    assert.deepEqual(settled, {
+      communityId: "community-a",
+      movement: "skipped",
+      skipReason: "already-settled"
+    });
+    assert.deepEqual(unavailable, {
+      communityId: "community-a",
+      movement: "skipped",
+      skipReason: "camera-unavailable"
+    });
+  });
+
+  it("routes rejected camera animations to the fatal error callback", async () => {
+    const error = new Error("animation failed");
+    const observed: unknown[] = [];
+    const result = moveSigmaCamera(
+      {
+        getCamera: () => ({
+          getState: () => ({ x: 0, y: 0, angle: 0, ratio: 1 }),
+          animate: () => Promise.reject(error)
+        })
+      },
+      { x: 10 },
+      false,
+      (caught) => observed.push(caught)
+    );
+
+    assert.equal(result.movement, "animated");
+    await Promise.resolve();
+    assert.deepEqual(observed, [error]);
   });
 
   it("falls back to raw graph points when Sigma projection is unavailable or invalid", () => {
@@ -77,9 +143,9 @@ describe("Sigma global camera helpers", () => {
   it("does not decide selected community internally", () => {
     const sigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 });
 
-    assert.equal(
+    assert.deepEqual(
       maybeAnimateSigmaCommunitySpotlightCamera(sigma, rootWithReducedMotion(false), adapterDataFixture(), null, null),
-      null
+      { communityId: null, movement: "skipped", skipReason: "no-community" }
     );
     assert.equal(sigma.setStateCalls, 0);
     assert.equal(sigma.animateCalls, 0);

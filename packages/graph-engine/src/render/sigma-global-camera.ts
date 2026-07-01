@@ -4,6 +4,25 @@ import type {
   SigmaGlobalSigmaLike
 } from "./sigma-global-types";
 
+export type SigmaGlobalCameraMovement = "animated" | "immediate" | "skipped";
+
+export type SigmaGlobalCameraSkipReason =
+  | "no-community"
+  | "already-settled"
+  | "no-target"
+  | "camera-unavailable"
+  | "animate-unavailable"
+  | "animate-error";
+
+export interface SigmaGlobalCameraMoveResult {
+  movement: SigmaGlobalCameraMovement;
+  skipReason?: SigmaGlobalCameraSkipReason;
+}
+
+export interface SigmaCommunitySpotlightCameraResult extends SigmaGlobalCameraMoveResult {
+  communityId: string | null;
+}
+
 export function readCameraState(sigma: SigmaGlobalSigmaLike): SigmaGlobalCameraState | null {
   const state = sigma.getCamera?.().getState?.();
   if (!state) return null;
@@ -25,28 +44,51 @@ export function maybeAnimateSigmaCommunitySpotlightCamera(
   root: HTMLElement,
   adapterData: GraphRendererAdapterData,
   communityId: string | null,
-  previousCommunityId: string | null
-): string | null {
-  if (!communityId) return null;
-  if (communityId === previousCommunityId) return communityId;
+  previousCommunityId: string | null,
+  onAnimationError?: (error: unknown) => void
+): SigmaCommunitySpotlightCameraResult {
+  if (!communityId) {
+    return { communityId: null, movement: "skipped", skipReason: "no-community" };
+  }
+  if (communityId === previousCommunityId) {
+    return { communityId, movement: "skipped", skipReason: "already-settled" };
+  }
   const target = sigmaCommunitySpotlightCameraState(sigma, adapterData, communityId);
-  if (!target) return communityId;
-  moveSigmaCamera(sigma, target, prefersReducedMotion(root.ownerDocument.defaultView));
-  return communityId;
+  if (!target) {
+    return { communityId, movement: "skipped", skipReason: "no-target" };
+  }
+  const movement = moveSigmaCamera(
+    sigma,
+    target,
+    prefersReducedMotion(root.ownerDocument.defaultView),
+    onAnimationError
+  );
+  return { communityId, ...movement };
 }
 
 export function moveSigmaCamera(
   sigma: SigmaGlobalSigmaLike,
   target: Partial<SigmaGlobalCameraState>,
-  reducedMotion: boolean
-): void {
+  reducedMotion: boolean,
+  onAnimationError?: (error: unknown) => void
+): SigmaGlobalCameraMoveResult {
   const camera = sigma.getCamera?.();
-  if (!camera) return;
+  if (!camera) return { movement: "skipped", skipReason: "camera-unavailable" };
   if (reducedMotion || !camera.animate) {
-    camera.setState?.(target);
-    return;
+    if (!camera.setState) return { movement: "skipped", skipReason: "animate-unavailable" };
+    camera.setState(target);
+    return { movement: "immediate", skipReason: !camera.animate ? "animate-unavailable" : undefined };
   }
-  void camera.animate(target, { duration: 380, easing: "quadraticInOut" });
+  try {
+    const animation = camera.animate(target, { duration: 380, easing: "quadraticInOut" });
+    if (animation && typeof (animation as Promise<unknown>).catch === "function") {
+      void (animation as Promise<unknown>).catch((error) => onAnimationError?.(error));
+    }
+    return { movement: "animated" };
+  } catch (error) {
+    onAnimationError?.(error);
+    return { movement: "skipped", skipReason: "animate-error" };
+  }
 }
 
 export function sigmaCommunitySpotlightCameraState(
