@@ -299,6 +299,11 @@ async function writeProductionHtml(
       typeFilters: {},
       temporaryObject: null
     };
+    // 浏览器内戳：从 searchHighlight dispatch 到 visibility 首次反映搜索结果。
+    // measureSearch 据此算 duration，排除 Node 侧 waitForFunction 轮询分辨率与固定帧垫片
+    // ——这两者在 CPU 负载下会假性拉长时长（issue #88）。
+    let searchHighlightStartedAt = null;
+    let searchHighlightFinishedAt = null;
     stage.dataset.loadingState = "sigma-global-loading";
     loadingStateSeenAtMs = performance.now() - productionStart;
     stage.addEventListener("click", (event) => {
@@ -337,6 +342,9 @@ async function writeProductionHtml(
           onVisibilityStateChange(state) {
             lastVisibility = state;
             searchResultIds = state.searchResultIds || [];
+            if (searchHighlightStartedAt !== null && searchHighlightFinishedAt === null && searchResultIds.length > 0) {
+              searchHighlightFinishedAt = performance.now();
+            }
           }
         }
       });
@@ -618,6 +626,8 @@ async function writeProductionHtml(
       }
 
       function searchHighlight(query) {
+        searchHighlightStartedAt = performance.now();
+        searchHighlightFinishedAt = null;
         const input = document.querySelector(".graph-search-input");
         if (!input) throw new Error("Sigma search input not found");
         input.focus();
@@ -827,7 +837,9 @@ async function writeProductionHtml(
             hitTargetCount: probe.hitTargetCount,
             sigmaRendererCount: probe.sigmaRendererCount,
             loadingState: stage.dataset.loadingState || "",
-            loadingStateSeenAtMs
+            loadingStateSeenAtMs,
+            searchHighlightStartedAt,
+            searchHighlightFinishedAt
           };
         }
       };
@@ -1050,22 +1062,32 @@ async function measureDrag(page: PageLike, metadata: LargeGraphFixtureMetadata):
 }
 
 async function measureSearch(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
-  const started = performance.now();
-  const result = await page.evaluate(() => (window as any).__sigmaProduction.searchHighlight("needle"));
+  await page.evaluate(() => (window as any).__sigmaProduction.searchHighlight("needle"));
+  // duration 用浏览器内 performance.now() 戳（dispatch input → visibility 首次反映搜索结果），
+  // 排除 Node 侧 waitForFunction 轮询分辨率与固定帧垫片——这两者在 CPU 负载下会假性拉长时长（issue #88）。
   await page.waitForFunction(
-    (expected: number) => ((window as any).__sigmaProduction?.counts?.().visibilitySearchResultCount ?? 0) === expected,
-    metadata.search_hits,
+    () => typeof (window as any).__sigmaProduction?.counts?.().searchHighlightFinishedAt === "number",
+    undefined,
     { timeout: 4000 }
   );
   await waitForAnimationFrames(page, 3);
-  const counts = await page.evaluate(() => (window as any).__sigmaProduction.counts());
-  const hits = (counts as { visibilitySearchResultCount: number }).visibilitySearchResultCount;
+  const probe = await page.evaluate(() => {
+    const c = (window as any).__sigmaProduction.counts();
+    return {
+      started: c.searchHighlightStartedAt as number | null,
+      finished: c.searchHighlightFinishedAt as number | null,
+      hits: c.visibilitySearchResultCount as number
+    };
+  });
+  const duration = typeof probe.started === "number" && typeof probe.finished === "number"
+    ? probe.finished - probe.started
+    : null;
   return recordFromPage(page, metadata, {
     action: "search_highlight",
-    duration_ms: performance.now() - started,
-    pass: hits === metadata.search_hits,
-    failure_class: hits === metadata.search_hits ? null : "search_hit_mismatch",
-    failure_detail: hits === metadata.search_hits ? null : `expected=${metadata.search_hits}; actual=${hits}`,
+    duration_ms: duration,
+    pass: probe.hits === metadata.search_hits,
+    failure_class: probe.hits === metadata.search_hits ? null : "search_hit_mismatch",
+    failure_detail: probe.hits === metadata.search_hits ? null : `expected=${metadata.search_hits}; actual=${probe.hits}`,
     artifact_path: resultPath
   });
 }
