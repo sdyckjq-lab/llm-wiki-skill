@@ -844,6 +844,86 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("drives spotlight overlay animation from project rAF without manual afterRender", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const runtime = fakeRuntime({ worldScale: 200 });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer({
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          animationFrames.push(callback);
+          return animationFrames.length;
+        },
+        cancelAnimationFrame: () => undefined
+      }),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+    sigma.camera.advanceAnimation(0.5);
+    animationFrames.shift()?.(16);
+
+    assert.match(renderer.overlayRoot.style.transform || "", /^translate\(/);
+
+    sigma.camera.finishAnimation();
+    animationFrames.shift()?.(32);
+
+    assert.equal(renderer.overlayRoot.style.transform, "");
+    assert.equal(renderer.overlayRoot.style.willChange, "");
+
+    renderer.destroy();
+  });
+
+  it("does not bind the removed cameraUpdated renderer event", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    assert.equal(sigma.listeners.has("cameraUpdated"), false);
+    assert.equal(sigma.camera.listenerCount("updated"), 1);
+
+    renderer.destroy();
+    assert.equal(sigma.camera.listenerCount("updated"), 0);
+  });
+
+  it("ignores stale animation frame owners after wheel invalidates the baseline", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer({
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          animationFrames.push(callback);
+          return animationFrames.length;
+        },
+        cancelAnimationFrame: () => undefined
+      }),
+      adapterData: adapterDataFixture(),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.zoomIn();
+    sigma.camera.advanceAnimation(0.5);
+    const staleFrame = animationFrames.shift();
+    assert.ok(staleFrame, "zoom animation should schedule an owned overlay frame");
+
+    sigma.mouseCaptor.emitWheel({ x: 240, y: 160, deltaY: 80, deltaMode: 0 });
+    staleFrame?.(16);
+
+    assert.equal(renderer.overlayRoot.style.transform, "");
+    assert.equal(renderer.overlayRoot.style.willChange, "");
+
+    renderer.destroy();
+  });
+
   it("keeps exact overlay reposition after wheel setState until a prior camera animation settles", () => {
     const runtime = fakeRuntime();
     const renderer = createSigmaGlobalRenderer({
@@ -921,12 +1001,14 @@ describe("Sigma global renderer production boundary", () => {
     const sigma = runtime.instances[0];
 
     renderer.zoomIn();
-    sigma.emit("afterRender");
+    assert.equal(animationFrames.length, 1);
+    sigma.camera.advanceAnimation(0.5);
+    animationFrames.shift()?.(0);
     assert.match(renderer.overlayRoot.style.transform || "", /^translate\(/);
     assert.equal(animationFrames.length, 1);
 
     sigma.camera.finishAnimation();
-    animationFrames.shift()?.(0);
+    animationFrames.shift()?.(16);
 
     assert.equal(renderer.overlayRoot.style.transform, "");
     assert.equal(renderer.overlayRoot.style.willChange, "");
@@ -1337,8 +1419,8 @@ describe("Sigma global renderer production boundary", () => {
       state: { x: 0.48, y: 0.6, angle: 0, ratio: 0.92 },
       options: { duration: 380, easing: "quadraticInOut" }
     });
-    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 0.63, y: 0.7, angle: 0, ratio: 0.846 });
-    assert.deepEqual(sigma.camera.getState(), { x: 0.63, y: 0.7, angle: 0, ratio: 0.846 });
+    assert.deepEqual(sigma.camera.activeAnimationTarget, { x: 0.63, y: 0.7, angle: 0, ratio: 0.92 });
+    assert.deepEqual(sigma.camera.getState(), { x: 0, y: 0, angle: 0, ratio: 1 });
 
     renderer.destroy();
   });
@@ -1781,7 +1863,7 @@ describe("Sigma global renderer production boundary", () => {
     assert.equal(sigma.camera.animateCalls.at(-1)?.options?.duration, 140);
 
     renderer.zoomOut();
-    assertClose(sigma.zoomTargets.at(-1)?.ratio ?? 0, 1);
+    assertClose(sigma.zoomTargets.at(-1)?.ratio ?? 0, 1.18);
 
     // 按钮动画仍在进行（FakeCamera.animated=true），但滚轮必须直接 setState，
     // 不再排队 animate(duration:1)——这是触控板连续手感的关键（设计 §5）。
@@ -2873,6 +2955,10 @@ class FakeCamera {
 
   off(event: "updated", listener: (state: { x: number; y: number; angle: number; ratio: number }) => void): void {
     this.listeners.get(event)?.delete(listener);
+  }
+
+  listenerCount(event: "updated"): number {
+    return this.listeners.get(event)?.size ?? 0;
   }
 
   rejectNextAnimation(error: Error): void {

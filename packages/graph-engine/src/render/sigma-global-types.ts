@@ -26,6 +26,8 @@ export interface SigmaGlobalCameraLike {
   getState?: () => SigmaGlobalCameraState;
   setState?: (state: Partial<SigmaGlobalCameraState>) => unknown;
   isAnimated?: () => boolean;
+  on?: (event: "updated", listener: (state?: SigmaGlobalCameraState) => void) => unknown;
+  off?: (event: "updated", listener: (state?: SigmaGlobalCameraState) => void) => unknown;
   animate?: (
     state: Partial<SigmaGlobalCameraState>,
     options?: { duration?: number; easing?: string }
