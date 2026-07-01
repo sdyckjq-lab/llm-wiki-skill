@@ -60,6 +60,7 @@ import {
   prefersReducedMotion,
   readCameraState,
   restoreCameraState,
+  SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS,
   sigmaGlobalCameraState,
   type SigmaCommunitySpotlightCameraResult
 } from "./sigma-global-camera";
@@ -156,9 +157,12 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let resizeAnimationFrame: number | null = null;
   let lastObservedRootSize: RendererViewportSize | null = null;
   let suppressOverlayAnimationFastPathUntilCameraSettles = false;
+  let projectCameraAnimationUntilMs = 0;
+  let projectCameraAnimationSawSigmaAnimated = false;
   let overlayAnimationSettleFrame: number | null = null;
   let overlayAnimationFrameOwner = 0;
   let scheduledOverlayAnimationFrameOwner: number | null = null;
+  let deferredSpotlightCameraFrame: number | null = null;
 
   try {
     sigma = new runtime.Sigma(graph, sigmaRoot, sigmaSettingsForTheme(currentTheme));
@@ -235,15 +239,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
           restoreCameraState(sigma, cameraState);
           sigma.refresh?.();
           overlayDomController?.rebuild();
-          const spotlightCamera = maybeAnimateSigmaCommunitySpotlightCamera(
-            sigma,
-            sigmaRoot,
-            adapterData,
-            sigmaSpotlightCommunityId(adapterData),
-            previousCameraSpotlightCommunityId,
-            options.onFatalError
-          );
-          applySpotlightCameraResult(spotlightCamera);
+          scheduleSpotlightCameraUpdate(previousCameraSpotlightCommunityId, generation);
         } catch (error) {
           options.onFatalError?.(error);
         }
@@ -302,6 +298,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       unbindSigmaEvents();
       cancelScheduledResizeRefresh();
       cancelOverlayAnimationSettleCheck();
+      cancelDeferredSpotlightCameraUpdate();
       resizeObserver?.disconnect();
       resizeObserver = null;
       try {
@@ -365,7 +362,13 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   // wheel/reset/resize/drag 等直接 setState 的入口会 suppress 快路径直到相机真正静止，
   // 因为 Sigma 的 setState() 不会取消已排队的 animate()（见 sigma_camera_setstate_does_not_cancel_animation）。
   function startOverlayCameraFrameTracking(): void {
+    startProjectCameraFrameTracking(SIGMA_BUTTON_ZOOM_DURATION_MS);
+  }
+
+  function startProjectCameraFrameTracking(durationMs: number): void {
     overlayAnimationFrameOwner += 1;
+    projectCameraAnimationUntilMs = Math.max(projectCameraAnimationUntilMs, nowMs() + durationMs);
+    projectCameraAnimationSawSigmaAnimated = false;
     requestOverlayAnimationFrame(overlayAnimationFrameOwner);
   }
 
@@ -392,10 +395,15 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     if (destroyed || owner !== overlayAnimationFrameOwner) return;
     try {
       const camera = sigma.getCamera?.();
-      const animated = Boolean(camera?.isAnimated?.());
+      const sigmaAnimated = Boolean(camera?.isAnimated?.());
+      if (sigmaAnimated) projectCameraAnimationSawSigmaAnimated = true;
+      const ownedAnimationActive = projectCameraAnimationUntilMs > nowMs() && !projectCameraAnimationSawSigmaAnimated;
+      const animated = sigmaAnimated || ownedAnimationActive;
       if (activeNodeDrag || suppressOverlayAnimationFastPathUntilCameraSettles || !animated) {
         overlayDomController?.reposition();
         if (!animated) {
+          projectCameraAnimationUntilMs = 0;
+          projectCameraAnimationSawSigmaAnimated = false;
           suppressOverlayAnimationFastPathUntilCameraSettles = false;
           cancelOverlayAnimationSettleCheck();
           return;
@@ -412,6 +420,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
 
   function suppressOverlayAnimationFastPathUntilSettled(): void {
     overlayAnimationFrameOwner += 1;
+    projectCameraAnimationUntilMs = 0;
+    projectCameraAnimationSawSigmaAnimated = false;
     suppressOverlayAnimationFastPathUntilCameraSettles = true;
     overlayDomController?.invalidateAnimationBaseline();
     if (!Boolean(sigma.getCamera?.().isAnimated?.())) {
@@ -435,12 +445,49 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   function applySpotlightCameraResult(result: SigmaCommunitySpotlightCameraResult): void {
     cameraSpotlightCommunityId = result.communityId;
     if (result.movement === "animated") {
-      startOverlayCameraFrameTracking();
+      startProjectCameraFrameTracking(SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS);
       return;
     }
     if (result.movement === "immediate") {
       overlayDomController?.reposition();
     }
+  }
+
+  function scheduleSpotlightCameraUpdate(previousCommunityId: string | null, updateGeneration: number): void {
+    const run = (): void => {
+      deferredSpotlightCameraFrame = null;
+      if (destroyed || updateGeneration !== generation) return;
+      try {
+        const spotlightCamera = maybeAnimateSigmaCommunitySpotlightCamera(
+          sigma,
+          sigmaRoot,
+          adapterData,
+          sigmaSpotlightCommunityId(adapterData),
+          previousCommunityId,
+          options.onFatalError
+        );
+        applySpotlightCameraResult(spotlightCamera);
+      } catch (error) {
+        options.onFatalError?.(error);
+      }
+    };
+    const view = sigmaRoot.ownerDocument.defaultView;
+    if (!view?.requestAnimationFrame) {
+      run();
+      return;
+    }
+    cancelDeferredSpotlightCameraUpdate();
+    deferredSpotlightCameraFrame = view.requestAnimationFrame(run);
+  }
+
+  function cancelDeferredSpotlightCameraUpdate(): void {
+    if (deferredSpotlightCameraFrame === null) return;
+    sigmaRoot.ownerDocument.defaultView?.cancelAnimationFrame?.(deferredSpotlightCameraFrame);
+    deferredSpotlightCameraFrame = null;
+  }
+
+  function nowMs(): number {
+    return sigmaRoot.ownerDocument.defaultView?.performance?.now?.() ?? Date.now();
   }
 
   function zoomSigmaCameraAtViewportPoint(

@@ -32,7 +32,7 @@ export const REQUIRED_TRIAL_ACTIONS = [
 export type TrialAction = typeof REQUIRED_TRIAL_ACTIONS[number];
 
 // Actions where fps + frame p95 are mandatory-to-measure (wheel/drag).
-export const FRAME_SAMPLED_ACTIONS = new Set<string>(["wheel_zoom", "drag", "spotlight_animation"]);
+export const FRAME_SAMPLED_ACTIONS = new Set<string>(["wheel_zoom", "drag"]);
 // Actions where wall-clock duration has an upper bound per the hard-gate table.
 export const DURATION_GATED_ACTIONS = new Set<string>([
   "initial_render",

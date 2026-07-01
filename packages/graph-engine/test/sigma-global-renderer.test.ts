@@ -862,6 +862,10 @@ describe("Sigma global renderer production boundary", () => {
     const sigma = runtime.instances[0];
 
     renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+    assert.equal(sigma.camera.animateCalls.length, 0);
+    animationFrames.shift()?.(0);
+    assert.equal(sigma.camera.animateCalls.length, 1);
+
     sigma.camera.advanceAnimation(0.5);
     animationFrames.shift()?.(16);
 
@@ -872,6 +876,36 @@ describe("Sigma global renderer production boundary", () => {
 
     assert.equal(renderer.overlayRoot.style.transform, "");
     assert.equal(renderer.overlayRoot.style.willChange, "");
+
+    renderer.destroy();
+  });
+
+  it("drives project-owned spotlight frames when Sigma does not report camera animation state", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const runtime = fakeRuntime({ worldScale: 200, cameraReportsAnimated: false });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer({
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          animationFrames.push(callback);
+          return animationFrames.length;
+        },
+        cancelAnimationFrame: () => undefined,
+        performance: { now: () => 0 }
+      }),
+      adapterData: nodeSpotlightAdapterData({ selectionKind: null }),
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({ adapterData: nodeSpotlightAdapterData({ selectedCommunityId: "community-1" }) });
+    animationFrames.shift()?.(0);
+    assert.equal(sigma.camera.animateCalls.length, 1);
+
+    sigma.camera.advanceAnimation(0.5);
+    animationFrames.shift()?.(16);
+
+    assert.match(renderer.overlayRoot.style.transform || "", /^translate\(/);
 
     renderer.destroy();
   });
@@ -2617,6 +2651,7 @@ function renderableCommunityFixture(count: number): GraphRendererAdapterData["re
 
 type FakeDefaultView = Partial<Pick<Window, "ResizeObserver" | "requestAnimationFrame" | "cancelAnimationFrame">> & {
   matchMedia?: Window["matchMedia"];
+  performance?: Pick<Performance, "now">;
 };
 
 function fakeContainer(defaultView?: FakeDefaultView): HTMLElement & { children: HTMLElement[] } {
@@ -2715,6 +2750,7 @@ function fakeRuntime(options: {
   setGraphError?: Error;
   killError?: Error;
   worldScale?: number;
+  cameraReportsAnimated?: boolean;
 } = {}): SigmaGlobalRendererRuntime & { instances: FakeSigma[] } {
   const instances: FakeSigma[] = [];
   class RuntimeSigma extends FakeSigma {
@@ -2805,8 +2841,8 @@ class FakeSigma implements SigmaGlobalSigmaLike {
   graph: SigmaGlobalGraphologyGraph;
   readonly container: HTMLElement;
   readonly settings: Record<string, unknown>;
-  readonly camera = new FakeCamera();
-  private renderedCameraState = this.camera.getState();
+  readonly camera: FakeCamera;
+  private renderedCameraState: { x: number; y: number; angle: number; ratio: number };
   readonly listeners = new Map<string, Set<(payload?: unknown) => void>>();
   readonly setGraphCalls: SigmaGlobalGraphologyGraph[] = [];
   readonly mouseCaptor = new FakeMouseCaptor();
@@ -2817,11 +2853,13 @@ class FakeSigma implements SigmaGlobalSigmaLike {
     graph: SigmaGlobalGraphologyGraph,
     container: HTMLElement,
     settings: Record<string, unknown> = {},
-    private readonly options: { setGraphError?: Error; killError?: Error; worldScale?: number } = {}
+    private readonly options: { setGraphError?: Error; killError?: Error; worldScale?: number; cameraReportsAnimated?: boolean } = {}
   ) {
     this.graph = graph;
     this.container = container;
     this.settings = settings;
+    this.camera = new FakeCamera(options.cameraReportsAnimated ?? true);
+    this.renderedCameraState = this.camera.getState();
   }
 
   getCamera(): FakeCamera {
@@ -2928,6 +2966,8 @@ class FakeCamera {
   activeAnimationTarget: Partial<{ x: number; y: number; angle: number; ratio: number }> | null = null;
   animated = false;
 
+  constructor(private readonly reportsAnimated = true) {}
+
   getState(): { x: number; y: number; angle: number; ratio: number } {
     return { ...this.state };
   }
@@ -2944,7 +2984,7 @@ class FakeCamera {
   }
 
   isAnimated(): boolean {
-    return this.animated;
+    return this.reportsAnimated ? this.animated : false;
   }
 
   on(event: "updated", listener: (state: { x: number; y: number; angle: number; ratio: number }) => void): void {

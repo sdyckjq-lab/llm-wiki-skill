@@ -23,6 +23,8 @@ export interface SigmaCommunitySpotlightCameraResult extends SigmaGlobalCameraMo
   communityId: string | null;
 }
 
+export const SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS = 380;
+
 export function readCameraState(sigma: SigmaGlobalSigmaLike): SigmaGlobalCameraState | null {
   const state = sigma.getCamera?.().getState?.();
   if (!state) return null;
@@ -80,7 +82,7 @@ export function moveSigmaCamera(
     return { movement: "immediate", skipReason: !camera.animate ? "animate-unavailable" : undefined };
   }
   try {
-    const animation = camera.animate(target, { duration: 380, easing: "quadraticInOut" });
+    const animation = camera.animate(target, { duration: SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS, easing: "quadraticInOut" });
     if (animation && typeof (animation as Promise<unknown>).catch === "function") {
       void (animation as Promise<unknown>).catch((error) => onAnimationError?.(error));
     }

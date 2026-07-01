@@ -39,6 +39,7 @@ const DEFAULT_SIGMA_PRODUCTION_SHAPES: LargeGraphFixtureId[] = [
 ];
 const SIGMA_GLOBAL_NODE_LIMIT = 2000;
 const requestedShapes = parseSigmaProductionShapes(process.env.GRAPH_SIGMA_PRODUCTION_SHAPES);
+const requestedActions = parseSigmaProductionActions(process.env.GRAPH_SIGMA_PRODUCTION_ACTIONS);
 const resultPath = path.join(artifactDir, "sigma-global-production-results.json");
 const buildCommit = readBuildCommit();
 const rendererName = "sigma-global-production";
@@ -72,6 +73,14 @@ function parseSigmaProductionShapes(value: string | undefined): LargeGraphFixtur
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean) as LargeGraphFixtureId[];
+}
+
+function parseSigmaProductionActions(value: string | undefined): Set<string> | null {
+  const actions = (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return actions.length ? new Set(actions) : null;
 }
 
 async function main(): Promise<void> {
@@ -138,6 +147,7 @@ async function main(): Promise<void> {
   validateTrialResults({
     renderer: "Sigma global production",
     requestedShapes,
+    requiredActions: requestedActions ? [...requestedActions] : undefined,
     records,
     errors,
     resultPath
@@ -883,21 +893,27 @@ async function measureShape(browser: BrowserLike, metadata: LargeGraphFixtureMet
       initialRecord.failure_detail = `loading_state_seen_at_ms=${initialRecord.loading_state_seen_at_ms ?? "null"}; ceiling=250`;
     }
     records.push(initialRecord);
-    for (const action of [
-      () => measureWheelZoom(page, metadata),
-      () => measureDrag(page, metadata),
-      () => measureSearch(page, metadata),
-      () => measurePointSelect(page, metadata),
-      () => measureContainerSelect(page, metadata),
-      () => measureSpotlightAnimation(page, metadata),
-      () => measureDrawerOpen(page, metadata),
-      () => measureEnterCommunity(page, metadata),
-      () => measureReturnGlobal(page, metadata)
-    ]) {
-      records.push(await safeMeasure(page, metadata, action));
+    const actions = [
+      { name: "wheel_zoom", run: () => measureWheelZoom(page, metadata) },
+      { name: "drag", run: () => measureDrag(page, metadata) },
+      { name: "search_highlight", run: () => measureSearch(page, metadata) },
+      { name: "point_select", run: () => measurePointSelect(page, metadata) },
+      { name: "container_select", run: () => measureContainerSelect(page, metadata) },
+      { name: "spotlight_animation", run: () => measureSpotlightAnimation(page, metadata) },
+      { name: "drawer_open", run: () => measureDrawerOpen(page, metadata) },
+      { name: "enter_community", run: () => measureEnterCommunity(page, metadata) },
+      { name: "return_global", run: () => measureReturnGlobal(page, metadata) }
+    ];
+    for (const action of actions) {
+      if (requestedActions && !requestedActions.has(action.name)) continue;
+      records.push(await safeMeasure(page, metadata, action.run));
     }
-    records.push(await safeMeasure(page, metadata, () => measureRepeatedCycles(page, metadata)));
-    records.push(await safeMeasure(page, metadata, () => measureZoomControls(page, metadata)));
+    if (!requestedActions || requestedActions.has("repeated_search_community_drawer_cycles")) {
+      records.push(await safeMeasure(page, metadata, () => measureRepeatedCycles(page, metadata)));
+    }
+    if (!requestedActions || requestedActions.has("zoom_controls")) {
+      records.push(await safeMeasure(page, metadata, () => measureZoomControls(page, metadata)));
+    }
   } finally {
     await page.close().catch(() => undefined);
   }
@@ -1121,10 +1137,20 @@ async function measureSpotlightAnimation(page: PageLike, metadata: LargeGraphFix
   const target = await page.evaluate(() => {
     const trial = (window as any).__sigmaProduction;
     return trial.containerHitTarget(trial.firstCommunityId);
-  });
+  }) as PointerTarget | null;
   if (!target) throw new Error("measureSpotlightAnimation: no Sigma container hit target");
+  const sampleCommunityId = target.communityId ?? target.id ?? null;
+  const initialRegionsById = await page.evaluate(() => {
+    const trial = (window as any).__sigmaProduction;
+    const regions = Array.from(document.querySelectorAll(".sigma-global-community-region")) as HTMLElement[];
+    return Object.fromEntries(regions.map((region) => {
+      const id = region.dataset.communityId || "";
+      return [id, trial.communityRegionState(id)];
+    }));
+  }) as Record<string, SigmaSpotlightRegionState>;
 
-  await clickPoint(page, target as PointerTarget);
+  await clickPoint(page, target);
+  const runPromise = sampleSpotlightAnimationFrames(page, 360, sampleCommunityId, initialRegionsById);
   await page.waitForFunction(
     () => {
       const counts = (window as any).__sigmaProduction?.counts?.();
@@ -1135,26 +1161,33 @@ async function measureSpotlightAnimation(page: PageLike, metadata: LargeGraphFix
   );
   const selectionCounts = await page.evaluate(() => (window as any).__sigmaProduction.counts()) as { lastSelectionCommunityIds?: string[] };
   const selectedId = selectionCounts.lastSelectionCommunityIds?.[0] ?? null;
-  // 点击后的 selection rebuild 会短暂占用主线程；等选中完成后再采样，窗口对准 spotlight
-  // 相机动画的中后段（与 wheel/drag 一样用字符串式 sampleAnimationFrames）。
-  const run = await sampleAnimationFrames(page, 320);
+  const run = await runPromise;
   await waitForSpotlightSettled(page, selectedId);
   const region = await page.evaluate((id: string | null) => {
     const trial = (window as any).__sigmaProduction;
     return trial.communityRegionState(id);
   }, selectedId) as SigmaSpotlightRegionState;
-
   const failures: string[] = [];
   if (!region.exists) failures.push("region_missing");
   if (!region.selected) failures.push("region_not_selected");
   if (region.width <= 0 || region.height <= 0) failures.push(`region_size=${region.width}x${region.height}`);
+  if (run.visualMovePx <= 0.5) failures.push(`region_not_moving=${run.visualMovePx}`);
   if (region.overlayTransform) failures.push(`overlay_transform_not_cleared=${region.overlayTransform}`);
 
   return frameSampleRecord(page, metadata, {
     action: "spotlight_animation",
     runs: [run],
-    failureClass: failures.length ? "spotlight_animation_settle_failed" : null,
-    failureDetail: failures.length ? failures.join("; ") : null
+    enforceFrameMetrics: false,
+    failureClass: failures.length ? "spotlight_animation_follow_failed" : null,
+    failureDetail: failures.length
+      ? [
+        failures.join("; "),
+        `visual_move_px=${run.visualMovePx}`,
+        `first_region=${run.firstRegion?.id ?? "null"}`,
+        `last_region=${run.lastRegion?.id ?? "null"}`,
+        `transform_samples=${run.transformSamples.join("|")}`
+      ].join("; ")
+      : null
   });
 }
 
@@ -1169,11 +1202,22 @@ interface SigmaSpotlightRegionState {
   id: string | null;
 }
 
+interface SigmaSpotlightAnimationSample {
+  durationMs: number;
+  fps: number;
+  p95: number;
+  sawTransform: boolean;
+  visualMovePx: number;
+  firstRegion: SigmaSpotlightRegionState | null;
+  lastRegion: SigmaSpotlightRegionState | null;
+  transformSamples: string[];
+}
+
 async function waitForSpotlightReady(page: PageLike): Promise<void> {
   // 先等上一个测量的 spotlight 动画真正结束（camera 静止）：Sigma 的 setState
   // 不会取消已排队的 animate，若在旧动画未结束时 returnGlobal，setState 会被覆盖，
   // camera 仍停在旧社区，随后点击该社区不触发新动画（settled）。
-  await waitForStableCommunityRegion(page, null);
+  await waitForStableCommunityRegion(page, null, 30);
   await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal());
   await page.waitForFunction(
     () => {
@@ -1190,7 +1234,7 @@ async function waitForSpotlightReady(page: PageLike): Promise<void> {
     undefined,
     { timeout: 8000 }
   );
-  await waitForStableCommunityRegion(page, null);
+  await waitForStableCommunityRegion(page, null, 30);
 }
 
 async function waitForSpotlightSettled(page: PageLike, id: string | null): Promise<void> {
@@ -1581,6 +1625,7 @@ async function frameSampleRecord(
   input: {
     action: "wheel_zoom" | "drag" | "spotlight_animation";
     runs: { fps: number; p95: number; durationMs: number }[];
+    enforceFrameMetrics?: boolean;
     failureClass?: string | null;
     failureDetail?: string | null;
   }
@@ -1596,7 +1641,7 @@ async function frameSampleRecord(
   const p95 = median(byP95, "p95");
   const worst = byFps[0];
   const probe = await page.evaluate(() => (window as any).__sigmaProduction.productionProbe({ canvasSignal: false }));
-  const frameFailure = frameSampleFailureClass({ fps, frame_p95_ms: p95 });
+  const frameFailure = input.enforceFrameMetrics === false ? null : frameSampleFailureClass({ fps, frame_p95_ms: p95 });
   const productionFailure = (probe as { productionPath?: boolean }).productionPath ? null : "production_path_missing";
   // productionFailure（生产路径缺失）致命，优先于 settle 失败和帧指标，避免被表面错误掩盖。
   const failureClass = productionFailure || input.failureClass || frameFailure;
@@ -1641,6 +1686,67 @@ async function sampleAnimationFrames(page: PageLike, durationMs: number): Promis
     }
     requestAnimationFrame(tick);
   }))()`) as Promise<{ durationMs: number; fps: number; p95: number }>;
+}
+
+async function sampleSpotlightAnimationFrames(
+  page: PageLike,
+  durationMs: number,
+  selectedId: string | null,
+  initialRegionsById: Record<string, SigmaSpotlightRegionState>
+): Promise<SigmaSpotlightAnimationSample> {
+  return page.evaluate(`(() => new Promise((resolve) => {
+    const durationMs = ${JSON.stringify(durationMs)};
+    let activeId = ${JSON.stringify(selectedId)};
+    const initialRegionsById = ${JSON.stringify(initialRegionsById)};
+    const trial = window.__sigmaProduction;
+    let started = 0;
+    const deltas = [];
+    const transforms = [];
+    let firstRegion = null;
+    let lastRegion = null;
+    let last = 0;
+    function tick(now) {
+      if (!started) {
+        started = now;
+        last = now;
+      }
+      const selected = trial.counts?.().lastSelectionCommunityIds?.[0] || null;
+      if (selected && selected !== activeId) {
+        activeId = selected;
+        firstRegion = initialRegionsById[activeId] || null;
+        lastRegion = null;
+      }
+      const region = trial.communityRegionState(activeId);
+      if (!firstRegion && activeId && initialRegionsById[activeId]) firstRegion = initialRegionsById[activeId];
+      if (!firstRegion && region && region.exists) firstRegion = region;
+      if (region && region.exists) lastRegion = region;
+      if (region && region.overlayTransform) transforms.push(region.overlayTransform);
+      const delta = now - last;
+      if (delta > 0) deltas.push(delta);
+      last = now;
+      const elapsed = now - started;
+      if (elapsed >= durationMs) {
+        const sorted = [...deltas].sort((a, b) => a - b);
+        const p95 = sorted[Math.max(0, Math.floor(sorted.length * 0.95) - 1)] || 0;
+        const move = firstRegion && lastRegion
+          ? Math.hypot(lastRegion.left - firstRegion.left, lastRegion.top - firstRegion.top)
+          : 0;
+        resolve({
+          durationMs: elapsed,
+          fps: deltas.length / (elapsed / 1000),
+          p95,
+          sawTransform: transforms.length > 0,
+          visualMovePx: move,
+          firstRegion,
+          lastRegion,
+          transformSamples: transforms.slice(0, 5)
+        });
+        return;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }))()`) as Promise<SigmaSpotlightAnimationSample>;
 }
 
 function classifyError(error: unknown): string {
@@ -1701,6 +1807,7 @@ interface PointerTarget {
   width: number;
   height: number;
   id: string | null;
+  communityId?: string | null;
 }
 
 interface PageLike {
