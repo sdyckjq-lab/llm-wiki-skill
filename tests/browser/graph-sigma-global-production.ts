@@ -25,6 +25,7 @@ import {
   validateTrialResults,
   waitForAnimationFrames
 } from "./graph-renderer-trial-shared";
+import { SIGMA_BUTTON_ZOOM_DURATION_MS } from "../../packages/graph-engine/src/render/sigma-zoom";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
@@ -957,14 +958,33 @@ async function measureWheelZoom(page: PageLike, metadata: LargeGraphFixtureMetad
   return frameSampleRecord(page, metadata, { action: "wheel_zoom", runs });
 }
 
-async function waitForAnchorStable(page: PageLike, maxFrames = 12): Promise<void> {
+async function waitForAnchorStable(
+  page: PageLike,
+  options: { maxFrames?: number; stableFrames?: number; minimumFrames?: number } = {}
+): Promise<void> {
+  const maxFrames = options.maxFrames ?? 18;
+  const stableFrames = options.stableFrames ?? 3;
+  const minimumFrames = options.minimumFrames ?? 0;
+  let stableCount = 0;
   let prev = await page.evaluate(() => (window as any).__sigmaProduction.zoomAnchorRect()) as { x: number; y: number } | null;
   for (let i = 0; i < maxFrames; i += 1) {
     await waitForAnimationFrames(page, 1);
     const cur = await page.evaluate(() => (window as any).__sigmaProduction.zoomAnchorRect()) as { x: number; y: number } | null;
-    if (prev && cur && Math.hypot(prev.x - cur.x, prev.y - cur.y) < 0.1) return;
+    stableCount = prev && cur && Math.hypot(prev.x - cur.x, prev.y - cur.y) < 0.1
+      ? stableCount + 1
+      : 0;
+    if (i + 1 >= minimumFrames && stableCount >= stableFrames) return;
     prev = cur;
   }
+}
+
+async function waitForZoomButtonAnchorStable(page: PageLike): Promise<void> {
+  const animationFrames = Math.ceil(SIGMA_BUTTON_ZOOM_DURATION_MS / 16) + 2;
+  await waitForAnchorStable(page, {
+    maxFrames: animationFrames + 12,
+    stableFrames: 3,
+    minimumFrames: animationFrames
+  });
 }
 
 async function measureZoomControls(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
@@ -997,7 +1017,7 @@ async function measureZoomControls(page: PageLike, metadata: LargeGraphFixtureMe
   }
 
   await page.evaluate(() => (window as any).__sigmaProduction.clickZoomIn());
-  await waitForAnchorStable(page);
+  await waitForZoomButtonAnchorStable(page);
   const rect1 = (await page.evaluate(() => (window as any).__sigmaProduction.zoomAnchorRect())) as { x: number; y: number } | null;
 
   await page.evaluate((args: [number, number, number]) => (window as any).__sigmaProduction.dispatchSigmaWheel(null, args[0], args[1], args[2]), [720, 480, 4]);
@@ -1350,7 +1370,7 @@ async function measureEnterCommunity(page: PageLike, metadata: LargeGraphFixture
 
 async function measureReturnGlobal(page: PageLike, metadata: LargeGraphFixtureMetadata): Promise<PerformanceRecord> {
   const started = performance.now();
-  const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal(false));
+  const result = await page.evaluate(() => (window as any).__sigmaProduction.returnGlobal());
   const duration = performance.now() - started;
   const probe = (result as { production?: { productionPath?: boolean }; selectedContainerId?: string | null }).production;
   const selectedContainerId = (result as { selectedContainerId?: string | null }).selectedContainerId;
