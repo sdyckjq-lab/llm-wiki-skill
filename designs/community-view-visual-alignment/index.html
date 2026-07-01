@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>社区视觉对齐 v2 · 全局↔社区 不割裂</title>
+<style>
+  /* ============================================================
+     同源 token：全局与社区共用同一张"宣纸"
+     ============================================================ */
+  :root {
+    --paper:        #fdfaf2;
+    --paper-surface:#fffdf7;
+    --paper-raised: #f4ede0;
+    --paper-border: #ece3d2;
+    --ink:          #3a3530;
+    --ink-soft:     #5a5249;
+    --ink-muted:    #8a8175;
+
+    /* 社区色板（引擎 shan-shui，低饱和柔和） — 节点底色 */
+    --c-A: #dd9c82;  --c-B: #8fb0c9;  --c-C: #a6c187;
+
+    /* 类型光晕色（只作社区近景的光晕/强调） */
+    --t-topic: #8b2e24;  --t-source: #5e8a52;  --t-entity: #315f72;
+    --t-synthesis: #b7791f;  --t-query: #7a5b8a;
+
+    --accent: #8b2e24;        /* 统一朱砂（替换 Sigma 原 #ef4444） */
+    --accent-soft: #f3e4df;
+    --edge: #315f72;
+
+    /* 字体：节点标签默认 serif（本版用户选择）；深读同 serif */
+    --font-sans:  -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+    --font-serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", serif;
+
+    --shadow-card: 0 1px 2px rgba(70,55,40,.05), 0 10px 28px rgba(70,55,40,.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(ellipse at 18% 10%, color-mix(in srgb, var(--c-A) 7%, transparent), transparent 30%),
+      radial-gradient(ellipse at 86% 14%, color-mix(in srgb, var(--c-B) 6%, transparent), transparent 28%),
+      var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ============================================================ 顶栏 */
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--paper-border);
+    background: color-mix(in srgb, var(--paper-surface) 82%, transparent);
+    backdrop-filter: blur(10px);
+    position: sticky; top: 0; z-index: 30;
+  }
+  .brand { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .brand h1 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.01em; }
+  .brand p  { margin: 0; font-size: 11.5px; color: var(--ink-muted); line-height: 1.4; }
+
+  .seg { display: inline-flex; border: 1px solid var(--paper-border); border-radius: 10px; padding: 3px; background: var(--paper-surface); }
+  .seg button {
+    border: 0; background: transparent; cursor: pointer;
+    padding: 7px 13px; border-radius: 7px;
+    font: 700 12.5px/1 var(--font-sans); color: var(--ink-soft);
+    transition: background .18s, color .18s;
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper-surface); }
+  .seg.variant button[aria-pressed="true"] { background: var(--accent); }
+  .topbar .spacer { flex: 1; }
+
+  .view-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--paper-border));
+    background: var(--accent-soft); color: var(--accent);
+    font: 800 12.5px/1 var(--font-sans);
+    padding: 9px 14px; border-radius: 999px; cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 4px 12px color-mix(in srgb, var(--accent) 12%, transparent);
+    transition: transform .15s;
+  }
+  .view-btn:hover { transform: translateY(-1px); }
+
+  /* ============================================================ 布局 */
+  .layout { display: grid; grid-template-columns: minmax(0,1fr) 320px; height: calc(100vh - 63px); }
+  .stage-wrap { position: relative; overflow: hidden; border-right: 1px solid var(--paper-border); }
+  .stage { position: absolute; inset: 0; transition: background .6s ease; }
+
+  /* 镜面/釉面底：全局与社区同源（纯色 + 极淡径向呼吸），切换时底色完全不变 */
+  [data-variant="optimized"] .stage {
+    background:
+      radial-gradient(ellipse at 32% 42%, color-mix(in srgb, var(--paper-surface) 70%, transparent), transparent 62%),
+      radial-gradient(ellipse at 72% 60%, color-mix(in srgb, var(--paper-raised) 40%, transparent), transparent 58%),
+      var(--paper);
+  }
+  /* 当前现状：全局柔和光晕 / 社区工程方格纸（割裂感来源） */
+  [data-variant="current"][data-view="global"] .stage {
+    background:
+      radial-gradient(ellipse at 28% 55%, color-mix(in srgb, var(--paper-surface) 56%, transparent), transparent 56%),
+      radial-gradient(ellipse at 70% 48%, color-mix(in srgb, var(--paper-raised) 60%, transparent), transparent 58%),
+      #f4efe4;
+  }
+  [data-variant="current"][data-view="community"] .stage {
+    background:
+      linear-gradient(rgba(68,58,49,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(68,58,49,.04) 1px, transparent 1px),
+      radial-gradient(ellipse at 52% 48%, rgba(255,255,255,.72), transparent 55%),
+      #f8f1e6;
+    background-size: 42px 42px, 42px 42px, auto, auto;
+  }
+
+  svg.graph { width: 100%; height: 100%; display: block; }
+
+  /* 镜头推进：community = 缩放到焦点社区 A（中心约 300,310） */
+  .camera {
+    transform: translate(0,0) scale(1);
+    transform-origin: 0 0;
+    transition: transform .75s cubic-bezier(.22,.61,.36,1);
+  }
+  [data-view="community"] .camera { transform: translate(-25px,-203px) scale(1.75); }
+
+  .node, .edge { transition: opacity .55s ease; }
+  [data-view="community"] .node[data-community="B"],
+  [data-view="community"] .node[data-community="C"] { opacity: .1; }
+  [data-view="community"] .edge.cross,
+  [data-view="community"] .edge.in-B,
+  [data-view="community"] .edge.in-C { opacity: 0 !important; }
+
+  /* ============================================================ 节点 */
+  .node { cursor: pointer; }
+  .node .halo { transition: opacity .35s ease; }
+  .node .ring { transition: opacity .35s ease; }
+  .node .dot  { transition: fill .35s ease, transform .2s ease; transform-box: fill-box; transform-origin: center; }
+
+  /* —— 优化方案·全局：无光晕，纯色社区色圆点（用户要求全局不做光晕）—— */
+  [data-variant="optimized"][data-view="global"] .node .dot  { fill: var(--cc); }
+  [data-variant="optimized"][data-view="global"] .node .halo { opacity: 0; }
+  [data-variant="optimized"][data-view="global"] .node .ring { opacity: 0; }
+  [data-variant="optimized"][data-view="global"] .node[data-core] .dot,
+  [data-variant="optimized"][data-view="global"] .node.is-selected .dot { fill: var(--accent); }
+
+  /* —— 优化方案·社区近景：底色=社区色，核心/选中=朱砂；光晕仅 hover/选中时浮现 —— */
+  [data-variant="optimized"][data-view="community"] .node .dot  { fill: var(--cc); }
+  [data-variant="optimized"][data-view="community"] .node .halo { fill: var(--tc); opacity: 0; }
+  [data-variant="optimized"][data-view="community"] .node .ring { opacity: 0; }
+  [data-variant="optimized"][data-view="community"] .node[data-core] .dot,
+  [data-variant="optimized"][data-view="community"] .node.is-selected .dot { fill: var(--accent); stroke: rgba(255,253,247,.85); stroke-width: 1.5; }
+  [data-variant="optimized"][data-view="community"] .node:hover .halo { opacity: var(--halo-strength, .18); }
+  [data-variant="optimized"][data-view="community"] .node.is-selected .halo { fill: var(--accent); opacity: calc(var(--halo-strength, .18) * 2); }
+
+  /* —— 当前现状：全局=社区色无光晕、选中 Tailwind 红；社区=类型实色+同色硬环 —— */
+  [data-variant="current"][data-view="global"] .node .dot { fill: var(--cc); }
+  [data-variant="current"][data-view="global"] .node .halo,
+  [data-variant="current"][data-view="global"] .node .ring { opacity: 0; }
+  [data-variant="current"][data-view="global"] .node.is-selected .dot { fill: #ef4444; }
+
+  [data-variant="current"][data-view="community"] .node .dot { fill: var(--tc); }
+  [data-variant="current"][data-view="community"] .node .halo { opacity: 0; }
+  [data-variant="current"][data-view="community"] .node .ring { fill: var(--tc); opacity: .18; }
+  [data-variant="current"][data-view="community"] .node[data-core] .dot { fill: var(--accent); }
+  [data-variant="current"][data-view="community"] .node.is-selected .dot { fill: var(--accent); }
+  [data-variant="current"][data-view="community"] .node.is-selected .ring { fill: var(--accent); opacity: .22; }
+
+  /* 节点尺寸全程不变：近景的"放大"完全来自镜头(camera scale)推进，像物体自然变大 */
+  .node .dot  { r: 9; }
+  .node .halo { r: 20; }
+  .node .ring { r: 15; }
+
+  .node:hover .dot { transform: scale(1.12); }
+
+  /* ============================================================ 标签（serif 默认，朝外展开） */
+  .label-fo { transition: opacity .4s ease; overflow: visible; pointer-events: none; }
+  .label-chip {
+    display: inline-block;
+    max-width: 140px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid var(--paper-border);
+    background: color-mix(in srgb, var(--paper-surface) 86%, transparent);
+    color: var(--ink);
+    box-shadow: 0 4px 12px rgba(70,55,40,.07);
+    font-family: var(--font-serif);   /* 本版默认 serif */
+  }
+  [data-labelfont="sans"] .label-chip { font-family: var(--font-sans); }
+
+  /* 当前现状：社区=serif+毛玻璃重底框；全局=裸字 */
+  [data-variant="current"][data-view="community"] .label-chip {
+    background: rgba(255,252,246,.74); backdrop-filter: blur(10px);
+    border-color: rgba(121,102,80,.16); box-shadow: 0 5px 16px rgba(58,42,26,.07);
+  }
+  [data-variant="current"][data-view="global"] .label-chip {
+    background: transparent; border-color: transparent; box-shadow: none;
+    font-family: var(--font-sans); color: #1f2937;
+  }
+
+  /* 显隐：远景只显 core/选中/hover；近景全显（已通过环形布局+朝外展开保证不重叠） */
+  [data-view="global"] .node .label-fo { opacity: 0; }
+  [data-view="global"] .node[data-core] .label-fo,
+  [data-view="global"] .node.is-selected .label-fo,
+  .node:hover .label-fo { opacity: 1; }
+  [data-view="community"] .node .label-fo { opacity: 1; }
+
+  /* ============================================================ 边 */
+  .edge { fill: none; stroke: var(--edge); stroke-linecap: round; transition: stroke-opacity .4s ease, opacity .55s ease; }
+  [data-variant="optimized"] .edge { stroke-opacity: var(--edge-opacity, .5); stroke-width: 1.4; }
+  [data-variant="optimized"] .edge.cross { stroke: var(--t-synthesis); stroke-dasharray: 5 6; stroke-opacity: calc(var(--edge-opacity, .5) * .85); }
+
+  [data-variant="current"][data-view="global"] .edge { stroke: color-mix(in srgb, var(--edge) 66%, transparent); stroke-opacity: .6; stroke-width: 1.3; }
+  [data-variant="current"][data-view="global"] .edge.cross { stroke: #d94693; stroke-opacity: .55; }
+  [data-variant="current"][data-view="community"] .edge { stroke-opacity: .32; stroke-width: 1.2; }
+  [data-variant="current"][data-view="community"] .edge.relation-implementation { stroke: rgba(76,109,118,.34); }
+  [data-variant="current"][data-view="community"] .edge.relation-dependency    { stroke: rgba(91,116,128,.36); }
+  [data-variant="current"][data-view="community"] .edge.relation-derivation    { stroke: rgba(93,132,118,.34); }
+  [data-variant="current"][data-view="community"] .edge.cross { stroke: rgba(178,139,80,.4); stroke-opacity: .32; }
+
+  /* ============================================================ 侧栏 */
+  .sidebar { overflow-y: auto; padding: 18px 20px 40px; background: var(--paper-surface); }
+  .panel { margin-bottom: 22px; }
+  .panel h2 { margin: 0 0 10px; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); }
+  .panel p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.65; color: var(--ink-soft); }
+  .panel p strong { color: var(--ink); font-weight: 800; }
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: var(--ink-muted); font-weight: 700; }
+  .swatch i { display: block; width: 26px; height: 26px; border-radius: 999px; border: 1px solid rgba(0,0,0,.06); }
+  .rule { display: flex; gap: 9px; font-size: 12px; line-height: 1.55; color: var(--ink-soft); margin-bottom: 7px; }
+  .rule .k { flex: 0 0 auto; font-weight: 800; color: var(--ink); min-width: 44px; }
+
+  .tweaks { border: 1px solid var(--paper-border); border-radius: 12px; padding: 13px; background: color-mix(in srgb, var(--paper-raised) 50%, transparent); }
+  .tweak { margin-bottom: 11px; }
+  .tweak:last-child { margin-bottom: 0; }
+  .tweak label { display: block; font-size: 11px; font-weight: 800; color: var(--ink-soft); margin-bottom: 5px; }
+  .tweak .opt { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .tweak .opt button { border: 1px solid var(--paper-border); background: var(--paper-surface); font: 700 11px/1 var(--font-sans); color: var(--ink-soft); padding: 6px 9px; border-radius: 7px; cursor: pointer; transition: all .15s; }
+  .tweak .opt button[aria-pressed="true"] { background: var(--ink); color: var(--paper-surface); border-color: var(--ink); }
+  .tweak.disabled { opacity: .4; pointer-events: none; }
+
+  .hint-banner {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 20;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px;
+    background: color-mix(in srgb, var(--paper-surface) 88%, transparent);
+    border: 1px solid var(--paper-border); backdrop-filter: blur(10px);
+    font-size: 12px; font-weight: 700; color: var(--ink-soft); box-shadow: var(--shadow-card);
+  }
+  .hint-banner b { color: var(--accent); }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; height: auto; }
+    .stage-wrap { height: 60vh; border-right: 0; border-bottom: 1px solid var(--paper-border); }
+  }
+</style>
+</head>
+<body data-variant="optimized" data-view="global" data-labelfont="serif" style="--halo-strength:.18; --edge-opacity:.5;">
+
+<header class="topbar">
+  <div class="brand">
+    <h1>社区视觉对齐方案 · v2</h1>
+    <p>同一张宣纸的两个尺度 · 全局（远景）↔ 社区（近景），切换是镜头推进而非换页</p>
+  </div>
+  <div class="seg variant" role="group" aria-label="方案对比">
+    <button data-v="current" type="button">① 当前现状</button>
+    <button data-v="optimized" type="button" aria-pressed="true">② 优化方案</button>
+  </div>
+  <div class="spacer"></div>
+  <button class="view-btn" id="viewBtn" type="button">
+    <span class="label">进入「Claude Code」社区</span><span class="arrow">→</span>
+  </button>
+</header>
+
+<div class="layout">
+  <div class="stage-wrap">
+    <div class="stage">
+      <svg class="graph" id="graph" viewBox="0 0 1000 680" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3.2"/>
+          </filter>
+        </defs>
+        <g class="camera">
+          <g class="edges" id="edges"></g>
+          <g class="nodes" id="nodes"></g>
+        </g>
+      </svg>
+    </div>
+    <div class="hint-banner" id="hint">点节点可选中 · 当前选中 <b>Claude Code 省 Token 指南</b></div>
+  </div>
+
+  <aside class="sidebar">
+    <section class="panel">
+      <h2>本版要点</h2>
+      <p><strong>光晕仅交互时</strong>——社区节点默认是纯色点，只在 hover/选中时浮出光晕（hover=类型色，选中=朱砂）。</p>
+      <p><strong>布局不变，镜头推进</strong>——进入社区不重新排布，就是全局那套分布拉近放大；节点尺寸全程不变，"变大"全靠镜头，像物体自然放大。</p>
+      <p><strong>底色完全同源</strong>——近景与全局同一张釉面，切换时底色零变化，只有镜头缩放。</p>
+    </section>
+
+    <section class="panel">
+      <h2>节点底色（社区色 · 全局+社区同源）</h2>
+      <div class="swatch-row">
+        <span class="swatch"><i style="background:#dd9c82"></i>暖陶 A</span>
+        <span class="swatch"><i style="background:#8fb0c9"></i>雾蓝 B</span>
+        <span class="swatch"><i style="background:#a6c187"></i>草绿 C</span>
+      </div>
+      <h2 style="margin-top:14px">类型光晕色（仅社区近景的光晕）</h2>
+      <div class="swatch-row">
+        <span class="swatch"><i style="background:#8b2e24"></i>topic</span>
+        <span class="swatch"><i style="background:#5e8a52"></i>source</span>
+        <span class="swatch"><i style="background:#315f72"></i>entity</span>
+        <span class="swatch"><i style="background:#b7791f"></i>synth</span>
+        <span class="swatch"><i style="background:#7a5b8a"></i>query</span>
+      </div>
+      <p style="margin-top:10px">近景：节点底色=所属社区色，外圈光晕=类型色，核心 topic 用朱砂强调。远景：纯社区色圆点，无光晕。</p>
+    </section>
+
+    <section class="panel">
+      <h2>对齐规则</h2>
+      <div class="rule"><span class="k">强调色</span><span>全局与社区统一朱砂 <code>#8b2e24</code>，替换原 Sigma 的 <code>#ef4444</code>。</span></div>
+      <div class="rule"><span class="k">光晕</span><span>仅 hover/选中时出现（社区近景）；默认与远景一样是纯色点。</span></div>
+      <div class="rule"><span class="k">字体</span><span>节点标签 serif；全局+社区统一。</span></div>
+      <div class="rule"><span class="k">底色</span><span>同为 <code>#fdfaf2</code> 釉面，无纹理，切换零色变。</span></div>
+      <div class="rule"><span class="k">布局</span><span>进入社区不重排，镜头推进放大；标签朝外不互盖。</span></div>
+      <div class="rule"><span class="k">边</span><span>社区内中等清晰（原 0.32 太淡）。</span></div>
+    </section>
+
+    <section class="panel">
+      <h2>Tweaks · 微调优化方案</h2>
+      <div class="tweaks" id="tweaks">
+        <div class="tweak" data-tweak="labelfont">
+          <label>节点标签字体</label>
+          <div class="opt">
+            <button data-val="serif" aria-pressed="true">serif（默认）</button>
+            <button data-val="sans">sans</button>
+          </div>
+        </div>
+        <div class="tweak" data-tweak="halo">
+          <label>类型光晕强度（仅近景）</label>
+          <div class="opt">
+            <button data-halo=".1" aria-pressed="true">弱</button>
+            <button data-halo=".2">中</button>
+            <button data-halo=".34">强</button>
+          </div>
+        </div>
+        <div class="tweak" data-tweak="edge">
+          <label>边清晰度</label>
+          <div class="opt">
+            <button data-edge=".32">淡</button>
+            <button data-edge=".5" aria-pressed="true">中</button>
+            <button data-edge=".65">清</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<script>
+  // ============================================================ 数据
+  const COMMUNITY_COLOR = { A: "#dd9c82", B: "#8fb0c9", C: "#a6c187" };
+  const TYPE_COLOR = { topic:"#8b2e24", source:"#5e8a52", entity:"#315f72", synthesis:"#b7791f", query:"#7a5b8a" };
+
+  // 社区 A = 环形辐射：核心居中，5 节点等距环绕（半径 ~120），side 决定标签朝外方向
+  const NODES = [
+    { id:"A1", c:"A", t:"topic",     core:true, x:300, y:310, side:"bottom", label:"Claude Code 省 Token 指南" },
+    { id:"A2", c:"A", t:"source",    x:300, y:190, side:"top",    label:"会话管理与 100 万上下文" },
+    { id:"A3", c:"A", t:"entity",    x:414, y:273, side:"right",  label:"上下文压缩" },
+    { id:"A4", c:"A", t:"synthesis", x:370, y:407, side:"right",  label:"1M 上下文的取舍" },
+    { id:"A5", c:"A", t:"query",     x:230, y:407, side:"left",   label:"如何避免 context 爆炸" },
+    { id:"A6", c:"A", t:"source",    x:186, y:273, side:"left",   label:"子代理拆分任务" },
+
+    { id:"B1", c:"B", t:"topic",     core:true, x:760, y:180, side:"right", label:"知识图谱构建" },
+    { id:"B2", c:"B", t:"entity",    x:675, y:125, side:"right", label:"图谱渲染性能" },
+    { id:"B3", c:"B", t:"source",    x:845, y:140, side:"right", label:"Sigma.js 集成" },
+    { id:"B4", c:"B", t:"synthesis", x:770, y:255, side:"right", label:"关系边可读性" },
+
+    { id:"C1", c:"C", t:"topic",     core:true, x:720, y:510, side:"right", label:"Skill 形态设计" },
+    { id:"C2", c:"C", t:"source",    x:635, y:560, side:"right", label:"工作流脚本" },
+    { id:"C3", c:"C", t:"entity",    x:805, y:565, side:"right", label:"多平台适配" },
+    { id:"C4", c:"C", t:"synthesis", x:730, y:425, side:"right", label:"Markdown 模板" },
+  ];
+
+  const EDGES = [
+    ["A1","A2","implementation"],["A1","A3","dependency"],["A1","A4","derivation"],["A1","A5","dependency"],["A1","A6","implementation"],
+    ["A2","A3","derivation"],["A4","A5","contrast"],["A6","A2","dependency"],
+    ["B1","B2","implementation"],["B1","B3","dependency"],["B1","B4","derivation"],["B2","B3","implementation"],
+    ["C1","C2","implementation"],["C1","C3","dependency"],["C1","C4","derivation"],["C3","C4","dependency"],
+    ["A3","B2","contrast"],["A4","C4","contrast"],["B4","C1","contrast"],
+  ];
+  const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+  // 标签朝外偏移（按 side），保证不盖节点、不互叠
+  const SIDE_OFFSET = {
+    right:  { x: 16,  y: -13, w: 140 },
+    left:   { x:-156, y: -13, w: 140 },
+    top:    { x:-70,  y:-32,  w: 140 },
+    bottom: { x:-70,  y: 16,  w: 140 },
+  };
+
+  // ============================================================ 渲染
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const XHTML = "http://www.w3.org/1999/xhtml";
+  const nodesG = document.getElementById("nodes");
+  const edgesG = document.getElementById("edges");
+  const svgEl = (tag, attrs = {}) => {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  };
+
+  EDGES.forEach(([a,b,rel]) => {
+    const na = byId[a], nb = byId[b];
+    const cross = na.c !== nb.c;
+    const path = svgEl("line", { x1:na.x, y1:na.y, x2:nb.x, y2:nb.y });
+    path.setAttribute("class", "edge relation-" + rel + (cross ? " cross" : "") + " in-" + na.c);
+    edgesG.appendChild(path);
+  });
+
+  NODES.forEach(n => {
+    const g = svgEl("g", { transform:`translate(${n.x},${n.y})`, "data-id":n.id, "data-community":n.c, "data-type":n.t });
+    g.setAttribute("class", "node" + (n.id === "A1" ? " is-selected" : ""));
+    if (n.core) g.setAttribute("data-core","");
+    g.style.setProperty("--cc", COMMUNITY_COLOR[n.c]);
+    g.style.setProperty("--tc", TYPE_COLOR[n.t]);
+
+    g.appendChild(svgEl("circle", { class:"halo", r:20, filter:"url(#soft)" }));
+    g.appendChild(svgEl("circle", { class:"ring", r:15 }));
+    g.appendChild(svgEl("circle", { class:"dot",  r:9 }));
+
+    const off = SIDE_OFFSET[n.side] || SIDE_OFFSET.right;
+    const fo = svgEl("foreignObject", { class:"label-fo", x:off.x, y:off.y, width:off.w, height:26 });
+    const div = document.createElementNS(XHTML, "div");
+    div.setAttribute("class","label-chip");
+    div.setAttribute("lang","zh");
+    div.textContent = n.label;
+    fo.appendChild(div);
+    g.appendChild(fo);
+
+    nodesG.appendChild(g);
+  });
+
+  // ============================================================ 交互
+  const body = document.body;
+
+  document.querySelectorAll('.seg.variant button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.seg.variant button').forEach(b => b.removeAttribute('aria-pressed'));
+      btn.setAttribute('aria-pressed','true');
+      body.setAttribute('data-variant', btn.dataset.v);
+      document.querySelectorAll('.tweak').forEach(t => t.classList.toggle('disabled', btn.dataset.v !== 'optimized'));
+    });
+  });
+
+  const viewBtn = document.getElementById('viewBtn');
+  const viewLabel = viewBtn.querySelector('.label');
+  const viewArrow = viewBtn.querySelector('.arrow');
+  viewBtn.addEventListener('click', () => {
+    const isGlobal = body.getAttribute('data-view') === 'global';
+    body.setAttribute('data-view', isGlobal ? 'community' : 'global');
+    viewLabel.textContent = isGlobal ? '← 返回全局图' : '进入「Claude Code」社区';
+    viewArrow.textContent = isGlobal ? '←' : '→';
+  });
+
+  document.addEventListener('click', e => {
+    const node = e.target.closest('.node');
+    if (!node || !nodesG.contains(node)) return;
+    document.querySelectorAll('.node.is-selected').forEach(n => n.classList.remove('is-selected'));
+    node.classList.add('is-selected');
+    const label = node.querySelector('.label-chip').textContent;
+    document.getElementById('hint').innerHTML = '点节点可选中 · 当前选中 <b>' + label + '</b>';
+  });
+
+  document.querySelectorAll('.tweak').forEach(t => {
+    const key = t.dataset.tweak;
+    t.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        t.querySelectorAll('button').forEach(x => x.removeAttribute('aria-pressed'));
+        b.setAttribute('aria-pressed','true');
+        if (key === 'labelfont') body.setAttribute('data-labelfont', b.dataset.val);
+        if (key === 'halo') body.style.setProperty('--halo-strength', b.dataset.halo);
+        if (key === 'edge') body.style.setProperty('--edge-opacity', b.dataset.edge);
+      });
+    });
+  });
+</script>
+</body>
+</html>
