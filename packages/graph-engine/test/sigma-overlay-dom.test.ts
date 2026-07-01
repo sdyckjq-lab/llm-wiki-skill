@@ -186,6 +186,39 @@ describe("Sigma overlay DOM controller", () => {
     assert.equal(labelBefore?.style.transform || "", "");
   });
 
+  it("uses current camera state for animation anchors without changing exact reposition projection", () => {
+    const fixture = controllerFixture();
+    const sigma = {
+      graphToViewport: (
+        point: { x: number; y: number },
+        override?: { cameraState?: { x?: number; y?: number; angle?: number; ratio?: number } }
+      ) => {
+        const cameraState = override?.cameraState;
+        if (!cameraState) return { x: point.x, y: point.y };
+        return {
+          x: point.x + (cameraState.x ?? 0) * 10,
+          y: point.y + (cameraState.y ?? 0) * 10
+        };
+      },
+      getCamera: () => ({
+        getState: () => ({ x: 4, y: 3, angle: 0, ratio: 1 })
+      })
+    } satisfies SigmaGlobalSigmaLike;
+    fixture.setSigma(sigma);
+    fixture.controller.rebuild();
+    const alphaBefore = nodeTarget(fixture.overlayRoot, "alpha");
+
+    fixture.controller.repositionForCameraAnimation();
+
+    assert.equal(fixture.overlayRoot.style.transform, "translate(40px, 30px) scale(1)");
+    assert.equal(alphaBefore?.style.left, "26px");
+
+    fixture.controller.reposition();
+
+    assert.equal(fixture.overlayRoot.style.transform, "");
+    assert.equal(alphaBefore?.style.left, "26px");
+  });
+
   it("settles an animation frame with exact reposition and clears the root transform", () => {
     const fixture = controllerFixture();
     fixture.controller.rebuild();

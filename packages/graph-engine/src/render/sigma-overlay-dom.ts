@@ -9,7 +9,8 @@ import {
   bindSigmaGlobalOverlayPointerDrag
 } from "./sigma-global-drag";
 import {
-  sigmaWorldPointToScreenPoint
+  sigmaWorldPointToScreenPoint,
+  sigmaWorldPointToScreenPointForCameraState
 } from "./sigma-coordinates";
 import {
   projectSigmaOverlayCameraAnchors,
@@ -216,9 +217,12 @@ export function createSigmaOverlayDomController(input: SigmaOverlayDomController
     }
     const sigma = input.getSigma();
     const options = input.getOptions();
+    const cameraState = sigma.getCamera?.().getState?.();
     const current = projectSigmaOverlayCameraAnchors(
       cameraAnimationBaseline.world,
-      (point) => sigmaWorldPointToScreenPoint(sigma, point, options)
+      (point) => cameraState
+        ? sigmaWorldPointToScreenPointForCameraState(sigma, point, cameraState, options)
+        : sigmaWorldPointToScreenPoint(sigma, point, options)
     );
     const transform = sigmaOverlayCameraTransform(cameraAnimationBaseline.screen, current);
     const css = sigmaOverlayCameraTransformCss(transform);

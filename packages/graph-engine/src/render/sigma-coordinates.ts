@@ -1,6 +1,10 @@
 import { rootClientPointToScreenPoint, screenPointToWorldPoint, worldPointToCssPercentPoint, type GraphScreenPoint } from "./geometry";
 import { DEFAULT_RENDERER_VIEWPORT } from "./viewport";
-import type { SigmaGlobalRendererCreateOptions, SigmaGlobalSigmaLike } from "./sigma-global-types";
+import type {
+  SigmaGlobalCameraState,
+  SigmaGlobalRendererCreateOptions,
+  SigmaGlobalSigmaLike
+} from "./sigma-global-types";
 
 export function overlayPointerScreenPoint(event: MouseEvent | PointerEvent, root: HTMLElement): GraphScreenPoint {
   return rootClientPointToScreenPoint({
@@ -41,4 +45,17 @@ export function sigmaWorldPointToScreenPoint(
     x: (percent.x / 100) * size.width,
     y: (percent.y / 100) * size.height
   };
+}
+
+export function sigmaWorldPointToScreenPointForCameraState(
+  sigma: SigmaGlobalSigmaLike,
+  point: { x: number; y: number },
+  cameraState: SigmaGlobalCameraState,
+  options: Pick<SigmaGlobalRendererCreateOptions, "viewport" | "viewportSize" | "adapterData">
+): GraphScreenPoint {
+  const projected = sigma.graphToViewport?.(point, { cameraState });
+  if (projected && Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
+    return projected;
+  }
+  return sigmaWorldPointToScreenPoint(sigma, point, options);
 }

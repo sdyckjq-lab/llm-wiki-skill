@@ -2,7 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { GRAPH_WORLD_BOUNDS } from "../src/render/geometry";
-import { sigmaScreenPointToWorldPoint, sigmaWorldPointToScreenPoint } from "../src/render/sigma-coordinates";
+import {
+  sigmaScreenPointToWorldPoint,
+  sigmaWorldPointToScreenPoint,
+  sigmaWorldPointToScreenPointForCameraState
+} from "../src/render/sigma-coordinates";
 import type { SigmaGlobalSigmaLike } from "../src/render/sigma-global-types";
 
 type ProjectionOptions = Parameters<typeof sigmaWorldPointToScreenPoint>[2];
@@ -46,5 +50,31 @@ describe("sigma coordinate transforms", () => {
     const sigma = sigmaWith({ graphToViewport: () => ({ x: Number.NaN, y: Number.NaN }) });
     const screen = sigmaWorldPointToScreenPoint(sigma, { x: 0, y: 0 }, options);
     assert.ok(Number.isFinite(screen.x) && Number.isFinite(screen.y));
+  });
+
+  it("uses explicit camera state only for animation projection", () => {
+    const receivedOverrides: unknown[] = [];
+    const sigma = sigmaWith({
+      graphToViewport: (_point, override) => {
+        receivedOverrides.push(override);
+        return override?.cameraState ? { x: 44, y: 55 } : { x: 11, y: 22 };
+      }
+    });
+
+    assert.deepEqual(sigmaWorldPointToScreenPoint(sigma, { x: 1, y: 2 }, options), { x: 11, y: 22 });
+    assert.deepEqual(
+      sigmaWorldPointToScreenPointForCameraState(
+        sigma,
+        { x: 1, y: 2 },
+        { x: 3, y: 4, angle: 0, ratio: 0.8 },
+        options
+      ),
+      { x: 44, y: 55 }
+    );
+
+    assert.deepEqual(receivedOverrides, [
+      undefined,
+      { cameraState: { x: 3, y: 4, angle: 0, ratio: 0.8 } }
+    ]);
   });
 });
