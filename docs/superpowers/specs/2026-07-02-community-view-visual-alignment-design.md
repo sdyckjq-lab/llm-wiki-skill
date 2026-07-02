@@ -36,6 +36,7 @@
 - **全局 Sigma 节点本来就没光晕**：用 Sigma 默认 circle renderer（纯色圆盘无描边，`sigma-graphology-model.ts:178`）。设计稿里"全局去光晕"是为与"当前现状"对比而虚构的改动，真实代码零工作量。
 - **全局底色 `#f4efe4` 已极接近设计稿 `#fdfaf2`**（`tokens.ts:17`，差 5 个色阶，肉眼几乎一样）。不必改 token，改了反而牵动全站。
 - **`sigmaLabelColor` 主题逻辑正确**（`sigma-global-renderer.ts:781-783`：暗主题白字 / 亮主题深字），之前怀疑的"倒置"非 bug。
+- **节点分布两系统已天然共享**：全局 Sigma 与社区 DOM 读同一套坐标——都取 `buildRenderableGraph` 的 `node.point`，同一套 atlas 环形布局（`legacy-helpers.ts:1078-1128`）。进入社区**不重新布局**，只改 `focus` 入参影响可见性筛选/预算/显示模式，不动坐标（`facade.ts:337`、`controller.ts:468` 仅把相机 fit 到现有 point）。设计稿暗示的"两套分布各算各的"不成立——无需统一布局层。这是 Phase 2 镜头衔接得以成立的前提（见 §5.2）。
 
 ### 3.2 真正必改 → Phase 1 范围（见 §4）
 
@@ -43,7 +44,7 @@
 
 | 夸大项 | 真实情况 | 处置 |
 |---|---|---|
-| 规则环形布局（A 社区 5 节点等距环绕） | 真实力导向布局（graphology force） | 不动布局算法 |
+| 规则环形布局（A 社区 5 节点等距环绕） | 真实 atlas 布局（每社区一中心 + 确定性环形，`legacy-helpers.ts:1078-1128`），非力导向；且两系统已共享同坐标（§3.1） | 不动布局算法 |
 | 示意性节点数据（14 个手写） | 真实数据来自 adapter | 忽略 |
 | Tweaks 面板（halo 强度/edge 透明度/font 切换） | 设计演示控件，非产品功能 | 不落地为 UI |
 | "当前现状" variant 复刻的细节 | 仅对比演示，真实基线以代码为准 | 忽略 |
@@ -76,6 +77,7 @@
   - `render-styles.ts:1196-1200` 的 selected/focus 朱砂光晕 + `scale(1.32)` 保留（本就是状态触发，无需改默认）。
 - **文件**：`packages/graph-engine/src/render/nodes.ts`、`packages/graph-engine/src/render/render-styles.ts`
 - **风险**：中。`.dot-core` 当前结构与设计稿光晕语义不同构，但全程用 `box-shadow` 状态化实现，无需新增 DOM 子元素。JS 侧只需新增社区色下发，类型色仍走 `data-type` CSS 选择器。
+- **已知权衡**：非 topic 节点对齐 Sigma 的"社区色填充"消除大部分跳变；但 topic 保持朱砂（设计稿"近景强调核心"语义），进入社区时 topic 会从 Sigma 的社区色跳到朱砂——属 §2"因功能而变"的合理差异，非 bug。若后续追求零跳变可让 topic 也走社区色，代价是弱化核心突出。
 
 #### ② Sigma 状态色硬编码 → 引擎 token〔小〕
 
@@ -98,20 +100,28 @@
 - **文件**：`packages/graph-engine/src/render/render-styles.ts`
 - **风险**：低。
 
-#### ⑤ Sigma 标签字体 → serif〔小〕
+#### ⑤ Sigma 标签字体 → 对齐 DOM 主体 sans〔小〕
 
-- **现状**：`sigma-global-renderer.ts:766-783` `sigmaSettingsForTheme` 只设 `labelColor`，未设 `labelFont/labelSize/labelWeight`，Sigma 标签走浏览器默认 sans。
-- **改法**：`sigmaSettingsForTheme` 加 `labelFont`（从 theme tokens 取 `--font-serif` 的 CSS 值字符串传入——Sigma canvas label 不吃 CSS var，需读 `getThemeTokens(theme).vars["--font-serif"]` 字符串化）。视情况补 `labelSize`/`labelWeight`。
+- **现状**：`sigma-global-renderer.ts:766-783` `sigmaSettingsForTheme` 只设 `labelColor`，未设 `labelFont/labelSize/labelWeight`，Sigma 标签走浏览器默认 Arial。DOM 侧节点标签和绝大多数 UI 用 `--font-ui`（Noto Sans SC 无衬线，`render-styles.ts` 几十处），`--font-serif` 只用在少数装饰标题。
+- **改法**：`sigmaSettingsForTheme` 加 `labelFont`，取 `getThemeTokens(theme).vars["--font-ui"]` 字符串传入（Sigma canvas label 不吃 CSS var，需字符串化）。视情况补 `labelSize`/`labelWeight`。
+- **关键纠正**：原稿曾写"→ serif"，那是照搬设计稿纸面调性，会与 DOM 主体的 sans 冲突、**制造新的字体跳变**。反转方向，对齐 DOM 主体 = sans，才消除切换割裂。
 - **文件**：`packages/graph-engine/src/render/sigma-global-renderer.ts`
 - **风险**：低，仅文字渲染外观。
 
+#### ⑥ conflict 关系色硬编码 → token 化〔小 · 顺手〕
+
+- **现状**：`render-styles.ts:651` `.edge.relation-conflict { stroke: color-mix(in srgb, #d94693 78%, transparent) }`——DOM 关系色中唯一未走 token 的裸十六进制，其余 DOM 关系色已用 `--night`/`--amber`。
+- **改法**：在 `tokens.ts` 两主题各新增一行 conflict 语义 token `--crimson`（山水/墨野先同取 `#d94693`，按主题微调留待视觉回归定），`render-styles.ts:651` 改 `color-mix(in srgb, var(--crimson) 78%, transparent)`。配色维度同源更彻底。
+- **文件**：`packages/graph-engine/src/themes/tokens.ts`、`packages/graph-engine/src/render/render-styles.ts`
+- **风险**：低。仅新增 token 定义 + 改一处引用。
+
 ### 4.3 不纳入 Phase 1（理由见 §3.4 / §3.3）
 
-Sigma 标签底框、两套红统一、节点尺寸抹平、布局算法——均不动。
+Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布局算法亦不动（两系统已共享同一套 atlas 分布，见 §3.1）。
 
 ### 4.4 验证
 
-- **引擎单测**（`node --test`）：社区节点 DOM 结构与 `--node-community-color` 下发、`sigmaGlobalNodeColor` 的 theme→token 映射。
+- **引擎单测**（`node --test`）：社区节点 DOM 结构与 `--node-community-color` 下发、`sigmaGlobalNodeColor` 的 theme→token 映射、`sigmaSettingsForTheme` 含 `labelFont`（取自 `--font-ui`）、`--crimson` token 在两主题均解析。
 - **前端视觉回归**（`npm run visual:paper -w @llm-wiki-agent/web`，playwright）：覆盖全局 + 社区两态的纸面快照。
 - **手动**：真实数据下切换全局↔社区，对照设计稿确认四类割裂感消除。
 - **回归**：`npm run typecheck`（前端/后端 typecheck 会自动带上最新引擎产物）、引擎 `npm run test -w @llm-wiki/graph-engine`。
@@ -126,7 +136,9 @@ Sigma 标签底框、两套红统一、节点尺寸抹平、布局算法——�
 
 ### 5.2 可行性结论：成立
 
-两渲染器**共享同一套世界坐标**（都从 `buildRenderableGraph` 出 `node.point`，`worldBounds` 1000×680，`geometry.ts:71-74`）——坐标对齐这个最难的前提已满足。所有底层原语齐备（相机读取、viewport 写入、world↔screen 投影、fit 动画），不需新渲染管线。改动是"接线"性质。
+两渲染器**共享同一套世界坐标与分布**：都从 `buildRenderableGraph` 出 `node.point`，同一套 atlas 环形布局（`legacy-helpers.ts:1078-1128`），`worldBounds` 1000×680（`geometry.ts:71-74`）。社区不重布局，只改可见性/预算/显示模式。坐标 + 分布对齐这个最难的前提已满足。所有底层原语齐备（相机读取、viewport 写入、world↔screen 投影、fit 动画），不需新渲染管线。改动是"接线"性质。
+
+**sim（d3-force 柔性扰动）已验证无需衔接**：DOM/SVG 管线的 `LiveGraphSimulation` 只在 DOM renderer 跑，Sigma 全局不跑；但切换瞬间 DOM 首帧 paint 用的是干净 atlas 坐标——`rebuildAndPaint` 顺序为 `buildRenderableGraph`（不传 positions，走 atlas）→ `paint` → 末尾才 `restartSimulation`（`render-pipeline.ts:114,134,189`），sim 回写（`applyMotionFrame`）走 d3-timer 独立 RAF、最早下一帧才发生。且冷启动 `coldStartAlpha=0.08`（`sim/index.ts:120`，d3 默认 1.0）+ forceX/Y 以 `baseX/baseY` 为锚（`sim/index.ts:105`），首帧位移亚像素级、肉眼无感；sim 与 viewport fit 动画作用对象正交（前者移节点相对位移，后者移 content layer），不打架。因此 Phase 2 只做镜头衔接，**不碰 sim 启动逻辑**。
 
 ### 5.3 两条独立路径（避免混淆）
 
@@ -236,7 +248,7 @@ interface SigmaGlobalRenderer {
 
 ## 7. 风险与回滚
 
-- **Phase 1**：5 项改动相互独立，每项可单独回滚；均为 token/CSS/取值级，无架构改动。
+- **Phase 1**：6 项改动相互独立，每项可单独回滚；均为 token/CSS/取值级，无架构改动。
 - **Phase 2**：最坏情况（换算失败/Sigma 未加载）自动 fallback 到当前硬切行为，**不退化**。换算函数独立、先行、单测覆盖，风险最低的模块先落地。
 
 ## 8. 后续与未决
