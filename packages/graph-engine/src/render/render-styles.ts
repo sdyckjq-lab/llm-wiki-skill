@@ -1100,23 +1100,23 @@ const STATIC_RENDERER_CSS = `
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge {
   stroke-width: max(1.1px, min(1.65px, var(--edge-map-width, 1.45px))) !important;
-  opacity: .32 !important;
+  opacity: .5 !important;
   transition: opacity .18s ease, stroke-width .18s ease, stroke .18s ease;
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-implementation {
-  stroke: rgba(76, 109, 118, .34);
+  stroke: color-mix(in srgb, var(--night) 34%, transparent);
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-dependency {
-  stroke: rgba(91, 116, 128, .36);
+  stroke: color-mix(in srgb, var(--night) 36%, transparent);
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-derivation {
-  stroke: rgba(93, 132, 118, .34);
+  stroke: color-mix(in srgb, var(--night) 34%, transparent);
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-contrast {
-  stroke: rgba(178, 139, 80, .4);
+  stroke: color-mix(in srgb, var(--amber) 40%, transparent);
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-conflict {
-  stroke: rgba(183, 96, 112, .42);
+  stroke: rgba(183, 96, 112, .42); /* conflict 色 token 化待 ADR-23 关系边系统整体演进，spec §3.4 */
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"][data-relation-focus="active"] .edge[data-relation-focus-depth="first"] {
   opacity: .74 !important;
