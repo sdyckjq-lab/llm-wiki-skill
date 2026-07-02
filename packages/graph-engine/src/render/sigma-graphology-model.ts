@@ -165,7 +165,7 @@ export function sigmaGlobalNodeAttributes(
   node: GraphRendererAdapterNode,
   communityColorById: Map<string, string>,
   selectedCommunityIds: ReadonlySet<string> = new Set(),
-  theme: ThemeId = "shan-shui"
+  theme: ThemeId
 ): SigmaGlobalGraphologyNodeAttributes {
   const spotlight = sigmaGlobalNodeSpotlightState(node, selectedCommunityIds);
   const baseSize = sigmaGlobalNodeSize(node);
@@ -361,7 +361,7 @@ export function sigmaGlobalNodeColor(
   const vars = getThemeTokens(theme).vars;
   if (node.selected) return vars["--cinnabar"];
   if (node.searchHit) return vars["--amber"];
-  if (node.pinHint.pinned) return vars["--night"];
+  if (node.pinHint.pinned) return vars["--violet"];
   return node.communityId ? communityColorById.get(node.communityId) ?? vars["--muted"] : vars["--muted"];
 }
 

@@ -435,9 +435,9 @@ describe("sigmaGlobalNodeColor theme tokens", () => {
     const vars = getThemeTokens("shan-shui").vars;
     assert.equal(sigmaGlobalNodeColor(adapterNode({ searchHit: true }), map, "shan-shui"), vars["--amber"]);
   });
-  it("maps pinned -> --night", () => {
+  it("maps pinned -> --violet", () => {
     const vars = getThemeTokens("shan-shui").vars;
-    assert.equal(sigmaGlobalNodeColor(adapterNode({ pinHint: { pinned: true } } as Partial<GraphRendererAdapterNode>), map, "shan-shui"), vars["--night"]);
+    assert.equal(sigmaGlobalNodeColor(adapterNode({ pinHint: { pinned: true } } as Partial<GraphRendererAdapterNode>), map, "shan-shui"), vars["--violet"]);
   });
   it("falls back to --muted when no community color", () => {
     const vars = getThemeTokens("shan-shui").vars;

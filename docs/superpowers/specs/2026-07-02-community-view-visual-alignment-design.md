@@ -83,7 +83,7 @@
 #### ② Sigma 状态色硬编码 → 引擎 token〔小〕
 
 - **现状**：`sigma-graphology-model.ts:355-360` `sigmaGlobalNodeColor` 硬编码 `selected=#ef4444 / searchHit=#f59e0b / pinned=#0ea5e9 / fallback=#64748b`。
-- **改法**：映射到引擎 token——`selected→--cinnabar`、`searchHit→--amber`、`pinned→--night`、`fallback→--muted`。需给 `sigmaGlobalNodeColor` 补 `theme` 参数（当前无），从 `getThemeTokens(theme).vars` 取值。
+- **改法**：映射到引擎 token——`selected→--cinnabar`、`searchHit→--amber`、`pinned→--violet`、`fallback→--muted`（pinned 用 `--violet` 紫而非 `--night`：`--night` 与默认/community 色可辨识度不足，/review 发现并修订）。需给 `sigmaGlobalNodeColor` 补 `theme` 参数（当前无），从 `getThemeTokens(theme).vars` 取值。
 - **文件**：`packages/graph-engine/src/render/sigma-graphology-model.ts`
 - **风险**：低，纯取值替换。
 - **语义说明**：`selected→--cinnabar` 后，朱砂在 Sigma 表"选中"、在社区 DOM 表"topic 核心"（§4.2①）。两者跨视图不冲突：社区视图里选中态额外带 `scale(1.32)` + 朱砂光晕（§4.2① 保留），topic 用底色填充，视觉可区分。
