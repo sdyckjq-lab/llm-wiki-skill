@@ -1,6 +1,6 @@
 # 社区视觉对齐设计 · 全局↔社区不割裂
 
-> 状态：Phase 1 待实施 / Phase 2 方向已定（fit-aware worldBounds + 方案 A，几何原型实证），待 writing-plans
+> 状态：Phase 1 待实施（含 fit-aware worldBounds）/ Phase 2 方向已定（方案 A），待评估，不预设推进
 > 设计稿：`designs/community-view-visual-alignment/index.html`（分支 `feat/community-view-visual-alignment`）
 > 日期：2026-07-02
 
@@ -15,7 +15,7 @@
 - 全局 Sigma 状态色：硬编码 Tailwind `#ef4444 / #f59e0b / #0ea5e9`（`sigma-graphology-model.ts:355-360`）
 - 进入社区 = `facade.ts` `switchRoute` 从 `sigma-global` 切到 `dom-svg-community`，**默认硬切**（仅 160ms `opacity 0.82→1` 微淡入，`render-styles.ts:39-60`），不是镜头推进。
 
-设计稿探索了"同源延续"方案并被用户认可。本 spec 把设计稿落地到真实代码，**分两阶段**：Phase 1 视觉对齐（低风险，本 spec 重点），Phase 2 镜头推进过渡（方案 A，已调研，待实施）。
+设计稿探索了"同源延续"方案并被用户认可。本 spec 把设计稿落地到真实代码，**分两阶段**：Phase 1 视觉对齐 + 社区畸变修复（本 spec 重点），Phase 2 镜头推进过渡（方案 A，已调研，待评估）。
 
 ## 2. 设计哲学
 
@@ -36,7 +36,7 @@
 - **全局 Sigma 节点本来就没光晕**：用 Sigma 默认 circle renderer（纯色圆盘无描边，`sigma-graphology-model.ts:178`）。设计稿里"全局去光晕"是为与"当前现状"对比而虚构的改动，真实代码零工作量。
 - **全局底色 `#f4efe4` 已极接近设计稿 `#fdfaf2`**（`tokens.ts:17`，差 5 个色阶，肉眼几乎一样）。不必改 token，改了反而牵动全站。
 - **`sigmaLabelColor` 主题逻辑正确**（`sigma-global-renderer.ts:781-783`：暗主题白字 / 亮主题深字），之前怀疑的"倒置"非 bug。
-- **节点布局算法两系统共享，但视觉分布不共享**（用户实测确认，纠正先前误导结论）：全局 Sigma 与社区 DOM 都取同一套 atlas 全图坐标（`buildRenderableGraph` 的 `node.point`，`legacy-helpers.ts:1078-1128`），社区**不重新布局**，只改 `focus` 入参影响可见性/预算/显示模式。**但** DOM 社区视图的 `worldBounds` 是仅含社区节点的**紧致包围盒**（`worldBoundsForPoints`，`model.ts:413`），CSS% 坐标 = worldPoint 经该紧致 bounds 各轴归一化（`geometry.ts:112-117`），把社区节点云拉伸铺满屏幕；Sigma 则直接用全图坐标 + 相机。因此同一批节点在两视图的视觉间距/形状不同（实测：全局散布 → 社区聚成椭圆一簇）。**这动摇了 Phase 2 镜头衔接的前提**（两系统坐标同尺度），需原型验证（见 §5.2）。
+- **节点布局算法两系统共享，但视觉分布不共享**（用户实测确认，纠正先前误导结论）：全局 Sigma 与社区 DOM 都取同一套 atlas 全图坐标（`buildRenderableGraph` 的 `node.point`，`legacy-helpers.ts:1078-1128`），社区**不重新布局**，只改 `focus` 入参影响可见性/预算/显示模式。**但** DOM 社区视图的 `worldBounds` 是仅含社区节点的**紧致包围盒**（`worldBoundsForPoints`，`model.ts:413`），CSS% 坐标 = worldPoint 经该紧致 bounds 各轴归一化（`geometry.ts:112-117`），把社区节点云拉伸铺满屏幕；Sigma 则直接用全图坐标 + 相机。因此同一批节点在两视图的视觉间距/形状不同（实测：全局散布 → 社区聚成椭圆一簇）。**这既造成社区视图肉眼畸变（Phase 1 §4.2⑥ 修），也动摇了 Phase 2 镜头衔接的前提**（两系统坐标同尺度），需原型验证（见 §5.2）。
 
 ### 3.2 真正必改 → Phase 1 范围（见 §4）
 
@@ -52,16 +52,17 @@
 
 ### 3.4 评估项（Phase 1 暂不动，需单独决策）
 
-- **Sigma 标签加底框**：大改（Sigma v2 canvas label 无原生背景，需自定义 label renderer）。远景标签只显 core/selected 且现状裸字可读；远景裸字 / 近景底框的差异本就符合"因功能而变"。**收益低、成本高，暂不做。**
+- **Sigma 标签加底框**：大改（Sigma v3 canvas label 无原生背景，需自定义 label renderer）。远景标签只显 core/selected 且现状裸字可读；远景裸字 / 近景底框的差异本就符合"因功能而变"。**收益低、成本高，暂不做。**
 - **抽屉 `--app-accent #e07a5f` 与图谱 `--cinnabar #8b2e24` 两套红**：跨子系统（应用 UI vs 图谱引擎），需产品定夺是否统一。**Phase 1 只统一图谱内部。**
+- **conflict 关系色 token 化**：原 Phase 1 评估项，本次砍除。`#d94693` 散落于 DOM 边（`render-styles.ts:651`）/图例 swatch（`render-styles.ts:363`）/Sigma 边（`sigma-graphology-model.ts:287`，深主题 `#f472b6`）共 3 处，社区态另有一组 rgba（`render-styles.ts:1127`）。其属关系边上色系统（ADR-23），该系统尚欠数据管线，待整体演进时一并统一，不为单色提前立项。
 
-## 4. Phase 1：视觉对齐（本 spec 重点 · 准备实施）
+## 4. Phase 1：视觉对齐 + 社区畸变修复（本 spec 重点 · 准备实施）
 
 ### 4.1 目标
 
-消除切换割裂的视觉基础：配色维度同源、底色不断裂、状态色统一、字体不跳。**不含过渡动画**（Phase 2）。
+消除切换割裂的视觉与几何基础：配色维度同源、底色不断裂、状态色统一、字体不跳、社区形状不畸变。**不含镜头推进过渡动画**（Phase 2 待评估）。
 
-验收标准：真实数据下从全局进入社区，不再出现"配色维度跳变 / 方格纸突然出现 / 状态红换色 / 字体跳变"四类割裂感。
+验收标准：真实数据下从全局进入社区，不再出现**非预期的**"配色维度跳变 / 方格纸突然出现 / 状态红换色 / 字体跳变 / 社区形状畸变"五类割裂感。topic 节点进入社区时由社区色变朱砂属预期差异（§4.2①"已知权衡"），不计入"配色维度跳变"；选中态（朱砂）与 topic（朱砂）在社区视图通过保留的 `scale(1.32)` + 朱砂光晕 vs 底色填充区分，跨视图可读。
 
 ### 4.2 改动清单
 
@@ -85,11 +86,12 @@
 - **改法**：映射到引擎 token——`selected→--cinnabar`、`searchHit→--amber`、`pinned→--night`、`fallback→--muted`。需给 `sigmaGlobalNodeColor` 补 `theme` 参数（当前无），从 `getThemeTokens(theme).vars` 取值。
 - **文件**：`packages/graph-engine/src/render/sigma-graphology-model.ts`
 - **风险**：低，纯取值替换。
+- **语义说明**：`selected→--cinnabar` 后，朱砂在 Sigma 表"选中"、在社区 DOM 表"topic 核心"（§4.2①）。两者跨视图不冲突：社区视图里选中态额外带 `scale(1.32)` + 朱砂光晕（§4.2① 保留），topic 用底色填充，视觉可区分。
 
 #### ③ 社区方格纸底 → 全局同源釉面〔小〕
 
 - **现状**：`render-styles.ts:1083-1097` `[data-community-map-state="lightweight"]` 覆盖背景为 `--community-map-paper #f8f1e6` + 两层 42px 方格 `linear-gradient` + radial 高光。
-- **改法**：删方格两行 `linear-gradient` 及对应 `background-size`；底色改用与全局同源的 `var(--bg)` + `var(--paper-glow)` 组合（社区云 `community-wash` 椭圆仍提供分区感，不依赖方格）。
+- **改法**：删方格两行 `linear-gradient` 及对应 `background-size`；底色改用与全局同源的 `var(--bg)` + `var(--paper-glow)` 组合（`--bg` 即 §3.1 全局底色 token，亮主题 `#f4efe4`、暗主题自动跟随；社区云 `community-wash` 椭圆仍提供分区感，不依赖方格）。**附带收益**：现 `--community-map-paper #f8f1e6` 是硬编码浅色，墨夜主题进入 lightweight 态纸色不匹配；改 `var(--bg)` 后深主题纸色自动跟随，顺带消除该隐患。
 - **文件**：`packages/graph-engine/src/render/render-styles.ts`
 - **风险**：低，纯 CSS 删除/替换。
 
@@ -103,32 +105,34 @@
 #### ⑤ Sigma 标签字体 → 对齐 DOM 主体 sans〔小〕
 
 - **现状**：`sigma-global-renderer.ts:766-783` `sigmaSettingsForTheme` 只设 `labelColor`，未设 `labelFont/labelSize/labelWeight`，Sigma 标签走浏览器默认 Arial。DOM 侧节点标签和绝大多数 UI 用 `--font-ui`（Noto Sans SC 无衬线，`render-styles.ts` 几十处），`--font-serif` 只用在少数装饰标题。
-- **改法**：`sigmaSettingsForTheme` 加 `labelFont`，取 `getThemeTokens(theme).vars["--font-ui"]` 字符串传入（Sigma canvas label 不吃 CSS var，需字符串化）。视情况补 `labelSize`/`labelWeight`。
+- **改法**：`sigmaSettingsForTheme` 加 `labelFont`，取 `getThemeTokens(theme).vars["--font-ui"]` 字符串传入（Sigma v3 canvas label 不吃 CSS var，需字符串化）。视情况补 `labelSize`/`labelWeight`。
 - **关键纠正**：原稿曾写"→ serif"，那是照搬设计稿纸面调性，会与 DOM 主体的 sans 冲突、**制造新的字体跳变**。反转方向，对齐 DOM 主体 = sans，才消除切换割裂。
 - **文件**：`packages/graph-engine/src/render/sigma-global-renderer.ts`
 - **风险**：低，仅文字渲染外观。
 
-#### ⑥ conflict 关系色硬编码 → token 化〔小 · 顺手〕
+#### ⑥ 社区视图形状畸变 → fit-aware worldBounds〔中 · 几何基础〕
 
-- **现状**：`render-styles.ts:651` `.edge.relation-conflict { stroke: color-mix(in srgb, #d94693 78%, transparent) }`——DOM 关系色中唯一未走 token 的裸十六进制，其余 DOM 关系色已用 `--night`/`--amber`。
-- **改法**：在 `tokens.ts` 两主题各新增一行 conflict 语义 token `--crimson`（山水/墨野先同取 `#d94693`，按主题微调留待视觉回归定），`render-styles.ts:651` 改 `color-mix(in srgb, var(--crimson) 78%, transparent)`。配色维度同源更彻底。
-- **文件**：`packages/graph-engine/src/themes/tokens.ts`、`packages/graph-engine/src/render/render-styles.ts`
-- **风险**：低。仅新增 token 定义 + 改一处引用。
+- **现状**：`model.ts:413` `worldBounds = worldBoundsForPoints([...pointById.values()])` 取**紧致包围盒**（仅包社区节点）。DOM 层 CSS% 坐标 = worldPoint 经该紧致 bounds **各轴独立归一化**（`geometry.ts:112-117`），是各向异性仿射；社区云宽高比与 viewport 宽高比相差越大，畸变越重（实测宽屏 1600×900 下 y 方向压缩约 19%，肉眼可见椭圆压扁）。
+- **改法**：`focus=community` 时，worldBounds 改用 **aspect-locked** 版（扩展短轴 padding 到与 viewport 同宽高比，不丢节点、不改中心）。改动集中在 `model.ts:413` 一处 + `focus.kind` 条件化（**不得影响 sigma-global 路由**，该路由仍用全图坐标 + 相机）。几何论证与数值实证见 §5.2。
+- **文件**：`packages/graph-engine/src/render/model.ts`（及 `geometry.ts:302` `worldBoundsForPoints` 若需加 aspect 选项）
+- **风险**：中。牵连面已调研（§5.2）：边/社区云/minimap/hover/hit-test 全走 world 坐标 + viewBox 自动跟随，无需改；节点 CSS% 与 labelSide（`model.ts:1247-1253`）因 bounds 仍包住社区基本不变。**最坏回退**：恢复紧致 bounds（=当前现状，仅形状畸变，不崩溃）。
+- **为何纳入 Phase 1**：独立可测、独立消除肉眼畸变；且是 Phase 2 镜头衔接的几何基础（§5.2 实证：fit-aware 下 DOM layer 与 Sigma 同为相似变换，单一 scale 衔接才成立）。提前落地让 Phase 2 依赖面更窄。
 
 ### 4.3 不纳入 Phase 1（理由见 §3.4 / §3.3）
 
-Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布局算法亦不动（两系统已共享同一套 atlas 分布，见 §3.1）。
+Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布局算法亦不动（两系统共享同一套 atlas **坐标**，但视觉分布因紧致 bounds 各向异性而不共享，见 §3.1；该各向异性由 §4.2⑥ fit-aware 消除）。
 
 ### 4.4 验证
 
-- **引擎单测**（`node --test`）：社区节点 DOM 结构与 `--node-community-color` 下发、`sigmaGlobalNodeColor` 的 theme→token 映射、`sigmaSettingsForTheme` 含 `labelFont`（取自 `--font-ui`）、`--crimson` token 在两主题均解析。
-- **前端视觉回归**（`npm run visual:paper -w @llm-wiki-agent/web`，playwright）：覆盖全局 + 社区两态的纸面快照。
-- **手动**：真实数据下切换全局↔社区，对照设计稿确认四类割裂感消除。
+- **引擎单测**（`node --test`）：社区节点 DOM 结构与 `--node-community-color` 下发、`sigmaGlobalNodeColor` 的 theme→token 映射、`sigmaSettingsForTheme` 含 `labelFont`（取自 `--font-ui`）、`focus=community` 时 worldBounds 为 aspect-locked（与 viewport 同宽高比）且 sigma-global 路由不受影响。
+- **前端视觉回归**（`npm run visual:paper -w @llm-wiki-agent/web`，playwright）：覆盖全局 + 社区两态的纸面快照；**新增宽屏（如 1600×900）社区快照**确认形状畸变消除。
+- **手动**：真实数据下切换全局↔社区，对照设计稿确认五类割裂感消除（含社区形状畸变）。
 - **回归**：`npm run typecheck`（前端/后端 typecheck 会自动带上最新引擎产物）、引擎 `npm run test -w @llm-wiki/graph-engine`。
+- **双宿主**：Phase 1 全部改动落在引擎内部（CSS 经 `ensureGraphRendererStyles` 自注入、token 经 `applyTheme` 自写到引擎根元素，不依赖宿主）。前端 web 与 Skill 离线 HTML 两个宿主自动同享，离线 HTML 侧零额外动作。
 
-## 5. Phase 2：镜头推进过渡（路线图 · 已调研 · 待实施）
+## 5. Phase 2：镜头推进过渡（路线图 · 已调研 · 待评估）
 
-> 本节写明设计意图与方案 A 完整设计，供 Phase 1 验收后新开 session 直接据以 `writing-plans`，无需重新调研。
+> 本节写明设计意图与方案 A 完整设计。Phase 2 是否推进待 Phase 1 上线后真实使用评估（§8），不预设。
 
 ### 5.1 设计意图
 
@@ -136,6 +140,8 @@ Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布�
 
 ### 5.2 可行性结论：fit-aware worldBounds 已实证（先前"成立"结论经纠正 + 几何验证）
 
+> **归属变更**：本节的 fit-aware worldBounds 改动**已纳入 Phase 1 §4.2⑥ 落地**（独立消除社区畸变 + 为 Phase 2 镜头衔接提供几何基础）。以下几何论证保留作为 §4.2⑥ 的依据，并支撑 Phase 2 方案 A 的相似变换前提。
+>
 > 先前"零件齐全、接线即可"的乐观判断已被用户实测推翻。经原型几何验证，方向收敛并被数值证实。
 
 **根因（已定位）**：DOM 社区视图把 worldPoint 经**紧致 worldBounds**各轴归一化为 CSS%（§3.1）。DOM layer 坐标是 worldPoint 的**各向异性仿射**（x/y 各自归一化到社区云宽/高）；Sigma 是全图坐标的**相似变换**（x/y 同尺度）。两族不同 → 方案 A 单一 scale 衔接畸变。
@@ -152,7 +158,7 @@ Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布�
 
 **依赖面调研**：fit-aware 牵连极小——边/社区云/minimap/hover/hit-test 全走 world 坐标 + viewBox 自动跟随，无需改；节点 CSS% 与 labelSide（`model.ts:1247-1253`）因 bounds 仍"包住社区"基本不变。**全图** worldBounds 牵连大（CSS% 体系重写），不取。
 
-**方向定为 fit-aware worldBounds**：改 `model.ts:413` `worldBounds = worldBoundsForPoints(...)`，`focus=community` 时改用 aspect-locked 版（与 viewport 同宽高比）。改动仅此一处 + `focus.kind` 条件化（不得影响 sigma-global 路由），其余消费者自动跟随。**附带收益**：即便不做镜头衔接，fit-aware 也消除当前社区视图的形状畸变（紧致的 0.81 各向异性）。
+**方向定为 fit-aware worldBounds**（已纳入 Phase 1 §4.2⑥）：改 `model.ts:413` `worldBounds = worldBoundsForPoints(...)`，`focus=community` 时改用 aspect-locked 版（与 viewport 同宽高比）。改动仅此一处 + `focus.kind` 条件化（不得影响 sigma-global 路由），其余消费者自动跟随。**附带收益**：即便不做镜头衔接，fit-aware 也消除当前社区视图的形状畸变（紧致的 0.81 各向异性）——这也是它纳入 Phase 1 的理由。
 
 **sim 仍无需衔接**（不受 worldBounds 影响）。几何相似性是真机无缝的必要条件、已证实；充分性（切换时序/相机读取/CSS transition）属实施工程，留 writing-plans 实施步骤验证。
 
@@ -169,7 +175,7 @@ Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布�
 
 > 前提（两系统坐标同变换族）已由 §5.2 的 fit-aware worldBounds 实证满足：DOM layer 与 Sigma 均为 worldPoint 的相似变换，单一 scale 衔接成立。
 
-**前置改动**：先落 §5.2 的 fit-aware worldBounds（`model.ts:413` aspect-lock），消除各向异性——这是镜头衔接的几何基础，必须先于本节换算。
+**前置改动**：fit-aware worldBounds（`model.ts:413` aspect-lock）已在 Phase 1 §4.2⑥ 落地，消除各向异性——本节换算依赖此几何基础。
 
 切换时读 Sigma 末帧相机 → 几何换算成 DOM `RendererViewport` 初始态 → DOM 的 `focusCommunity` fit 动画从该初态推进到目标 fit，呈现镜头推进。
 
@@ -241,22 +247,23 @@ interface SigmaGlobalRenderer {
 | R4 | 两 renderer 短暂并存指针冲突 | createNext 后先 `previous.disableInteraction?.()` 再 destroy |
 | R5 | prefers-reduced-motion | 媒体查询关 transition，或不传 initialViewport 直接 fit |
 | R6 | viewportSize 时机 | 取 facade container.getBoundingClientRect()，此时 Sigma 已挂载 |
-| R7 | Sigma 未加载完就点社区 | getSigma 返回 null → 无 initialViewport → fallback 到当前硬切（**不退化**） |
-| R8 | focusCommunity 双重 fit | createGraphRenderer 首帧不 fit，fit 仅 controller.focusCommunity 触发 |
+| R7 | Sigma 未加载完就点"进入社区"按钮 | getSigma 返回 null → 无 initialViewport → fallback 到当前硬切（**不退化**） |
+| R8 | focusCommunity 双重 fit | createGraphRenderer 首帧不调 `fitRendererViewportToPoints`（initialViewport 仍由 §5.4.5 commitViewport 写入）；fit 仅 controller.focusCommunity 触发 |
 
 #### 5.4.8 工作量
 
-约 **150 行新增/修改 + 1 个新文件**（`route-transition-viewport.ts` ~70-90 行）。核心逻辑集中在换算函数，独立可单测。
+约 **150 行新增/修改 + 1 个新文件**（`route-transition-viewport.ts` ~70-90 行）。核心逻辑集中在换算函数，独立可单测。（fit-aware worldBounds 已计入 Phase 1，不含于此。）
 
 #### 5.4.9 实施顺序（供 writing-plans）
 
-1. **fit-aware worldBounds**（`model.ts:413` aspect-lock + focus 条件化）+ 单测 + 视觉回归确认社区不畸变——几何基础，先绿
-2. 换算函数 + 单测（独立先绿）
-3. SigmaGlobalRenderer 接口扩展（getSigma/readCameraState）+ 测试
-4. createGraphRenderer 接受 initialViewport + 测试
-5. switchRoute 签名 + handoff 推导 + 4 调用点适配 + 测试
-6. CSS 推进动画类 + reduced-motion
-7. 手动视觉验证（真机切换无缝）
+1. 换算函数 + 单测（独立先绿）
+2. SigmaGlobalRenderer 接口扩展（getSigma/readCameraState）+ 测试
+3. createGraphRenderer 接受 initialViewport + 测试
+4. switchRoute 签名 + handoff 推导 + 4 调用点适配 + 测试
+5. CSS 推进动画类 + reduced-motion
+6. 手动视觉验证（真机切换无缝）
+
+> 前置：fit-aware worldBounds 已在 Phase 1 §4.2⑥ 完成。
 
 #### 5.4.10 测试策略
 
@@ -271,12 +278,13 @@ interface SigmaGlobalRenderer {
 
 ## 7. 风险与回滚
 
-- **Phase 1**：6 项改动相互独立，每项可单独回滚；均为 token/CSS/取值级，无架构改动。
-- **Phase 2**：fit-aware worldBounds 改动仅 `model.ts:413` 一处 + focus 条件化，最坏情况回退到紧致 bounds（即当前现状，仅形状畸变，不崩溃）。镜头换算失败/Sigma 未加载时自动 fallback 到当前硬切行为，**不退化**。换算函数独立、先行、单测覆盖，风险最低的模块先落地。
+- **Phase 1**：6 项改动（5 项 token/CSS/取值级 + 1 项几何 bounds），相互独立，每项可单独回滚；无架构改动。fit-aware worldBounds 最坏回退即恢复紧致 bounds（=当前现状，仅形状畸变，不崩溃）。
+- **Phase 2**：镜头换算失败/Sigma 未加载时自动 fallback 到当前硬切行为，**不退化**。换算函数独立、先行、单测覆盖，风险最低的模块先落地。
 
 ## 8. 后续与未决
 
-- **Phase 2 实施**：方向已定（fit-aware worldBounds + 方案 A，§5.2 实证）。Phase 1 验收后，新 session 直接据 §5 writing-plans，无需重新调研。
+- **Phase 2 实施（待评估，不预设推进）**：方向已定（方案 A，§5.2 实证），但镜头推进的"真机无缝充分性"属实施工程、spec 未证实。建议 Phase 1（含 fit-aware）上线后真实使用 1-2 周，再判断"同源化 + 畸变消除后，硬切是否已可接受"——若是，Phase 2 可不做或降级为更轻的 opacity 淡入拉长；若仍割裂，再据 §5 writing-plans。近期 Sigma 主线（性能/稳定性）刚收敛，Phase 2 宜推到下一个稳定窗口。
 - **评估项**（单独决策，不阻塞 Phase 1/2）：
   - Sigma 标签底框是否值得 custom label renderer 的成本。
   - 抽屉 `--app-accent` 是否对齐图谱 `--cinnabar`（跨子系统，产品定夺）。
+  - conflict 关系色 token 化（原 §4.2⑥，本次砍除）：待关系边上色系统（ADR-23）整体演进时，一并统一散落于 DOM 边/图例/Sigma 边的 3 处 conflict 色。
