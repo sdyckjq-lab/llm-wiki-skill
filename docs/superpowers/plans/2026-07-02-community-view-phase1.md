@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 消除全局 Sigma 视图与社区 DOM/SVG 视图切换时的配色/字体/底色/状态色/光晕割裂（spec §4 六项），不含 Phase 2 的镜头过渡。
+**Goal:** 消除全局 Sigma 视图与社区 DOM/SVG 视图切换时的视觉割裂（配色/字体/底色/状态色/光晕）并修复社区视图形状畸变（spec §4.2 六项：5 项视觉 + 1 项几何），不含 Phase 2 的镜头推进过渡。
 
-**Architecture:** 六项独立改动，每项 token/CSS/取值级，无架构变更。引擎层（`packages/graph-engine/src/`）改 token、CSS 字符串常量、节点属性下发、Sigma 设置；用 `node --test` 单测覆盖有逻辑的项（①②⑤⑥），纯 CSS 项（③④）靠 typecheck + 手动视觉 + 视觉回归验证。
+**Architecture:** 六项独立改动：5 项 token/CSS/取值级（无架构变更），1 项几何 bounds（model.ts:413 aspect-lock + focus 条件化）。引擎层（`packages/graph-engine/src/`）改几何函数、token、CSS 字符串常量、节点属性下发、Sigma 设置；用 `node --test` 单测覆盖有逻辑的项（①②⑤⑥ + fit-aware），纯 CSS 项（③④）靠 typecheck + 手动视觉 + 视觉回归验证。
 
-**Tech Stack:** TypeScript ESM（graph-engine 子包）、node `--test` + tsx、graphology + sigma.js（Canvas）、DOM/SVG 渲染、CSS 变量（scoped 到 graph root inline style）。
+**Tech Stack:** TypeScript ESM（graph-engine 子包）、node `--test` + tsx、graphology + sigma.js v3（Canvas）、DOM/SVG 渲染、CSS 变量（scoped 到 graph root inline style）。
 
 ## Global Constraints
 
@@ -23,94 +23,238 @@
 
 | 文件 | 责任 | 改动 |
 |---|---|---|
-| `packages/graph-engine/src/themes/tokens.ts` | 主题 token 定义 | Task 1：两 ROOT 加 `--crimson` |
-| `packages/graph-engine/src/render/render-styles.ts` | STATIC_RENDERER_CSS 常量 | Task 1（conflict 全局边）、Task 4（社区背景）、Task 5（社区边）、Task 6（dot-core 光晕/底色） |
+| `packages/graph-engine/src/render/geometry.ts` | worldBoundsForPoints 等几何 | Task 1：`worldBoundsForPoints` 加 `aspectRatio` option |
+| `packages/graph-engine/src/render/model.ts` | `buildRenderableGraph` | Task 1：options 加 `viewportSize` + worldBounds aspect-lock；Task 6：`RenderableNode` 加 `communityColor` + 节点构造回填 |
+| `packages/graph-engine/src/render/render-pipeline.ts` | DOM 重建管线 | Task 1：`rebuildAndPaint` 传 `viewportSize` |
+| `packages/graph-engine/src/render/render-styles.ts` | STATIC_RENDERER_CSS 常量 | Task 4（社区背景）、Task 5（社区边）、Task 6（dot-core 光晕/底色） |
 | `packages/graph-engine/src/render/sigma-graphology-model.ts` | Sigma 节点属性/颜色 | Task 2：`sigmaGlobalNodeColor` 加 theme + token |
 | `packages/graph-engine/src/render/sigma-global-renderer.ts` | Sigma 设置 | Task 3：`sigmaSettingsForTheme` 加 `labelFont` + export |
-| `packages/graph-engine/src/render/model.ts` | `buildRenderableGraph` | Task 6：`RenderableNode` 加 `communityColor` + 节点构造回填 |
 | `packages/graph-engine/src/render/nodes.ts` | `createGraphNodeElement` | Task 6：下发 `--node-community-color` |
-| `packages/graph-engine/test/themes.test.ts` | token 单测 | Task 1 加用例 |
+| `packages/graph-engine/test/geometry.test.ts` | geometry 单测 | Task 1 加 aspect-lock 用例 |
+| `packages/graph-engine/test/render-model.test.ts` | buildRenderableGraph 单测 | Task 1 加 focus 条件化用例；Task 6 加 communityColor 用例 |
 | `packages/graph-engine/test/sigma-graphology-model.test.ts` | sigma model 单测 | Task 2 加用例 |
 | `packages/graph-engine/test/sigma-global-renderer.test.ts` | sigma renderer 单测 | Task 3 加用例 |
-| `packages/graph-engine/test/render-model.test.ts` | buildRenderableGraph 单测 | Task 6 加用例 |
 
-依赖：Task 5（社区 conflict 边 token 化）依赖 Task 1（`--crimson` 已定义）。其余 task 互相独立。建议顺序 1→2→3→4→5→6→7（低风险、token 基础先行）。
+依赖：六项互相独立（Task 5 不再依赖任何 token 新增）。建议顺序 1→2→3→4→5→6→7（fit-aware 几何基础先绿，其余低风险）。
 
 ---
 
-## Task 1: conflict 关系色 → `--crimson` token〔⑥〕
+## Task 1: 社区视图形状畸变 → fit-aware worldBounds〔§4.2⑥〕（几何基础）
 
 **Files:**
-- Modify: `packages/graph-engine/src/themes/tokens.ts:42`（`SHAN_SHUI_ROOT` 末尾）、`:72`（`MO_YE_ROOT` 末尾）
-- Modify: `packages/graph-engine/src/render/render-styles.ts:650-652`
-- Test: `packages/graph-engine/test/themes.test.ts`
+- Modify: `packages/graph-engine/src/render/geometry.ts:302-322`（`worldBoundsForPoints` 加 `aspectRatio`）
+- Modify: `packages/graph-engine/src/render/model.ts:226-237`（`BuildRenderableGraphOptions` 加 `viewportSize`）、`:413`（worldBounds 计算）
+- Modify: `packages/graph-engine/src/render/render-pipeline.ts:114-123`（`rebuildAndPaint` 传 `viewportSize`）
+- Test: `packages/graph-engine/test/geometry.test.ts`、`packages/graph-engine/test/render-model.test.ts`
 
 **Interfaces:**
-- Produces: 新 token `--crimson`（两主题均 `#d94693`），随 `applyTheme` 自动下发到 graph root；Task 5 的社区 conflict 边引用它。
+- Consumes: `focus.kind === "community"`（model.ts 既有判断，:369/:939）、`viewportSize()`（render-pipeline.ts:607 闭包函数，返回 `{width,height}`）。
+- Produces: `worldBoundsForPoints(points, { aspectRatio? })` 新 option；`BuildRenderableGraphOptions.viewportSize?: { width: number; height: number }`。focus=community 且有 viewportSize 时 worldBounds aspect-locked 到 viewport 宽高比（消除各向异性畸变）；其余情况（focus=global / 无 viewportSize）维持紧致 bounds 不变。
 
-- [ ] **Step 1: 写失败测试**
+**背景（为何这么改）**：DOM 社区视图把 worldPoint 经紧制 worldBounds 各轴独立归一化为 CSS%，是各向异性仿射；社区云宽高比 ≠ viewport 宽高比时节点云被压扁/拉伸（宽屏 1600×900 下 y 压缩约 19%，肉眼椭圆畸变）。fit-aware 让 bounds 与 viewport 同宽高比 → CSS% 归一化变相似变换 → 畸变消除。几何论证见 spec §5.2。sigma-global 路由不调 `buildRenderableGraph`（用独立 graphology graph + 相机），不受影响。
 
-在 `test/themes.test.ts` 的 `describe("theme tokens", ...)` 块内追加：
+- [ ] **Step 1: 写失败测试（geometry aspect-lock）**
+
+在 `test/geometry.test.ts` 追加（顶部若无 `worldBoundsForPoints` import 则补）：
 
 ```ts
-it("exposes a --crimson token for conflict edges in both themes", () => {
-  assert.equal(getThemeTokens("shan-shui").vars["--crimson"], "#d94693");
-  assert.equal(getThemeTokens("mo-ye").vars["--crimson"], "#d94693");
+import { worldBoundsForPoints } from "../src/render/geometry";
+
+describe("worldBoundsForPoints aspect lock", () => {
+  // 明显偏高的点云（宽 100、高 300，宽高比 0.33），viewport 宽高比 1.78
+  const tallCloud = [
+    { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 300 }, { x: 100, y: 300 },
+  ];
+  it("without aspectRatio returns tight bounds (point-cloud aspect)", () => {
+    const b = worldBoundsForPoints(tallCloud);
+    assert.ok(b.width / b.height < 1, "tight bounds should be taller than wide");
+  });
+  it("with aspectRatio expands short axis to match viewport ratio without losing points", () => {
+    const aspect = 16 / 9;
+    const b = worldBoundsForPoints(tallCloud, { aspectRatio: aspect });
+    assert.ok(Math.abs(b.width / b.height - aspect) < 0.01, `aspect locked to ${aspect}`);
+    for (const p of tallCloud) {
+      assert.ok(p.x >= b.minX && p.x <= b.maxX, `point x=${p.x} inside bounds`);
+      assert.ok(p.y >= b.minY && p.y <= b.maxY, `point y=${p.y} inside bounds`);
+    }
+  });
+  it("aspectRatio only expands short axis (wide cloud + narrow ratio keeps all points)", () => {
+    const wideCloud = [{ x: 0, y: 0 }, { x: 400, y: 100 }];
+    const b = worldBoundsForPoints(wideCloud, { aspectRatio: 0.5 });
+    for (const p of wideCloud) {
+      assert.ok(p.x >= b.minX && p.x <= b.maxX);
+      assert.ok(p.y >= b.minY && p.y <= b.maxY);
+    }
+  });
 });
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `npm run test -w @llm-wiki/graph-engine -- silent 2>&1 | grep -i crimson`
-Expected: FAIL（`vars["--crimson"]` 为 `undefined`）。
+Run: `npm run test -w @llm-wiki/graph-engine 2>&1 | grep -A3 "aspect lock"`
+Expected: FAIL（`worldBoundsForPoints` 不认 `aspectRatio`，bounds 仍紧致，宽高比断言不过）。
 
-- [ ] **Step 3: 加 token 定义**
+- [ ] **Step 3: 给 worldBoundsForPoints 加 aspectRatio option**
 
-`tokens.ts` `SHAN_SHUI_ROOT`（line 42 `--font-mono: ...;` 之后、闭合反引号之前）加一行：
+`geometry.ts:302-322` 替换为：
+
 ```ts
-  --crimson: #d94693;
-```
-`MO_YE_ROOT`（line 71 `--font-mono: ...;` 之后）同样加：
-```ts
-  --crimson: #d94693;
-```
-
-- [ ] **Step 4: 改全局 conflict 边引用**
-
-`render-styles.ts:650-652`：
-```css
-.edge.relation-conflict {
-  stroke: color-mix(in srgb, var(--crimson) 78%, transparent);
+export function worldBoundsForPoints(
+  points: GraphWorldPoint[],
+  options: { padding?: number; minWidth?: number; minHeight?: number; aspectRatio?: number } = {}
+): GraphWorldBounds {
+  const padding = Math.max(0, finiteNumber(options.padding, 80));
+  const minWidth = Math.max(1, finiteNumber(options.minWidth, GRAPH_WORLD_SIZE.width));
+  const minHeight = Math.max(1, finiteNumber(options.minHeight, GRAPH_WORLD_SIZE.height));
+  let minX = 0;
+  let minY = 0;
+  let maxX = minWidth;
+  let maxY = minHeight;
+  for (const point of points) {
+    const x = finiteNumber(point.x, 0);
+    const y = finiteNumber(point.y, 0);
+    minX = Math.min(minX, x - padding);
+    minY = Math.min(minY, y - padding);
+    maxX = Math.max(maxX, x + padding);
+    maxY = Math.max(maxY, y + padding);
+  }
+  let width = maxX - minX;
+  let height = maxY - minY;
+  // fit-aware: 把 bounds aspect-lock 到 viewport 宽高比（只扩短轴，中心不变，不丢点）
+  const aspectRatio = Number(options.aspectRatio);
+  if (Number.isFinite(aspectRatio) && aspectRatio > 0 && width > 0 && height > 0) {
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    if (width / height < aspectRatio) width = height * aspectRatio;
+    else height = width / aspectRatio;
+    minX = cx - width / 2;
+    maxX = cx + width / 2;
+    minY = cy - height / 2;
+    maxY = cy + height / 2;
+  }
+  return normalizeWorldBounds({ minX, minY, maxX, maxY, width, height: maxY - minY });
 }
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [ ] **Step 4: 跑 geometry 测试确认通过**
+
+Run: `npm run test -w @llm-wiki/graph-engine 2>&1 | grep -A3 "aspect lock"`
+Expected: PASS。
+
+- [ ] **Step 5: 写失败测试（model focus 条件化）**
+
+在 `test/render-model.test.ts` 追加（参考 line 358 现有 focused 用法的 focus 格式）：
+
+```ts
+describe("buildRenderableGraph community worldBounds aspect", () => {
+  it("aspect-locks worldBounds to viewport ratio when focus=community + viewportSize", () => {
+    const graph = buildRenderableGraph(sampleGraph(), {
+      focus: { kind: "community", id: "c1" },
+      viewportSize: { width: 1600, height: 900 },
+    });
+    const ratio = graph.worldBounds.width / graph.worldBounds.height;
+    assert.ok(Math.abs(ratio - 1600 / 900) < 0.05, `worldBounds aspect ~ viewport, got ${ratio}`);
+  });
+  it("does not force-lock worldBounds when focus=global", () => {
+    const tight = buildRenderableGraph(sampleGraph(), {});
+    const withSize = buildRenderableGraph(sampleGraph(), {
+      viewportSize: { width: 1600, height: 900 },
+    });
+    // global 不 aspect-lock：传不传 viewportSize，worldBounds 宽高比都应基本不变
+    assert.ok(
+      Math.abs((tight.worldBounds.width / tight.worldBounds.height) - (withSize.worldBounds.width / withSize.worldBounds.height)) < 0.05,
+      "global worldBounds unaffected by viewportSize"
+    );
+  });
+});
+```
+
+> 注：`GraphFocusInput` 的 community 变体是 `{ kind: "community", id }`（model.ts:939 `focus.kind !== "community"` + :369 `focus.id`）。若 typecheck 报 focus 字段不符，以 `src/types` 里 `GraphFocusInput` 实际定义为准。`sampleGraph()` 含 communities c1/c2/c3（render-model.test.ts:47-50）。
+
+- [ ] **Step 6: 跑测试确认失败**
+
+Run: `npm run test -w @llm-wiki/graph-engine 2>&1 | grep -A3 "worldBounds aspect"`
+Expected: FAIL（buildRenderableGraph 不认 viewportSize，worldBounds 仍紧致，aspect 断言不过）。
+
+- [ ] **Step 7: BuildRenderableGraphOptions 加 viewportSize**
+
+`model.ts:226-237` 接口末尾（`aggregationMarkers?: GraphAggregationMarker[];` 之后）加：
+
+```ts
+  viewportSize?: { width: number; height: number };
+```
+
+- [ ] **Step 8: worldBounds 计算 aspect-lock（model.ts:413）**
+
+`model.ts:413` 替换为：
+
+```ts
+  const communityViewportAspect =
+    focus?.kind === "community" && options.viewportSize && options.viewportSize.width > 0 && options.viewportSize.height > 0
+      ? options.viewportSize.width / options.viewportSize.height
+      : undefined;
+  const worldBounds = worldBoundsForPoints(
+    [...pointById.values()],
+    communityViewportAspect ? { aspectRatio: communityViewportAspect } : {}
+  );
+```
+
+- [ ] **Step 9: rebuildAndPaint 传 viewportSize（render-pipeline.ts:114-123）**
+
+`render-pipeline.ts:114` 的 `buildRenderableGraph` 调用，options 对象加一行 `viewportSize: viewportSize(),`（`viewportSize` 是 `createGraphRenderPipeline` 闭包内函数，render-pipeline.ts:607，`rebuildAndPaint` 同作用域可直接调）：
+
+```ts
+    context.graph = buildRenderableGraph(context.data, {
+      pins: runtimeSnapshot.pins,
+      theme: context.theme,
+      selectedNodeId: renderSelection.selectedNodeId,
+      selection: renderSelection.selection,
+      focus: runtimeSnapshot.focus,
+      typeFilters: {},
+      aggregationMarkers: context.aggregationMarkers,
+      pathCache: context.pathCache,
+      viewportSize: viewportSize()
+    });
+```
+
+> 注：`render-pipeline.ts:440` 还有一处 `buildRenderableGraph(context.data, …)` 调用；若它也是 DOM 重建路径（非 sigma-global），同样加 `viewportSize: viewportSize()`。先 grep 确认上下文：`grep -n "buildRenderableGraph(context.data" packages/graph-engine/src/render/render-pipeline.ts`。
+>
+> `graph-renderer-root.ts:112` 的 `initialGraph` **不传 viewportSize**：首屏 focus 一般非 community（aspect-lock 不触发）；即便 community，缺 viewportSize 时 fallback 到紧制 bounds = 当前现状，不崩溃。
+
+- [ ] **Step 10: 跑测试确认通过**
 
 Run: `npm run test -w @llm-wiki/graph-engine 2>&1 | tail -5`
-Expected: PASS（含新用例）。
+Expected: PASS（geometry + model 新用例全绿，无既有回归）。
 
-- [ ] **Step 6: typecheck**
+- [ ] **Step 11: typecheck**
 
 Run: `npm run typecheck -w @llm-wiki/graph-engine`
-Expected: 无错误。
+Expected: 无错误。若报 `buildRenderableGraph` 别处调用点类型不符，按调用点实际补。
 
-- [ ] **Step 7: commit**
+- [ ] **Step 12: 手动视觉确认（宽屏畸变消除）**
+
+`npm run dev` → 浏览器拉宽到 ~1600×900 → 进入一个节点较多的社区。确认：
+- 社区节点云**不再被压成扁平椭圆**，分布形状与全局视图同尺度（不畸变）。
+- 节点仍全部在屏（aspect-lock 只扩短轴不丢点）。
+- mo-ye 主题、不同社区大小下均正常。
+
+- [ ] **Step 13: commit**
 
 ```bash
-git add packages/graph-engine/src/themes/tokens.ts packages/graph-engine/src/render/render-styles.ts packages/graph-engine/test/themes.test.ts
-git commit -m "feat(graph-engine): add --crimson token for conflict edges"
+git add packages/graph-engine/src/render/geometry.ts packages/graph-engine/src/render/model.ts packages/graph-engine/src/render/render-pipeline.ts packages/graph-engine/test/geometry.test.ts packages/graph-engine/test/render-model.test.ts
+git commit -m "feat(graph-engine): fit-aware community worldBounds to fix aspect distortion"
 ```
 
 ---
 
-## Task 2: Sigma 状态色硬编码 → 引擎 token〔②〕
+## Task 2: Sigma 状态色硬编码 → 引擎 token〔§4.2②〕
 
 **Files:**
 - Modify: `packages/graph-engine/src/render/sigma-graphology-model.ts:164-171`（`sigmaGlobalNodeAttributes`）、`:355-360`（`sigmaGlobalNodeColor`）、`:95`、`:147`（两处调用点）
 - Test: `packages/graph-engine/test/sigma-graphology-model.test.ts`
 
 **Interfaces:**
-- Consumes: `getThemeTokens(theme).vars["--cinnabar"|"--amber"|"--night"|"--muted"]`（已存在，`tokens.ts:104`）。
+- Consumes: `getThemeTokens(theme).vars["--cinnabar"|"--amber"|"--night"|"--muted"]`（已存在，tokens.ts:104）。
 - Produces: `sigmaGlobalNodeColor(node, communityColorById, theme)` 新签名（第三参 `theme: ThemeId`）；`sigmaGlobalNodeAttributes(node, communityColorById, selectedCommunityIds, theme)` 新增第四参。调用链 theme 上游已可用（`buildSigmaGlobalGraphologyGraph`/`patchSigmaGlobalGraphAttributes` 均有 `theme` 参数）。
 
 - [ ] **Step 1: 写失败测试**
@@ -122,6 +266,8 @@ import { sigmaGlobalNodeColor } from "../src/render/sigma-graphology-model";
 import { getThemeTokens } from "../src/themes";
 import type { GraphRendererAdapterNode } from "../src/render/adapter";
 
+// sigmaGlobalNodeColor 运行时只读 selected/searchHit/pinHint.pinned/communityId；
+// 其余字段用 as unknown as 绕过完整类型。若 typecheck 报缺字段，按 adapter.ts:59-78 补齐。
 function adapterNode(overrides: Partial<GraphRendererAdapterNode> = {}): GraphRendererAdapterNode {
   return ({
     id: "n1",
@@ -156,7 +302,7 @@ describe("sigmaGlobalNodeColor theme tokens", () => {
 });
 ```
 
-> 注：`GraphRendererAdapterNode` 的确切字段以 `src/render/adapter.ts:59-78` 为准；上面的 mock 只覆盖 `sigmaGlobalNodeColor` 读到的字段，用 `as unknown as` 绕过完整类型。若 typecheck 报缺字段，按 adapter.ts 补齐。
+> 注：`GraphRendererAdapterNode` 的确切字段以 `src/render/adapter.ts:59-78` 为准；mock 只覆盖 `sigmaGlobalNodeColor` 读到的字段，用 `as unknown as` 绕过完整类型。若 typecheck 报缺字段，按 adapter.ts 补齐。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -181,7 +327,7 @@ export function sigmaGlobalNodeColor(
 }
 ```
 
-确保文件顶部已 import `{ getThemeTokens } from "../themes"` 和 `type { ThemeId } from "../../types"`（若已有 `ThemeId` 则不重复；参考 line 85 `theme: ThemeId` 已用，应已 import）。
+确保文件顶部已 import `{ getThemeTokens } from "../themes"` 和 `type { ThemeId }`（line 85 `theme: ThemeId` 已用，应已 import；若缺则补）。
 
 - [ ] **Step 4: 改 `sigmaGlobalNodeAttributes` 透传 theme**
 
@@ -218,7 +364,7 @@ Expected: PASS。
 - [ ] **Step 7: typecheck（确认无遗漏调用点）**
 
 Run: `npm run typecheck -w @llm-wiki/graph-engine`
-Expected: 无错误。若报 `sigmaGlobalNodeAttributes` 别处调用缺参，grep `sigmaGlobalNodeAttributes(` 补 theme：`grep -rn "sigmaGlobalNodeAttributes(" packages/graph-engine/src`。
+Expected: 无错误。若报 `sigmaGlobalNodeAttributes` 别处调用缺参，grep 补 theme：`grep -rn "sigmaGlobalNodeAttributes(" packages/graph-engine/src`。
 
 - [ ] **Step 8: commit**
 
@@ -229,18 +375,30 @@ git commit -m "feat(graph-engine): map sigma state colors to theme tokens"
 
 ---
 
-## Task 3: Sigma 标签字体 → 对齐 DOM 主体 sans〔⑤〕
+## Task 3: Sigma 标签字体 → 对齐 DOM 主体 sans〔§4.2⑤〕
+
+> **TDD 顺序注意**：必须先给 `sigmaSettingsForTheme` 加 `export`，再写 import 它的测试。否则 ESM 命名导出不存在会在模块加载阶段抛 SyntaxError，整个测试文件挂、红绿不清。
 
 **Files:**
-- Modify: `packages/graph-engine/src/render/sigma-global-renderer.ts:766-779`（`sigmaSettingsForTheme`，加 `export` + `labelFont`）
+- Modify: `packages/graph-engine/src/render/sigma-global-renderer.ts:766-779`（`sigmaSettingsForTheme`，先 export，再加 `labelFont` + `getThemeTokens` import）
 - Test: `packages/graph-engine/test/sigma-global-renderer.test.ts`
 
 **Interfaces:**
-- Produces: `export function sigmaSettingsForTheme(theme)` 返回含 `labelFont`（取自 `--font-ui` 字符串）。Sigma canvas label 不吃 CSS var，故传字符串值。
+- Produces: `export function sigmaSettingsForTheme(theme)` 返回含 `labelFont`（取自 `--font-ui` 字符串）。Sigma v3 canvas label 不吃 CSS var，故传字符串值。
 
-- [ ] **Step 1: 写失败测试**
+- [ ] **Step 1: 先加 export + getThemeTokens import（不改函数体）**
 
-在 `test/sigma-global-renderer.test.ts` 追加（顶部补 import）：
+`sigma-global-renderer.ts:766` 把 `function sigmaSettingsForTheme` 改为 `export function sigmaSettingsForTheme`。
+
+确认文件顶部已 import `getThemeTokens`——**当前未 import**（sigma-global-renderer.ts:1-72 用的是 `sigmaLabelColor` 内联硬编码），补一行（与其他 import 同区域）：
+
+```ts
+import { getThemeTokens } from "../themes";
+```
+
+- [ ] **Step 2: 写失败测试**
+
+在 `test/sigma-global-renderer.test.ts` 追加：
 
 ```ts
 import { sigmaSettingsForTheme } from "../src/render/sigma-global-renderer";
@@ -259,14 +417,14 @@ describe("sigmaSettingsForTheme label font", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [ ] **Step 3: 跑测试确认失败**
 
 Run: `npm run test -w @llm-wiki/graph-engine 2>&1 | grep -A3 "label font"`
-Expected: FAIL（`sigmaSettingsForTheme` 未 export 或 `labelFont` 为 undefined）。
+Expected: FAIL（`settings.labelFont` 为 undefined，断言不等 `--font-ui`）。
 
-- [ ] **Step 3: 加 `labelFont` 并 export**
+- [ ] **Step 4: 加 labelFont**
 
-`sigma-global-renderer.ts:766-779`，把 `function sigmaSettingsForTheme` 改为 `export function sigmaSettingsForTheme`，返回对象加 `labelFont`：
+`sigma-global-renderer.ts:766-779` 返回对象加 `labelFont`：
 
 ```ts
 export function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
@@ -287,19 +445,15 @@ export function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
 }
 ```
 
-确保文件顶部已 import `{ getThemeTokens } from "../themes"`（若无则加）。
-
-- [ ] **Step 4: 跑测试确认通过**
+- [ ] **Step 5: 跑测试确认通过**
 
 Run: `npm run test -w @llm-wiki/graph-engine 2>&1 | tail -5`
 Expected: PASS。
 
-- [ ] **Step 5: typecheck**
+- [ ] **Step 6: typecheck + commit**
 
 Run: `npm run typecheck -w @llm-wiki/graph-engine`
 Expected: 无错误。
-
-- [ ] **Step 6: commit**
 
 ```bash
 git add packages/graph-engine/src/render/sigma-global-renderer.ts packages/graph-engine/test/sigma-global-renderer.test.ts
@@ -308,7 +462,7 @@ git commit -m "feat(graph-engine): set sigma labelFont to --font-ui to match DOM
 
 ---
 
-## Task 4: 社区方格纸底 → 全局同源釉面〔③〕
+## Task 4: 社区方格纸底 → 全局同源釉面〔§4.2③〕
 
 > 纯 CSS 改动，无引擎单测（graph-engine 的 CSS 常量无单测范式）。验证 = typecheck 不破坏 + 手动视觉确认（社区态底色与全局同源、方格消失）。
 
@@ -327,7 +481,7 @@ git commit -m "feat(graph-engine): set sigma labelFont to --font-ui to match DOM
 
 即删除两条方格 `linear-gradient`（横/竖）、原 radial 高光、原 linear 渐变、`--community-map-paper` 底，以及 `background-size: 42px 42px, ...` 整行。保留该选择器块里 `--community-map-*` 局部变量声明（1084-1090，label 仍用）。
 
-> 说明：`--paper-glow`（radial 高光）+ `--bg`（底色）= 全局 Sigma 视图同源底，由 `applyTheme` 下发到 graph root。mo-ye 主题下社区态随之深色化，与全局一致（这正是消除割裂的意图；社区内 dot/label/边样式本就适配深色主题）。
+> 说明：`--bg` 即全局底色 token（亮主题 `#f4efe4`、暗主题自动跟随，spec §3.1/§4.2③），`--paper-glow`（radial 高光）与全局 Sigma 视图同源底，由 `applyTheme` 下发到 graph root。**附带收益**：现 `--community-map-paper #f8f1e6` 是硬编码浅色，墨夜主题进入 lightweight 态纸色不匹配；改 `var(--bg)` 后深主题纸色自动跟随，顺带消除该隐患。
 
 - [ ] **Step 2: typecheck**
 
@@ -351,12 +505,12 @@ git commit -m "feat(graph-engine): unify community backdrop with global paper vi
 
 ---
 
-## Task 5: 社区边 0.32→0.5 + token 化〔④〕（依赖 Task 1）
+## Task 5: 社区边 0.32→0.5 + token 化〔§4.2④〕
+
+> 纯 CSS。验证同 Task 4。**不再依赖任何新 token**——conflict 边保持原 rgba 不动（属关系边上色系统 ADR-23，待整体演进统一，spec §3.4）。
 
 **Files:**
 - Modify: `packages/graph-engine/src/render/render-styles.ts:1109-1128`
-
-> 纯 CSS。验证同 Task 4。
 
 - [ ] **Step 1: 改社区态边 opacity**
 
@@ -370,9 +524,9 @@ git commit -m "feat(graph-engine): unify community backdrop with global paper vi
 }
 ```
 
-- [ ] **Step 2: 关系类型 rgba → color-mix token**
+- [ ] **Step 2: 关系类型 rgba → color-mix token（conflict 保持原 rgba 不动）**
 
-`render-styles.ts:1114-1128` 替换为（X 值匹配原 rgba 的视觉权重）：
+`render-styles.ts:1114-1128` 的 implementation/dependency/derivation/contrast 四类改 color-mix；**conflict 保持原 `rgba(183, 96, 112, .42)` 不动**：
 
 ```css
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-implementation {
@@ -387,26 +541,22 @@ git commit -m "feat(graph-engine): unify community backdrop with global paper vi
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-contrast {
   stroke: color-mix(in srgb, var(--amber) 40%, transparent);
 }
-.llm-wiki-graph-engine[data-community-map-state="lightweight"] .edge.relation-conflict {
-  stroke: color-mix(in srgb, var(--crimson) 42%, transparent);
-}
 ```
 
-（`--crimson` 由 Task 1 提供。）
+> conflict 边（`.relation-conflict`）**保留原行 `stroke: rgba(183, 96, 112, .42);` 不改**，并在行尾加注释 `/* conflict 色 token 化待 ADR-23 关系边系统整体演进，spec §3.4 */`。
 
-- [ ] **Step 3: typecheck**
+- [ ] **Step 3: typecheck + 手动视觉确认**
 
 Run: `npm run typecheck -w @llm-wiki/graph-engine`
 Expected: 无错误。
 
-- [ ] **Step 4: 手动视觉确认**
-
 `npm run dev` → 进入社区。确认：
 - 社区内边**整体更清晰**（0.32→0.5）。
-- 各关系类型颜色与全局边**同源 token**（night/amber/crimson），无突兀的独立灰青。
-- mo-ye 主题下边仍可读（深底 + night/amber，若 conflict/crimson 过亮可后续微调百分比，记入后续 polish）。
+- implementation/dependency/derivation/contrast 四类颜色与全局边**同源 token**（night/amber），无突兀的独立灰青。
+- conflict 边维持原红色（未 token 化，有意取舍）。
+- mo-ye 主题下边仍可读（深底 + night/amber，若百分比需微调记入后续 polish，不阻塞）。
 
-- [ ] **Step 5: commit**
+- [ ] **Step 4: commit**
 
 ```bash
 git add packages/graph-engine/src/render/render-styles.ts
@@ -415,7 +565,7 @@ git commit -m "feat(graph-engine): raise community edge opacity to .5 and tokeni
 
 ---
 
-## Task 6: 社区 DOM 节点 社区色底 + 光晕仅 hover/选中〔①〕（核心）
+## Task 6: 社区 DOM 节点 社区色底 + 光晕仅 hover/选中〔§4.2①〕（核心）
 
 **Files:**
 - Modify: `packages/graph-engine/src/render/model.ts:138-165`（接口）、`:515-563`（节点构造）、早期建 colorIndex map
@@ -475,7 +625,7 @@ Expected: FAIL（`node.communityColor` 为 `undefined`）。
   );
 ```
 
-然后在节点构造（`model.ts:515-563` 的 return 对象内，建议紧跟 `community: node.community,` 之后）加字段：
+然后在节点构造（`model.ts:515-563` 的 return 对象内，紧跟 `community: node.community,` 之后）加字段：
 
 ```ts
       communityColor: getCommunityColor(theme, communityColorIndexById.get(node.community) ?? 0),
@@ -533,7 +683,7 @@ Expected: PASS。
 
 保留 1196-1200（selected/relation-focus 朱砂光晕 + scale）原样不动。即：删掉原来各 `data-type` 的 `box-shadow: 0 0 0 4px color-mix(...15%)` 同色硬环常显；改为默认无光晕，仅 `:hover` 出类型色柔光晕；selected/focus 维持朱砂。
 
-> 说明：原 source/synthesis/comparison/query 的 `background: var(--jade/--amber/--violet)` 类型实色底被移除（统一改社区色底）；类型色降级为 `:hover` 光晕语义。topic 保持 `--cinnabar`（设计稿"近景强调核心"，见 spec §4.2 ① 已知权衡）。
+> 说明：原 source/synthesis/comparison/query 的 `background: var(--jade/--amber/--violet)` 类型实色底被移除（统一改社区色底）；类型色降级为 `:hover` 光晕语义。topic 保持 `--cinnabar`（设计稿"近景强调核心"，见 spec §4.2① 已知权衡）。
 
 - [ ] **Step 8: typecheck**
 
@@ -576,14 +726,15 @@ Expected: 无错误（web/server typecheck 会自动带上最新引擎产物）�
 Run: `npm run lint -w @llm-wiki-agent/web`
 Expected: 无新增错误。
 
-- [ ] **Step 4: 手动视觉验收清单（对照 spec §4.1 四类割裂）**
+- [ ] **Step 4: 手动视觉验收清单（对照 spec §4.1 五类割裂）**
 
 `npm run dev`，真实数据下从全局进入社区，逐项确认：
-- [ ] 配色维度跳变消除：状态红（Sigma）与社区色（DOM）同源 token，不再 Tailwind 硬编码 vs 引擎 token 两套。
-- [ ] 方格纸不再突然出现：社区态底色与全局同源（Task 4）。
-- [ ] 状态红换色消除：Sigma selected/searchHit/pinned 用引擎 token（Task 2）。
-- [ ] 字体跳变消除：Sigma 标签与 DOM 主体同 sans（Task 3）。
-- [ ] conflict 边、社区边、社区节点配色同源（Task 1/5/6）。
+- [ ] **配色维度跳变**消除：状态红（Sigma）与社区色（DOM）同源 token，不再 Tailwind 硬编码 vs 引擎 token 两套（Task 2/6）。
+- [ ] **方格纸突然出现**消除：社区态底色与全局同源（Task 4）。
+- [ ] **状态红换色**消除：Sigma selected/searchHit/pinned 用引擎 token（Task 2）。
+- [ ] **字体跳变**消除：Sigma 标签与 DOM 主体同 sans（Task 3）。
+- [ ] **社区形状畸变**消除：宽屏下社区节点云不再被压成扁平椭圆（Task 1）。
+- [ ] 社区内边更清晰、四类关系色同源 token（Task 5，conflict 边有意保 rgba）；社区节点社区色底 + hover 类型光晕（Task 6）。
 
 - [ ] **Step 5: 视觉回归基线（可选，若 visual:paper 覆盖图谱视图）**
 
@@ -607,22 +758,24 @@ Expected: 无命中（commit 不含本机路径）。
 
 ## Self-Review
 
-**1. Spec coverage（spec §4 六项 → task）：**
+**1. Spec coverage（spec §4.2 六项 → task）：**
 - ① 社区色底 + 光晕仅 hover/选中 → Task 6 ✓
 - ② Sigma 状态色 token → Task 2 ✓
 - ③ 社区方格纸底 → 釉面 → Task 4 ✓
-- ④ 社区边 0.32→0.5 + token → Task 5 ✓
+- ④ 社区边 0.32→0.5 + token（conflict 保 rgba）→ Task 5 ✓
 - ⑤ Sigma 标签字体 sans → Task 3 ✓
-- ⑥ conflict 色 token → Task 1 ✓
-- spec §4.4 验证（引擎单测 + 视觉回归 + 手动 + typecheck）→ Task 1/2/3/6 单测、Task 7 全量回归 + 手动 ✓
-- spec §4.3 不纳入项（标签底框、两套红统一、节点尺寸、布局）→ 计划均未触碰 ✓
+- ⑥ fit-aware worldBounds → Task 1 ✓
+- spec §4.4 验证（引擎单测 + 视觉回归 + 手动 + typecheck + 双宿主）→ Task 1/2/3/6 单测、Task 7 全量回归 + 手动 ✓
+- spec §4.3 不纳入项（标签底框、两套红、节点尺寸、布局、conflict 色 token 化）→ 计划均未触碰 ✓（conflict 边保 rgba 是 spec §3.4 有意取舍）
 
-**2. Placeholder scan：** 无 TBD/TODO；CSS task（4/5）的"测试"诚实标注为 typecheck + 手动视觉（引擎 CSS 无单测范式）；③ 的 mo-ye 深色化、⑤/④ 的百分比微调风险已在 step 内点明。
+**2. Placeholder scan：** 无 TBD/TODO；CSS task（4/5）的"测试"诚实标注为 typecheck + 手动视觉（引擎 CSS 无单测范式）；fit-aware 有 geometry + model 双层单测；Task 3 的 TDD 顺序（先 export）已显式说明避免 ESM 加载陷阱。
 
-**3. Type consistency：** `sigmaGlobalNodeColor(node, communityColorById, theme)` 与 `sigmaGlobalNodeAttributes(..., theme)` 在 Task 2 定义与调用点一致；`RenderableNode.communityColor: string` 在 Task 6 接口、构造、测试、nodes 下发四处一致；`--node-community-color` / `--crimson` token 名全文一致。
+**3. Type consistency：** fit-aware——`worldBoundsForPoints(points, { aspectRatio? })` 在 geometry 定义、model 调用、geometry 测试三处一致；`BuildRenderableGraphOptions.viewportSize` 在 model 定义、render-pipeline 传入两处一致。`sigmaGlobalNodeColor(node, communityColorById, theme)` 与 `sigmaGlobalNodeAttributes(..., theme)` 定义/调用点一致；`RenderableNode.communityColor: string` 在接口、构造、测试、nodes 下发四处一致；`--node-community-color` 全文一致。
 
 **4. 风险点（已在对应 step 标注）：**
-- Task 4：mo-ye 社区态由浅纸→深底，是 spec 意图（对齐全局），但需手动确认 dot/label/边可读性。
-- Task 5：mo-ye 下 night/amber/crimson 百分比可能需视觉微调（记入 polish，不阻塞）。
-- Task 6：topic 保持朱砂会在切换时从社区色跳到朱砂（spec §4.2 ① 已知权衡，非 bug）。
+- Task 1：`render-pipeline.ts:440` 若也是 DOM 重建路径需同传 viewportSize（Step 9 grep 提示）；`initialGraph` 不传 viewportSize（首屏 focus 非 community，fallback 紧制 = 现状）；sigma-global 路由不调 buildRenderableGraph，不受影响。
+- Task 3：必须先 export 再写测试（ESM 命名导出加载限制）；当前文件未 import getThemeTokens，Step 1 显式补。
+- Task 4：mo-ye 社区态由浅纸→深底是 spec 意图（对齐全局），需手动确认 dot/label/边可读性。
+- Task 5：mo-ye 下 night/amber 百分比可能需视觉微调（polish，不阻塞）；conflict 边有意不 token 化（ADR-23 待整体演进）。
+- Task 6：topic 保持朱砂会在切换时从社区色跳到朱砂（spec §4.2① 已知权衡，非 bug）。
 - Task 2/3：`GraphRendererAdapterNode` mock 字段以 adapter.ts 为准，若 typecheck 报缺字段按实补。
