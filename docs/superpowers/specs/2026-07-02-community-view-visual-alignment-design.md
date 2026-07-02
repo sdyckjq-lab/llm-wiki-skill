@@ -1,6 +1,6 @@
 # 社区视觉对齐设计 · 全局↔社区不割裂
 
-> 状态：Phase 1 待实施 / Phase 2 已调研待实施
+> 状态：Phase 1 待实施 / Phase 2 方向已定（fit-aware worldBounds + 方案 A，几何原型实证），待 writing-plans
 > 设计稿：`designs/community-view-visual-alignment/index.html`（分支 `feat/community-view-visual-alignment`）
 > 日期：2026-07-02
 
@@ -36,7 +36,7 @@
 - **全局 Sigma 节点本来就没光晕**：用 Sigma 默认 circle renderer（纯色圆盘无描边，`sigma-graphology-model.ts:178`）。设计稿里"全局去光晕"是为与"当前现状"对比而虚构的改动，真实代码零工作量。
 - **全局底色 `#f4efe4` 已极接近设计稿 `#fdfaf2`**（`tokens.ts:17`，差 5 个色阶，肉眼几乎一样）。不必改 token，改了反而牵动全站。
 - **`sigmaLabelColor` 主题逻辑正确**（`sigma-global-renderer.ts:781-783`：暗主题白字 / 亮主题深字），之前怀疑的"倒置"非 bug。
-- **节点分布两系统已天然共享**：全局 Sigma 与社区 DOM 读同一套坐标——都取 `buildRenderableGraph` 的 `node.point`，同一套 atlas 环形布局（`legacy-helpers.ts:1078-1128`）。进入社区**不重新布局**，只改 `focus` 入参影响可见性筛选/预算/显示模式，不动坐标（`facade.ts:337`、`controller.ts:468` 仅把相机 fit 到现有 point）。设计稿暗示的"两套分布各算各的"不成立——无需统一布局层。这是 Phase 2 镜头衔接得以成立的前提（见 §5.2）。
+- **节点布局算法两系统共享，但视觉分布不共享**（用户实测确认，纠正先前误导结论）：全局 Sigma 与社区 DOM 都取同一套 atlas 全图坐标（`buildRenderableGraph` 的 `node.point`，`legacy-helpers.ts:1078-1128`），社区**不重新布局**，只改 `focus` 入参影响可见性/预算/显示模式。**但** DOM 社区视图的 `worldBounds` 是仅含社区节点的**紧致包围盒**（`worldBoundsForPoints`，`model.ts:413`），CSS% 坐标 = worldPoint 经该紧致 bounds 各轴归一化（`geometry.ts:112-117`），把社区节点云拉伸铺满屏幕；Sigma 则直接用全图坐标 + 相机。因此同一批节点在两视图的视觉间距/形状不同（实测：全局散布 → 社区聚成椭圆一簇）。**这动摇了 Phase 2 镜头衔接的前提**（两系统坐标同尺度），需原型验证（见 §5.2）。
 
 ### 3.2 真正必改 → Phase 1 范围（见 §4）
 
@@ -134,9 +134,27 @@ Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布�
 
 现状进入社区是 Sigma→DOM 跨渲染器**硬切**。要让切换像设计稿那样"镜头推进"：节点位置不动、画面平滑放大聚焦到该社区。设计稿里的丝滑过渡是同一 SVG 内 `transform: scale()` 动画（天然平滑），真实代码是跨渲染器切换——Phase 2 补上这个差距。
 
-### 5.2 可行性结论：成立
+### 5.2 可行性结论：fit-aware worldBounds 已实证（先前"成立"结论经纠正 + 几何验证）
 
-两渲染器**共享同一套世界坐标与分布**：都从 `buildRenderableGraph` 出 `node.point`，同一套 atlas 环形布局（`legacy-helpers.ts:1078-1128`），`worldBounds` 1000×680（`geometry.ts:71-74`）。社区不重布局，只改可见性/预算/显示模式。坐标 + 分布对齐这个最难的前提已满足。所有底层原语齐备（相机读取、viewport 写入、world↔screen 投影、fit 动画），不需新渲染管线。改动是"接线"性质。
+> 先前"零件齐全、接线即可"的乐观判断已被用户实测推翻。经原型几何验证，方向收敛并被数值证实。
+
+**根因（已定位）**：DOM 社区视图把 worldPoint 经**紧致 worldBounds**各轴归一化为 CSS%（§3.1）。DOM layer 坐标是 worldPoint 的**各向异性仿射**（x/y 各自归一化到社区云宽/高）；Sigma 是全图坐标的**相似变换**（x/y 同尺度）。两族不同 → 方案 A 单一 scale 衔接畸变。
+
+**几何原型实证**（临时脚本，不进产品；合成社区云宽高比 2.25）：
+
+| viewport | 紧致 bounds 各向异性 scale_y/scale_x | fit-aware 各向异性 |
+|---|---|---|
+| 1600×900 (1.78) | **0.81（y 压缩 19%，肉眼可见畸变）** | 1.0000 |
+| 1200×800 (1.50) | 0.96（轻微） | 1.0000 |
+| 1000×680 (1.47) | 0.98（轻微） | 1.0000 |
+
+畸变程度 = 社区云宽高比与 viewport 宽高比之差。**fit-aware bounds（与 viewport 同宽高比）三种 viewport 下各向异性均 = 1.0000**（严格相似变换）→ DOM layer 与 Sigma 同族，方案 A 单一 scale 镜头衔接几何成立。
+
+**依赖面调研**：fit-aware 牵连极小——边/社区云/minimap/hover/hit-test 全走 world 坐标 + viewBox 自动跟随，无需改；节点 CSS% 与 labelSide（`model.ts:1247-1253`）因 bounds 仍"包住社区"基本不变。**全图** worldBounds 牵连大（CSS% 体系重写），不取。
+
+**方向定为 fit-aware worldBounds**：改 `model.ts:413` `worldBounds = worldBoundsForPoints(...)`，`focus=community` 时改用 aspect-locked 版（与 viewport 同宽高比）。改动仅此一处 + `focus.kind` 条件化（不得影响 sigma-global 路由），其余消费者自动跟随。**附带收益**：即便不做镜头衔接，fit-aware 也消除当前社区视图的形状畸变（紧致的 0.81 各向异性）。
+
+**sim 仍无需衔接**（不受 worldBounds 影响）。几何相似性是真机无缝的必要条件、已证实；充分性（切换时序/相机读取/CSS transition）属实施工程，留 writing-plans 实施步骤验证。
 
 **sim（d3-force 柔性扰动）已验证无需衔接**：DOM/SVG 管线的 `LiveGraphSimulation` 只在 DOM renderer 跑，Sigma 全局不跑；但切换瞬间 DOM 首帧 paint 用的是干净 atlas 坐标——`rebuildAndPaint` 顺序为 `buildRenderableGraph`（不传 positions，走 atlas）→ `paint` → 末尾才 `restartSimulation`（`render-pipeline.ts:114,134,189`），sim 回写（`applyMotionFrame`）走 d3-timer 独立 RAF、最早下一帧才发生。且冷启动 `coldStartAlpha=0.08`（`sim/index.ts:120`，d3 默认 1.0）+ forceX/Y 以 `baseX/baseY` 为锚（`sim/index.ts:105`），首帧位移亚像素级、肉眼无感；sim 与 viewport fit 动画作用对象正交（前者移节点相对位移，后者移 content layer），不打架。因此 Phase 2 只做镜头衔接，**不碰 sim 启动逻辑**。
 
@@ -148,6 +166,10 @@ Sigma 标签底框、两套红统一、节点尺寸抹平——均不动。布�
 ### 5.4 方案 A 完整设计
 
 #### 5.4.1 核心思路
+
+> 前提（两系统坐标同变换族）已由 §5.2 的 fit-aware worldBounds 实证满足：DOM layer 与 Sigma 均为 worldPoint 的相似变换，单一 scale 衔接成立。
+
+**前置改动**：先落 §5.2 的 fit-aware worldBounds（`model.ts:413` aspect-lock），消除各向异性——这是镜头衔接的几何基础，必须先于本节换算。
 
 切换时读 Sigma 末帧相机 → 几何换算成 DOM `RendererViewport` 初始态 → DOM 的 `focusCommunity` fit 动画从该初态推进到目标 fit，呈现镜头推进。
 
@@ -228,12 +250,13 @@ interface SigmaGlobalRenderer {
 
 #### 5.4.9 实施顺序（供 writing-plans）
 
-1. 换算函数 + 单测（独立先绿）
-2. SigmaGlobalRenderer 接口扩展（getSigma/readCameraState）+ 测试
-3. createGraphRenderer 接受 initialViewport + 测试
-4. switchRoute 签名 + handoff 推导 + 4 调用点适配 + 测试
-5. CSS 推进动画类 + reduced-motion
-6. 手动视觉验证
+1. **fit-aware worldBounds**（`model.ts:413` aspect-lock + focus 条件化）+ 单测 + 视觉回归确认社区不畸变——几何基础，先绿
+2. 换算函数 + 单测（独立先绿）
+3. SigmaGlobalRenderer 接口扩展（getSigma/readCameraState）+ 测试
+4. createGraphRenderer 接受 initialViewport + 测试
+5. switchRoute 签名 + handoff 推导 + 4 调用点适配 + 测试
+6. CSS 推进动画类 + reduced-motion
+7. 手动视觉验证（真机切换无缝）
 
 #### 5.4.10 测试策略
 
@@ -249,11 +272,11 @@ interface SigmaGlobalRenderer {
 ## 7. 风险与回滚
 
 - **Phase 1**：6 项改动相互独立，每项可单独回滚；均为 token/CSS/取值级，无架构改动。
-- **Phase 2**：最坏情况（换算失败/Sigma 未加载）自动 fallback 到当前硬切行为，**不退化**。换算函数独立、先行、单测覆盖，风险最低的模块先落地。
+- **Phase 2**：fit-aware worldBounds 改动仅 `model.ts:413` 一处 + focus 条件化，最坏情况回退到紧致 bounds（即当前现状，仅形状畸变，不崩溃）。镜头换算失败/Sigma 未加载时自动 fallback 到当前硬切行为，**不退化**。换算函数独立、先行、单测覆盖，风险最低的模块先落地。
 
 ## 8. 后续与未决
 
-- **Phase 2 实施**：Phase 1 验收后，新 session 直接据 §5 writing-plans，无需重新调研。
+- **Phase 2 实施**：方向已定（fit-aware worldBounds + 方案 A，§5.2 实证）。Phase 1 验收后，新 session 直接据 §5 writing-plans，无需重新调研。
 - **评估项**（单独决策，不阻塞 Phase 1/2）：
   - Sigma 标签底框是否值得 custom label renderer 的成本。
   - 抽屉 `--app-accent` 是否对齐图谱 `--cinnabar`（跨子系统，产品定夺）。
