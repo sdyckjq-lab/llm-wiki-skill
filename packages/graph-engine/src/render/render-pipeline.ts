@@ -119,7 +119,8 @@ export function createGraphRenderPipeline(
       focus: runtimeSnapshot.focus,
       typeFilters: {},
       aggregationMarkers: context.aggregationMarkers,
-      pathCache: context.pathCache
+      pathCache: context.pathCache,
+      viewportSize: viewportSize()
     });
     context.runtimeState.setPositions(positionsFromRenderableGraph(context.graph));
     context.baseTypeFilters = context.graph.typeFilters;
@@ -446,7 +447,8 @@ export function createGraphRenderPipeline(
       typeFilters: {},
       positions: snapshot.positions,
       aggregationMarkers: context.aggregationMarkers,
-      pathCache: context.pathCache
+      pathCache: context.pathCache,
+      viewportSize: viewportSize()
     });
     context.hitTargetResolver.refresh();
     const worldBoundsChanged = !sameWorldBounds(previousWorldBounds, context.graph.worldBounds);

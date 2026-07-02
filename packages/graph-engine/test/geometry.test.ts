@@ -12,6 +12,7 @@ import {
   svgPointToWorldPoint,
   visibleWorldRectForViewport,
   visibleWorldRectToMinimapRect,
+  worldBoundsForPoints,
   worldDeltaToLayerDelta,
   worldPointDeltaToLayerDelta,
   worldPointToCssPercentPoint,
@@ -143,5 +144,34 @@ describe("graph geometry projection", () => {
   it("derives side anchors for isolated diff motion outside the default world", () => {
     assert.deepEqual(sideExitWorldAnchor({ x: 120, y: 20 }), { x: -80, y: 80 });
     assert.deepEqual(sideExitWorldAnchor({ x: 900, y: 900 }), { x: 1080, y: 600 });
+  });
+});
+
+describe("worldBoundsForPoints aspect lock", () => {
+  // 明显偏高的点云（宽 100、高 3000）；y 远超 GRAPH_WORLD_SIZE.height(680)，
+  // 确保紧制 bounds 反映点云形状而非被 minHeight 兜底撑成横向
+  const tallCloud = [
+    { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 3000 }, { x: 100, y: 3000 },
+  ];
+  it("without aspectRatio returns tight bounds (point-cloud aspect)", () => {
+    const b = worldBoundsForPoints(tallCloud);
+    assert.ok(b.width / b.height < 1, "tight bounds should be taller than wide");
+  });
+  it("with aspectRatio expands short axis to match viewport ratio without losing points", () => {
+    const aspect = 16 / 9;
+    const b = worldBoundsForPoints(tallCloud, { aspectRatio: aspect });
+    assert.ok(Math.abs(b.width / b.height - aspect) < 0.01, `aspect locked to ${aspect}`);
+    for (const p of tallCloud) {
+      assert.ok(p.x >= b.minX && p.x <= b.maxX, `point x=${p.x} inside bounds`);
+      assert.ok(p.y >= b.minY && p.y <= b.maxY, `point y=${p.y} inside bounds`);
+    }
+  });
+  it("aspectRatio only expands short axis (wide cloud + narrow ratio keeps all points)", () => {
+    const wideCloud = [{ x: 0, y: 0 }, { x: 400, y: 100 }];
+    const b = worldBoundsForPoints(wideCloud, { aspectRatio: 0.5 });
+    for (const p of wideCloud) {
+      assert.ok(p.x >= b.minX && p.x <= b.maxX);
+      assert.ok(p.y >= b.minY && p.y <= b.maxY);
+    }
   });
 });

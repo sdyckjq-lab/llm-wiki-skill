@@ -301,7 +301,7 @@ export function sideExitWorldAnchor(worldPoint: GraphWorldPoint, margin = 80, wo
 
 export function worldBoundsForPoints(
   points: GraphWorldPoint[],
-  options: { padding?: number; minWidth?: number; minHeight?: number } = {}
+  options: { padding?: number; minWidth?: number; minHeight?: number; aspectRatio?: number } = {}
 ): GraphWorldBounds {
   const padding = Math.max(0, finiteNumber(options.padding, 80));
   const minWidth = Math.max(1, finiteNumber(options.minWidth, GRAPH_WORLD_SIZE.width));
@@ -318,7 +318,22 @@ export function worldBoundsForPoints(
     maxX = Math.max(maxX, x + padding);
     maxY = Math.max(maxY, y + padding);
   }
-  return normalizeWorldBounds({ minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY });
+  let width = maxX - minX;
+  let height = maxY - minY;
+  // fit-aware: 把 bounds aspect-lock 到 viewport 宽高比（只扩短轴，中心不变，不丢点），
+  // 让 DOM 层各轴归一化（CSS%）从各向异性仿射变为相似变换，消除社区视图形状畸变。
+  const aspectRatio = Number(options.aspectRatio);
+  if (Number.isFinite(aspectRatio) && aspectRatio > 0 && width > 0 && height > 0) {
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    if (width / height < aspectRatio) width = height * aspectRatio;
+    else height = width / aspectRatio;
+    minX = cx - width / 2;
+    maxX = cx + width / 2;
+    minY = cy - height / 2;
+    maxY = cy + height / 2;
+  }
+  return normalizeWorldBounds({ minX, minY, maxX, maxY, width, height: maxY - minY });
 }
 
 function normalizeViewport(viewport: RendererViewport): RendererViewport {

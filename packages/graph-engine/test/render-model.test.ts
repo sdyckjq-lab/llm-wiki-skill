@@ -1075,3 +1075,25 @@ function graphFixtureWithUngroupedNodes(): GraphData {
     }
   };
 }
+
+describe("buildRenderableGraph community worldBounds aspect", () => {
+  it("aspect-locks worldBounds to viewport ratio when focus=community + viewportSize", () => {
+    const graph = buildRenderableGraph(sampleGraph(), {
+      focus: { kind: "community", id: "c1" },
+      viewportSize: { width: 1600, height: 900 }
+    });
+    const ratio = graph.worldBounds.width / graph.worldBounds.height;
+    assert.ok(Math.abs(ratio - 1600 / 900) < 0.05, `worldBounds aspect ~ viewport, got ${ratio}`);
+  });
+  it("does not force-lock worldBounds when focus=global", () => {
+    const tight = buildRenderableGraph(sampleGraph(), {});
+    const withSize = buildRenderableGraph(sampleGraph(), {
+      viewportSize: { width: 1600, height: 900 }
+    });
+    // global 不 aspect-lock：传不传 viewportSize，worldBounds 宽高比都应基本不变
+    assert.ok(
+      Math.abs(tight.worldBounds.width / tight.worldBounds.height - (withSize.worldBounds.width / withSize.worldBounds.height)) < 0.05,
+      "global worldBounds unaffected by viewportSize"
+    );
+  });
+});
