@@ -1096,6 +1096,16 @@ describe("buildRenderableGraph community worldBounds aspect", () => {
       "global worldBounds unaffected by viewportSize"
     );
   });
+  it("aspect-locked worldBounds still contains all community node points", () => {
+    const graph = buildRenderableGraph(sampleGraph(), {
+      focus: { kind: "community", id: "c1" },
+      viewportSize: { width: 1600, height: 900 }
+    });
+    for (const node of graph.nodes) {
+      assert.ok(node.point.x >= graph.worldBounds.minX && node.point.x <= graph.worldBounds.maxX, `node ${node.id} x in bounds`);
+      assert.ok(node.point.y >= graph.worldBounds.minY && node.point.y <= graph.worldBounds.maxY, `node ${node.id} y in bounds`);
+    }
+  });
 });
 
 describe("renderable node communityColor", () => {
@@ -1105,5 +1115,12 @@ describe("renderable node communityColor", () => {
       const communityColor = graph.communities.find((c) => c.id === node.community)?.color;
       assert.equal(node.communityColor, communityColor, `node ${node.id} matches its community color`);
     }
+  });
+  it("still assigns a valid color when node.community is absent from learning.communities (atlas derives it)", () => {
+    const data = sampleGraph();
+    data.nodes = data.nodes.map((n) => (n.id === "topic" ? { ...n, community: "nonexistent" } : n));
+    const graph = buildRenderableGraph(data, {});
+    const topic = graph.nodes.find((n) => n.id === "topic");
+    assert.match(topic?.communityColor ?? "", /^#[0-9a-f]{6}$/i, "orphan node still gets a valid hex color");
   });
 });

@@ -443,4 +443,12 @@ describe("sigmaGlobalNodeColor theme tokens", () => {
     const vars = getThemeTokens("shan-shui").vars;
     assert.equal(sigmaGlobalNodeColor(adapterNode(), map, "shan-shui"), vars["--muted"]);
   });
+  it("maps selected -> --cinnabar under mo-ye (dark theme)", () => {
+    const vars = getThemeTokens("mo-ye").vars;
+    assert.equal(sigmaGlobalNodeColor(adapterNode({ selected: true }), map, "mo-ye"), vars["--cinnabar"]);
+  });
+  it("falls back to --muted under mo-ye", () => {
+    const vars = getThemeTokens("mo-ye").vars;
+    assert.equal(sigmaGlobalNodeColor(adapterNode(), map, "mo-ye"), vars["--muted"]);
+  });
 });

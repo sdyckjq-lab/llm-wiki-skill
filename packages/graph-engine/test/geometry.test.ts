@@ -174,4 +174,22 @@ describe("worldBoundsForPoints aspect lock", () => {
       assert.ok(p.y >= b.minY && p.y <= b.maxY);
     }
   });
+  it("aspect-lock preserves center (cx/cy unchanged)", () => {
+    const tight = worldBoundsForPoints(tallCloud);
+    const locked = worldBoundsForPoints(tallCloud, { aspectRatio: 16 / 9 });
+    const tightCx = (tight.minX + tight.maxX) / 2;
+    const tightCy = (tight.minY + tight.maxY) / 2;
+    const lockedCx = (locked.minX + locked.maxX) / 2;
+    const lockedCy = (locked.minY + locked.maxY) / 2;
+    assert.ok(Math.abs(tightCx - lockedCx) < 1e-6, "cx preserved across aspect-lock");
+    assert.ok(Math.abs(tightCy - lockedCy) < 1e-6, "cy preserved across aspect-lock");
+  });
+  it("ignores non-finite / zero / negative aspectRatio (no lock, no division error)", () => {
+    const baseline = worldBoundsForPoints(tallCloud);
+    for (const bad of [NaN, 0, -1, Infinity, -Infinity]) {
+      const b = worldBoundsForPoints(tallCloud, { aspectRatio: bad });
+      assert.equal(b.width, baseline.width, `aspectRatio=${bad} should not lock width`);
+      assert.equal(b.height, baseline.height, `aspectRatio=${bad} should not lock height`);
+    }
+  });
 });
