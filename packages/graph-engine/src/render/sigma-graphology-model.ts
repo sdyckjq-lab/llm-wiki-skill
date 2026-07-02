@@ -92,7 +92,7 @@ export function buildSigmaGlobalGraphologyGraph(
   const spotlightCommunityIds = sigmaSpotlightCommunityIds(adapterData);
 
   for (const node of adapterData.nodes) {
-    graph.addNode(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds));
+    graph.addNode(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds, theme));
   }
 
   for (const edge of adapterData.edges) {
@@ -144,7 +144,7 @@ export function patchSigmaGlobalGraphAttributes(
 
   for (const node of adapterData.nodes) {
     if (!graph.hasNode(node.id)) continue;
-    graph.mergeNodeAttributes(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds));
+    graph.mergeNodeAttributes(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds, theme));
   }
   for (const edge of adapterData.edges) {
     graph.mergeEdgeAttributes(edge.id, sigmaGlobalEdgeAttributes(edge, theme, edgeStyle, selectedCommunityIds));
@@ -164,11 +164,12 @@ export function patchSigmaGlobalGraphAttributes(
 export function sigmaGlobalNodeAttributes(
   node: GraphRendererAdapterNode,
   communityColorById: Map<string, string>,
-  selectedCommunityIds: ReadonlySet<string> = new Set()
+  selectedCommunityIds: ReadonlySet<string> = new Set(),
+  theme: ThemeId = "shan-shui"
 ): SigmaGlobalGraphologyNodeAttributes {
   const spotlight = sigmaGlobalNodeSpotlightState(node, selectedCommunityIds);
   const baseSize = sigmaGlobalNodeSize(node);
-  const baseColor = sigmaGlobalNodeColor(node, communityColorById);
+  const baseColor = sigmaGlobalNodeColor(node, communityColorById, theme);
   return {
     x: finiteNumber(node.point.x, 0),
     y: finiteNumber(node.point.y, 0),
@@ -352,11 +353,16 @@ export function sigmaGlobalNodeSize(node: GraphRendererAdapterNode): number {
   return 5;
 }
 
-export function sigmaGlobalNodeColor(node: GraphRendererAdapterNode, communityColorById: Map<string, string>): string {
-  if (node.selected) return "#ef4444";
-  if (node.searchHit) return "#f59e0b";
-  if (node.pinHint.pinned) return "#0ea5e9";
-  return node.communityId ? communityColorById.get(node.communityId) ?? "#64748b" : "#64748b";
+export function sigmaGlobalNodeColor(
+  node: GraphRendererAdapterNode,
+  communityColorById: Map<string, string>,
+  theme: ThemeId
+): string {
+  const vars = getThemeTokens(theme).vars;
+  if (node.selected) return vars["--cinnabar"];
+  if (node.searchHit) return vars["--amber"];
+  if (node.pinHint.pinned) return vars["--night"];
+  return node.communityId ? communityColorById.get(node.communityId) ?? vars["--muted"] : vars["--muted"];
 }
 
 export function finiteNumber(value: unknown, fallback: number): number {

@@ -8,8 +8,11 @@ import {
   buildSigmaGlobalGraphologyGraph,
   canPatchSigmaGlobalGraphAttributes,
   patchSigmaGlobalGraphAttributes,
-  sigmaGlobalEdgeStyle
+  sigmaGlobalEdgeStyle,
+  sigmaGlobalNodeColor
 } from "../src/render/sigma-graphology-model";
+import { getThemeTokens } from "../src/themes";
+import type { GraphRendererAdapterNode } from "../src/render/adapter";
 
 describe("Sigma graphology render model", () => {
   it("builds graphology nodes, edges, communities, and aggregations from adapter data", () => {
@@ -23,7 +26,7 @@ describe("Sigma graphology render model", () => {
       y: 20,
       label: "Alpha",
       size: 10,
-      color: "#ef4444",
+      color: "#8b2e24",
       type: "circle",
       graphNodeType: "topic",
       communityId: "community-a",
@@ -405,3 +408,39 @@ function pinHint(nodeId: string, pinned: boolean, point: { x: number; y: number 
     position: pinned ? { ...point, coordinateSpace: "world" as const } : null
   };
 }
+
+// sigmaGlobalNodeColor 运行时只读 selected/searchHit/pinHint.pinned/communityId；
+// 其余字段用 as unknown as 绕过完整类型（字段以 adapter.ts 为准）。
+function adapterNode(overrides: Partial<GraphRendererAdapterNode> = {}): GraphRendererAdapterNode {
+  return ({
+    id: "n1",
+    label: "n",
+    communityId: "c1",
+    selected: false,
+    searchHit: false,
+    pinHint: { pinned: false },
+    point: { x: 0, y: 0 },
+    render: { labelVisible: false, displayMode: "point", priority: 0, visualRole: "normal" },
+    ...overrides
+  } as unknown) as GraphRendererAdapterNode;
+}
+
+describe("sigmaGlobalNodeColor theme tokens", () => {
+  const map = new Map<string, string>();
+  it("maps selected -> --cinnabar", () => {
+    const vars = getThemeTokens("shan-shui").vars;
+    assert.equal(sigmaGlobalNodeColor(adapterNode({ selected: true }), map, "shan-shui"), vars["--cinnabar"]);
+  });
+  it("maps searchHit -> --amber", () => {
+    const vars = getThemeTokens("shan-shui").vars;
+    assert.equal(sigmaGlobalNodeColor(adapterNode({ searchHit: true }), map, "shan-shui"), vars["--amber"]);
+  });
+  it("maps pinned -> --night", () => {
+    const vars = getThemeTokens("shan-shui").vars;
+    assert.equal(sigmaGlobalNodeColor(adapterNode({ pinHint: { pinned: true } } as Partial<GraphRendererAdapterNode>), map, "shan-shui"), vars["--night"]);
+  });
+  it("falls back to --muted when no community color", () => {
+    const vars = getThemeTokens("shan-shui").vars;
+    assert.equal(sigmaGlobalNodeColor(adapterNode(), map, "shan-shui"), vars["--muted"]);
+  });
+});
