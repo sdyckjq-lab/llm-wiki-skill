@@ -1081,20 +1081,12 @@ const STATIC_RENDERER_CSS = `
   box-shadow: 0 17px 30px color-mix(in srgb, var(--cinnabar) 18%, transparent), 0 0 0 4px color-mix(in srgb, var(--cinnabar) 11%, transparent);
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] {
-  --community-map-paper: #f8f1e6;
-  --community-map-paper-2: #fffaf2;
-  --community-map-line: rgba(76, 109, 118, .32);
-  --community-map-line-strong: rgba(76, 109, 118, .68);
   --community-map-label-bg: rgba(255, 252, 246, .68);
   --community-map-label-border: rgba(121, 102, 80, .14);
   --community-map-label-shadow: rgba(58, 42, 26, .06);
   background:
-    linear-gradient(rgba(68, 58, 49, .025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(68, 58, 49, .018) 1px, transparent 1px),
-    radial-gradient(ellipse at 52% 48%, rgba(255, 255, 255, .72), transparent 55%),
-    linear-gradient(180deg, rgba(255, 250, 242, .72), rgba(245, 237, 225, .54)),
-    var(--community-map-paper);
-  background-size: 42px 42px, 42px 42px, auto, auto, auto;
+    var(--paper-glow),
+    var(--bg);
 }
 .llm-wiki-graph-engine[data-community-map-state="lightweight"] .community-wash {
   fill: rgba(113, 152, 164, .055);
