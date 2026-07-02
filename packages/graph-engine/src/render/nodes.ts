@@ -55,6 +55,7 @@ export function createGraphNodeElement(
     button.dataset.labelSide = node.communityMapLabelSide;
     button.dataset.relationLabel = node.communityMapRelationLabel ? "true" : "false";
     button.style.setProperty("--node-size", `${node.communityMapDotSize}px`);
+    button.style.setProperty("--node-community-color", node.communityColor);
 
     const pin = ownerDocument.createElement("span");
     pin.className = "node-pin";

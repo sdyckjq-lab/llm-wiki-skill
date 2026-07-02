@@ -1097,3 +1097,13 @@ describe("buildRenderableGraph community worldBounds aspect", () => {
     );
   });
 });
+
+describe("renderable node communityColor", () => {
+  it("attaches the community color to each node, matching its community wash color", () => {
+    const graph = buildRenderableGraph(sampleGraph(), {});
+    for (const node of graph.nodes) {
+      const communityColor = graph.communities.find((c) => c.id === node.community)?.color;
+      assert.equal(node.communityColor, communityColor, `node ${node.id} matches its community color`);
+    }
+  });
+});
