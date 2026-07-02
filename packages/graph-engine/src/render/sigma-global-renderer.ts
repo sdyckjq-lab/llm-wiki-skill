@@ -764,6 +764,7 @@ function createSigmaRoot(container: HTMLElement, theme: ThemeId): HTMLElement {
   return root;
 }
 
+/** @internal 仅为单元测试直接断言而导出，非稳定公开 API；唯一生产调用方是本文件 createSigmaRoot。 */
 export function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
   const tokens = getThemeTokens(theme);
   return {
