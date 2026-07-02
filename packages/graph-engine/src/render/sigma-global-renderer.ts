@@ -1,4 +1,5 @@
 import type { PinMap, PinPosition, ThemeId } from "../types";
+import { getThemeTokens } from "../themes";
 import {
   createSigmaGlobalNodeDragSession,
   moveSigmaGlobalNodeDragSession,
@@ -763,11 +764,13 @@ function createSigmaRoot(container: HTMLElement, theme: ThemeId): HTMLElement {
   return root;
 }
 
-function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
+export function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
+  const tokens = getThemeTokens(theme);
   return {
     renderEdgeLabels: false,
     allowInvalidContainer: false,
     labelColor: sigmaLabelColor(theme),
+    labelFont: tokens.vars["--font-ui"],
     zoomingRatio: SIGMA_BUTTON_ZOOM_RATIO,
     // Sigma 默认 wheel 的兜底参数：wheel 已被 sigma-wheel-zoom controller 接管（preventSigmaDefault），
     // zoomingRatio/zoomDuration 只在 Sigma 内置缩放入口（如 animatedZoom）被触发时生效，
