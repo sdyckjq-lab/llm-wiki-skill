@@ -438,6 +438,7 @@ export function createGraphRenderPipeline(
     const snapshot = context.runtimeState.setPositions(positions);
     const renderSelection = rendererSelectionFromRuntimeState(snapshot);
     const previousWorldBounds = context.graph.worldBounds;
+    const size = viewportSize();
     context.graph = buildRenderableGraph(context.data, {
       pins: snapshot.pins,
       theme: context.theme,
@@ -448,13 +449,12 @@ export function createGraphRenderPipeline(
       positions: snapshot.positions,
       aggregationMarkers: context.aggregationMarkers,
       pathCache: context.pathCache,
-      viewportSize: viewportSize()
+      viewportSize: size
     });
     context.hitTargetResolver.refresh();
     const worldBoundsChanged = !sameWorldBounds(previousWorldBounds, context.graph.worldBounds);
     if (worldBoundsChanged && context.dom.svgElement) setGraphSvgViewBox(context.dom.svgElement, context.graph);
     const nodeById = new Map(context.graph.nodes.map((node) => [node.id, node]));
-    const size = viewportSize();
     for (const node of context.graph.nodes) {
       const element = context.dom.nodeElements.get(node.id);
       const base = context.dom.basePoints.get(node.id);
@@ -818,12 +818,16 @@ function setGraphSvgViewBox(svg: SVGSVGElement, graph: RenderableGraph): void {
 }
 
 function sameWorldBounds(left: RenderableGraph["worldBounds"], right: RenderableGraph["worldBounds"]): boolean {
-  return left.minX === right.minX
-    && left.minY === right.minY
-    && left.maxX === right.maxX
-    && left.maxY === right.maxY
-    && left.width === right.width
-    && left.height === right.height;
+  // 容差比较：sim 微扰动会让 worldBounds 浮点抖动，setGraphSvgViewBox 已 round 到整数显示，
+  // 精确 === 会判定每帧都变 → 触发全节点 left/top% 重写（layout thrashing）。
+  // 0.5 world unit 阈值过滤亚单位抖动但保留 focus/数据的真实变化。
+  const epsilon = 0.5;
+  return Math.abs(left.minX - right.minX) < epsilon
+    && Math.abs(left.minY - right.minY) < epsilon
+    && Math.abs(left.maxX - right.maxX) < epsilon
+    && Math.abs(left.maxY - right.maxY) < epsilon
+    && Math.abs(left.width - right.width) < epsilon
+    && Math.abs(left.height - right.height) < epsilon;
 }
 
 export function readLegendCollapsed(ownerDocument: Document): boolean {
