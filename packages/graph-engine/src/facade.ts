@@ -225,7 +225,7 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
     onVisibilityStateChange: (visibility) => {
       facadeState.searchQuery = visibility.searchQuery;
       facadeState.searchResultIds = visibility.searchResultIds;
-      facadeState.typeFilters = visibility.typeFilters;
+      if (!visibility.focusCommunityId) facadeState.typeFilters = visibility.typeFilters;
       facadeState.temporaryObject = visibility.temporaryObject;
       capabilities?.onVisibilityStateChange?.(visibility);
     }
@@ -531,7 +531,6 @@ export function createGraphFacadeRouteManager(
   function clearCommunityLocalVisibilityState(): void {
     state.searchQuery = "";
     state.searchResultIds = [];
-    state.typeFilters = {};
     state.temporaryObject = null;
   }
 
@@ -671,7 +670,7 @@ export function createGraphFacadeRouteManager(
           onVisibilityStateChange: (visibility) => {
             state.searchQuery = visibility.searchQuery;
             state.searchResultIds = visibility.searchResultIds;
-            state.typeFilters = visibility.typeFilters;
+            if (!visibility.focusCommunityId) state.typeFilters = visibility.typeFilters;
             state.temporaryObject = visibility.temporaryObject;
             options.callbacks?.onVisibilityStateChange?.(visibility);
           }

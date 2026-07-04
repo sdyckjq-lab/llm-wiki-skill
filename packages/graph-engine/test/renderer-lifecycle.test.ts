@@ -562,19 +562,20 @@ describe("graph renderer lifecycle", () => {
     const container = ownerDocument.createElement("div");
     const viewResets: number[] = [];
     const sigmaInputs: GraphFacadeRouteRendererFactoryInput[] = [];
+    const state = {
+      data: graphDataForReturnGlobal(),
+      pins: { "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } },
+      theme: "shan-shui" as const,
+      focus: null,
+      typeFilters: { entity: true, source: true },
+      aggregationMarkers: [],
+      selection: null,
+      searchQuery: "Node a",
+      searchResultIds: ["a"],
+      temporaryObject: null
+    };
     const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
-      state: {
-        data: graphDataForReturnGlobal(),
-        pins: { "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } },
-        theme: "shan-shui",
-        focus: null,
-        typeFilters: { entity: true, source: true },
-        aggregationMarkers: [],
-        selection: null,
-        searchQuery: "Node a",
-        searchResultIds: ["a"],
-        temporaryObject: null
-      },
+      state,
       callbacks: {
         onViewReset: () => viewResets.push(1)
       },
@@ -587,7 +588,15 @@ describe("graph renderer lifecycle", () => {
     });
 
     manager.focusCommunity("community-a");
-    manager.setTypeFilters({ entity: true, source: false });
+    sigmaInputs[0].options.callbacks.onVisibilityStateChange?.({
+      searchQuery: "Node a",
+      searchResultIds: ["a"],
+      typeFilters: { entity: true, source: false },
+      temporaryObject: null,
+      focusCommunityId: "community-a",
+      hiddenReadingNodeId: null
+    });
+    assert.deepEqual(state.typeFilters, { entity: true, source: true });
     manager.select({ kind: "node", id: "a" });
     manager.setPins({ "wiki/a.md": { x: 120, y: 140, coordinateSpace: "world" } });
 
@@ -599,7 +608,7 @@ describe("graph renderer lifecycle", () => {
     assert.equal(activeSigmaShell?.dataset.selectedKind, "node");
     assert.equal(activeSigmaShell?.dataset.selectedId, "a");
     assert.equal(activeSigmaShell?.dataset.searchResultIds, "a");
-    assert.equal(activeSigmaShell?.dataset.typeFilters, "entity:true,source:false");
+    assert.equal(activeSigmaShell?.dataset.typeFilters, "entity:true,source:true");
     assert.equal(activeSigmaShell?.dataset.pinnedPaths, "wiki/a.md");
 
     sigmaInputs[0].options.callbacks.onGlobalResetRequested?.();
@@ -612,9 +621,11 @@ describe("graph renderer lifecycle", () => {
     assert.equal(activeSigmaShell?.dataset.sourceCommunityId, "community-a");
     assert.equal(activeSigmaShell?.dataset.selectedKind, "");
     assert.equal(activeSigmaShell?.dataset.selectedId, "");
-    assert.equal(activeSigmaShell?.dataset.searchResultIds, "a");
-    assert.equal(activeSigmaShell?.dataset.typeFilters, "entity:true,source:false");
+    assert.equal(activeSigmaShell?.dataset.searchResultIds, "");
+    assert.equal(activeSigmaShell?.dataset.typeFilters, "entity:true,source:true");
     assert.equal(activeSigmaShell?.dataset.pinnedPaths, "wiki/a.md");
+    assert.deepEqual(state.searchResultIds, []);
+    assert.deepEqual(state.typeFilters, { entity: true, source: true });
     assert.equal(manager.sourceCommunityId, "community-a");
     assert.equal(sigmaInputs.length, 1);
     assert.deepEqual(viewResets, [1]);
@@ -977,6 +988,18 @@ describe("graph renderer lifecycle", () => {
     searchInput.value = "Node";
     searchInput.dispatch("input");
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a", "b"]);
+    searchInput.dispatch("keydown", { key: "ArrowDown" });
+    findByClass(container, "graph-search-input")[0]?.dispatch("keydown", { key: "ArrowDown" });
+
+    const sourceToggle = findByDataset(container, "type", "source");
+    assert.ok(sourceToggle);
+    sourceToggle.checked = false;
+    sourceToggle.dispatch("change");
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
+
+    findByClass(container, "graph-search-input")[0]?.dispatch("keydown", { key: "Enter" });
+    assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
+    assert.deepEqual(opened, ["a"]);
 
     searchInput.value = "Node c";
     searchInput.dispatch("input");
@@ -985,15 +1008,15 @@ describe("graph renderer lifecycle", () => {
     searchInput.value = "Node a";
     searchInput.dispatch("input");
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
-    assert.deepEqual(selections, []);
-    assert.deepEqual(opened, []);
+    assert.deepEqual(selections, [{ kind: "node", id: "a" }]);
+    assert.deepEqual(opened, ["a"]);
 
     const resultItems = findByClass(container, "graph-search-result-item");
     assert.equal(resultItems.length, 1);
     assert.equal(findByClass(resultItems[0]!, "graph-search-result-label")[0]?.textContent, "Node a");
     resultItems[0]?.dispatch("click");
     assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
-    assert.deepEqual(opened, ["a"]);
+    assert.deepEqual(opened, ["a", "a"]);
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
     assert.equal(findByClass(container, "graph-search-result-item").length, 1);
 
@@ -1001,8 +1024,8 @@ describe("graph renderer lifecycle", () => {
     searchInput.dispatch("input");
     assert.equal(visibilityStates.at(-1)?.searchQuery, "");
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, []);
-    assert.deepEqual(selections, [{ kind: "node", id: "a" }]);
-    assert.deepEqual(opened, ["a"]);
+    assert.deepEqual(selections, [{ kind: "node", id: "a" }, { kind: "node", id: "a" }]);
+    assert.deepEqual(opened, ["a", "a"]);
 
     renderer.destroy();
   });
@@ -1011,6 +1034,8 @@ describe("graph renderer lifecycle", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
     const visibilityStates: GraphVisibilityState[] = [];
+    const selections: SelectionInput[] = [];
+    const opened: string[] = [];
     const renderer = createSigmaGlobalFacadeRenderer({
       container: container as unknown as HTMLElement,
       options: {
@@ -1026,7 +1051,9 @@ describe("graph renderer lifecycle", () => {
         searchResultIds: [],
         temporaryObject: null,
         callbacks: {
-          onVisibilityStateChange: (state) => visibilityStates.push(state)
+          onVisibilityStateChange: (state) => visibilityStates.push(state),
+          onSelectionInput: (selection) => selections.push(selection),
+          onNodeOpen: (id) => opened.push(id)
         }
       }
     });
@@ -1054,7 +1081,11 @@ describe("graph renderer lifecycle", () => {
     entityToggle.dispatch("change");
 
     assert.equal(visibilityStates.at(-1)?.hiddenReadingNodeId, "b");
-    renderer.select({ kind: "node", id: "a" });
+    const visibleResult = findByClass(container, "graph-search-result-item")[0];
+    assert.equal(visibleResult?.dataset.nodeId, "a");
+    visibleResult?.dispatch("click");
+    assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
+    assert.deepEqual(opened, ["a"]);
     assert.equal(visibilityStates.at(-1)?.hiddenReadingNodeId, null);
 
     renderer.destroy();
@@ -1448,7 +1479,7 @@ function createSigmaShellRenderer(input: GraphFacadeRouteRendererFactoryInput): 
       renderSigmaShellState();
     },
     resetView() {
-      options = { ...options, focus: null, selection: null };
+      options = { ...options, focus: null, selection: null, searchQuery: "", searchResultIds: [] };
       renderSigmaShellState();
     },
     select(selection) {
