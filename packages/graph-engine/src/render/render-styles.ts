@@ -139,9 +139,9 @@ const STATIC_RENDERER_CSS = `
   grid-template-columns: minmax(180px, 260px) auto;
   align-items: center;
   gap: 8px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-6px);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
   transition: opacity .16s ease, transform .16s ease;
 }
 .graph-search[data-state="open"],
@@ -178,6 +178,77 @@ const STATIC_RENDERER_CSS = `
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+}
+.graph-search-results-list {
+  grid-column: 1 / -1;
+  display: none;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--rule) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 16px 32px rgba(36, 24, 12, .12);
+  padding: 4px;
+}
+.graph-search[data-state="open"] .graph-search-results-list[data-state="visible"],
+.graph-search:focus-within .graph-search-results-list[data-state="visible"] {
+  display: grid;
+  gap: 2px;
+}
+.graph-search-result-item {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  text-align: left;
+  font: inherit;
+}
+.graph-search-result-item:hover,
+.graph-search-result-item:focus-visible,
+.graph-search-result-item[aria-selected="true"] {
+  outline: none;
+  background: color-mix(in srgb, var(--cinnabar) 14%, transparent);
+}
+.graph-search-result-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-search-result-meta {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.sigma-community-hidden-node-hint {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  z-index: 6;
+  display: none;
+  translate: -50% 0;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--cinnabar) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: 0 10px 28px rgba(36, 24, 12, .14);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.llm-wiki-graph-engine[data-hidden-reading-node="true"] .sigma-community-hidden-node-hint {
+  display: block;
 }
 .graph-toolbar {
   position: absolute;

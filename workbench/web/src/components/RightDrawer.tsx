@@ -164,7 +164,10 @@ export function RightDrawer({
 			)}
 			<header className="drawer-header">
 				<div className="drawer-title">
-					{title}
+					<span>{title}</span>
+					{drawer.mode === "graph-reader" && drawer.filteredHidden && (
+						<span className="graph-reader-hidden-badge">已被筛选隐藏</span>
+					)}
 				</div>
 				<div className="flex items-center gap-1">
 					{activeArtifact && (

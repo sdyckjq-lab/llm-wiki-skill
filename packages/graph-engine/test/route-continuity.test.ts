@@ -146,6 +146,58 @@ describe("graph route state continuity", () => {
     assert.deepEqual(unavailable.pinHints, []);
   });
 
+  it("clears focused community reading selection only when refreshed data removes or moves the node", () => {
+    const container = { dataset: {} as Record<string, string | undefined> };
+    const state: GraphFacadeState = {
+      data: DATA,
+      pins: {},
+      theme: "shan-shui",
+      focus: null,
+      typeFilters: { topic: true, source: false },
+      aggregationMarkers: [],
+      selection: null,
+      searchQuery: "Alpha",
+      searchResultIds: ["a"],
+      temporaryObject: null
+    };
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state,
+      factories: {
+        createSigmaGlobal: () => createFakeRenderer(),
+        createDomSvgCommunity: () => createFakeRenderer(),
+        createDomSvgSmallFallback: () => createFakeRenderer(),
+        createOverLimitNotice: () => createFakeRenderer()
+      }
+    });
+
+    manager.focusCommunity("c1");
+    manager.select({ kind: "node", id: "a" });
+    manager.setTypeFilters({ topic: false, source: true });
+    manager.setData({
+      ...DATA,
+      nodes: DATA.nodes.map((node) => node.id === "a" ? { ...node, label: "Alpha refreshed" } : node)
+    });
+
+    assert.deepEqual(state.selection, { kind: "node", id: "a" });
+    assert.deepEqual(state.focus, { kind: "community", id: "c1" });
+
+    manager.setData({
+      ...DATA,
+      nodes: DATA.nodes.map((node) => node.id === "a" ? { ...node, community: "c2" } : node)
+    });
+
+    assert.equal(state.selection, null);
+    assert.deepEqual(state.focus, { kind: "community", id: "c1" });
+
+    manager.select({ kind: "node", id: "b" });
+    manager.setData({
+      ...DATA,
+      nodes: DATA.nodes.filter((node) => node.id !== "b")
+    });
+
+    assert.equal(state.selection, null);
+  });
+
   it("passes shared interaction state into DOM/SVG small fallback and keeps return-global rules consistent", () => {
     const container = { dataset: {} as Record<string, string | undefined> };
     const state: GraphFacadeState = {
@@ -201,8 +253,8 @@ describe("graph route state continuity", () => {
     assert.equal(manager.sigmaKnownUnavailable, true);
     assert.equal(state.selection, null);
     assert.deepEqual(fallbackInputs.at(-1)?.options.selection, null);
-    assert.equal(fallbackInputs.at(-1)?.options.searchQuery, "Alpha");
-    assert.deepEqual(fallbackInputs.at(-1)?.options.searchResultIds, ["a"]);
+    assert.equal(fallbackInputs.at(-1)?.options.searchQuery, "");
+    assert.deepEqual(fallbackInputs.at(-1)?.options.searchResultIds, []);
     assert.deepEqual(Object.keys(fallbackInputs.at(-1)?.options.pins || {}), ["wiki/a.md"]);
     assert.deepEqual(fallbackRenderers.at(-1)?.calls.filter((call) => call[0] === "resetView"), [["resetView"]]);
   });

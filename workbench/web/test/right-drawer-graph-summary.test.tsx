@@ -134,6 +134,19 @@ describe("RightDrawer graph lightweight summaries", () => {
 		assert.doesNotMatch(`${loading}${readerLoading}${readerError}${hardError}`, /推荐阅读|猜你喜欢|建议你打开/);
 	});
 
+	it("shows a noninteractive hidden marker beside the graph reader title", () => {
+		const html = renderDrawer(graphReaderDrawer(graphPayload(), {
+			loading: true,
+		}, {
+			filteredHidden: true,
+		}));
+
+		assert.match(html, /Alpha node/);
+		assert.match(html, /已被筛选隐藏/);
+		assert.match(html, /graph-reader-hidden-badge/);
+		assert.doesNotMatch(html, /<button[^>]*>已被筛选隐藏<\/button>/);
+	});
+
 	it("keeps drawer actions as tabbable buttons", () => {
 		const node = renderDrawer(graphNodeSummaryDrawer(nodeSummaryFixture()));
 		const community = renderDrawer(graphCommunitySummaryDrawer(communitySummaryFixture()));

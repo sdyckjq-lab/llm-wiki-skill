@@ -30,12 +30,13 @@ export type DrawerState =
 			artifacts: ArtifactManifest[];
 			activeArtifactId: string | null;
 		}
-	| {
+		| {
 			mode: "graph-reader";
 			payload: GraphOpenPagePayload;
 			content: string;
 			loading: boolean;
 			error: string | null;
+			filteredHidden: boolean;
 		}
 		| {
 			mode: "graph-selection";
@@ -103,13 +104,18 @@ export function artifactDrawer(artifacts: ArtifactManifest[], activeArtifactId: 
 	return { mode: "artifacts", artifacts, activeArtifactId };
 }
 
-export function graphReaderDrawer(payload: GraphOpenPagePayload, state: PageState = {}): DrawerState {
+export function graphReaderDrawer(
+	payload: GraphOpenPagePayload,
+	state: PageState = {},
+	options: { filteredHidden?: boolean } = {},
+): DrawerState {
 	return {
 		mode: "graph-reader",
 		payload,
 		content: state.content ?? "",
 		loading: state.loading ?? false,
 		error: state.error ?? null,
+		filteredHidden: options.filteredHidden ?? false,
 	};
 }
 

@@ -49,6 +49,15 @@ describe("drawer state", () => {
 			content: "# Alpha",
 			loading: false,
 			error: null,
+			filteredHidden: false,
+		});
+		assert.deepEqual(graphReaderDrawer(payload, { content: "# Alpha" }, { filteredHidden: true }), {
+			mode: "graph-reader",
+			payload,
+			content: "# Alpha",
+			loading: false,
+			error: null,
+			filteredHidden: true,
 		});
 		assert.deepEqual(graphSelectionDrawer(selectionFixture(), "Alpha", "note"), {
 			mode: "graph-selection",

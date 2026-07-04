@@ -465,6 +465,8 @@ export interface GraphVisibilityState {
   searchResultIds: NodeId[];
   typeFilters: GraphTypeFilters;
   temporaryObject: GraphSummaryObjectRef | null;
+  focusCommunityId?: CommunityId | null;
+  hiddenReadingNodeId?: NodeId | null;
 }
 
 export type GraphFocusInput =

@@ -22,6 +22,14 @@ export interface SearchControlDom {
   element: HTMLElement;
   input: HTMLInputElement;
   status: HTMLElement;
+  results: HTMLElement;
+}
+
+export interface GraphSearchResultControlItem {
+  id: string;
+  label: string;
+  meta?: string;
+  focused?: boolean;
 }
 
 export interface SigmaZoomControlsDom {
@@ -172,7 +180,9 @@ export function createSearchControl(
     onNext: () => void;
     onPrevious: () => void;
     onActivate: () => void;
+    onActivateResult?: (id: string) => void;
     onClose: () => void;
+    results?: GraphSearchResultControlItem[];
   }
 ): SearchControlDom {
   const element = ownerDocument.createElement("div");
@@ -208,8 +218,56 @@ export function createSearchControl(
   const status = ownerDocument.createElement("span");
   status.className = "graph-search-status";
   status.textContent = options.query ? "0 个结果" : "输入关键词";
-  element.append(input, status);
-  return { element, input, status };
+  const results = ownerDocument.createElement("div");
+  results.className = "graph-search-results-list";
+  results.setAttribute("role", "listbox");
+  results.setAttribute("aria-label", "图谱搜索结果");
+  updateSearchControlResults(results, options.results ?? [], (id) => {
+    if (options.onActivateResult) {
+      options.onActivateResult(id);
+      return;
+    }
+    options.onActivate();
+  });
+  element.append(input, status, results);
+  return { element, input, status, results };
+}
+
+export function updateSearchControlResults(
+  results: HTMLElement,
+  items: GraphSearchResultControlItem[],
+  onActivateResult: (id: string) => void
+): void {
+  const ownerDocument = results.ownerDocument;
+  results.dataset.state = items.length ? "visible" : "hidden";
+  const buttons: HTMLElement[] = [];
+  for (const item of items) {
+    const button = ownerDocument.createElement("button");
+    button.type = "button";
+    button.className = "graph-search-result-item";
+    button.dataset.nodeId = item.id;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", item.focused ? "true" : "false");
+    const label = ownerDocument.createElement("span");
+    label.className = "graph-search-result-label";
+    label.textContent = item.label;
+    button.appendChild(label);
+    if (item.meta) {
+      const meta = ownerDocument.createElement("span");
+      meta.className = "graph-search-result-meta";
+      meta.textContent = item.meta;
+      button.appendChild(meta);
+    }
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", () => onActivateResult(item.id));
+    buttons.push(button);
+  }
+  if (typeof results.replaceChildren === "function") {
+    results.replaceChildren(...buttons);
+    return;
+  }
+  results.innerHTML = "";
+  for (const button of buttons) results.appendChild(button);
 }
 
 function createEdgeLegend(ownerDocument: Document): HTMLElement {

@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import type { GraphData, GraphDiff, SelectionInput } from "../src";
+import type { GraphData, GraphDiff, GraphVisibilityState, SelectionInput } from "../src";
 import { createGraphRenderer } from "../src/render";
+import { createSigmaGlobalFacadeRenderer } from "../src/graph-routes/sigma-global-route";
 import {
   createGraphFacadeRouteManager,
   type GraphFacadeRenderer,
@@ -906,6 +907,155 @@ describe("graph renderer lifecycle", () => {
     searchInput.dispatch("keydown", { key: "Enter" });
     assert.deepEqual(selections.at(-1), { kind: "node", id: "c" });
     assert.equal(nodeElement(renderer, "c")?.getAttribute("aria-pressed"), "true");
+
+    renderer.destroy();
+  });
+
+  it("keeps Sigma search input mounted when focusing the visible control", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const renderer = createSigmaGlobalFacadeRenderer({
+      container: container as unknown as HTMLElement,
+      options: {
+        data: graphDataForReturnGlobal(),
+        pins: {},
+        theme: "shan-shui",
+        focus: { kind: "community", id: "community-a" },
+        typeFilters: {},
+        aggregationMarkers: [],
+        selection: null,
+        sourceCommunityId: "community-a",
+        searchQuery: "",
+        searchResultIds: [],
+        temporaryObject: null,
+        callbacks: {}
+      }
+    });
+    const searchInput = findByClass(container, "graph-search-input")[0];
+    const searchControl = findByClass(container, "graph-search")[0];
+
+    searchInput.dispatch("focus");
+    searchInput.value = "Node a";
+    searchInput.dispatch("input");
+
+    assert.equal(findByClass(container, "graph-search-input")[0], searchInput);
+    assert.equal(searchControl.dataset.state, "open");
+    assert.equal(findByClass(container, "graph-search-input")[0]?.value, "Node a");
+
+    renderer.destroy();
+  });
+
+  it("scopes Sigma community search to visible current-community nodes without auto-opening content", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const visibilityStates: GraphVisibilityState[] = [];
+    const selections: SelectionInput[] = [];
+    const opened: string[] = [];
+    const renderer = createSigmaGlobalFacadeRenderer({
+      container: container as unknown as HTMLElement,
+      options: {
+        data: graphDataForReturnGlobal(),
+        pins: {},
+        theme: "shan-shui",
+        focus: { kind: "community", id: "community-a" },
+        typeFilters: { entity: true, source: true },
+        aggregationMarkers: [],
+        selection: null,
+        sourceCommunityId: "community-a",
+        searchQuery: "",
+        searchResultIds: [],
+        temporaryObject: null,
+        callbacks: {
+          onVisibilityStateChange: (state) => visibilityStates.push(state),
+          onSelectionInput: (selection) => selections.push(selection),
+          onNodeOpen: (id) => opened.push(id)
+        }
+      }
+    });
+    const searchInput = findByClass(container, "graph-search-input")[0];
+
+    searchInput.value = "Node";
+    searchInput.dispatch("input");
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a", "b"]);
+
+    searchInput.value = "Node c";
+    searchInput.dispatch("input");
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, []);
+
+    searchInput.value = "Node a";
+    searchInput.dispatch("input");
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
+    assert.deepEqual(selections, []);
+    assert.deepEqual(opened, []);
+
+    const resultItems = findByClass(container, "graph-search-result-item");
+    assert.equal(resultItems.length, 1);
+    assert.equal(findByClass(resultItems[0]!, "graph-search-result-label")[0]?.textContent, "Node a");
+    resultItems[0]?.dispatch("click");
+    assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
+    assert.deepEqual(opened, ["a"]);
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
+    assert.equal(findByClass(container, "graph-search-result-item").length, 1);
+
+    searchInput.value = "";
+    searchInput.dispatch("input");
+    assert.equal(visibilityStates.at(-1)?.searchQuery, "");
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, []);
+    assert.deepEqual(selections, [{ kind: "node", id: "a" }]);
+    assert.deepEqual(opened, ["a"]);
+
+    renderer.destroy();
+  });
+
+  it("recomputes Sigma community search and hidden-reader state after type filters change", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const visibilityStates: GraphVisibilityState[] = [];
+    const renderer = createSigmaGlobalFacadeRenderer({
+      container: container as unknown as HTMLElement,
+      options: {
+        data: graphDataForReturnGlobal(),
+        pins: {},
+        theme: "shan-shui",
+        focus: { kind: "community", id: "community-a" },
+        typeFilters: {},
+        aggregationMarkers: [],
+        selection: { kind: "node", id: "b" },
+        sourceCommunityId: "community-a",
+        searchQuery: "",
+        searchResultIds: [],
+        temporaryObject: null,
+        callbacks: {
+          onVisibilityStateChange: (state) => visibilityStates.push(state)
+        }
+      }
+    });
+    const searchInput = findByClass(container, "graph-search-input")[0];
+
+    searchInput.value = "Node";
+    searchInput.dispatch("input");
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a", "b"]);
+
+    const sourceToggle = findByDataset(container, "type", "source");
+    assert.ok(sourceToggle);
+    assert.equal(sourceToggle.checked, true);
+    sourceToggle.checked = false;
+    sourceToggle.dispatch("change");
+
+    assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
+    assert.equal(visibilityStates.at(-1)?.hiddenReadingNodeId, "b");
+    assert.equal(visibilityStates.at(-1)?.focusCommunityId, "community-a");
+    assert.equal(findByClass(container, "sigma-community-hidden-node-hint")[0]?.textContent, "当前节点被筛选隐藏");
+    assert.equal(findByClass(container, "sigma-global-route")[0]?.dataset.hiddenReadingNode, "true");
+
+    const entityToggle = findByDataset(container, "type", "entity");
+    assert.ok(entityToggle);
+    entityToggle.checked = true;
+    entityToggle.dispatch("change");
+
+    assert.equal(visibilityStates.at(-1)?.hiddenReadingNodeId, "b");
+    renderer.select({ kind: "node", id: "a" });
+    assert.equal(visibilityStates.at(-1)?.hiddenReadingNodeId, null);
 
     renderer.destroy();
   });

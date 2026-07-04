@@ -166,7 +166,13 @@ function visibilityWithTemporaryObject(
 		searchResultIds: state?.searchResultIds ?? [],
 		typeFilters: state?.typeFilters ?? {},
 		temporaryObject,
+		focusCommunityId: state?.focusCommunityId ?? null,
+		hiddenReadingNodeId: state?.hiddenReadingNodeId ?? null,
 	};
+}
+
+function graphReaderFilteredHidden(nodeId: string, state: GraphVisibilityState | null): boolean {
+	return state?.hiddenReadingNodeId === nodeId;
 }
 
 function drawerAfterGraphDataRefresh(
@@ -179,6 +185,15 @@ function drawerAfterGraphDataRefresh(
 	},
 ): DrawerState {
 	const visibility = visibilityWithTemporaryObject(options.visibility, options.temporaryObject);
+	if (current.mode === "graph-reader") {
+		const node = data?.nodes.find((item) => item.id === current.payload.node.id) ?? null;
+		if (!node) return closedDrawer();
+		if (visibility?.focusCommunityId && node.community !== visibility.focusCommunityId) return closedDrawer();
+		return {
+			...current,
+			filteredHidden: graphReaderFilteredHidden(current.payload.node.id, visibility),
+		};
+	}
 	if (current.mode === "graph-node-summary") {
 		return drawerForGraphNodeVisibility(data, current.payload.nodeId, current, {
 			pins: options.pins,
@@ -567,6 +582,10 @@ function App() {
 				});
 				return sameGraphDrawerTarget(current, next) ? current : next;
 			}
+			if (current.mode === "graph-reader") {
+				const filteredHidden = graphReaderFilteredHidden(current.payload.node.id, effectiveState);
+				return current.filteredHidden === filteredHidden ? current : { ...current, filteredHidden };
+			}
 			return current;
 		});
 	}, [graphData, graphPins]);
@@ -710,22 +729,24 @@ function App() {
 			},
 		};
 		if (syncGraphFocus && normalizedPagePath.startsWith("wiki/")) setGraphFocusPath(normalizedPagePath);
-		setDrawer(graphReaderDrawer(normalizedPayload, { loading: true }));
+		setDrawer(graphReaderDrawer(normalizedPayload, { loading: true }, {
+			filteredHidden: graphReaderFilteredHidden(normalizedPayload.node.id, graphVisibilityState),
+		}));
 		try {
 			const content = await readPage(active.kb.path, normalizedPagePath);
 			setDrawer((current) => (
-				shouldApplyGraphReaderResult(current, normalizedPayload)
-					? graphReaderDrawer(normalizedPayload, { content })
+				current.mode === "graph-reader" && shouldApplyGraphReaderResult(current, normalizedPayload)
+					? graphReaderDrawer(normalizedPayload, { content }, { filteredHidden: current.filteredHidden })
 					: current
 			));
 		} catch (err) {
 			setDrawer((current) => (
-				shouldApplyGraphReaderResult(current, normalizedPayload)
-					? graphReaderDrawer(normalizedPayload, { error: err instanceof Error ? err.message : String(err) })
+				current.mode === "graph-reader" && shouldApplyGraphReaderResult(current, normalizedPayload)
+					? graphReaderDrawer(normalizedPayload, { error: err instanceof Error ? err.message : String(err) }, { filteredHidden: current.filteredHidden })
 				: current
 			));
 		}
-	}, [active]);
+	}, [active, graphVisibilityState]);
 
 	const handleGraphSummaryCommand = useCallback((command: GraphSummaryCommand) => {
 		if (command.kind === "open-detail-read") {
@@ -805,7 +826,6 @@ function App() {
 	}, [graphData, graphPins, graphVisibilityState, handleOpenGraphPage]);
 
 	useEffect(() => {
-		if (!isGraphInteractionDrawer(drawer)) return;
 		setDrawer((current) => (
 			isGraphInteractionDrawer(current)
 				? drawerAfterGraphDataRefresh(current, graphData, {
@@ -815,7 +835,7 @@ function App() {
 				})
 				: current
 		));
-	}, [drawer.mode, graphData, graphPins, graphVisibilityState]);
+	}, [graphData, graphPins, graphVisibilityState]);
 
 	const handleGraphSummaryNodeSelect = useCallback((nodeId: string) => {
 		setDrawer((current) => drawerForGraphSummaryNode(graphData, nodeId, current, { pins: graphPins }));
