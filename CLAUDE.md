@@ -14,6 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ➡️ **开发 agent 工作台（日常主线）**：先读 [workbench/CLAUDE.md](workbench/CLAUDE.md) + [workbench/PRODUCT.md](workbench/PRODUCT.md)——当前阶段、ADR、协作规则都在那里。
 
+➡️ **统一术语、产品边界或 ADR**：先读 [CONTEXT-MAP.md](CONTEXT-MAP.md)，再进入对应 `CONTEXT.md` 和 [docs/adr/](docs/adr/)。
+
 ➡️ **本文件以下内容**：Skill 形态的安装与维护规则，**仅当你在维护 Skill 时才看**（install.sh / SKILL.md / scripts / templates / platforms）。Skill 已功能成熟、进入维护冻结，不再追加新功能。
 
 ---

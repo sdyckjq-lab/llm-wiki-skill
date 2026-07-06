@@ -11,6 +11,16 @@
 做领域相关改动前，先读 `CONTEXT-MAP.md`，再读你要改的区域对应的 `CONTEXT.md`。
 改产品方向、能力归属、存储边界或图谱语义前，先读 `docs/adr/README.md` 和相关 ADR。工作台内部决策可从 `workbench/PRODUCT.md` 第 7 节索引进入。
 
+## Reading Path
+
+| 场景 | 路径 |
+|---|---|
+| 统一项目术语 | `CONTEXT-MAP.md` → 根 `CONTEXT.md` → 区域 `CONTEXT.md` |
+| 改工作台体验 | `workbench/PRODUCT.md` → `workbench/CONTEXT.md` → 相关 ADR |
+| 改 Skill 工作流 | `docs/contexts/skill-package/CONTEXT.md` → 根 `SKILL.md` |
+| 改图谱语义 | `packages/graph-engine/CONTEXT.md` → `docs/adr/README.md` |
+| 追旧阶段 | `workbench/docs/archive/product-roadmap.md` → `workbench/docs/archive/product-history.md` |
+
 ## Contexts
 
 - 共用产品语言：根目录 `CONTEXT.md`。
@@ -22,4 +32,4 @@
 
 ## Vocabulary And Decisions
 
-优先使用已经写下来的名称和边界。如果未来计划和现有词表或 ADR 冲突，先指出冲突，不要静悄悄绕过去。
+优先使用已经写下来的名称和边界。当前行动先用 `workbench/PRODUCT.md` 判断方向；如果未来计划和现有词表、ADR 或代码事实冲突，先指出冲突，不要静悄悄绕过去。

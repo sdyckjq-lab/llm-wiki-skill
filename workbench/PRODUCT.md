@@ -1,8 +1,8 @@
-# llm-wiki-agent 产品文档
+# llm-wiki 工作台产品文档
 
 > 本文档是项目的**思路锚点**。当你（作者）或任何 AI 协作者思路断裂时，先读这份文档恢复上下文，再继续动手。
 >
-> **维护原则**：决策或功能定义变化时，**先改文档，再改代码**。文档与实现冲突时以文档为准。
+> **维护原则**：决策或功能定义变化时，**先改文档，再改代码**。文档与实现、ADR 或词表冲突时，先说明冲突点，再决定改哪一份。
 
 ---
 
@@ -13,6 +13,7 @@
 - 这份文档现在只保留当前产品事实、边界和关键决策；旧阶段路线见 [product-roadmap.md](docs/archive/product-roadmap.md)，历史提交和验收记录见 [product-history.md](docs/archive/product-history.md)。
 - 快速恢复上下文时，优先读：产品定位、数据边界、ADR、当前状态。
 - 不要在本文末尾继续追加流水账；旧路线、阶段提交表和旧 changelog 进归档。
+- 历史旧名是 `llm-wiki-agent`；当前产品名统一称 `llm-wiki 工作台`。磁盘上的 `~/.llm-wiki-agent/` 是保留的应用数据目录名，不代表产品名。
 
 ---
 
@@ -24,7 +25,7 @@
 
 ### 1.2 核心场景
 
-用户打开 llm-wiki-agent，看到自己的若干知识库列表，选一个进入。在对话框里和 agent 对话：
+用户打开 llm-wiki 工作台，看到自己的若干知识库列表，选一个进入。在对话框里和 agent 对话：
 
 - agent 知道当前在哪个知识库里，可以基于该库内容回答问题
 - 输入 `@` 弹出页面列表，引用具体 wiki 页面进 prompt
@@ -36,7 +37,7 @@
 
 ### 1.3 与 llm-wiki-skill 的关系
 
-| 维度 | llm-wiki-skill（旧） | llm-wiki-agent（新） |
+| 维度 | Skill 形态 | 工作台形态 |
 |---|---|---|
 | 形态 | Anthropic Skill | 独立 agent + web UI（未来 Tauri 桌面应用）|
 | 宿主 | Claude Code / Codex / OpenClaw / Hermes | 自有 runtime（基于 pi-agent）|
@@ -165,16 +166,18 @@
 具体含义：
 
 ```
-llm-wiki-agent/                       ← 你的仓库
-├── package.json                      ← 这里声明 "@earendil-works/pi-coding-agent": "^x.y.z"
+llm-wiki/                             ← monorepo 根
+├── package.json                      ← npm workspaces 与共享命令
 ├── node_modules/
 │   └── @earendil-works/
 │       └── pi-coding-agent/          ← pi 源码自动安装在这里，只读，不改
-├── server/                           ← 你写的后端
-│   ├── index.ts                      ← Hono 起服务
-│   ├── agent.ts                      ← import { createAgentSession } from '@earendil-works/pi-coding-agent'
-│   └── extensions/                   ← 你写的 Extension
-└── web/                              ← 你写的前端
+├── workbench/
+│   ├── server/src/                   ← 工作台后端
+│   │   ├── index.ts                  ← Hono 起服务
+│   │   ├── agent.ts                  ← import { createAgentSession } from '@earendil-works/pi-coding-agent'
+│   │   └── extensions/               ← 工作台自己的 Extension
+│   └── web/                          ← 工作台前端
+└── packages/graph-engine/            ← 工作台与 Skill 离线 HTML 共用图谱引擎
 ```
 
 你"写"的代码：
@@ -189,7 +192,7 @@ llm-wiki-agent/                       ← 你的仓库
 
 升级 pi：改 `package.json` 里的版本号，`npm install` 重跑。
 
-**Extension 注入方式**：pi-coding-agent CLI 会自动发现 `~/.pi/agent/extensions/*.ts` 下的全局 extension。**我们是 SDK 用户，不依赖那个机制**——而是把 extension 代码放在自己仓库的 `server/extensions/` 下，通过 SDK 暴露的 `bindExtensions()` 或自定义 `ResourceLoader` 显式注入 session。这样 extension 跟着我们项目走，不污染用户的 `~/.pi/`。
+**Extension 注入方式**：pi-coding-agent CLI 会自动发现 `~/.pi/agent/extensions/*.ts` 下的全局 extension。**我们是 SDK 用户，不依赖那个机制**——而是把 extension 代码放在自己仓库的 `workbench/server/src/extensions/` 下，通过 SDK 暴露的 `bindExtensions()` 或自定义 `ResourceLoader` 显式注入 session。这样 extension 跟着我们项目走，不污染用户的 `~/.pi/`。
 
 ❗ 永远**不要**直接修改 `node_modules/` 里的 pi 源码。万一极端情况需要 patch（99% 用不到），用 `patch-package` 做局部补丁，保持升级路径干净。
 
@@ -369,7 +372,7 @@ llm-wiki-agent/                       ← 你的仓库
 | 类型 | 位置 | 谁管 |
 |---|---|---|
 | 知识库数据 | `~/llm-wiki/<name>/` 或外部路径 | 用户 + agent |
-| 应用数据 | `~/.llm-wiki-agent/` | llm-wiki-agent |
+| 应用数据 | `~/.llm-wiki-agent/` | llm-wiki 工作台 |
 | 模型凭证 | `~/.pi/agent/auth.json` | pi-agent SDK |
 
 ❗ `.gitignore` 排除 `~/.llm-wiki-agent/`。**永远不要**把 API key 写进任何源代码或仓库文件。详见 ADR-13。
@@ -487,7 +490,7 @@ llm-wiki-agent/                       ← 你的仓库
 
 ### 8.3 协作规则（AI 必须遵守）
 
-- **不要自由发挥**。每次动手前先说"打算改哪些文件、为什么这么改、对其他部分有什么影响"，作者确认后再动
+- **不要自由发挥**。每次动手前先说"打算改哪些文件、为什么这么改、对其他部分有什么影响"；普通实现默认继续推进，不反复等确认
 - **任何要新增依赖**（npm package、Skill、配置项），先问"这是 PRODUCT.md 里规划过的吗"
 - **任何要修改 PRODUCT.md 之外的决策**，先说明"这与 PRODUCT.md 第 X.Y 节冲突，建议修改文档为 Z"，等作者拍板
 - **作者思路断了的时候**，先读 PRODUCT.md，不要急着问"我们做到哪里了"——日志和 git 记录是事实，文档是意图，两个对照看

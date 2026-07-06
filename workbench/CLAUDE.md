@@ -1,4 +1,4 @@
-# llm-wiki-agent 项目规则
+# llm-wiki 工作台项目规则
 
 ## 第一原则
 
@@ -8,11 +8,11 @@
 
 **[PRODUCT.md](PRODUCT.md)** —— 产品定位、架构、当前状态、ADR 和产品边界。任何动手前先读这份文档；旧阶段路线见 [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md)，完整历史记录见 [docs/archive/product-history.md](docs/archive/product-history.md)。
 
-文档与代码 / 约定冲突时，**以 PRODUCT.md 为准**。
+当前行动先以 `PRODUCT.md` 判断；如果 `PRODUCT.md`、ADR、词表或代码事实互相冲突，先说明冲突点和建议改法，等作者确认后再改文档或代码。
 
 ## AI 协作规则（强约束）
 
-1. **不要自由发挥**。每次动手前先说"打算改哪些文件、为什么这么改、对其他部分有什么影响"，作者确认后再动。
+1. **不要自由发挥**。每次动手前先说"打算改哪些文件、为什么这么改、对其他部分有什么影响"；普通实现默认继续推进，不反复等确认。
 2. **新增依赖**（npm package、Skill、配置项）前，先问"这是 PRODUCT.md 里规划过的吗"。规划外的依赖不要先装。
 3. **修改 PRODUCT.md 之外的决策**，先说"这与 PRODUCT.md §X.Y 冲突，建议改文档为 Z"，等作者拍板。
 4. **作者思路断了时**，先读 PRODUCT.md，不要急着问"做到哪里了"——日志 / git 是事实，文档是意图，对照看。
@@ -23,7 +23,7 @@
 
 当前状态以 PRODUCT.md §10 为准；旧阶段路线见 `workbench/docs/archive/product-roadmap.md`，验收实况和 commit 表见 `workbench/docs/archive/product-history.md`。当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。
 
-❗ 开发主场已在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立 llm-wiki-agent 仓库已进入只读过渡状态（不 archive，处置留品牌阶段，见 ADR-20）。
+❗ 开发主场已在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立工作台仓库（旧名 llm-wiki-agent）已进入只读过渡状态（不 archive，处置留品牌阶段，见 ADR-20）。
 
 阶段一 / 二 / 三 / 四及阶段 3.5 / 4.5 / 4.6 / 4.7 / 4.8 已完成（详见 PRODUCT.md §10 和归档）：
 
