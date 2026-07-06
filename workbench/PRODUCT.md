@@ -15,6 +15,17 @@
 - 不要在本文末尾继续追加流水账；旧路线、阶段提交表和旧 changelog 进归档。
 - 历史旧名是 `llm-wiki-agent`；当前产品名统一称 `llm-wiki 工作台`。磁盘上的 `~/.llm-wiki-agent/` 是保留的应用数据目录名，不代表产品名。
 
+### 0.1 内容放哪里
+
+| 内容类型 | 放哪里 | 不放哪里 |
+|---|---|---|
+| 稳定产品事实、用户边界、当前路线 | 本文件 | 归档、临时 plan |
+| 长期决策和取舍原因 | [docs/adr/](../docs/adr/) | 本文件正文长篇展开 |
+| 术语和能力边界词表 | `CONTEXT.md` / 区域 `CONTEXT.md` | ADR、历史归档 |
+| 当前实现计划、阶段设计、验收步骤 | `workbench/docs/` 下独立设计或计划文档 | 本文件、ADR |
+| 已完成阶段记录、提交表、旧 changelog | `workbench/docs/archive/` | 本文件末尾 |
+| 功能改动后的发布记录 | 根目录 `CHANGELOG.md` | `workbench/PRODUCT.md` |
+
 ---
 
 ## 1. 产品定位
@@ -30,10 +41,10 @@
 - agent 知道当前在哪个知识库里，可以基于该库内容回答问题
 - 输入 `@` 弹出页面列表，引用具体 wiki 页面进 prompt
 - 输入 `/` 弹出命令列表，调用工具（搜索、消化新素材、生成 HTML/PPT/Doc）
-- 对话结束后一键"结晶"为新的 wiki 页面，写回知识库
+- 对话结束后一键"对话结晶"为新的 wiki 页面，写回知识库
 - 产出物（HTML/PPT/Doc）在右抽屉直接预览，一键下载或分享
 
-整个工具运行在本地，所有知识库数据是本地 markdown 文件，零云依赖。
+整个工具运行在本地，所有知识库数据是本地 markdown 文件；应用本身不依赖自家云服务，模型调用按用户配置的提供商执行，信任边界见 §6.8。
 
 ### 1.3 与 llm-wiki-skill 的关系
 
@@ -79,6 +90,8 @@
 - [anthropics/skills](https://github.com/anthropics/skills)（例如 docx / pdf / pptx / xlsx / web artifacts 等）
 - [pi-skills](https://github.com/badlogic/pi-skills)（web search、browser automation、transcription 等）
 - 未来任何社区 Skill
+
+非本仓库随附的第三方 Skill 视为**受信任本地代码**。在没有权限沙箱前，未知来源 Skill 不默认启用；用户显式安装并启用后，才允许它进入会话能力集合。启用后的 Skill 可能接触当前知识库上下文、读写文件或访问网络，不能把“即插即用”理解成“无风险自动加载”。
 
 ### 2.4 对话中心
 
@@ -209,7 +222,7 @@ llm-wiki/                             ← monorepo 根
 | 阶段 | 状态 | 当前结论 |
 |---|---|---|
 | 阶段一：主干打通 | ✅ 已完成 2026-05-26 | 前端、后端、agent、Skill 和文件系统的主链路已跑通 |
-| 阶段二：核心循环 | ✅ 已完成 2026-05-27 | @、/、结晶、消化、新建知识库和设置面板已形成闭环 |
+| 阶段二：核心循环 | ✅ 已完成 2026-05-27 | @、/、对话结晶、消化、新建知识库和设置面板已形成闭环 |
 | 阶段三：产出能力 | ✅ 已完成 2026-05-27 | HTML、PDF、Word、PPT、Excel 等产出入口已接入右抽屉 |
 | 阶段 3.5：导航与批量消化 | ✅ 已完成 2026-05-27 | 侧栏、拖拽添加、多模型角色和子代理批量消化已落地 |
 | 阶段四：monorepo + 图谱活地图 | ✅ 已完成 2026-06-12 | Skill、工作台和共享图谱引擎已合并到同一仓库 |
@@ -377,6 +390,8 @@ llm-wiki/                             ← monorepo 根
 
 ❗ `.gitignore` 排除 `~/.llm-wiki-agent/`。**永远不要**把 API key 写进任何源代码或仓库文件。详见 ADR-13。
 
+`sessions/` 和 `logs/` 也是用户内容边界的一部分：它们可能包含用户提问、模型回复、引用页面片段或检索元信息。默认日志只记录诊断所需元数据，不记录完整 prompt、完整页面正文、API key 或认证状态；只有用户明确打开调试采集时，才允许更详细内容进入日志。删除对话或移除知识库登记时，必须考虑这些目录里是否还有对应副本。
+
 ### 6.4 Obsidian / 第三方工具共存规则
 
 很多用户（包括作者本人）用 Obsidian 浏览同一份知识库。两者必须零冲突。
@@ -422,6 +437,15 @@ llm-wiki/                             ← monorepo 根
 | **后端服务未起** | 前端 UI 显示明显的"后端服务未连接"状态，不渲染对话区（避免误以为是 agent 卡死） |
 | **知识库目录被外部删除** | 列表里标灰，点击给出"目录已失效，是否从列表移除"提示，不崩溃 |
 
+### 6.8 运行时信任边界
+
+| 边界 | 约束 |
+|---|---|
+| 本地后端 API | 后端默认只绑定 loopback；HTTP、SSE 和所有会改文件或触发模型的端点只接受工作台 / Tauri 可信来源，不对局域网或任意网页开放 |
+| 模型提供商 | “本地优先”不等于模型调用不出网。发送消息时，用户 prompt、选中的引用、后端检索片段、工具输出和生成产物可能被发给当前配置的模型提供商；实现必须只发送完成任务所需的最小上下文 |
+| 会话和日志 | `~/.llm-wiki-agent/sessions/` 与 `logs/` 视为敏感用户内容存储，不默认记录完整 prompt、页面正文、API key 或 auth 状态 |
+| 第三方 Skill | 非随仓库提供的 Skill 视为受信任本地代码，必须由用户显式启用；未知来源 Skill 不得自动获得当前知识库上下文 |
+
 ---
 
 ## 7. 关键决策记录（ADR）
@@ -439,7 +463,7 @@ llm-wiki/                             ← monorepo 根
 | ADR-3 | [SSE 而非 WebSocket](../docs/adr/0003-sse-not-websocket.md) |
 | ADR-4 | [先 web 再 Tauri 打包](../docs/adr/0004-web-first-tauri-later.md) |
 | ADR-5 | [不用 MCP](../docs/adr/0005-no-mcp.md) |
-| ADR-6 | [完全进化为 agent，不维护双通道](../docs/adr/0006-evolve-to-agent-no-dual-channel.md) |
+| ADR-6 | [完全进化为 agent，不维护双通道（已被 ADR-20/27 收窄）](../docs/adr/0006-evolve-to-agent-no-dual-channel.md) |
 | ADR-7 | [知识库上下文用 Extension 注入，不拼 prompt](../docs/adr/0007-kb-context-via-extension-not-prompt.md) |
 | ADR-8 | [React + Vite 而非 Next.js](../docs/adr/0008-react-vite-not-nextjs.md) |
 | ADR-9 | [UI 用 shadcn/ui](../docs/adr/0009-shadcn-ui.md) |
@@ -450,13 +474,13 @@ llm-wiki/                             ← monorepo 根
 | ADR-13b | [不抄 open-design 的"多 CLI 子进程"模式](../docs/adr/0013b-no-open-design-cli-subprocesses.md) |
 | ADR-14 | [app 内一键新建知识库](../docs/adr/0014-in-app-create-knowledge-base.md) |
 | ADR-15 | [Obsidian 共存（agent 忽略非 markdown 与第三方元数据）](../docs/adr/0015-obsidian-coexistence.md) |
-| ADR-16 | [长期与 llm-wiki 仓库合并（agent 是 Skill 的升级版）](../docs/adr/0016-merge-with-llm-wiki-repo.md) |
+| ADR-16 | [长期与 llm-wiki 仓库合并（仓库布局已由 ADR-20 落地）](../docs/adr/0016-merge-with-llm-wiki-repo.md) |
 | ADR-17 | [阶段二新增前端依赖（react-markdown + cmdk）](../docs/adr/0017-stage-2-frontend-dependencies.md) |
 | ADR-18 | [阶段 3.5 多模型双角色 + 轻量子代理框架](../docs/adr/0018-stage-3-5-model-roles-and-subagents.md) |
 | ADR-19 | [主对话引入“系统检索 + 上下文注入”](../docs/adr/0019-system-retrieval-context-injection.md) |
 | ADR-20 | [阶段四启动 monorepo 合并（丙方案）](../docs/adr/0020-monorepo-merge.md) |
 | ADR-21 | [图谱引擎与活地图（一个引擎、两个宿主）](../docs/adr/0021-graph-engine-living-map.md) |
-| ADR-22 | [图谱交互模型——点击即阅读，选区即升级](../docs/adr/0022-graph-interaction-click-read-selection-upgrade.md) |
+| ADR-22 | [图谱交互模型——轻量摘要优先，明确动作进入阅读](../docs/adr/0022-graph-interaction-click-read-selection-upgrade.md) |
 | ADR-23 | [关系边可视化采用“关系类型控制颜色、置信度控制虚实”](../docs/adr/0023-relation-type-color-confidence-stroke.md) |
 | ADR-24 | [Paper 暖纸视觉方向与外观偏好](../docs/adr/0024-paper-visual-direction.md) |
 | ADR-25 | [前端交互测试与 Paper 视觉回归栈](../docs/adr/0025-frontend-interaction-and-visual-regression.md) |
@@ -471,7 +495,7 @@ llm-wiki/                             ← monorepo 根
 | ADR-29 | [图谱是 wiki 结构的视图](../docs/adr/0029-graph-is-a-view-of-wiki-structure.md) |
 | ADR-30 | [本地优先与数据边界](../docs/adr/0030-local-first-data-boundaries.md) |
 | ADR-31 | [根目录保持 CommonJS 兼容](../docs/adr/0031-monorepo-root-keeps-commonjs-compatibility.md) |
-| ADR-32 | [一个图谱引擎，两个宿主](../docs/adr/0032-one-graph-engine-two-hosts.md) |
+| ADR-32 | [一个图谱引擎，两个宿主（repo-wide 摘要，细节以 ADR-21 为准）](../docs/adr/0032-one-graph-engine-two-hosts.md) |
 
 ## 8. 给 0 代码作者的盲区与协作规则
 
@@ -494,7 +518,7 @@ llm-wiki/                             ← monorepo 根
 - **任何要新增依赖**（npm package、Skill、配置项），先问"这是 PRODUCT.md 里规划过的吗"
 - **任何要修改 PRODUCT.md 之外的决策**，先说明"这与 PRODUCT.md 第 X.Y 节冲突，建议修改文档为 Z"，等作者拍板
 - **作者思路断了的时候**，先读 PRODUCT.md，不要急着问"我们做到哪里了"——日志和 git 记录是事实，文档是意图，两个对照看
-- **绝不主动跳阶段**。阶段二验收不过，不允许动阶段三的代码
+- **绝不主动跳阶段**。当前阶段验收不过，不动下一阶段的代码
 
 ### 8.4 心态陷阱
 

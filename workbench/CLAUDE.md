@@ -6,7 +6,14 @@
 
 ## 必读文档
 
-**[PRODUCT.md](PRODUCT.md)** —— 产品定位、架构、当前状态、ADR 和产品边界。任何动手前先读这份文档；旧阶段路线见 [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md)，完整历史记录见 [docs/archive/product-history.md](docs/archive/product-history.md)。
+先用下面的冷启动表选最小必读集，不要默认读历史归档。
+
+| 任务类型 | 必读 | 需要时再读 |
+|---|---|---|
+| 工作台日常代码/体验改动 | [PRODUCT.md](PRODUCT.md) 的定位、数据边界、当前状态 | [CONTEXT.md](CONTEXT.md)、相关 ADR |
+| 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md)、[CONTEXT.md](CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md) 和相关 ADR 正文 |
+| 图谱语义或图谱交互 | [../packages/graph-engine/CONTEXT.md](../packages/graph-engine/CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 图谱相关章节 | ADR-21、ADR-22、ADR-23、ADR-26、ADR-32 |
+| 追旧阶段为什么这么做 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) | [docs/archive/product-history.md](docs/archive/product-history.md) |
 
 当前行动先以 `PRODUCT.md` 判断；如果 `PRODUCT.md`、ADR、词表或代码事实互相冲突，先说明冲突点和建议改法，等作者确认后再改文档或代码。
 
@@ -25,14 +32,19 @@
 
 ❗ 开发主场已在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立工作台仓库（旧名 llm-wiki-agent）已进入只读过渡状态（不 archive，处置留品牌阶段，见 ADR-20）。
 
-阶段一 / 二 / 三 / 四及阶段 3.5 / 4.5 / 4.6 / 4.7 / 4.8 已完成（详见 PRODUCT.md §10 和归档）：
+阶段一 / 二 / 三 / 3.5 / 四 / 4.5 / 4.6 / 4.7 / 4.8 均已完成（详见 PRODUCT.md §10 和归档）。
 
-- 阶段一 ✅ 2026-05-26（主干打通）
-- 阶段二 ✅ 2026-05-27（@、/、结晶、消化）
-- 阶段三 ✅ 2026-05-27（5 个导出按钮 + 4 个 vendored anthropics Skills + 产物右抽屉 + HTML iframe + 下载渲染器 + Skill 可见性开关）
-- 阶段 3.5 ✅ 2026-05-27 至 2026-05-28（导航、多模型、批量消化、当前知识库检索、工作台视觉、可调预览、设置面板滚动修复）
-- 阶段四 ✅ 2026-06-12（monorepo 合并 + 共享图谱引擎 + 活地图：钉扎/选区/生长动画 + 离线 HTML 切引擎产物）
-- 阶段 4.5 / 4.6 / 4.7 / 4.8 ✅ 2026-06-14 起（图谱可用性、图谱演进第一批、图谱交互地基、全局社区高亮）
+## 验证要求
+
+向作者汇报前，尽一切可能实际验证结果。
+
+- 写代码后至少运行相关检查；能跑全量就跑全量。
+- Web 界面改动要启动应用，打开页面，看渲染，点关键流程。
+- 脚本或接口改动要用代表性输入跑一遍，检查输出。
+- 有明显边界情况时，至少模拟一个边界情况。
+- 发现问题就修，再重新验证。
+
+不要把未经验证的初稿交给作者。只有确认正常，或确实遇到需要作者介入的障碍，才汇报。
 
 ## 关键路径速查
 

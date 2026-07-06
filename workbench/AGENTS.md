@@ -8,7 +8,14 @@
 
 ## 必读文档
 
-动手前先读 [PRODUCT.md](PRODUCT.md)。它是项目的意图、边界、路线和决策来源。
+先用下面的冷启动表选最小必读集，不要默认读历史归档。
+
+| 任务类型 | 必读 | 需要时再读 |
+|---|---|---|
+| 工作台日常代码/体验改动 | [PRODUCT.md](PRODUCT.md) 的定位、数据边界、当前状态 | [CONTEXT.md](CONTEXT.md)、相关 ADR |
+| 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md)、[CONTEXT.md](CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md) 和相关 ADR 正文 |
+| 图谱语义或图谱交互 | [../packages/graph-engine/CONTEXT.md](../packages/graph-engine/CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 图谱相关章节 | ADR-21、ADR-22、ADR-23、ADR-26、ADR-32 |
+| 追旧阶段为什么这么做 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) | [docs/archive/product-history.md](docs/archive/product-history.md) |
 
 当前行动先以 `PRODUCT.md` 判断；如果 `PRODUCT.md`、ADR、词表或代码事实互相冲突，先说明冲突点和建议改法，等作者确认后再改文档或代码。
 
@@ -59,7 +66,7 @@
 
 当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。详细历史不要在本文件重复维护。
 
-❗ 开发主场在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：图谱引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立工作台仓库（旧名 llm-wiki-agent）已只读归档（处置留品牌阶段，见 ADR-20）。
+❗ 开发主场在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：图谱引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立工作台仓库（旧名 llm-wiki-agent）已进入只读过渡状态（不 archive，处置留品牌阶段，见 ADR-20）。
 
 阶段一 / 二 / 三 / 3.5 / 四 / 4.5 / 4.6 / 4.7 / 4.8 均已完成（详见 PRODUCT.md §10 和归档）。
 

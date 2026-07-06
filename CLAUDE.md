@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ➡️ **统一术语、产品边界或 ADR**：先读 [CONTEXT-MAP.md](CONTEXT-MAP.md)，再进入对应 `CONTEXT.md` 和 [docs/adr/](docs/adr/)。
 
-➡️ **本文件以下内容**：Skill 形态的安装与维护规则，**仅当你在维护 Skill 时才看**（install.sh / SKILL.md / scripts / templates / platforms）。Skill 已功能成熟、进入维护冻结，不再追加新功能。
+➡️ **下方架构、命令、分支和推送规则是全仓通用规则**。只有“Skill 形态：安装与维护”小节及其安装/工作流说明是 Skill 专属。
 
 ---
 
@@ -62,6 +62,8 @@ npm workspaces，三个包（根 `package.json` 不设 `"type": "module"`——S
 ---
 
 ## Skill 形态：安装与维护
+
+以下内容仅当你在维护 Skill 时阅读（install.sh / SKILL.md / scripts / templates / platforms）。Skill 已功能成熟、进入维护冻结，不再追加新功能。
 
 先看这三个文件：
 

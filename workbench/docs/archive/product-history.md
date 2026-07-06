@@ -190,7 +190,7 @@
 | **Tauri** | 用系统 webview + Rust 后端打包跨平台桌面应用的框架，二进制和内存占用通常显著低于 Electron |
 | **Hono** | 轻量 TypeScript web 框架，跑 Node / Bun / Deno / Cloudflare 都行 |
 | **shadcn/ui** | 组件库，但代码是直接复制到你仓库的（不是 npm 黑盒），方便修改 |
-| **结晶 / 沉淀** | 把对话内容固化为 wiki 页面的动作（继承自 llm-wiki-skill 术语） |
+| **对话结晶 / 沉淀** | 把工作台当前对话内容固化为 wiki 页面的动作；Skill 侧另有手动结晶 / crystallize |
 
 ---
 
@@ -209,7 +209,7 @@
 
 ---
 
-> 本文档第一版完成于 2026-05-26。后续更新请在文末追加 changelog。
+> 本文档第一版完成于 2026-05-26。现在只作历史归档，不再追加 changelog；新的发布记录写入根目录 `CHANGELOG.md`。
 
 ## Changelog
 

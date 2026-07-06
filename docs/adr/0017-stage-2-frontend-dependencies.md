@@ -2,7 +2,7 @@
 
 **背景**：阶段二引入 markdown 渲染（右抽屉显示 wiki 页面）+ 命令补全菜单（`/` 和 `@`）。两个能力都需要新依赖。
 
-**决策**（已在 `web/package.json` 落地）：
+**决策**（已在当前 monorepo 的 `workbench/web/package.json` 落地；旧工作台时期路径为 `web/package.json`）：
 
 | 依赖 | 版本 | 用途 |
 |---|---|---|
