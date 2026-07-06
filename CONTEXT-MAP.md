@@ -17,6 +17,6 @@
 
 ## Decision Records
 
-- 旧的工作台决策记录仍在 [workbench/PRODUCT.md §7](./workbench/PRODUCT.md)，编号为 ADR-1 到 ADR-26。
-- 新的文件化 ADR 放在 [docs/adr/](./docs/adr/)；为了不和旧编号冲突，本目录从 `0027` 开始。
+- ADR 正文统一放在 [docs/adr/](./docs/adr/)；[workbench/PRODUCT.md §7](./workbench/PRODUCT.md) 只保留决策索引。
+- ADR-1 到 ADR-26 和 ADR-13b 是旧工作台决策；ADR-27 起是领域文档拆分后新增的跨区域决策。
 - 如果词表、ADR、产品文档之间出现冲突，先停下来说明冲突点，再决定改哪一份。

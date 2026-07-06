@@ -9,7 +9,7 @@
 - 工作台产品上下文：`workbench/PRODUCT.md`。
 
 做领域相关改动前，先读 `CONTEXT-MAP.md`，再读你要改的区域对应的 `CONTEXT.md`。
-改产品方向、能力归属、存储边界或图谱语义前，先读 `docs/adr/README.md` 和相关 ADR。工作台内部决策还要继续读 `workbench/PRODUCT.md` 第 7 节。
+改产品方向、能力归属、存储边界或图谱语义前，先读 `docs/adr/README.md` 和相关 ADR。工作台内部决策可从 `workbench/PRODUCT.md` 第 7 节索引进入。
 
 ## Contexts
 
@@ -17,8 +17,8 @@
 - Skill 形态：`docs/contexts/skill-package/CONTEXT.md` 和根目录 `SKILL.md`。
 - agent 工作台：`workbench/CONTEXT.md` 和 `workbench/PRODUCT.md`。
 - 共享图谱引擎：`packages/graph-engine/CONTEXT.md`。
-- 跨区域决策：`docs/adr/`。
-- 旧工作台决策：`workbench/PRODUCT.md` 第 7 节。
+- 决策正文：`docs/adr/`。
+- 工作台决策索引：`workbench/PRODUCT.md` 第 7 节。
 
 ## Vocabulary And Decisions
 

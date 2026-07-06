@@ -28,7 +28,7 @@ workbench/web (React 19, SSE) ──HTTP POST + SSE──▶ workbench/server (H
 packages/graph-engine ──ESM + IIFE 双产物──▶ workbench/web 图谱视图 + Skill 离线 HTML（一个引擎、两个宿主，ADR-21）
 ```
 
-- 权威架构图、技术栈与全部 ADR 见 [workbench/PRODUCT.md §3 / §7](workbench/PRODUCT.md)；当前阶段与协作铁律见 [workbench/CLAUDE.md](workbench/CLAUDE.md)。
+- 权威架构图、技术栈见 [workbench/PRODUCT.md §3](workbench/PRODUCT.md)；ADR 正文见 [docs/adr/](docs/adr/)；当前阶段与协作铁律见 [workbench/CLAUDE.md](workbench/CLAUDE.md)。
 - **三类数据彻底分离**（别写错位置）：知识库 `~/llm-wiki/<name>/`、应用数据 `~/.llm-wiki-agent/`、模型凭证 `~/.pi/agent/auth.json`（pi-agent 管，权限 0600）。应用自己的 `config.json` **绝不存** API key。
 
 ## ⚙️ 开发命令速查
