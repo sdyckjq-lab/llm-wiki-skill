@@ -1,21 +1,25 @@
 # Domain Docs
 
-This repo uses a multi-context layout.
+本仓库使用多上下文领域文档。新协作者不要只读一个 `CONTEXT.md` 就开工，先看地图，再进入具体区域。
 
-Before working in a part of the repo, read the relevant local guidance first:
+开始改某个区域前，先读对应的本地说明：
 
-- Root repo guidance: `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex.
-- Workbench guidance: `workbench/CLAUDE.md` for Claude Code and `workbench/AGENTS.md` for Codex.
-- Workbench product context: `workbench/PRODUCT.md`.
+- 根目录协作规则：Claude Code 读 `CLAUDE.md`，Codex 读 `AGENTS.md`。
+- 工作台协作规则：Claude Code 读 `workbench/CLAUDE.md`，Codex 读 `workbench/AGENTS.md`。
+- 工作台产品上下文：`workbench/PRODUCT.md`。
 
-If `CONTEXT-MAP.md`, `CONTEXT.md`, or `docs/adr/` files are added later, read the relevant ones before working.
+做领域相关改动前，先读 `CONTEXT-MAP.md`，再读你要改的区域对应的 `CONTEXT.md`。
+改产品方向、能力归属、存储边界或图谱语义前，先读 `docs/adr/README.md` 和相关 ADR。工作台内部决策还要继续读 `workbench/PRODUCT.md` 第 7 节。
 
 ## Contexts
 
-- Skill package: root `SKILL.md`, `scripts/`, `templates/`, and `platforms/`.
-- Agent workbench: `workbench/`.
-- Shared graph engine: `packages/graph-engine/`.
+- 共用产品语言：根目录 `CONTEXT.md`。
+- Skill 形态：`docs/contexts/skill-package/CONTEXT.md` 和根目录 `SKILL.md`。
+- agent 工作台：`workbench/CONTEXT.md` 和 `workbench/PRODUCT.md`。
+- 共享图谱引擎：`packages/graph-engine/CONTEXT.md`。
+- 跨区域决策：`docs/adr/`。
+- 旧工作台决策：`workbench/PRODUCT.md` 第 7 节。
 
-## Vocabulary and decisions
+## Vocabulary And Decisions
 
-Use the names and boundaries already documented in the repo guidance. If future context docs or ADRs disagree with a planned change, call that out before proceeding.
+优先使用已经写下来的名称和边界。如果未来计划和现有词表或 ADR 冲突，先指出冲突，不要静悄悄绕过去。
