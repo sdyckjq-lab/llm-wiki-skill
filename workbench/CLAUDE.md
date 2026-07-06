@@ -6,7 +6,7 @@
 
 ## 必读文档
 
-**[PRODUCT.md](PRODUCT.md)** —— 产品定位、架构、当前状态、ADR 和产品边界。任何动手前先读这份文档；完整历史记录见 [docs/archive/product-history.md](docs/archive/product-history.md)。
+**[PRODUCT.md](PRODUCT.md)** —— 产品定位、架构、当前状态、ADR 和产品边界。任何动手前先读这份文档；旧阶段路线见 [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md)，完整历史记录见 [docs/archive/product-history.md](docs/archive/product-history.md)。
 
 文档与代码 / 约定冲突时，**以 PRODUCT.md 为准**。
 
@@ -21,11 +21,11 @@
 
 ## 项目当前阶段
 
-当前状态以 PRODUCT.md §10 为准；完整阶段记录、验收实况和 commit 表见 `workbench/docs/archive/product-history.md`。当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。
+当前状态以 PRODUCT.md §10 为准；旧阶段路线见 `workbench/docs/archive/product-roadmap.md`，验收实况和 commit 表见 `workbench/docs/archive/product-history.md`。当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。
 
 ❗ 开发主场已在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立 llm-wiki-agent 仓库已进入只读过渡状态（不 archive，处置留品牌阶段，见 ADR-20）。
 
-阶段一 / 二 / 三 / 四及阶段 3.5 / 4.5 / 4.6 / 4.7 / 4.8 已完成（详见 PRODUCT.md §10 和历史归档）：
+阶段一 / 二 / 三 / 四及阶段 3.5 / 4.5 / 4.6 / 4.7 / 4.8 已完成（详见 PRODUCT.md §10 和归档）：
 
 - 阶段一 ✅ 2026-05-26（主干打通）
 - 阶段二 ✅ 2026-05-27（@、/、结晶、消化）
