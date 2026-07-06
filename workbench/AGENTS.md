@@ -13,7 +13,7 @@
 | 任务类型 | 必读 | 需要时再读 |
 |---|---|---|
 | 工作台日常代码/体验改动 | [PRODUCT.md](PRODUCT.md) 的定位、数据边界、当前状态 | [CONTEXT.md](CONTEXT.md)、相关 ADR |
-| 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md)、[CONTEXT.md](CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md) 和相关 ADR 正文 |
+| 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md) 指向的相关词表、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md)、相关 ADR 正文；Skill / 工作台边界优先看 ADR-28 |
 | 图谱语义或图谱交互 | [../packages/graph-engine/CONTEXT.md](../packages/graph-engine/CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 图谱相关章节 | ADR-21、ADR-22、ADR-23、ADR-26、ADR-32 |
 | 追旧阶段为什么这么做 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) | [docs/archive/product-history.md](docs/archive/product-history.md) |
 
@@ -98,12 +98,12 @@ Node 版本要求：`>=22.19.0`。
 
 先读：
 
-1. `PRODUCT.md`
-2. `workbench/docs/archive/product-roadmap.md`（需要追旧路线时）
-3. `workbench/docs/archive/product-history.md`（需要追提交和验收时）
-4. 当前阶段设计文档
-5. git log / git diff
-6. 相关代码和测试
+1. `PRODUCT.md` 当前状态、数据边界和相关决策索引
+2. git log / git diff
+3. 相关代码和测试
+4. 当前任务直接相关的 `CONTEXT.md` 或 ADR
+
+只有需要追旧路线、验收细节或历史提交原因时，再读 `workbench/docs/archive/product-roadmap.md` / `workbench/docs/archive/product-history.md`。
 
 日志和 git 是事实，文档是意图。对照后再继续。
 

@@ -16,8 +16,8 @@
 | 场景 | 路径 |
 |---|---|
 | 统一项目术语 | `CONTEXT-MAP.md` → 根 `CONTEXT.md` → 区域 `CONTEXT.md` |
-| 改工作台体验 | `workbench/PRODUCT.md` → `workbench/CONTEXT.md` → 相关 ADR |
-| 改 Skill 工作流 | `docs/contexts/skill-package/CONTEXT.md` → 根 `SKILL.md` |
+| 改工作台体验 | `workbench/AGENTS.md` / `workbench/CLAUDE.md` 冷启动表 → `workbench/PRODUCT.md` 相关章节 → 必要时读相关 ADR |
+| 改 Skill 工作流 | `docs/agents/skill-maintenance.md` → `docs/contexts/skill-package/CONTEXT.md` → 根 `SKILL.md` |
 | 改图谱语义 | `packages/graph-engine/CONTEXT.md` → `docs/adr/README.md` |
 | 追旧阶段 | `workbench/docs/archive/product-roadmap.md` → `workbench/docs/archive/product-history.md` |
 
@@ -25,6 +25,7 @@
 
 - 共用产品语言：根目录 `CONTEXT.md`。
 - Skill 形态：`docs/contexts/skill-package/CONTEXT.md` 和根目录 `SKILL.md`。
+- Skill 维护规则：`docs/agents/skill-maintenance.md`。
 - agent 工作台：`workbench/CONTEXT.md` 和 `workbench/PRODUCT.md`。
 - 共享图谱引擎：`packages/graph-engine/CONTEXT.md`。
 - 决策正文：`docs/adr/`。

@@ -11,7 +11,7 @@
 | 任务类型 | 必读 | 需要时再读 |
 |---|---|---|
 | 工作台日常代码/体验改动 | [PRODUCT.md](PRODUCT.md) 的定位、数据边界、当前状态 | [CONTEXT.md](CONTEXT.md)、相关 ADR |
-| 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md)、[CONTEXT.md](CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md) 和相关 ADR 正文 |
+| 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md) 指向的相关词表、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md)、相关 ADR 正文；Skill / 工作台边界优先看 ADR-28 |
 | 图谱语义或图谱交互 | [../packages/graph-engine/CONTEXT.md](../packages/graph-engine/CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 图谱相关章节 | ADR-21、ADR-22、ADR-23、ADR-26、ADR-32 |
 | 追旧阶段为什么这么做 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) | [docs/archive/product-history.md](docs/archive/product-history.md) |
 
@@ -22,7 +22,7 @@
 1. **不要自由发挥**。每次动手前先说"打算改哪些文件、为什么这么改、对其他部分有什么影响"；普通实现默认继续推进，不反复等确认。
 2. **新增依赖**（npm package、Skill、配置项）前，先问"这是 PRODUCT.md 里规划过的吗"。规划外的依赖不要先装。
 3. **修改 PRODUCT.md 之外的决策**，先说"这与 PRODUCT.md §X.Y 冲突，建议改文档为 Z"，等作者拍板。
-4. **作者思路断了时**，先读 PRODUCT.md，不要急着问"做到哪里了"——日志 / git 是事实，文档是意图，对照看。
+4. **作者思路断了时**，先按上面的冷启动表读当前状态，再对照 git log / git diff；不要急着问"做到哪里了"。
 5. **绝不主动跳阶段**。阶段 N 验收不过，不允许动阶段 N+1 的代码。
 6. **求真不猜**。pi-agent / Skill / 外部库的事实，能查源码就查源码，能查文档就查文档，不要凭训练数据印象答。
 

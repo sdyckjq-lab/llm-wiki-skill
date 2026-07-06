@@ -10,7 +10,7 @@ Based on [Andrej Karpathy](https://karpathy.ai/)'s [llm-wiki methodology](https:
 
 Turn scattered information into a growing, interconnected knowledge base
 
-[![version](https://img.shields.io/badge/v3.6.24-Community%20Wrap--up-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.25-Community%20Drilldown%20Fix-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -24,7 +24,18 @@ Turn scattered information into a growing, interconnected knowledge base
 <img src="assets/graph-demo.gif" width="100%" alt="Knowledge Graph Demo">
 </div>
 
-Oriental editorial × digital landscape interactive knowledge graph — double-click the HTML file to explore in your browser. Search, community legend, focus filters, layered node grammar, community close-up maps, hover previews, click-to-read, Shift multi-select, canvas zoom/pan, and minimap navigation all run offline.
+Oriental editorial × digital landscape interactive knowledge graph — double-click the HTML file to explore in your browser. Search, community legend, focus filters, layered node grammar, community close-up maps, hover previews, lightweight summaries before explicit reading, Shift multi-select, canvas zoom/pan, and minimap navigation all run offline.
+
+---
+
+## Two Entry Points
+
+This is the llm-wiki monorepo. It contains two entry points that read and write the same knowledge base format:
+
+- **Skill package** (stable): install it into Claude Code / Codex / OpenClaw / Hermes and maintain your knowledge base inside your existing AI CLI.
+- **Agent workbench** (`workbench/`, in development): a local knowledge-base workbench centered on conversation, with the same interactive digital landscape graph. It currently targets developers via `npm run dev`; desktop packaging comes later.
+
+The interactive graph engine (`packages/graph-engine/`) is shared by both the Skill offline HTML and the workbench graph view.
 
 ---
 
@@ -57,19 +68,26 @@ The key difference: knowledge is **compiled once, maintained continuously** — 
 
 ## Highlights
 
+### Stable Skill Path
+
 | | Feature | Description |
 |---|---|---|
 | 🗺️ | **Digital Landscape Graph** | Self-contained HTML with a three-column oriental editorial layout, draggable and zoomable canvas, minimap navigation, and readable side panels |
-| ✨ | **Graph Reading Polish** | Nodes now separate map labels, index slips, and cinnabar annotations; the default view is lighter, hover previews stay available, and clicks open reading mode |
+| ✨ | **Graph Reading Polish** | Nodes now separate map labels, index slips, and cinnabar annotations; the default view is lighter, hover previews stay available, and clicks show a summary before explicit reading |
 | 🎓 | **Local Reading Flow** | Community legend, focus filters, scoped search, the reader drawer, and the selection drawer stay connected to the visible graph; offline HTML keeps selected facts visible too |
-| 🧭 | **Community Close-up Map** | Entering a community now feels like zooming into the same region from the global graph; positions, tiers, labels, and return highlights stay stable |
 | 📦 | **Zero-config Init** | One sentence to create a full knowledge base with directory structure and templates |
 | 🔗 | **Structured Wiki** | Auto-generates entity pages, topic pages, source summaries with `[[bidirectional links]]` |
 | 🏷️ | **Confidence Annotation** | EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED — see at a glance what needs verification |
 | 🔄 | **Smart Caching** | SHA256 deduplication + write-through cache + self-healing safety net |
-| 🧠 | **Conversation Crystallization** | Turn valuable conversations into knowledge base pages directly |
+| 🧠 | **Conversation-to-Wiki** | Turn valuable conversations into knowledge base pages directly |
 | 📡 | **Auto Context Injection** | SessionStart hook makes the agent automatically sense the knowledge base every session |
 | 📊 | **Multi-format Analysis** | Deep reports, comparison tables, and timeline views |
+
+### Workbench Developer Preview
+
+| | Feature | Description |
+|---|---|---|
+| 🧭 | **Community Close-up Map** | Entering a community now feels like zooming into the same region from the global graph; positions, tiers, labels, and return highlights stay stable |
 
 ---
 
@@ -182,7 +200,7 @@ your-knowledge-base/
 │   ├── sources/            # Source summaries
 │   ├── comparisons/        # Comparisons
 │   ├── synthesis/          # Synthesis
-│   │   └── sessions/       # Conversation crystallization
+│   │   └── sessions/       # Conversation-to-wiki pages
 │   └── queries/            # Saved queries
 ├── purpose.md              # Research direction
 ├── index.md                # Index
@@ -212,8 +230,6 @@ Ensure optional adapters are installed (`--with-optional-adapters`). For authent
 Requires `uv`. Install it, then re-run with `--with-optional-adapters`.
 
 </details>
-
----
 
 ## Windows Users
 

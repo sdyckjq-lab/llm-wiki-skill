@@ -12,11 +12,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **共享图谱引擎** | `packages/graph-engine/` | 🚧 随 agent 演进 |
 | **Skill 形态** | 根目录 `SKILL.md` / `scripts/` / `templates/` / `platforms/` | ❄️ 成熟·维护冻结 |
 
-➡️ **开发 agent 工作台（日常主线）**：先读 [workbench/CLAUDE.md](workbench/CLAUDE.md) + [workbench/PRODUCT.md](workbench/PRODUCT.md)——当前阶段、ADR、协作规则都在那里。
+➡️ **开发 agent 工作台（日常主线）**：先读 [workbench/CLAUDE.md](workbench/CLAUDE.md) 的冷启动表，再按任务打开 [workbench/PRODUCT.md](workbench/PRODUCT.md) 对应章节；不要默认读历史归档。
 
 ➡️ **统一术语、产品边界或 ADR**：先读 [CONTEXT-MAP.md](CONTEXT-MAP.md)，再进入对应 `CONTEXT.md` 和 [docs/adr/](docs/adr/)。
 
-➡️ **下方架构、命令、分支和推送规则是全仓通用规则**。只有“Skill 形态：安装与维护”小节及其安装/工作流说明是 Skill 专属。
+➡️ **下方架构、命令、分支和推送规则是全仓通用规则**。Skill 维护细节只在维护 Skill 时阅读。
 
 ---
 
@@ -63,31 +63,7 @@ npm workspaces，三个包（根 `package.json` 不设 `"type": "module"`——S
 
 ## Skill 形态：安装与维护
 
-以下内容仅当你在维护 Skill 时阅读（install.sh / SKILL.md / scripts / templates / platforms）。Skill 已功能成熟、进入维护冻结，不再追加新功能。
-
-先看这三个文件：
-
-- [README.md](README.md)：多平台总说明
-- [platforms/claude/CLAUDE.md](platforms/claude/CLAUDE.md)：Claude 专属入口提示
-- [SKILL.md](SKILL.md)：核心能力和工作流
-
-## Claude 安装动作
-
-如果当前任务是安装这个 skill，优先执行：
-
-```bash
-bash install.sh --platform claude
-```
-
-> `setup.sh` 是 `install.sh --platform claude` 的兼容包装，老用户可以继续用。
-
-默认只准备知识库核心主线。如果这次要自动提取网页 / X / 微信公众号 / YouTube / 知乎，再执行：
-
-```bash
-bash install.sh --platform claude --with-optional-adapters
-```
-
-安装完成后，还会一并带上 `/llm-wiki-upgrade`。以后要更新核心主线，可以直接让 Claude 执行这个命令。
+仅当你在维护 `SKILL.md`、`install.sh`、`scripts/`、`templates/` 或 `platforms/` 时阅读 [docs/agents/skill-maintenance.md](docs/agents/skill-maintenance.md)。Skill 已功能成熟、进入维护冻结，不再追加新功能。
 
 ## 分支管理规则
 
@@ -103,27 +79,6 @@ bash install.sh --platform claude --with-optional-adapters
 - 只是探索性阅读代码
 
 设计文档或 plan 写完准备动手改代码时，也先开分支再开始实现。
-
-## 推送前测试规则
-
-每次 `git push` 前必须验证，按改动范围选深度：
-
-### 第一层：快速检查（Claude Code 直接跑，1 分钟内）
-
-不管改了什么都跑这 3 项：
-
-1. `bash install.sh --dry-run --platform codex` — 安装脚本不报错
-2. 改过的脚本如果有 `tests/fixtures/`，跑一下 diff 预期输出
-3. `grep -r '本机用户路径\\|真实姓名\\|私有素材路径' scripts/ templates/ tests/ SKILL.md` — 没泄露隐私路径
-
-### 第二/三层：工作流测试（你在 codex 终端手动跑）
-
-- **第二层**（只改了 SKILL.md 里个别工作流）：Claude Code 生成测试提示词写到文件，告诉你路径，你复制到 codex 跑涉及的工作流
-- **第三层**（多工作流改动 / 版本号升级）：Claude Code 生成全量回归提示词，你在 codex 跑完整流程（init → ingest → lint → digest → graph）
-
-素材复用本机私有测试素材，不上传到远端。
-
-codex 跑完后把 `test-report.md` 发回来，Claude Code 确认无阻塞问题后才执行 `git push`。
 
 ## 推送前文档更新规则
 
