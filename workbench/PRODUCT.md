@@ -1,6 +1,6 @@
 # llm-wiki 工作台产品文档
 
-> 本文档是项目的**思路锚点**。当你（作者）或任何 AI 协作者思路断裂时，先读这份文档恢复上下文，再继续动手。
+> 本文档是项目的**当前事实锚点**。当你（作者）或任何 AI 协作者思路断裂时，先按 `workbench/AGENTS.md` / `workbench/CLAUDE.md` 的冷启动表和 git 记录恢复上下文，再读本文档的相关章节。
 >
 > **维护原则**：决策或功能定义变化时，**先改文档，再改代码**。文档与实现、ADR 或词表冲突时，先说明冲突点，再决定改哪一份。
 
@@ -22,6 +22,7 @@
 | 稳定产品事实、用户边界、当前路线 | 本文件 | 归档、临时 plan |
 | 长期决策和取舍原因 | [docs/adr/](../docs/adr/) | 本文件正文长篇展开 |
 | 术语和能力边界词表 | `CONTEXT.md` / 区域 `CONTEXT.md` | ADR、历史归档 |
+| 运行时、接口和 SDK 接入细节 | [pi-agent-runtime-notes.md](docs/pi-agent-runtime-notes.md) | 本文件热路径 |
 | 当前实现计划、阶段设计、验收步骤 | `workbench/docs/` 下独立设计或计划文档 | 本文件、ADR |
 | 已完成阶段记录、提交表、旧 changelog | `workbench/docs/archive/` | 本文件末尾 |
 | 功能改动后的发布记录 | 根目录 `CHANGELOG.md` | `workbench/PRODUCT.md` |
@@ -143,73 +144,40 @@
 | 层 | 选型 | 简要理由 |
 |---|---|---|
 | 前端框架 | **React + Vite** | AI 协作样本量最大；新手坑最少；Tauri 零迁移 |
-| UI 组件库 | 暂定 [shadcn/ui](https://ui.shadcn.com/) | 不是黑盒、可读、复制粘贴风格、深色主题原生 |
+| UI 组件库 | 暂定 [shadcn/ui](https://ui.shadcn.com/) | 不是黑盒、可读、复制粘贴风格；视觉主题以 ADR-24 的 Paper 暖纸方向为准 |
 | 后端框架 | **Hono** | 轻量、TS 友好、文档清晰 |
 | Agent runtime | **@earendil-works/pi-coding-agent** SDK | 原生 Skill 支持；事件流；多 provider |
 | 通信 | **SSE + HTTP POST** | agent→UI 单向流，SSE 足够；WebSocket 过度 |
 | 数据 | 本地 markdown + JSON | 无服务器；Obsidian 兼容 |
 | 桌面打包（未来） | **Tauri** | 用系统 webview + Rust 后端；二进制和内存占用通常显著低于 Electron（5-30 MB vs 100+ MB） |
 | 包管理 | npm（统一）| 不混用 pnpm/bun，避免新手版本混乱 |
-| Node 版本管理 | **mise** 或 nvm | mise 是多语言版本管理（含 Node）；锁版本至少 `>=22.19.0`（pi-coding-agent 0.75.x 的最低要求） |
+| Node 版本管理 | **mise** 或 nvm | mise 是多语言版本管理（含 Node）；锁版本至少 `>=22.19.0`（pi-coding-agent 当前依赖要求） |
 | Markdown 渲染（阶段二+）| **react-markdown** ^9 + **remark-gfm** ^4 | 生态最稳、类型完备、GFM 表格/任务列表/自动链接；shadcn 生态常用 |
 | 命令/补全菜单（阶段二+）| **cmdk** ^1 | shadcn `<Command>` 底层；键盘导航与 a11y 完备；同时承载 `/` 命令菜单和 `@` 引用菜单 |
 
 ### 3.3 关键流程：一次对话发生了什么
 
-> 下列路径（`/api/refs` 等）为**建议命名**，最终以实现为准。
+1. 用户在对话框输入文本，可能用 `@` 引用 wiki 页面，或用 `/` 调用命令。
+2. 前端把用户意图发给本地后端。
+3. 后端用 pi-agent session 执行对话，并把当前知识库等应用状态注入给 agent。
+4. 后端把 agent 事件流推回前端，前端渲染文本、工具状态、引用和产出预览。
+5. 用户可选择把有价值的对话沉淀为新的 wiki 页面。
 
-```
-1. 用户在对话框输入文本（可能含 @页面 或 /命令）
-2. 前端检测到 @ → 调 /api/refs 拿当前库页面列表 → 弹出菜单 → 用户选中
-3. 前端检测到 / → 调 /api/commands 拿已加载命令 → 弹出菜单 → 用户选中
-4. 前端 POST /api/prompt，body 是展开后的完整文本
-5. 后端调用 session.prompt(text)
-6. session 通过 subscribe 推 agent 事件
-7. 后端把事件 SSE 推给前端 /api/events
-8. 前端按事件类型渲染（文本流、工具调用、引用预览…）
-9. 用户可选触发 /sediment 把本次对话沉淀为 wiki 页面
-```
+❗ **关键点**：当前知识库路径、应用状态这类工作台上下文仍通过 pi-agent 的 **Extension** 注入到 session state 里，具体见 ADR-7。问答类知识库检索有一个明确例外：后端会按 ADR-19 检索最小必要片段，并作为隐藏上下文进入 `/api/prompt`；这些片段会随本轮消息发给当前配置的模型提供商，信任边界见 §6.8。
 
-❗ **关键点**：当前知识库的"上下文"不是通过 prompt 字符串拼接传递，而是通过 pi-agent 的 **Extension** 注入到 session state 里。这是干净做法。具体见 ADR-7。
+接口命名、事件订阅和 SDK 接入细节见 [pi-agent-runtime-notes.md](docs/pi-agent-runtime-notes.md)。
 
 ### 3.4 pi-agent 的使用方式
 
 **结论：pi-agent 作为 npm 依赖引入，不 clone 源码，不做 fork**。
 
-具体含义：
+工作台后端负责把 pi SDK 包装成本地 HTTP/SSE 接口，并提供自己的 Extension 注入当前知识库等应用状态。agent runtime、Skill 加载、事件流、模型管理和会话持久化仍由 npm 依赖提供。
 
-```
-llm-wiki/                             ← monorepo 根
-├── package.json                      ← npm workspaces 与共享命令
-├── node_modules/
-│   └── @earendil-works/
-│       └── pi-coding-agent/          ← pi 源码自动安装在这里，只读，不改
-├── workbench/
-│   ├── server/src/                   ← 工作台后端
-│   │   ├── index.ts                  ← Hono 起服务
-│   │   ├── agent.ts                  ← import { createAgentSession } from '@earendil-works/pi-coding-agent'
-│   │   └── extensions/               ← 工作台自己的 Extension
-│   └── web/                          ← 工作台前端
-└── packages/graph-engine/            ← 工作台与 Skill 离线 HTML 共用图谱引擎
-```
-
-你"写"的代码：
-
-1. 后端把 pi SDK 包装成 HTTP/SSE 接口
-2. 一个或多个 Extension（注入"当前知识库"等应用状态）
-3. 前端 UI
-
-你"用"但不写的代码（全在 npm 包里）：
-
-- agent runtime、Skill 加载、事件流、模型管理、会话持久化
-
-升级 pi：改 `package.json` 里的版本号，`npm install` 重跑。
-
-**Extension 注入方式**：pi-coding-agent CLI 会自动发现 `~/.pi/agent/extensions/*.ts` 下的全局 extension。**我们是 SDK 用户，不依赖那个机制**——而是把 extension 代码放在自己仓库的 `workbench/server/src/extensions/` 下，通过 SDK 暴露的 `bindExtensions()` 或自定义 `ResourceLoader` 显式注入 session。这样 extension 跟着我们项目走，不污染用户的 `~/.pi/`。
+升级 pi：改 `workbench/server/package.json` 里的版本号，`npm install` 重跑。当前实际版本以 `workbench/server/package.json` 和 lockfile 为准。
 
 ❗ 永远**不要**直接修改 `node_modules/` 里的 pi 源码。万一极端情况需要 patch（99% 用不到），用 `patch-package` 做局部补丁，保持升级路径干净。
 
-❗ pi-coding-agent 0.75.x 要求 **Node `>=22.19.0`**。用 mise/nvm 锁定到合适版本，避免系统 Node 太旧。
+❗ pi-coding-agent 当前依赖要求 **Node `>=22.19.0`**。用 mise/nvm 锁定到合适版本，避免系统 Node 太旧。
 
 ---
 
@@ -466,7 +434,7 @@ llm-wiki/                             ← monorepo 根
 | ADR-6 | [完全进化为 agent，不维护双通道（已被 ADR-20/27 收窄）](../docs/adr/0006-evolve-to-agent-no-dual-channel.md) |
 | ADR-7 | [知识库上下文用 Extension 注入，不拼 prompt](../docs/adr/0007-kb-context-via-extension-not-prompt.md) |
 | ADR-8 | [React + Vite 而非 Next.js](../docs/adr/0008-react-vite-not-nextjs.md) |
-| ADR-9 | [UI 用 shadcn/ui](../docs/adr/0009-shadcn-ui.md) |
+| ADR-9 | [UI 用 shadcn/ui（组件选型仍有效；视觉理由已由 ADR-24 修订）](../docs/adr/0009-shadcn-ui.md) |
 | ADR-10 | [pi-agent 作为 npm 依赖，不 fork、不 clone 源码](../docs/adr/0010-pi-agent-npm-dependency-no-fork.md) |
 | ADR-11 | [知识库采用混合存储策略（默认根 + 外部登记）](../docs/adr/0011-hybrid-knowledge-base-storage.md) |
 | ADR-12 | [会话绑定知识库，同库支持多并行对话](../docs/adr/0012-sessions-bound-to-knowledge-base.md) |
@@ -478,7 +446,7 @@ llm-wiki/                             ← monorepo 根
 | ADR-17 | [阶段二新增前端依赖（react-markdown + cmdk）](../docs/adr/0017-stage-2-frontend-dependencies.md) |
 | ADR-18 | [阶段 3.5 多模型双角色 + 轻量子代理框架](../docs/adr/0018-stage-3-5-model-roles-and-subagents.md) |
 | ADR-19 | [主对话引入“系统检索 + 上下文注入”](../docs/adr/0019-system-retrieval-context-injection.md) |
-| ADR-20 | [阶段四启动 monorepo 合并（丙方案）](../docs/adr/0020-monorepo-merge.md) |
+| ADR-20 | [阶段四启动 monorepo 合并（丙方案，已落地；入口叙事看 ADR-27）](../docs/adr/0020-monorepo-merge.md) |
 | ADR-21 | [图谱引擎与活地图（一个引擎、两个宿主）](../docs/adr/0021-graph-engine-living-map.md) |
 | ADR-22 | [图谱交互模型——轻量摘要优先，明确动作进入阅读](../docs/adr/0022-graph-interaction-click-read-selection-upgrade.md) |
 | ADR-23 | [关系边可视化采用“关系类型控制颜色、置信度控制虚实”](../docs/adr/0023-relation-type-color-confidence-stroke.md) |
@@ -501,7 +469,7 @@ llm-wiki/                             ← monorepo 根
 
 ### 8.1 环境陷阱
 
-- macOS 默认 Node 版本可能旧。**统一用 [mise](https://mise.jdx.dev/) 或 nvm 管理 Node 版本**，锁到 **`>=22.19.0`**（pi-coding-agent 0.75.x 的硬要求）。否则 `npm install` 就直接报错
+- macOS 默认 Node 版本可能旧。**统一用 [mise](https://mise.jdx.dev/) 或 nvm 管理 Node 版本**，锁到 **`>=22.19.0`**（pi-coding-agent 当前依赖要求）。否则 `npm install` 就直接报错
 - 不要全局 `npm install -g`。每个项目用 `package.json` 锁版本
 - API key **完全不进我们的仓库**，也不进 `~/.llm-wiki-agent/`。统一由 pi-agent SDK 管理，落到 `~/.pi/agent/auth.json`（权限 0600）。详见 ADR-13
 
@@ -517,7 +485,7 @@ llm-wiki/                             ← monorepo 根
 - **不要自由发挥**。每次动手前先说"打算改哪些文件、为什么这么改、对其他部分有什么影响"；普通实现默认继续推进，不反复等确认
 - **任何要新增依赖**（npm package、Skill、配置项），先问"这是 PRODUCT.md 里规划过的吗"
 - **任何要修改 PRODUCT.md 之外的决策**，先说明"这与 PRODUCT.md 第 X.Y 节冲突，建议修改文档为 Z"，等作者拍板
-- **作者思路断了的时候**，先读 PRODUCT.md，不要急着问"我们做到哪里了"——日志和 git 记录是事实，文档是意图，两个对照看
+- **作者思路断了的时候**，先按入口冷启动表读当前状态，再对照 git log / git diff；不要急着问"我们做到哪里了"
 - **绝不主动跳阶段**。当前阶段验收不过，不动下一阶段的代码
 
 ### 8.4 心态陷阱

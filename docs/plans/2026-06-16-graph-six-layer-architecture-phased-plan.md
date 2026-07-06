@@ -19,12 +19,12 @@
 - `AGENTS.md`
 - `workbench/AGENTS.md`
 - `workbench/PRODUCT.md`
-- `/Users/kangjiaqi/Desktop/graph-architecture-research/00-README.md`
-- `/Users/kangjiaqi/Desktop/graph-architecture-research/A-项目研究摘要.md`
-- `/Users/kangjiaqi/Desktop/graph-architecture-research/C-最终建议.md`
-- `/Users/kangjiaqi/Desktop/graph-architecture-research/D-模块边界.md`
-- `/Users/kangjiaqi/Desktop/graph-architecture-research/E-反模式清单.md`
-- `/Users/kangjiaqi/Desktop/graph-architecture-research/F-落地路线.md`
+- local graph architecture research note: `00-README.md`
+- local graph architecture research note: `A-项目研究摘要.md`
+- local graph architecture research note: `C-最终建议.md`
+- local graph architecture research note: `D-模块边界.md`
+- local graph architecture research note: `E-反模式清单.md`
+- local graph architecture research note: `F-落地路线.md`
 
 ## 规格评审
 

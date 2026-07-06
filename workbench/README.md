@@ -11,7 +11,8 @@
 | 改工作台代码或体验 | 按当前 agent 选择 [AGENTS.md](AGENTS.md) 或 [CLAUDE.md](CLAUDE.md) 的冷启动表 + [PRODUCT.md](PRODUCT.md) 当前状态 |
 | 看产品定位、边界和数据规则 | [PRODUCT.md](PRODUCT.md) |
 | 改术语、能力归属或 ADR | [../CONTEXT-MAP.md](../CONTEXT-MAP.md) 指向的相关词表 + [../docs/adr/README.md](../docs/adr/README.md)；Skill / 工作台边界优先看 ADR-28 |
-| 追旧阶段为什么这么做 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) |
+| 查旧阶段原计划、范围或验收标准 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) |
+| 查实际完成记录、提交表或变更经过 | [docs/archive/product-history.md](docs/archive/product-history.md) |
 
 ## 开发
 

@@ -810,8 +810,8 @@ Stop and report if a product decision is missing, the plan conflicts with the la
 - `npm run test --workspace=@llm-wiki/graph-engine` passed during review: 324 tests, 0 failures.
 - Feasibility, testing, performance, and adversarial document review lanes were used.
 - Codex CLI outside review was attempted but hit upstream 429; fallback adversarial document review completed.
-- Test plan artifact: `~/.gstack/projects/sdyckjq-lab-llm-wiki-skill/kangjiaqi-codex-pr52-sigma-global-renderer-design-eng-review-test-plan-20260619-164122.md`
-- Task artifact: `~/.gstack/projects/sdyckjq-lab-llm-wiki-skill/tasks-eng-review-20260619-164122.jsonl`
+- Test plan artifact: local gstack test-plan artifact for the sigma renderer review.
+- Task artifact: local gstack task artifact for the sigma renderer review.
 
 **EXECUTION RECOMMENDATION:** Start implementation from Task 0.1 on `codex/sigma-global-renderer-integration`, then proceed sequentially through boundary, route ownership, production Sigma, fallback, browser performance, and final cleanup. Parallel work is only safe after the route API stabilizes.
 

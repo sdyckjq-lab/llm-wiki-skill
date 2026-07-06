@@ -23,7 +23,7 @@
 ## Source References
 
 - Spec: `docs/spark/2026-06-20-paper-ui-v2-shell-alignment-design.md`
-- V2 prototype: `/Users/kangjiaqi/designs/llm-wiki-skill/bright/paper-final-v2.html`
+- V2 prototype: local design repository file `bright/paper-final-v2.html`
 - Existing Paper implementation: `workbench/web/src/components/*`, `workbench/web/src/index.css`
 - Existing tests: `workbench/web/test/*.test.tsx`, `workbench/web/test/*.test.ts`
 
@@ -1720,8 +1720,10 @@ function assertTextExcludes(value: string | null, unexpected: string, name: stri
 In the same visual script, add a reference capture pass for the V2 prototype:
 
 ```ts
-const v2PrototypeUrl = process.env.PAPER_V2_PROTOTYPE_URL
-	?? "file:///Users/kangjiaqi/designs/llm-wiki-skill/bright/paper-final-v2.html";
+if (!process.env.PAPER_V2_PROTOTYPE_URL) {
+	throw new Error("Set PAPER_V2_PROTOTYPE_URL to the local V2 prototype file.");
+}
+const v2PrototypeUrl = process.env.PAPER_V2_PROTOTYPE_URL;
 const referenceDir = resolve(process.cwd(), "test-results/paper-ui/reference-v2");
 ```
 

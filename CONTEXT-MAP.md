@@ -11,7 +11,8 @@
 | Skill 形态的工作流语言 | [Skill Package](./docs/contexts/skill-package/CONTEXT.md) | [SKILL.md](./SKILL.md) |
 | 图谱语义或交互边界 | [Shared Graph Engine](./packages/graph-engine/CONTEXT.md) | [docs/adr/README.md](./docs/adr/README.md) |
 | 为什么做过某个取舍 | [docs/adr/README.md](./docs/adr/README.md) | 相关 ADR 正文 |
-| 旧阶段路线或验收记录 | [workbench/docs/archive/product-roadmap.md](./workbench/docs/archive/product-roadmap.md) | [workbench/docs/archive/product-history.md](./workbench/docs/archive/product-history.md) |
+| 旧阶段原计划、范围或验收标准 | [workbench/docs/archive/product-roadmap.md](./workbench/docs/archive/product-roadmap.md) | 必要时再看相关阶段设计 |
+| 实际完成记录、提交表或变更经过 | [workbench/docs/archive/product-history.md](./workbench/docs/archive/product-history.md) | 必要时对照 git log |
 
 ## Contexts
 

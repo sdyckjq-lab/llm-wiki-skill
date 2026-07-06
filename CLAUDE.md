@@ -90,6 +90,16 @@ npm workspaces，三个包（根 `package.json` 不设 `"type": "module"`——S
 
 跳过条件：纯文档/排版/注释改动不需要更新。
 
+## 文档隐私自查
+
+提交或推送文档改动前，扫描入口、docs、词表和工作台文档，避免把本机路径、真实姓名或私有素材线索写进仓库：
+
+```bash
+grep -r '本机用户路径\|真实姓名\|私有素材路径' README.md README.en.md AGENTS.md CLAUDE.md docs/ workbench/ packages/graph-engine/CONTEXT.md
+```
+
+如果是在维护 Skill，再按 [docs/agents/skill-maintenance.md](docs/agents/skill-maintenance.md) 跑 Skill 专用检查。
+
 ## Agent skills
 
 ### Issue tracker

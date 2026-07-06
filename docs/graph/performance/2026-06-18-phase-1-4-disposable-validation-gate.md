@@ -55,7 +55,7 @@ Measured browser environment is available. Performance phases are not blocked.
 
 - Runner command: `GRAPH_LARGE_PERF_ARTIFACT_DIR=/tmp/llm-wiki-graph-large-perf-task-1-3 bash tests/graph-browser-large-performance.regression-1.sh`
 - Browser package path: resolved through `npx --yes -p playwright`.
-- Executable path: `/Users/kangjiaqi/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`.
+- Executable path: local Playwright Chromium executable path.
 - Local ports: not required for the offline generated graph runner. Workbench browser checks may still need local ports in later phases.
 - Browser plugin fallback: allowed only for functional visual checks when scriptable checks fail; it cannot replace performance artifacts.
 

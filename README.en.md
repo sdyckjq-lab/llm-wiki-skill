@@ -37,6 +37,8 @@ This is the llm-wiki monorepo. It contains two entry points that read and write 
 
 The interactive graph engine (`packages/graph-engine/`) is shared by both the Skill offline HTML and the workbench graph view.
 
+**Privacy boundary**: knowledge-base files and offline graph outputs stay on your machine. When you ask the agent to answer, ingest, or generate content, prompts, selected references, retrieval snippets, tool output, and generated artifacts may be sent to your configured model provider. API keys are not stored in llm-wiki's own config; third-party Skills run as trusted local code only after you explicitly install and enable them.
+
 ---
 
 ## 30-Second Start

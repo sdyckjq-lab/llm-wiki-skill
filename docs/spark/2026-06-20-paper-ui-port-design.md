@@ -8,7 +8,7 @@
 
 ## 目的
 
-把已定稿的 Paper 设计原型（`/Users/kangjiaqi/designs/llm-wiki-skill/bright/paper-final-v2.html`，独立 design 仓库）的**视觉语言 + 布局**移植并复刻进 `workbench/web`，作为产品的新默认外观。
+把已定稿的 Paper 设计原型（独立 design 仓库中的 `bright/paper-final-v2.html`）的**视觉语言 + 布局**移植并复刻进 `workbench/web`，作为产品的新默认外观。
 
 这份文档只确定移植的产品与工程边界，方便后续直接写实施计划。它**不**重新评估视觉方向（方向已通过 baoyu-design 多轮迭代锁定），**不**包含图谱画布内部视觉（明确后置），**不**做 MVP 取舍（除图谱外尽量一步到位）。
 

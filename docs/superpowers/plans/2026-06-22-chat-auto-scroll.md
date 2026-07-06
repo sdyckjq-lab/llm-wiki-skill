@@ -13,7 +13,7 @@
 ## Spec Source
 
 - Design spec: `docs/spark/2026-06-22-chat-auto-scroll-design.md`
-- Worktree: `/Users/kangjiaqi/Desktop/project/llm-wiki-skill/.worktrees/fix-chat-auto-scroll`
+- Worktree: repository-local `.worktrees/fix-chat-auto-scroll`
 - Branch: `codex/fix-chat-auto-scroll`
 
 ## Scope Check

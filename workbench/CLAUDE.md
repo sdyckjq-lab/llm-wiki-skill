@@ -13,7 +13,8 @@
 | 工作台日常代码/体验改动 | [PRODUCT.md](PRODUCT.md) 的定位、数据边界、当前状态 | [CONTEXT.md](CONTEXT.md)、相关 ADR |
 | 术语、产品边界、能力归属、ADR 改动 | [../CONTEXT-MAP.md](../CONTEXT-MAP.md) 指向的相关词表、[PRODUCT.md](PRODUCT.md) 第 7 节 | [../docs/adr/README.md](../docs/adr/README.md)、相关 ADR 正文；Skill / 工作台边界优先看 ADR-28 |
 | 图谱语义或图谱交互 | [../packages/graph-engine/CONTEXT.md](../packages/graph-engine/CONTEXT.md)、[PRODUCT.md](PRODUCT.md) 图谱相关章节 | ADR-21、ADR-22、ADR-23、ADR-26、ADR-32 |
-| 追旧阶段为什么这么做 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) | [docs/archive/product-history.md](docs/archive/product-history.md) |
+| 查旧阶段原计划、范围或验收标准 | [docs/archive/product-roadmap.md](docs/archive/product-roadmap.md) | 必要时再看相关阶段设计 |
+| 查实际完成记录、提交表或变更经过 | [docs/archive/product-history.md](docs/archive/product-history.md) | 必要时对照 git log |
 
 当前行动先以 `PRODUCT.md` 判断；如果 `PRODUCT.md`、ADR、词表或代码事实互相冲突，先说明冲突点和建议改法，等作者确认后再改文档或代码。
 
@@ -28,11 +29,11 @@
 
 ## 项目当前阶段
 
-当前状态以 PRODUCT.md §10 为准；旧阶段路线见 `workbench/docs/archive/product-roadmap.md`，验收实况和 commit 表见 `workbench/docs/archive/product-history.md`。当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。
+当前状态以 PRODUCT.md §4 为准；旧阶段路线见 `workbench/docs/archive/product-roadmap.md`，验收实况和 commit 表见 `workbench/docs/archive/product-history.md`。当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。
 
 ❗ 开发主场已在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立工作台仓库（旧名 llm-wiki-agent）已进入只读过渡状态（不 archive，处置留品牌阶段，见 ADR-20）。
 
-阶段一 / 二 / 三 / 3.5 / 四 / 4.5 / 4.6 / 4.7 / 4.8 均已完成（详见 PRODUCT.md §10 和归档）。
+阶段一 / 二 / 三 / 3.5 / 四 / 4.5 / 4.6 / 4.7 / 4.8 均已完成（详见 PRODUCT.md §4 和归档）。
 
 ## 验证要求
 
@@ -62,6 +63,6 @@
 
 ## Node 版本
 
-`>=22.19.0`（pi-coding-agent 0.75.x 的硬要求）。
+`>=22.19.0`（pi-coding-agent 当前依赖要求）。
 
 仓库根用 `.mise.toml` / `.nvmrc` 锁定。

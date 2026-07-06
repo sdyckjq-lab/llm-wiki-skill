@@ -12,7 +12,7 @@
 ## 源文档
 
 - 设计 spec：`docs/spark/2026-06-20-paper-ui-port-design.md`（设计意图来源；执行细节以本 plan 为准）
-- 视觉原型：`/Users/kangjiaqi/designs/llm-wiki-skill/bright/paper-final-v2.html`（独立 design 仓库，视觉/交互参照）
+- 视觉原型：独立 design 仓库中的 `bright/paper-final-v2.html`（视觉/交互参照）
 - 产品文档：`workbench/PRODUCT.md`（§5 UI 原则、§7 ADR）。本计划已把 Paper 方向同步进 §5.2 / §5.4 / ADR-24 / ADR-25；Phase 6 只做终检。
 - 项目规则：`workbench/CLAUDE.md`（协作规则强约束）。
 

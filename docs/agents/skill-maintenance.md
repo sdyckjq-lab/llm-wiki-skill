@@ -14,7 +14,9 @@ The Skill package is mature and in maintenance freeze. Do not add new features h
   - [OpenClaw](../../platforms/openclaw/README.md)
   - [Hermes](../../platforms/hermes/README.md)
 
-## Install Commands
+## Reference: Install Commands
+
+These commands are reference-only during normal maintenance. Do not run them unless the user is installing llm-wiki, testing the installer, or the current change touches install behavior.
 
 | Platform | Command |
 |---|---|
@@ -27,7 +29,9 @@ Default installs only the core knowledge-base workflow. If the task needs web / 
 
 For custom OpenClaw or Hermes skill directories, pass `--target-dir <your-skill-dir>/llm-wiki`.
 
-## Workflow Order
+## Reference: Workflow Order
+
+This order describes how an installed Skill is used. Do not run the workflow during routine document maintenance unless the task is explicitly testing Skill behavior.
 
 After installation, follow [SKILL.md](../../SKILL.md):
 
@@ -59,7 +63,7 @@ For workflow text changes:
 - Small single-workflow changes: create a test prompt file and run that workflow in Codex.
 - Multi-workflow changes or version updates: run a full regression prompt covering `init -> ingest -> lint -> digest -> graph`.
 
-Use local reusable material such as `~/Desktop/llm-wiki-cowork-test/raw-input/` when available. Do not commit private material.
+Use local reusable test material outside the repository when available. Do not commit private material.
 
 ## Documentation Updates
 
