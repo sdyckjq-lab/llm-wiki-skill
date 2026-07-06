@@ -55,13 +55,13 @@
 
 ## 项目当前阶段
 
-详细进度、阶段验收、commit 表以 `PRODUCT.md` 第 10 节为准（这里只放快速概览，不再自存详细状态，避免两处不同步）。
+当前状态以 `PRODUCT.md` 第 10 节为准；完整阶段记录、验收实况和旧 changelog 见 `workbench/docs/archive/product-history.md`。这里只放快速概览，避免两处不同步。
 
-当前基线已到阶段 4.7（图谱交互地基重构完成）。详细进度、阶段验收、commit 表以 PRODUCT.md §10 为准；不要在本文件重复维护完整状态。
+当前基线已到阶段 4.8（全局社区高亮已落地，社区阅读主路径走 Sigma）。详细历史不要在本文件重复维护。
 
 ❗ 开发主场在**主仓库 monorepo**（本目录是其 `workbench/` 子目录）：图谱引擎在 `packages/graph-engine/`，`npm run dev` 从 monorepo 根执行。原独立 llm-wiki-agent 仓库已只读归档（处置留品牌阶段，见 ADR-20）。
 
-阶段一 / 二 / 三 / 3.5 / 四 / 4.5 / 4.6 / 4.7 均已完成（详见 PRODUCT.md §10）。
+阶段一 / 二 / 三 / 3.5 / 四 / 4.5 / 4.6 / 4.7 / 4.8 均已完成（详见 PRODUCT.md §10 和历史归档）。
 
 ## 关键路径速查
 
@@ -92,9 +92,10 @@ Node 版本要求：`>=22.19.0`。
 先读：
 
 1. `PRODUCT.md`
-2. 当前阶段设计文档
-3. git log / git diff
-4. 相关代码和测试
+2. `workbench/docs/archive/product-history.md`（需要追旧阶段时）
+3. 当前阶段设计文档
+4. git log / git diff
+5. 相关代码和测试
 
 日志和 git 是事实，文档是意图。对照后再继续。
 
