@@ -18,6 +18,7 @@ const requiredActions = [
   "drawer_open",
   "enter_community",
   "return_global",
+  "return_global_takeover",
   "repeated_search_community_drawer_cycles"
 ];
 
@@ -26,7 +27,7 @@ const requiredActions = [
 const FRAME_SAMPLED_ACTIONS = new Set(["wheel_zoom", "drag"]);
 const FPS_FLOOR = 45;
 const FRAME_P95_CEILING_MS = 22.3;
-const DURATION_GATED_ACTIONS = new Set(["initial_render", "search_highlight", "drawer_open", "return_global"]);
+const DURATION_GATED_ACTIONS = new Set(["initial_render", "search_highlight", "drawer_open", "return_global", "return_global_takeover"]);
 const MEMORY_GATED_ACTION = "repeated_search_community_drawer_cycles";
 
 const data = JSON.parse(fs.readFileSync(resultPath, "utf8"));
@@ -139,6 +140,11 @@ function durationLimitMs(record) {
     if (nodes >= 10000) return 800;
     if (nodes >= 5000) return 500;
     return 250;
+  }
+  if (record.action === "return_global_takeover") {
+    if (nodes >= 10000) return 9000;
+    if (nodes >= 5000) return 7500;
+    return 6000;
   }
   return Number.POSITIVE_INFINITY;
 }
