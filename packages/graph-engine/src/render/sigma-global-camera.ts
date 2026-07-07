@@ -328,9 +328,10 @@ function sigmaCommunityReadingCameraRatio(
 export interface SigmaNodeDrawerCameraOptions {
   viewportSize?: RendererViewportSize;
   durationMs?: number;
+  onCleanup?: () => void;
 }
 
-export interface SigmaNodeDrawerCameraMoveResult extends SigmaGlobalCameraMoveResult {
+export interface SigmaNodeDrawerCameraMoveResult extends SigmaGlobalViewTransitionResult {
   nodeId: string | null;
 }
 
@@ -437,10 +438,17 @@ export function maybeAnimateSigmaNodeDrawerCamera(
   options?: SigmaNodeDrawerCameraOptions,
   onAnimationError?: (error: unknown) => void
 ): SigmaNodeDrawerCameraMoveResult {
-  if (!nodeId) return { nodeId: null, movement: "skipped", skipReason: "no-target" };
+  if (!nodeId) return { nodeId: null, movement: "skipped", skipReason: "no-target", transition: null };
   const target = sigmaNodeDrawerCameraState(sigma, adapterData, nodeId, options);
-  if (!target) return { nodeId, movement: "skipped", skipReason: "already-settled" };
-  const movement = moveSigmaCamera(sigma, target, prefersReducedMotion(root.ownerDocument.defaultView), onAnimationError);
+  if (!target) return { nodeId, movement: "skipped", skipReason: "already-settled", transition: null };
+  const movement = startSigmaGlobalViewTransition(sigma, {
+    target,
+    animate: true,
+    reducedMotion: prefersReducedMotion(root.ownerDocument.defaultView),
+    durationMs: options?.durationMs,
+    onCleanup: options?.onCleanup,
+    onAnimationError
+  });
   return { nodeId, ...movement };
 }
 

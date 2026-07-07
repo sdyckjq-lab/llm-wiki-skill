@@ -364,7 +364,6 @@ describe("GraphFacade", () => {
     assert.equal(workbench.mode, "workbench");
     assert.deepEqual(Object.keys(workbench.capabilities || {}).sort(), [
       "onAsk",
-      "onCommunityNodeOpen",
       "onDragStateChange",
       "onOpenPage",
       "onSelectionChange",

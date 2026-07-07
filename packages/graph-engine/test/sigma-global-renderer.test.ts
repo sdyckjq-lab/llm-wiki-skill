@@ -2525,6 +2525,96 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("lets wheel input take over an active node drawer accommodation", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: communityReadingAdapterDataFixture(),
+      theme: "shan-shui",
+      runtime,
+      viewportSize: { width: 800, height: 600 }
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.accommodateNodeDrawer("render-alpha", { durationMs: 140 });
+    assert.equal(renderer.root.dataset.viewTransition, "active");
+    assert.equal(sigma.camera.animateCalls.at(-1)?.options?.duration, 140);
+
+    sigma.camera.advanceAnimation(0.5);
+    sigma.emit("afterRender");
+    const wheel = sigma.mouseCaptor.emitWheel({ x: 240, y: 160, deltaY: 80, deltaMode: 0 });
+    const takeoverState = sigma.camera.getState();
+    sigma.emit("afterRender");
+
+    assert.equal(wheel.prevented, true);
+    assert.equal(renderer.root.dataset.viewTransition, "");
+
+    sigma.camera.finishAnimation();
+    sigma.emit("afterRender");
+
+    assert.deepEqual(sigma.camera.getState(), takeoverState);
+
+    renderer.destroy();
+  });
+
+  it("lets stage drag take over an active node drawer accommodation", () => {
+    const runtime = fakeRuntime();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: communityReadingAdapterDataFixture(),
+      theme: "shan-shui",
+      runtime,
+      viewportSize: { width: 800, height: 600 }
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.accommodateNodeDrawer("render-alpha");
+    sigma.camera.advanceAnimation(0.5);
+    sigma.emit("afterRender");
+
+    sigma.emit("downStage", sigmaEventPayload(null, 300, 220));
+    const stateAtTakeover = sigma.camera.getState();
+    sigma.emit("moveBody", sigmaEventPayload(null, 360, 260));
+    const draggedState = { ...stateAtTakeover, x: stateAtTakeover.x + 0.14, y: stateAtTakeover.y + 0.08 };
+    sigma.camera.setState(draggedState);
+    sigma.emit("upStage", sigmaEventPayload(null, 360, 260));
+    sigma.emit("afterRender");
+
+    sigma.camera.finishAnimation();
+    sigma.emit("afterRender");
+
+    assert.deepEqual(sigma.camera.getState(), draggedState);
+    assert.equal(renderer.root.dataset.viewTransition, "");
+
+    renderer.destroy();
+  });
+
+  it("uses the updated narrowed viewport for node drawer accommodation", () => {
+    const runtime = fakeRuntime();
+    const data = wideCommunityReadingAdapterDataFixture();
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData: data,
+      theme: "shan-shui",
+      runtime,
+      viewportSize: { width: 1188, height: 600 }
+    });
+    const sigma = runtime.instances[0];
+
+    renderer.update({
+      adapterData: data,
+      viewportSize: { width: 400, height: 600 }
+    });
+    renderer.accommodateNodeDrawer("render-alpha");
+
+    assert.ok(
+      (sigma.camera.animateCalls.at(-1)?.state.ratio ?? 1) > 1,
+      "narrowed drawer viewport should zoom out to keep one-hop context visible"
+    );
+
+    renderer.destroy();
+  });
+
   it("keeps resetView cleanup pending across passive renderer updates", () => {
     const runtime = fakeRuntime({ worldScale: 200 });
     const renderer = createSigmaGlobalRenderer({

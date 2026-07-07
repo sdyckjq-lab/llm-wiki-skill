@@ -497,15 +497,13 @@ export interface GraphOpenPageNode {
 export interface GraphOpenPagePayload {
   path: WikiPath;
   node: GraphOpenPageNode;
+  origin?: "community-node-click" | "community-search-result";
 }
 
 export interface GraphEngineCapabilities {
   persistPins?: (pins: PinMap) => Promise<void>;
   onAsk?: (selection: Selection) => void;
   onOpenPage?: (payload: GraphOpenPagePayload) => void;
-  // #122：社区阅读里普通单击节点（非 Shift 多选）的专用信号。onOpenPage 同时承担打开
-  // 阅读面板；这条回调只用来触发右侧抽屉的镜头让位，不会在 Shift 多选路径上触发。
-  onCommunityNodeOpen?: (nodeId: string) => void;
   onSelectionChange?: (selection: Selection) => void;
   onSelectionClear?: () => void;
   onViewReset?: () => void;

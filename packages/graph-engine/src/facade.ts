@@ -43,7 +43,6 @@ export function createGraphWorkbenchCapabilities(
     mode: "workbench",
     capabilities: {
       onOpenPage: capabilities.onOpenPage,
-      onCommunityNodeOpen: capabilities.onCommunityNodeOpen,
       onSelectionChange: capabilities.onSelectionChange,
       onSelectionClear: capabilities.onSelectionClear,
       onViewReset: capabilities.onViewReset,
@@ -160,7 +159,7 @@ export interface GraphFacadeRouteRendererFactories {
 }
 
 export interface GraphFacadeRendererCallbacks {
-  onNodeOpen?: (nodeId: string) => void;
+  onNodeOpen?: (nodeId: string, origin?: GraphOpenPagePayload["origin"]) => void;
   onSelectionInput?: (selection: SelectionInput) => void;
   onPinsChanged?: (pins: NonNullable<GraphEngineOptions["pins"]>) => void;
   onSelectionClearRequested?: () => void;
@@ -209,12 +208,9 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
     temporaryObject: null
   };
   const rendererCallbacks: GraphFacadeRendererCallbacks = {
-    onNodeOpen: (capabilities?.onOpenPage || capabilities?.onCommunityNodeOpen)
-      ? (nodeId) => {
-          // #122：onCommunityNodeOpen 只在社区阅读普通单击节点时触发（Shift 多选走 select
-          // 分支，不会到这里），用来驱动右侧抽屉的镜头让位；onOpenPage 继续负责打开阅读面板。
-          capabilities?.onCommunityNodeOpen?.(nodeId);
-          if (capabilities?.onOpenPage) capabilities.onOpenPage(openPagePayloadForNode(facadeState.data, nodeId));
+    onNodeOpen: capabilities?.onOpenPage
+      ? (nodeId, origin) => {
+          capabilities.onOpenPage?.(openPagePayloadForNode(facadeState.data, nodeId, origin));
         }
       : undefined,
     onSelectionInput: shouldResolveSelection(capabilities)
@@ -1253,11 +1249,16 @@ function shouldResolveSelection(capabilities: GraphEngineOptions["capabilities"]
   return Boolean(capabilities?.onSelectionChange || capabilities?.onAsk);
 }
 
-function openPagePayloadForNode(data: GraphData, id: string): GraphOpenPagePayload {
+function openPagePayloadForNode(
+  data: GraphData,
+  id: string,
+  origin?: GraphOpenPagePayload["origin"]
+): GraphOpenPagePayload {
   const node = data.nodes.find((item) => item.id === id);
   if (!node) {
     return {
       path: id,
+      ...(origin ? { origin } : {}),
       node: {
         id,
         title: id,
@@ -1274,6 +1275,7 @@ function openPagePayloadForNode(data: GraphData, id: string): GraphOpenPagePaylo
   const sourcePath = wikiPathForGraphNode(node);
   return {
     path: sourcePath,
+    ...(origin ? { origin } : {}),
     node: {
       id: node.id,
       title: node.label || node.id,

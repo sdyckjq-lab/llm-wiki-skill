@@ -290,6 +290,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     accommodateNodeDrawer(nodeId: string, drawerOptions?: { durationMs?: number }) {
       assertActive();
       try {
+        const durationMs = drawerOptions?.durationMs ?? SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS;
+        cancelActiveViewTransition();
+        disposeCancelledViewTransitionGuard();
         const result = maybeAnimateSigmaNodeDrawerCamera(
           sigma,
           sigmaRoot,
@@ -297,16 +300,22 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
           nodeId,
           {
             viewportSize: currentViewportSize,
-            durationMs: drawerOptions?.durationMs
+            durationMs,
+            onCleanup: () => {
+              sigmaRoot.dataset.viewTransition = "";
+            }
           },
           options.onFatalError
         );
-        if (result.movement === "animated") {
-          startProjectCameraFrameTracking(
-            drawerOptions?.durationMs ?? SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS,
-            SIGMA_CAMERA_MINIMUM_FAST_PATH_FRAMES
-          );
-        } else if (result.movement === "immediate") {
+        if (result.movement === "animated" && result.transition) {
+          activeViewTransition = result.transition;
+          sigmaRoot.dataset.viewTransition = "active";
+          startProjectCameraFrameTracking(durationMs, SIGMA_CAMERA_MINIMUM_FAST_PATH_FRAMES);
+          return;
+        }
+        activeViewTransition = null;
+        sigmaRoot.dataset.viewTransition = "";
+        if (result.movement === "immediate") {
           overlayDomController?.reposition();
         }
       } catch (error) {

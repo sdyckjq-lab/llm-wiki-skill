@@ -971,7 +971,7 @@ describe("graph renderer lifecycle", () => {
     const container = ownerDocument.createElement("div");
     const visibilityStates: GraphVisibilityState[] = [];
     const selections: SelectionInput[] = [];
-    const opened: string[] = [];
+    const opened: Array<[string, unknown]> = [];
     const renderer = createSigmaGlobalFacadeRenderer({
       container: container as unknown as HTMLElement,
       options: {
@@ -989,7 +989,7 @@ describe("graph renderer lifecycle", () => {
         callbacks: {
           onVisibilityStateChange: (state) => visibilityStates.push(state),
           onSelectionInput: (selection) => selections.push(selection),
-          onNodeOpen: (id) => opened.push(id)
+          onNodeOpen: (id, origin) => opened.push([id, origin])
         }
       }
     });
@@ -1009,7 +1009,7 @@ describe("graph renderer lifecycle", () => {
 
     findByClass(container, "graph-search-input")[0]?.dispatch("keydown", { key: "Enter" });
     assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
-    assert.deepEqual(opened, ["a"]);
+    assert.deepEqual(opened, [["a", "community-search-result"]]);
 
     searchInput.value = "Node c";
     searchInput.dispatch("input");
@@ -1019,14 +1019,14 @@ describe("graph renderer lifecycle", () => {
     searchInput.dispatch("input");
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
     assert.deepEqual(selections, [{ kind: "node", id: "a" }]);
-    assert.deepEqual(opened, ["a"]);
+    assert.deepEqual(opened, [["a", "community-search-result"]]);
 
     const resultItems = findByClass(container, "graph-search-result-item");
     assert.equal(resultItems.length, 1);
     assert.equal(findByClass(resultItems[0]!, "graph-search-result-label")[0]?.textContent, "Node a");
     resultItems[0]?.dispatch("click");
     assert.deepEqual(selections.at(-1), { kind: "node", id: "a" });
-    assert.deepEqual(opened, ["a", "a"]);
+    assert.deepEqual(opened, [["a", "community-search-result"], ["a", "community-search-result"]]);
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, ["a"]);
     assert.equal(findByClass(container, "graph-search-result-item").length, 1);
 
@@ -1035,7 +1035,7 @@ describe("graph renderer lifecycle", () => {
     assert.equal(visibilityStates.at(-1)?.searchQuery, "");
     assert.deepEqual(visibilityStates.at(-1)?.searchResultIds, []);
     assert.deepEqual(selections, [{ kind: "node", id: "a" }, { kind: "node", id: "a" }]);
-    assert.deepEqual(opened, ["a", "a"]);
+    assert.deepEqual(opened, [["a", "community-search-result"], ["a", "community-search-result"]]);
 
     renderer.destroy();
   });

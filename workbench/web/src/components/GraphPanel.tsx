@@ -63,6 +63,11 @@ interface PendingAnimation {
 	diff: GraphDiff;
 }
 
+interface PendingNodeDrawerAccommodation {
+	token: number;
+	nodeId: string;
+}
+
 const GRAPH_EDGE_STYLE_STORAGE_KEY = "llm-wiki.graph.edge-style";
 const DEFAULT_GRAPH_EDGE_STYLE: GraphEdgeStyleOptions = {
 	semanticEmphasis: false,
@@ -109,6 +114,9 @@ export function GraphPanel({
 	const lastRefreshTokenRef = useRef(refreshToken);
 	const devGraphTestRef = useRef("");
 	const animationTokenRef = useRef(0);
+	const nodeDrawerAccommodationTokenRef = useRef(0);
+	const pendingNodeDrawerAccommodationRef = useRef<PendingNodeDrawerAccommodation | null>(null);
+	const nodeDrawerAccommodationFrameRef = useRef<number | null>(null);
 	const lastSelectionCommandRef = useRef<GraphSelectionCommand | undefined>(selectionCommand);
 	const [data, setData] = useState<GraphData | null>(null);
 	const [edgeStyle, setEdgeStyle] = useState<GraphEdgeStyleOptions>(() => readGraphEdgeStylePreference());
@@ -286,6 +294,69 @@ export function GraphPanel({
 		};
 	}, []);
 
+	const cancelNodeDrawerAccommodationFrame = useCallback((): void => {
+		const frame = nodeDrawerAccommodationFrameRef.current;
+		if (frame === null) return;
+		hostRef.current?.ownerDocument.defaultView?.cancelAnimationFrame?.(frame);
+		nodeDrawerAccommodationFrameRef.current = null;
+	}, []);
+
+	const runPendingNodeDrawerAccommodation = useCallback((token: number): void => {
+		const pending = pendingNodeDrawerAccommodationRef.current;
+		if (!pending || pending.token !== token) return;
+		pendingNodeDrawerAccommodationRef.current = null;
+		nodeDrawerAccommodationFrameRef.current = null;
+		if (!shouldAccommodateNodeDrawer({
+			overlay: graphDrawerOverlayActive(),
+			drawerFullscreen: drawerFullscreenRef.current,
+		})) return;
+		engineRef.current?.accommodateNodeForDrawer(pending.nodeId);
+	}, []);
+
+	const scheduleNodeDrawerAccommodationFrame = useCallback((token: number, frames: number): void => {
+		cancelNodeDrawerAccommodationFrame();
+		const view = hostRef.current?.ownerDocument.defaultView;
+		if (!view?.requestAnimationFrame) {
+			runPendingNodeDrawerAccommodation(token);
+			return;
+		}
+		let remainingFrames = Math.max(1, frames);
+		const step = (): void => {
+			const pending = pendingNodeDrawerAccommodationRef.current;
+			if (!pending || pending.token !== token) {
+				nodeDrawerAccommodationFrameRef.current = null;
+				return;
+			}
+			remainingFrames -= 1;
+			if (remainingFrames <= 0) {
+				runPendingNodeDrawerAccommodation(token);
+				return;
+			}
+			nodeDrawerAccommodationFrameRef.current = view.requestAnimationFrame(step);
+		};
+		nodeDrawerAccommodationFrameRef.current = view.requestAnimationFrame(step);
+	}, [cancelNodeDrawerAccommodationFrame, runPendingNodeDrawerAccommodation]);
+
+	const cancelPendingNodeDrawerAccommodation = useCallback((): void => {
+		cancelNodeDrawerAccommodationFrame();
+		pendingNodeDrawerAccommodationRef.current = null;
+		nodeDrawerAccommodationTokenRef.current += 1;
+	}, [cancelNodeDrawerAccommodationFrame]);
+
+	const queueNodeDrawerAccommodation = useCallback((nodeId: string): void => {
+		const token = ++nodeDrawerAccommodationTokenRef.current;
+		if (!shouldAccommodateNodeDrawer({
+			overlay: graphDrawerOverlayActive(),
+			drawerFullscreen: drawerFullscreenRef.current,
+		})) {
+			cancelNodeDrawerAccommodationFrame();
+			pendingNodeDrawerAccommodationRef.current = null;
+			return;
+		}
+		pendingNodeDrawerAccommodationRef.current = { token, nodeId };
+		scheduleNodeDrawerAccommodationFrame(token, 2);
+	}, [cancelNodeDrawerAccommodationFrame, scheduleNodeDrawerAccommodationFrame]);
+
 	const loadGraph = useCallback(async () => {
 		const requestId = ++loadRequestRef.current;
 		const kbPath = currentKnowledgeBasePath;
@@ -345,15 +416,30 @@ export function GraphPanel({
 
 	useEffect(() => {
 		return () => {
+			cancelPendingNodeDrawerAccommodation();
 			if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
 			if (resetNoticeTimerRef.current) window.clearTimeout(resetNoticeTimerRef.current);
 			engineRef.current?.destroy();
 			engineRef.current = null;
 			engineKbPathRef.current = null;
 		};
-	}, []);
+	}, [cancelPendingNodeDrawerAccommodation]);
 
 	useEffect(() => {
+		const host = hostRef.current;
+		const ViewResizeObserver = host?.ownerDocument.defaultView?.ResizeObserver;
+		if (!host || !ViewResizeObserver) return;
+		const observer = new ViewResizeObserver(() => {
+			const pending = pendingNodeDrawerAccommodationRef.current;
+			if (!pending) return;
+			scheduleNodeDrawerAccommodationFrame(pending.token, 1);
+		});
+		observer.observe(host);
+		return () => observer.disconnect();
+	}, [scheduleNodeDrawerAccommodationFrame]);
+
+	useEffect(() => {
+		cancelPendingNodeDrawerAccommodation();
 		if (persistTimerRef.current) {
 			window.clearTimeout(persistTimerRef.current);
 			persistTimerRef.current = null;
@@ -362,7 +448,7 @@ export function GraphPanel({
 		setResetNotice(null);
 		setPendingAnimation(null);
 		setAnimationState("idle");
-	}, [currentKnowledgeBasePath]);
+	}, [cancelPendingNodeDrawerAccommodation, currentKnowledgeBasePath]);
 
 	const persistPins = useCallback(async (pins: PinMap): Promise<void> => {
 		const kbPath = activeKbPathRef.current;
@@ -475,15 +561,12 @@ export function GraphPanel({
 			edgeStyle: activeEdgeStyleRef.current,
 			aggregationMarkers,
 			capabilities: createGraphWorkbenchCapabilities({
-				onOpenPage: (payload) => onOpenPageRef.current?.(payload),
-				// #122：社区阅读普通单击节点（非 Shift 多选）触发右侧抽屉的镜头让位。窄屏覆盖
-				// 抽屉/全屏阅读面板由策略判定为不让位；reduced motion 由引擎层直跳保持节点可见。
-				onCommunityNodeOpen: (nodeId) => {
-					if (!shouldAccommodateNodeDrawer({
-						overlay: graphDrawerOverlayActive(),
-						drawerFullscreen: drawerFullscreenRef.current,
-					})) return;
-					engineRef.current?.accommodateNodeForDrawer(nodeId);
+				onOpenPage: (payload) => {
+					const openPage = onOpenPageRef.current;
+					openPage?.(payload);
+					if (openPage && payload.origin === "community-node-click") {
+						queueNodeDrawerAccommodation(payload.node.id);
+					}
 				},
 				onSelectionChange: (nextSelection) => onSelectionChangeRef.current?.(nextSelection),
 				onSelectionClear: () => onSelectionChangeRef.current?.(null),
@@ -513,7 +596,7 @@ export function GraphPanel({
 		engineRef.current = engine;
 		engineKbPathRef.current = currentKnowledgeBasePath;
 		engineDataRef.current = data;
-	}, [aggregationMarkers, clearCommunityEdgeScope, currentKnowledgeBasePath, data, dataKnowledgeBasePath, enterCommunityEdgeScope, persistPins, playDiff, selectionCommand]);
+	}, [aggregationMarkers, clearCommunityEdgeScope, currentKnowledgeBasePath, data, dataKnowledgeBasePath, enterCommunityEdgeScope, persistPins, playDiff, queueNodeDrawerAccommodation, selectionCommand]);
 
 	useEffect(() => {
 		engineRef.current?.setTheme(graphTheme);
