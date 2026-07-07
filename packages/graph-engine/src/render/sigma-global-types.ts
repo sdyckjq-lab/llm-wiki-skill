@@ -118,6 +118,9 @@ export interface SigmaGlobalRenderer {
   readonly lastHitTarget: GraphGestureTarget | null;
   isDragging(): boolean;
   resetView(options?: SigmaGlobalRendererResetViewOptions): void;
+  // #122：社区阅读单击节点打开右侧详情抽屉时，镜头让位到剩余画布的舒适位置。
+  // 窄屏覆盖抽屉/非社区阅读由调用方或 sigmaNodeDrawerCameraState 自行短路。
+  accommodateNodeDrawer(nodeId: string, options?: { durationMs?: number }): void;
   zoomIn(): void;
   zoomOut(): void;
   update(options: SigmaGlobalRendererUpdateOptions): void;

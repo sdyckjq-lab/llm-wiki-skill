@@ -325,6 +325,125 @@ function sigmaCommunityReadingCameraRatio(
   return clamp(baseRatio, roundNumber(lowerBound, 3), roundNumber(upperBound, 3));
 }
 
+export interface SigmaNodeDrawerCameraOptions {
+  viewportSize?: RendererViewportSize;
+  durationMs?: number;
+}
+
+export interface SigmaNodeDrawerCameraMoveResult extends SigmaGlobalCameraMoveResult {
+  nodeId: string | null;
+}
+
+// #122：社区阅读单击节点时，右侧节点详情抽屉打开后的镜头让位。只在社区阅读 + 宽屏
+// 并排抽屉下生效（窄屏覆盖抽屉/全屏由工作台策略不调用这条路径）。
+//
+// 宽屏并排抽屉把画布挤窄（drawer 在 flex 流里占位，.shell-main flex:1 收缩），抽屉
+// 覆盖在画布旁、不遮挡画布；所以"剩余画布的舒适位置"就是（已变窄的）画布中心。镜头
+// 居中到被选节点；默认保留当前缩放，只有节点或一阶关系圈会被裁切时才轻微缩小。
+export function sigmaNodeDrawerCameraState(
+  sigma: SigmaGlobalSigmaLike,
+  adapterData: GraphRendererAdapterData,
+  nodeId: string,
+  options?: SigmaNodeDrawerCameraOptions
+): Partial<SigmaGlobalCameraState> | null {
+  if (adapterData.renderable.communityMap?.active !== true) return null;
+  const size = options?.viewportSize && options.viewportSize.width >= 32 && options.viewportSize.height >= 32
+    ? options.viewportSize
+    : null;
+  if (!size) return null;
+
+  const node = adapterData.nodes.find((item) => item.id === nodeId);
+  if (!node) return null;
+  const nodePoint = { x: finiteNumber(node.point.x, 0), y: finiteNumber(node.point.y, 0) };
+  const current = readCameraState(sigma) ?? { x: 0, y: 0, angle: 0, ratio: 1 };
+  const baseRatio = current.ratio > 0 ? current.ratio : 1;
+
+  // 引擎 viewport 已反映抽屉占位后的实际可用画布（抽屉正在打开的瞬间用未收缩画布略
+  // 乐观，但一阶关系圈极少横跨大半个画布，影响可忽略）。
+  const ratio = sigmaNodeDrawerAccommodationRatio(sigma, adapterData, nodeId, nodePoint, baseRatio, current.angle, {
+    width: Math.max(1, size.width * 0.82),
+    height: Math.max(1, size.height * 0.74)
+  });
+
+  // 居中到被选节点：剩余画布的舒适位置就是画布中心。
+  const targetCameraPoint = sigmaGraphPointToCameraPoint(sigma, nodePoint);
+  const target = {
+    x: roundNumber(targetCameraPoint.x, 3),
+    y: roundNumber(targetCameraPoint.y, 3),
+    angle: current.angle,
+    ratio: roundNumber(ratio, 3)
+  };
+
+  const bounds = adapterData.renderable.worldBounds;
+  const worldWidth = Math.max(0, finiteNumber(bounds.maxX, nodePoint.x) - finiteNumber(bounds.minX, nodePoint.x));
+  const settledThreshold = sigmaCameraDistanceForGraphDistance(sigma, nodePoint, Math.max(worldWidth * 0.015, 4));
+  const positionSettled = Math.abs(current.x - target.x) <= settledThreshold
+    && Math.abs(current.y - target.y) <= settledThreshold;
+  const ratioSettled = Math.abs(current.ratio - target.ratio) <= 0.025;
+  return positionSettled && ratioSettled ? null : target;
+}
+
+function sigmaNodeDrawerAccommodationRatio(
+  sigma: SigmaGlobalSigmaLike,
+  adapterData: GraphRendererAdapterData,
+  nodeId: string,
+  nodePoint: { x: number; y: number },
+  baseRatio: number,
+  angle: number,
+  comfort: { width: number; height: number }
+): number {
+  if (!sigma.graphToViewport) return baseRatio;
+  const points: Array<{ x: number; y: number }> = [nodePoint];
+  const neighbors = new Set<string>();
+  for (const edge of adapterData.edges) {
+    if (edge.sourceNodeId === nodeId) neighbors.add(edge.targetNodeId);
+    else if (edge.targetNodeId === nodeId) neighbors.add(edge.sourceNodeId);
+  }
+  for (const candidate of adapterData.nodes) {
+    if (neighbors.has(candidate.id)) {
+      points.push({ x: finiteNumber(candidate.point.x, 0), y: finiteNumber(candidate.point.y, 0) });
+    }
+  }
+  const baseState = { x: nodePoint.x, y: nodePoint.y, angle, ratio: baseRatio };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points) {
+    const projected = sigma.graphToViewport(point, { cameraState: baseState });
+    if (!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y)) return baseRatio;
+    minX = Math.min(minX, projected.x);
+    minY = Math.min(minY, projected.y);
+    maxX = Math.max(maxX, projected.x);
+    maxY = Math.max(maxY, projected.y);
+  }
+  const projectedWidth = Math.max(0, maxX - minX);
+  const projectedHeight = Math.max(0, maxY - minY);
+  const scale = Math.max(
+    1,
+    comfort.width > 0 ? projectedWidth / comfort.width : 1,
+    comfort.height > 0 ? projectedHeight / comfort.height : 1
+  );
+  // 只缩小（ratio 增大），不放大；最多缩到 2.5 倍，避免让位把镜头拉得太远。
+  const ratio = clamp(baseRatio * scale, baseRatio, baseRatio * 2.5);
+  return roundNumber(ratio, 3);
+}
+
+export function maybeAnimateSigmaNodeDrawerCamera(
+  sigma: SigmaGlobalSigmaLike,
+  root: HTMLElement,
+  adapterData: GraphRendererAdapterData,
+  nodeId: string | null | undefined,
+  options?: SigmaNodeDrawerCameraOptions,
+  onAnimationError?: (error: unknown) => void
+): SigmaNodeDrawerCameraMoveResult {
+  if (!nodeId) return { nodeId: null, movement: "skipped", skipReason: "no-target" };
+  const target = sigmaNodeDrawerCameraState(sigma, adapterData, nodeId, options);
+  if (!target) return { nodeId, movement: "skipped", skipReason: "already-settled" };
+  const movement = moveSigmaCamera(sigma, target, prefersReducedMotion(root.ownerDocument.defaultView), onAnimationError);
+  return { nodeId, ...movement };
+}
+
 export function sigmaGlobalCameraState(
   sigma: SigmaGlobalSigmaLike,
   adapterData: GraphRendererAdapterData,

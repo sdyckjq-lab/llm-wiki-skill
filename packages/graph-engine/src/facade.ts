@@ -43,6 +43,7 @@ export function createGraphWorkbenchCapabilities(
     mode: "workbench",
     capabilities: {
       onOpenPage: capabilities.onOpenPage,
+      onCommunityNodeOpen: capabilities.onCommunityNodeOpen,
       onSelectionChange: capabilities.onSelectionChange,
       onSelectionClear: capabilities.onSelectionClear,
       onViewReset: capabilities.onViewReset,
@@ -85,6 +86,9 @@ export interface GraphFacadeRenderer {
   showTemporaryObject(object: GraphSummaryObjectRef): void;
   clearTemporaryObjectDisplay(): void;
   resetView(options?: { onComplete?: () => void; onCancel?: () => void; onCleanup?: () => void }): void;
+  // #122：可选；只有 Sigma 全局路由实现。其它路由（DOM/SVG 兜底、超限提示）没有节点
+  // 让位能力，调用方按 undefined 跳过。
+  accommodateNodeDrawer?(nodeId: string, options?: { durationMs?: number }): void;
   select(selection: SelectionInput): void;
   previewNode(id: string | null): void;
   clearSelection(): void;
@@ -205,8 +209,13 @@ export function createGraphFacade(container: HTMLElement, options: GraphEngineOp
     temporaryObject: null
   };
   const rendererCallbacks: GraphFacadeRendererCallbacks = {
-    onNodeOpen: capabilities?.onOpenPage
-      ? (nodeId) => capabilities.onOpenPage?.(openPagePayloadForNode(facadeState.data, nodeId))
+    onNodeOpen: (capabilities?.onOpenPage || capabilities?.onCommunityNodeOpen)
+      ? (nodeId) => {
+          // #122：onCommunityNodeOpen 只在社区阅读普通单击节点时触发（Shift 多选走 select
+          // 分支，不会到这里），用来驱动右侧抽屉的镜头让位；onOpenPage 继续负责打开阅读面板。
+          capabilities?.onCommunityNodeOpen?.(nodeId);
+          if (capabilities?.onOpenPage) capabilities.onOpenPage(openPagePayloadForNode(facadeState.data, nodeId));
+        }
       : undefined,
     onSelectionInput: shouldResolveSelection(capabilities)
       ? (input) => {
@@ -407,6 +416,13 @@ export function createGraphFacadeRouteManager(
       // fallback state. The normal workbench "进入社区" path stays on Sigma.
       switchRoute("dom-svg-community", () => factories.createDomSvgCommunity(factoryInput()));
       currentRenderer().focusCommunity(id);
+    },
+    accommodateNodeDrawer(nodeId: string, options?: { durationMs?: number }) {
+      assertActive();
+      // 只有 Sigma 社区阅读路由有节点让位能力；其它路由（兜底/超限）静默跳过。
+      if (routeId === "sigma-global" && !sigmaKnownUnavailable) {
+        currentRenderer().accommodateNodeDrawer?.(nodeId, options);
+      }
     },
     setTypeFilters(filters) {
       assertActive();
@@ -1041,6 +1057,11 @@ export function createGraphFacadeFromRenderer(
       facadeState.sourceCommunityId = id;
       renderer.focusCommunity(id);
       return resolveForHostCapabilities({ kind: "community", id });
+    },
+
+    accommodateNodeForDrawer(nodeId: string, options?: { durationMs?: number }): void {
+      assertActive();
+      renderer.accommodateNodeDrawer?.(nodeId, options);
     },
 
     get sourceCommunityId(): string | null {

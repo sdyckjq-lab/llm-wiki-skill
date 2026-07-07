@@ -5,6 +5,7 @@ import type { GraphRendererAdapterData } from "../src";
 import type { SigmaGlobalCameraState, SigmaGlobalSigmaLike } from "../src/render/sigma-global-types";
 import {
   maybeAnimateSigmaCommunitySpotlightCamera,
+  maybeAnimateSigmaNodeDrawerCamera,
   moveSigmaCamera,
   readCameraState,
   restoreCameraState,
@@ -12,7 +13,8 @@ import {
   sigmaCommunitySpotlightCameraState,
   sigmaCommunitySpotlightCenter,
   sigmaGlobalCameraState,
-  sigmaGraphPointToCameraPoint
+  sigmaGraphPointToCameraPoint,
+  sigmaNodeDrawerCameraState
 } from "../src/render/sigma-global-camera";
 
 describe("Sigma global camera helpers", () => {
@@ -384,6 +386,136 @@ describe("Sigma global camera helpers", () => {
     assert.equal(sigma.setStateCalls, 0);
     assert.equal(sigma.animateCalls, 0);
   });
+
+  // #122：社区阅读单击节点时，右侧节点详情抽屉打开后的镜头让位。宽屏并排抽屉把画布
+  // 挤窄、抽屉覆在画布旁不遮挡，所以镜头居中到被选节点（剩余画布中心）；默认保持当前
+  // 缩放，只有节点或一阶关系圈会被裁切时才轻微缩小。窄屏覆盖抽屉不调用这条路径。
+  describe("sigma node drawer camera accommodation", () => {
+    it("does not accommodate outside community reading", () => {
+      const target = sigmaNodeDrawerCameraState(
+        sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 }),
+        adapterDataFixture(),
+        "alpha",
+        { viewportSize: { width: 800, height: 600 } }
+      );
+
+      assert.equal(target, null);
+    });
+
+    it("does not accommodate without a viewport", () => {
+      const target = sigmaNodeDrawerCameraState(
+        sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 }),
+        adapterDataWithCommunityReading(),
+        "alpha"
+      );
+
+      assert.equal(target, null);
+    });
+
+    it("centers the selected node in the remaining canvas while keeping the zoom", () => {
+      const target = sigmaNodeDrawerCameraState(
+        sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 }),
+        adapterDataWithCommunityReading(),
+        "alpha",
+        { viewportSize: { width: 800, height: 600 } }
+      );
+
+      // alpha@{10,20}; 镜头居中到节点（剩余画布中心）。
+      assert.equal(target?.x, 10);
+      assert.equal(target?.y, 20);
+      assert.equal(target?.ratio, 1);
+    });
+
+    it("keeps the current zoom when the node and one-hop neighbors fit the remaining canvas", () => {
+      const data = adapterDataWithCommunityReading();
+      data.edges = [edgeFixture("alpha-beta", "alpha", "beta")];
+
+      const target = sigmaNodeDrawerCameraState(
+        sigmaLikeWithProjection({ x: 0, y: 0, angle: 0, ratio: 1 }, { width: 1000, height: 800 }),
+        data,
+        "alpha",
+        { viewportSize: { width: 1000, height: 800 } }
+      );
+
+      assert.equal(target?.ratio, 1, "alpha and beta both fit the canvas, keep the zoom");
+    });
+
+    it("zooms out when the one-hop relation circle would be cropped by the canvas", () => {
+      const data = adapterDataWithCommunityReading();
+      data.nodes = [
+        nodeFixture("alpha", { x: -300, y: 0 }),
+        nodeFixture("beta", { x: 300, y: 0 })
+      ];
+      data.edges = [edgeFixture("alpha-beta", "alpha", "beta")];
+
+      const target = sigmaNodeDrawerCameraState(
+        sigmaLikeWithProjection({ x: 0, y: 0, angle: 0, ratio: 1 }, { width: 400, height: 400 }),
+        data,
+        "alpha",
+        { viewportSize: { width: 400, height: 400 } }
+      );
+
+      assert.ok((target?.ratio ?? 1) > 1, "wide one-hop span past the canvas should zoom out");
+    });
+
+    it("returns null when the camera already centers the node", () => {
+      const target = sigmaNodeDrawerCameraState(
+        sigmaLike({ x: 10, y: 20, angle: 0, ratio: 1 }),
+        adapterDataWithCommunityReading(),
+        "alpha",
+        { viewportSize: { width: 800, height: 600 } }
+      );
+
+      assert.equal(target, null);
+    });
+
+    it("snaps the camera immediately under reduced motion", () => {
+      const sigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 });
+
+      const result = maybeAnimateSigmaNodeDrawerCamera(
+        sigma,
+        rootWithReducedMotion(true),
+        adapterDataWithCommunityReading(),
+        "alpha",
+        { viewportSize: { width: 800, height: 600 } }
+      );
+
+      assert.equal(result.movement, "immediate");
+      assert.equal(sigma.animateCalls, 0);
+      assert.equal(sigma.setStateCalls, 1);
+    });
+
+    it("animates the accommodation under normal motion", () => {
+      const sigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 });
+
+      const result = maybeAnimateSigmaNodeDrawerCamera(
+        sigma,
+        rootWithReducedMotion(false),
+        adapterDataWithCommunityReading(),
+        "alpha",
+        { viewportSize: { width: 800, height: 600 } }
+      );
+
+      assert.equal(result.movement, "animated");
+      assert.equal(sigma.animateCalls, 1);
+    });
+
+    it("skips when the accommodation target is already settled", () => {
+      const sigma = sigmaLike({ x: 10, y: 20, angle: 0, ratio: 1 });
+
+      const result = maybeAnimateSigmaNodeDrawerCamera(
+        sigma,
+        rootWithReducedMotion(false),
+        adapterDataWithCommunityReading(),
+        "alpha",
+        { viewportSize: { width: 800, height: 600 } }
+      );
+
+      assert.equal(result.movement, "skipped");
+      assert.equal(sigma.animateCalls, 0);
+      assert.equal(sigma.setStateCalls, 0);
+    });
+  });
 });
 
 function sigmaLike(
@@ -638,6 +770,27 @@ function nodeFixture(id: string, point: { x: number; y: number }): GraphRenderer
       visualRole: "landmark",
       priority: 1,
       labelVisible: false
+    }
+  };
+}
+
+function edgeFixture(id: string, sourceNodeId: string, targetNodeId: string): GraphRendererAdapterData["edges"][number] {
+  return {
+    id,
+    sourceNodeId,
+    targetNodeId,
+    sourceCommunityId: "community-a",
+    targetCommunityId: "community-a",
+    relationType: null,
+    confidence: null,
+    weight: 1,
+    render: {
+      strokeWidth: 1,
+      opacity: 1,
+      communityMapLayer: "related",
+      relationFocusDepth: "first",
+      skeleton: false,
+      traceable: false
     }
   };
 }

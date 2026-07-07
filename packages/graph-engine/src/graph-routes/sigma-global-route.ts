@@ -268,6 +268,9 @@ export function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererF
         ? { ...resetOptions, durationMs: SIGMA_COMMUNITY_RETURN_GLOBAL_TRANSITION_MS }
         : resetOptions);
     },
+    accommodateNodeDrawer(nodeId: string, options?: { durationMs?: number }) {
+      renderer?.accommodateNodeDrawer(nodeId, options);
+    },
     select(selection) {
       updateSigmaSelection(selection);
     },

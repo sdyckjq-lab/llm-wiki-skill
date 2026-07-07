@@ -65,6 +65,7 @@ import {
 } from "./sigma-hit-projector";
 import {
   maybeAnimateSigmaCommunitySpotlightCamera,
+  maybeAnimateSigmaNodeDrawerCamera,
   prefersReducedMotion,
   readCameraState,
   restoreCameraState,
@@ -285,6 +286,32 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         onCancel: resetOptions?.onCancel,
         onCleanup: resetOptions?.onCleanup
       });
+    },
+    accommodateNodeDrawer(nodeId: string, drawerOptions?: { durationMs?: number }) {
+      assertActive();
+      try {
+        const result = maybeAnimateSigmaNodeDrawerCamera(
+          sigma,
+          sigmaRoot,
+          adapterData,
+          nodeId,
+          {
+            viewportSize: currentViewportSize,
+            durationMs: drawerOptions?.durationMs
+          },
+          options.onFatalError
+        );
+        if (result.movement === "animated") {
+          startProjectCameraFrameTracking(
+            drawerOptions?.durationMs ?? SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS,
+            SIGMA_CAMERA_MINIMUM_FAST_PATH_FRAMES
+          );
+        } else if (result.movement === "immediate") {
+          overlayDomController?.reposition();
+        }
+      } catch (error) {
+        options.onFatalError?.(error);
+      }
     },
     zoomIn() {
       assertActive();

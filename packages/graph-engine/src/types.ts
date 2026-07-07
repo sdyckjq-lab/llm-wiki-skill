@@ -503,6 +503,9 @@ export interface GraphEngineCapabilities {
   persistPins?: (pins: PinMap) => Promise<void>;
   onAsk?: (selection: Selection) => void;
   onOpenPage?: (payload: GraphOpenPagePayload) => void;
+  // #122：社区阅读里普通单击节点（非 Shift 多选）的专用信号。onOpenPage 同时承担打开
+  // 阅读面板；这条回调只用来触发右侧抽屉的镜头让位，不会在 Shift 多选路径上触发。
+  onCommunityNodeOpen?: (nodeId: string) => void;
   onSelectionChange?: (selection: Selection) => void;
   onSelectionClear?: () => void;
   onViewReset?: () => void;
@@ -530,6 +533,9 @@ export interface GraphEngine {
   setAggregationMarkers(markers: GraphAggregationMarker[]): void;
   focusNode(path: WikiPath): void;
   focusCommunity(id: CommunityId): Selection;
+  // #122：社区阅读单击节点打开右侧详情抽屉时，把镜头让位到剩余画布的舒适位置。
+  // 宽屏并排抽屉生效；窄屏覆盖抽屉/非社区阅读/reduced motion 由实现短路。
+  accommodateNodeForDrawer(nodeId: string, options?: { durationMs?: number }): void;
   // Phase 2: the community the user entered from. Kept separate from selection so
   // returning to the global Sigma view can keep that community highlighted without
   // marking every community node as selected/core.

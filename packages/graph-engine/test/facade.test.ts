@@ -84,6 +84,10 @@ describe("GraphFacade", () => {
     assert.equal(container.dataset.llmWikiGraphFocus, "wiki/a.md");
     assert.deepEqual(renderer.calls.at(-1), ["focusNode", "wiki/a.md"]);
 
+    // #122：节点抽屉让位走公共 API → 路由渲染器 accommodateNodeDrawer。
+    engine.accommodateNodeForDrawer("a");
+    assert.deepEqual(renderer.calls.at(-1), ["accommodateNodeDrawer", "a"]);
+
     engine.clearInteraction();
     assert.equal(container.dataset.llmWikiGraphFocus, undefined);
     assert.deepEqual(renderer.calls.at(-1), ["clearInteraction"]);
@@ -360,6 +364,7 @@ describe("GraphFacade", () => {
     assert.equal(workbench.mode, "workbench");
     assert.deepEqual(Object.keys(workbench.capabilities || {}).sort(), [
       "onAsk",
+      "onCommunityNodeOpen",
       "onDragStateChange",
       "onOpenPage",
       "onSelectionChange",
@@ -1806,6 +1811,9 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
     },
     focusCommunity(id: string) {
       calls.push(["focusCommunity", id]);
+    },
+    accommodateNodeDrawer(nodeId: string, options?: { durationMs?: number }) {
+      calls.push(options === undefined ? ["accommodateNodeDrawer", nodeId] : ["accommodateNodeDrawer", nodeId, options]);
     },
     setSourceCommunityContext(id: string | null) {
       calls.push(["setSourceCommunityContext", id]);
