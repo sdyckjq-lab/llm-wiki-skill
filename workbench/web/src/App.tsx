@@ -172,14 +172,17 @@ function App() {
 	const [searchRefsError, setSearchRefsError] = useState<string | null>(null);
 	const [chatStatus, setChatStatus] = useState<ChatStatusSnapshot>(DEFAULT_CHAT_STATUS);
 	const [graphStatus, setGraphStatus] = useState<GraphStatusSnapshot>(DEFAULT_GRAPH_STATUS);
-	const [drawer, setDrawer] = useState<DrawerState>(() => closedDrawer());
 	const [artifacts, setArtifacts] = useState<ArtifactManifest[]>([]);
 	const [drawerFullscreen, setDrawerFullscreen] = useState(false);
 	// 进入社区退场轨道（#120）：exit 期间保留社区摘要挂载做退场，结束后落回 closed。
-	// drawerExit.exitRef 暴露给两条 setDrawer 守卫——updater 在 render 期运行，读 ref
-	// 才能和 stage 的写入在同一渲染通道对齐（applyCommunityEnter 的 clearSelection 会
-	// 异步回流为 selection clear，那条 clear 不应关掉正在退场的抽屉）。
-	const drawerExit = useDrawerExitRail(drawer, setDrawer);
+	const {
+		drawer,
+		setDrawer,
+		isExiting: drawerExitIsExiting,
+		stage: stageDrawerExit,
+		complete: handleDrawerExitComplete,
+		isProtected: isDrawerExitProtected,
+	} = useDrawerExitRail();
 	const [batchJob, setBatchJob] = useState<BatchDigestJob | null>(null);
 	const [pendingGraphPrompt, setPendingGraphPrompt] = useState<{
 		id: string;
@@ -317,7 +320,7 @@ function App() {
 		} finally {
 			setLoading(false);
 		}
-	}, [refreshConversations]);
+	}, [refreshConversations, setDrawer]);
 
 	useEffect(() => {
 		refreshAll();
@@ -329,14 +332,14 @@ function App() {
 		listArtifacts(activeConversationId)
 			.then((items) => {
 				if (cancelled) return;
-			setArtifacts(items);
-			setDrawer((current) => {
-				if (current.mode !== "artifacts") return current;
-				const activeArtifactId = current.activeArtifactId && items.some((item) => item.id === current.activeArtifactId)
-					? current.activeArtifactId
-					: items.at(-1)?.id ?? null;
-				return artifactDrawer(items, activeArtifactId);
-			});
+				setArtifacts(items);
+				setDrawer((current) => {
+					if (current.mode !== "artifacts") return current;
+					const activeArtifactId = current.activeArtifactId && items.some((item) => item.id === current.activeArtifactId)
+						? current.activeArtifactId
+						: items.at(-1)?.id ?? null;
+					return artifactDrawer(items, activeArtifactId);
+				});
 			})
 			.catch((err) => {
 				if (!cancelled) setSidebarError(err instanceof Error ? err.message : String(err));
@@ -344,7 +347,7 @@ function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeConversationId]);
+	}, [activeConversationId, setDrawer]);
 
 	const applyActive = (ctx: ActiveContext) => {
 		setActive(ctx);
@@ -430,7 +433,7 @@ function App() {
 			setDrawer((current) => {
 				// 退场轨道进行时，clearSelection 是 applyCommunityEnter 的副作用，
 				// 抽屉关闭由退场轨道接管，这里不要硬切。
-				if (drawerExit.exitRef.current != null) return current;
+				if (isDrawerExitProtected(current)) return current;
 				return shouldCloseDrawerAfterGraphSelectionClear(current) ? closedDrawer() : current;
 			});
 			return;
@@ -443,7 +446,7 @@ function App() {
 			selection: selection.input,
 			searchResultIds: graphVisibilityState?.searchResultIds ?? [],
 		}));
-	}, [graphData, graphPins, graphVisibilityState, drawer]);
+	}, [drawer, graphData, graphPins, graphVisibilityState, isDrawerExitProtected, setDrawer]);
 
 	const handleGraphVisibilityChange = useCallback((state: GraphVisibilityState | null) => {
 		setGraphVisibilityState(state);
@@ -479,7 +482,7 @@ function App() {
 			}
 			return current;
 		});
-	}, [graphData, graphPins]);
+	}, [graphData, graphPins, setDrawer]);
 
 	const clearStaleGraphReaderFocus = useCallback(() => {
 		setGraphFocusPath(null);
@@ -504,7 +507,7 @@ function App() {
 			});
 			return sameGraphDrawerTarget(current, next) ? current : next;
 		});
-	}, [clearStaleGraphReaderFocus, graphPins, graphVisibilityState]);
+	}, [clearStaleGraphReaderFocus, graphPins, graphVisibilityState, setDrawer]);
 
 	const handleGraphViewReset = useCallback(() => {
 		setGraphFocusPath(null);
@@ -513,7 +516,7 @@ function App() {
 				? drawerForGraphSummaryNode(graphData, current.payload.node.id, current, { pins: graphPins })
 				: current
 		));
-	}, [graphData, graphPins]);
+	}, [graphData, graphPins, setDrawer]);
 
 	const handleGraphSelectionTextChange = useCallback((value: string) => {
 		setDrawer((current) => (
@@ -521,7 +524,7 @@ function App() {
 				? graphSelectionDrawer(current.selection, current.title, value)
 				: current
 		));
-	}, []);
+	}, [setDrawer]);
 
 	const handleGraphSelectionAsk = (actionId: string | null, newConversation: boolean) => {
 		if (!graphData || drawer.mode !== "graph-selection") return;
@@ -543,7 +546,7 @@ function App() {
 				? graphCommunitySummaryDrawer(current.payload, value)
 				: current
 		));
-	}, []);
+	}, [setDrawer]);
 
 	const handleGraphCommunityAsk = (actionId: string | null, newConversation: boolean) => {
 		if (!graphData || drawer.mode !== "graph-community-summary") return;
@@ -592,9 +595,7 @@ function App() {
 			}
 			return closedDrawer();
 		});
-	}, []);
-
-	const handleDrawerExitComplete = drawerExit.complete;
+	}, [setDrawer]);
 
 	const handleAddExternal = async (path: string) => {
 		const { info } = await registerExternalKnowledgeBase(path);
@@ -653,7 +654,7 @@ function App() {
 				: current
 			));
 		}
-	}, [active, graphVisibilityState]);
+	}, [active, graphVisibilityState, setDrawer]);
 
 	const handleGraphSummaryCommand = useCallback((command: GraphSummaryCommand) => {
 		if (command.kind === "open-detail-read" || command.kind === "enter-node-community") {
@@ -686,7 +687,7 @@ function App() {
 				reducedMotion: prefersReducedMotion(),
 			});
 			setSelectionCommand(plan.selectionCommand);
-			drawerExit.stage(plan.exit ? plan.exit.drawer : null);
+			stageDrawerExit(plan.exit ? plan.exit.drawer : null);
 			setDrawer(plan.exit ? drawer : closedDrawer());
 			return;
 		}
@@ -748,7 +749,7 @@ function App() {
 				return sameGraphDrawerTarget(current, next) ? current : next;
 			});
 		}
-	}, [drawer, graphData, graphPins, graphVisibilityState, handleOpenGraphPage]);
+	}, [drawer, graphData, graphPins, graphVisibilityState, handleOpenGraphPage, setDrawer, stageDrawerExit]);
 
 	useEffect(() => {
 		const nextTemporaryObject = temporaryObjectAfterGraphDataRefresh(graphData, graphTemporaryObjectRef.current);
@@ -759,7 +760,7 @@ function App() {
 			if (!isGraphInteractionDrawer(current)) return current;
 			// 退场轨道进行时，进入社区会带新一轮 visibility state；这里不要重建抽屉对象，
 			// 否则 drawer 引用变化会让 drawer === drawerExit 失败、退场中断。
-			if (drawerExit.exitRef.current != null) return current;
+			if (isDrawerExitProtected(current)) return current;
 			if (graphReaderStaleAfterRefresh(current, graphData, effectiveState)) clearStaleGraphReaderFocus();
 			return drawerAfterGraphDataRefresh(current, graphData, {
 				pins: graphPins,
@@ -767,11 +768,11 @@ function App() {
 				temporaryObject: nextTemporaryObject,
 			});
 		});
-	}, [clearStaleGraphReaderFocus, graphData, graphPins, graphVisibilityState]);
+	}, [clearStaleGraphReaderFocus, graphData, graphPins, graphVisibilityState, isDrawerExitProtected, setDrawer]);
 
 	const handleGraphSummaryNodeSelect = useCallback((nodeId: string) => {
 		setDrawer((current) => drawerForGraphSummaryNode(graphData, nodeId, current, { pins: graphPins }));
-	}, [graphData, graphPins]);
+	}, [graphData, graphPins, setDrawer]);
 
 	const handleGraphSummaryReturnCommunity = useCallback((communityId: string) => {
 		setSelectionCommand({
@@ -1116,7 +1117,7 @@ function App() {
 						onGraphCommunityAsk={handleGraphCommunityAsk}
 						onResize={setDrawerWidth}
 						onToggleFullscreen={() => setDrawerFullscreen((value) => !value)}
-						exiting={drawerExit.isExiting}
+						exiting={drawerExitIsExiting}
 						onExitComplete={handleDrawerExitComplete}
 						exitDurationMs={COMMUNITY_ENTER_EXIT_DURATION_MS}
 						onClose={handleCloseDrawer}

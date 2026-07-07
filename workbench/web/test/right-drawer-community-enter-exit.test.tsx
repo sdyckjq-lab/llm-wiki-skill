@@ -46,6 +46,33 @@ describe("RightDrawer community enter exit", () => {
 		assert.equal(completed, 1, "onExitComplete must fire at most once");
 	});
 
+	it("uses the latest onExitComplete callback while an exit timer is active", async () => {
+		let firstCompleted = 0;
+		let latestCompleted = 0;
+		const { rerender } = render(
+			<RightDrawer
+				{...baseProps()}
+				drawer={communityDrawer()}
+				exiting
+				exitDurationMs={10}
+				onExitComplete={() => { firstCompleted += 1; }}
+			/>,
+		);
+
+		rerender(
+			<RightDrawer
+				{...baseProps()}
+				drawer={communityDrawer()}
+				exiting
+				exitDurationMs={10}
+				onExitComplete={() => { latestCompleted += 1; }}
+			/>,
+		);
+
+		await waitFor(() => assert.equal(latestCompleted, 1));
+		assert.equal(firstCompleted, 0, "stale exit completion callback must not fire");
+	});
+
 	it("cancels the exit timer when unmounted before the duration elapses", async () => {
 		let completed = 0;
 		const { unmount } = render(

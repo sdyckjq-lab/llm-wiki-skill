@@ -1,4 +1,4 @@
-import React, { type CSSProperties, Suspense, lazy, useEffect, useRef } from "react";
+import React, { type CSSProperties, Suspense, lazy, useEffect, useEffectEvent, useRef } from "react";
 
 import { Download, FileText, Maximize2, Minimize2, X } from "lucide-react";
 import type { GraphSummaryCommand } from "@llm-wiki/graph-engine";
@@ -86,8 +86,7 @@ export function RightDrawer({
 	exitDurationMs = 0,
 }: Props) {
 	const dragStart = useRef<{ x: number; width: number } | null>(null);
-	const onExitCompleteRef = useRef(onExitComplete);
-	onExitCompleteRef.current = onExitComplete;
+	const onExitCompleteEvent = useEffectEvent(() => onExitComplete?.());
 
 	useEffect(() => {
 		return () => {
@@ -98,7 +97,7 @@ export function RightDrawer({
 	useEffect(() => {
 		if (!exiting) return;
 		const duration = Math.max(0, exitDurationMs);
-		const timer = window.setTimeout(() => onExitCompleteRef.current?.(), duration);
+		const timer = window.setTimeout(() => onExitCompleteEvent(), duration);
 		return () => window.clearTimeout(timer);
 	}, [exiting, exitDurationMs]);
 
