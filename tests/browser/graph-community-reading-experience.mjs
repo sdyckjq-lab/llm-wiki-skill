@@ -26,6 +26,7 @@ const browser = await chromium.launch(executablePath ? { executablePath } : {});
 try {
   await fs.mkdir(artifactDir, { recursive: true });
   const desktop = await runViewport({ width: 1440, height: 900 }, "desktop", { fullPath: true });
+  const wide = await runViewport({ width: 1920, height: 1080 }, "wide", { fullPath: false });
   const narrow = await runViewport({ width: 390, height: 844 }, "narrow", { fullPath: false });
   const report = {
     checkedAt: new Date().toISOString(),
@@ -40,6 +41,7 @@ try {
       "quiet unselected community labels"
     ],
     desktop,
+    wide,
     narrow
   };
   await fs.writeFile(path.join(artifactDir, "community-reading-experience-report.json"), `${JSON.stringify(report, null, 2)}\n`);

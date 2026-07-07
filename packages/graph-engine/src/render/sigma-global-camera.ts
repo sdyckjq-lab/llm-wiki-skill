@@ -22,7 +22,7 @@ export interface SigmaGlobalCameraMoveResult {
   skipReason?: SigmaGlobalCameraSkipReason;
 }
 
-export interface SigmaCommunitySpotlightCameraResult extends SigmaGlobalCameraMoveResult {
+export interface SigmaCommunitySpotlightCameraResult extends SigmaGlobalViewTransitionResult {
   communityId: string | null;
 }
 
@@ -80,21 +80,21 @@ export function maybeAnimateSigmaCommunitySpotlightCamera(
   onAnimationError?: (error: unknown) => void
 ): SigmaCommunitySpotlightCameraResult {
   if (!communityId) {
-    return { communityId: null, movement: "skipped", skipReason: "no-community" };
+    return { communityId: null, movement: "skipped", skipReason: "no-community", transition: null };
   }
   if (communityId === previousCommunityId) {
-    return { communityId, movement: "skipped", skipReason: "already-settled" };
+    return { communityId, movement: "skipped", skipReason: "already-settled", transition: null };
   }
   const target = sigmaCommunitySpotlightCameraState(sigma, adapterData, communityId, viewportSize);
   if (!target) {
-    return { communityId, movement: "skipped", skipReason: "no-target" };
+    return { communityId, movement: "skipped", skipReason: "no-target", transition: null };
   }
-  const movement = moveSigmaCamera(
-    sigma,
+  const movement = startSigmaGlobalViewTransition(sigma, {
     target,
-    prefersReducedMotion(root.ownerDocument.defaultView),
+    animate: true,
+    reducedMotion: prefersReducedMotion(root.ownerDocument.defaultView),
     onAnimationError
-  );
+  });
   return { communityId, ...movement };
 }
 

@@ -334,6 +334,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       assertActive();
       const cameraState = readCameraState(sigma);
       const previousCameraSpotlightKey = cameraSpotlightKey;
+      const previousAdapterSpotlightKey = sigmaSpotlightCameraKey(adapterData);
       let spotlightCameraPreviousKey = previousCameraSpotlightKey;
       const previousViewportSize = currentViewportSize;
       cancelNodeDrag();
@@ -353,6 +354,14 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const nextTheme = updateOptions.theme ?? currentTheme;
       const nextEdgeStyle = updateOptions.edgeStyle ?? currentEdgeStyle;
       const nextPins = { ...(updateOptions.pins ?? currentPins) };
+      if (
+        !spotlightCameraPreviousKey &&
+        activeViewTransition?.isActive() &&
+        previousAdapterSpotlightKey &&
+        previousAdapterSpotlightKey === sigmaSpotlightCameraKey(nextAdapterData)
+      ) {
+        spotlightCameraPreviousKey = previousAdapterSpotlightKey;
+      }
       if (updateOptions.viewportSize) currentViewportSize = updateOptions.viewportSize;
       if (shouldRefitSpotlightCameraAfterViewportChange(previousViewportSize, currentViewportSize, nextAdapterData)) {
         spotlightCameraPreviousKey = null;
@@ -815,6 +824,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     if (animated || !activeViewTransition?.isActive()) return;
     activeViewTransition.complete();
     activeViewTransition = null;
+    sigmaRoot.dataset.viewTransition = "";
   }
 
   function cancelActiveViewTransition(takeoverState?: Partial<SigmaGlobalCameraState>): void {
@@ -824,6 +834,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     if (transition.isActive()) {
       transition.cancel(takeoverState);
     }
+    sigmaRoot.dataset.viewTransition = "";
     if (transition.isGuardingStaleAnimation()) {
       disposeCancelledViewTransitionGuard();
       cancelledViewTransitionGuard = transition;
@@ -844,7 +855,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
 
   function applySpotlightCameraResult(result: SigmaCommunitySpotlightCameraResult): void {
     cameraSpotlightKey = result.communityId ? sigmaSpotlightCameraKey(adapterData) : null;
-    if (result.movement === "animated") {
+    if (result.movement === "animated" && result.transition) {
+      activeViewTransition = result.transition;
+      sigmaRoot.dataset.viewTransition = "active";
       disposeCancelledViewTransitionGuard();
       startProjectCameraFrameTracking(
         SIGMA_COMMUNITY_SPOTLIGHT_CAMERA_ANIMATION_MS,

@@ -40,7 +40,7 @@ describe("Sigma global camera helpers", () => {
 
     assert.deepEqual(
       maybeAnimateSigmaCommunitySpotlightCamera(animatedSigma, reducedMotionRoot, adapterDataFixture(), "community-a", null),
-      { communityId: "community-a", movement: "immediate", skipReason: undefined }
+      { communityId: "community-a", movement: "immediate", transition: null }
     );
     assert.equal(animatedSigma.animateCalls, 0);
     assert.equal(animatedSigma.setStateCalls, 1);
@@ -48,7 +48,7 @@ describe("Sigma global camera helpers", () => {
     const noAnimateSigma = sigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 }, false);
     assert.deepEqual(
       maybeAnimateSigmaCommunitySpotlightCamera(noAnimateSigma, rootWithReducedMotion(false), adapterDataFixture(), "community-a", null),
-      { communityId: "community-a", movement: "immediate", skipReason: "animate-unavailable" }
+      { communityId: "community-a", movement: "immediate", skipReason: "animate-unavailable", transition: null }
     );
     assert.equal(noAnimateSigma.setStateCalls, 1);
   });
@@ -67,7 +67,26 @@ describe("Sigma global camera helpers", () => {
     assert.equal(result.communityId, "community-a");
     assert.equal(result.movement, "animated");
     assert.equal(result.skipReason, undefined);
+    assert.equal(result.transition?.isActive(), true);
     assert.equal(sigma.animateCalls, 1);
+  });
+
+  it("lets community spotlight animations be taken over by a newer camera intent", () => {
+    const sigma = transitionSigmaLike({ x: 0, y: 0, angle: 0, ratio: 1 });
+    const result = maybeAnimateSigmaCommunitySpotlightCamera(
+      sigma,
+      rootWithReducedMotion(false),
+      adapterDataFixture(),
+      "community-a",
+      null
+    );
+
+    result.transition?.cancel({ x: 3, y: 4, ratio: 1.2 });
+    sigma.forceAnimatedState({ x: 28, y: 30, ratio: 0.75 });
+
+    assert.equal(result.transition?.isActive(), false);
+    assert.deepEqual(sigma.getCamera?.().getState?.(), { x: 3, y: 4, angle: 0, ratio: 1.2 });
+    assert.deepEqual(sigma.setStateCalls.at(-1), { x: 3, y: 4, ratio: 1.2 });
   });
 
   it("distinguishes settled spotlight from unavailable camera", () => {
@@ -89,12 +108,14 @@ describe("Sigma global camera helpers", () => {
     assert.deepEqual(settled, {
       communityId: "community-a",
       movement: "skipped",
-      skipReason: "already-settled"
+      skipReason: "already-settled",
+      transition: null
     });
     assert.deepEqual(unavailable, {
       communityId: "community-a",
       movement: "skipped",
-      skipReason: "camera-unavailable"
+      skipReason: "camera-unavailable",
+      transition: null
     });
   });
 
@@ -381,7 +402,7 @@ describe("Sigma global camera helpers", () => {
 
     assert.deepEqual(
       maybeAnimateSigmaCommunitySpotlightCamera(sigma, rootWithReducedMotion(false), adapterDataFixture(), null, null),
-      { communityId: null, movement: "skipped", skipReason: "no-community" }
+      { communityId: null, movement: "skipped", skipReason: "no-community", transition: null }
     );
     assert.equal(sigma.setStateCalls, 0);
     assert.equal(sigma.animateCalls, 0);

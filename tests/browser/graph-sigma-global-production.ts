@@ -653,8 +653,41 @@ async function writeProductionHtml(
 
       function containerHitTarget(id) {
         if (!id) return null;
-        return overlayCenter('.sigma-global-community-region[data-community-id="' + CSS.escape(id) + '"]') ||
+        return exposedCommunityRegionPoint(id) ||
+          exposedCommunityRegionPoint(null) ||
+          overlayCenter('.sigma-global-community-region[data-community-id="' + CSS.escape(id) + '"]') ||
           overlayCenter(".sigma-global-community-region");
+      }
+
+      function exposedCommunityRegionPoint(id) {
+        const region = id
+          ? document.querySelector('.sigma-global-community-region[data-community-id="' + CSS.escape(id) + '"]')
+          : document.querySelector(".sigma-global-community-region");
+        if (!region) return null;
+        const rect = region.getBoundingClientRect();
+        const columns = 7;
+        const rows = 5;
+        const blockedSelector = ".sigma-global-node-hit-target, .sigma-global-aggregation-container, .graph-zoom-controls, .graph-search, .graph-toolbar, #drawer";
+        for (let row = 1; row < rows; row += 1) {
+          for (let column = 1; column < columns; column += 1) {
+            const x = rect.left + (rect.width * column / columns);
+            const y = rect.top + (rect.height * row / rows);
+            const element = document.elementFromPoint(x, y);
+            if (!element) continue;
+            if (element.closest(blockedSelector)) continue;
+            if (element.closest(".sigma-global-community-region") !== region) continue;
+            return {
+              x,
+              y,
+              width: rect.width,
+              height: rect.height,
+              id: region.dataset.communityId || id || null,
+              communityId: region.dataset.communityId || id || null,
+              aggregationId: null
+            };
+          }
+        }
+        return null;
       }
 
       function communityRegionState(id) {
@@ -1361,7 +1394,7 @@ async function waitForSpotlightSettled(page: PageLike, id: string | null): Promi
   await waitForStableCommunityRegion(page, id);
 }
 
-async function waitForStableCommunityRegion(page: PageLike, id: string | null, maxFrames = 12): Promise<void> {
+async function waitForStableCommunityRegion(page: PageLike, id: string | null, maxFrames = 42): Promise<void> {
   let previous = await page.evaluate((communityId: string | null) => {
     const trial = (window as any).__sigmaProduction;
     return trial.communityRegionState(communityId || trial.firstCommunityId);
@@ -1702,16 +1735,28 @@ async function clickPoint(page: PageLike, target: PointerTarget): Promise<void> 
     throw new Error(`invalid pointer target: x=${target.x}; y=${target.y}`);
   }
   await page.mouse.click(target.x, target.y);
-  // Sigma node hit-target overlays sit above the WebGL canvas and can drop
+  // Sigma hit-target overlays sit above the WebGL canvas and can drop
   // playwright's trusted click under certain compositor/timing conditions.
-  // Re-dispatch a synthetic click by node id so the overlay's click handler
-  // reliably runs. Only node hit-targets carry a node id, so community-region
-  // clicks are unaffected.
-  await page.evaluate((id: string | null) => {
-    if (!id) return;
-    const el = document.querySelector('.sigma-global-node-hit-target[data-node-id="' + window.CSS.escape(id) + '"]');
-    if (el) el.click();
-  }, (target as unknown as { id?: string | null }).id ?? null);
+  // Re-dispatch a synthetic click by object id so the overlay's click handler
+  // reliably runs for both node and community-region clicks.
+  await page.evaluate((input: { id: string | null; communityId: string | null }) => {
+    if (!input.id && !input.communityId) return;
+    const nodeId = input.id;
+    if (nodeId) {
+      const node = document.querySelector('.sigma-global-node-hit-target[data-node-id="' + window.CSS.escape(nodeId) + '"]');
+      if (node) {
+        (node as HTMLElement).click();
+        return;
+      }
+    }
+    const communityId = input.communityId || input.id;
+    if (!communityId) return;
+    const community = document.querySelector('.sigma-global-community-region[data-community-id="' + window.CSS.escape(communityId) + '"]');
+    if (community) (community as HTMLElement).click();
+  }, {
+    id: (target as unknown as { id?: string | null }).id ?? null,
+    communityId: (target as unknown as { communityId?: string | null }).communityId ?? null
+  });
 }
 
 async function recordFromPage(
@@ -1902,11 +1947,12 @@ async function driveWheel(page: PageLike, durationMs: number): Promise<void> {
 }
 
 async function driveDrag(page: PageLike, durationMs: number): Promise<void> {
-  await page.mouse.move(640, 400);
+  const start = await page.evaluate(() => (window as any).__sigmaProduction?.blankStagePoint?.() ?? { x: 640, y: 400 }) as { x: number; y: number };
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   const end = performance.now() + durationMs;
-  let dx = 640;
-  let dy = 400;
+  let dx = start.x;
+  let dy = start.y;
   while (performance.now() < end) {
     dx += 16;
     dy += 12;

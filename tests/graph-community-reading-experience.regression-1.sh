@@ -221,7 +221,7 @@ JSON
 
 HOME="$tmp_dir/home" HOST=127.0.0.1 PORT="$server_port" "$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/workbench/server/src/index.ts" > "$tmp_dir/server.log" 2>&1 &
 server_pid="$!"
-HOME="$tmp_dir/home" LLM_WIKI_AGENT_API_ORIGIN="http://127.0.0.1:$server_port" npm run dev -w @llm-wiki-agent/web -- --host 127.0.0.1 --port "$web_port" --force > "$tmp_dir/web.log" 2>&1 &
+HOME="$tmp_dir/home" LLM_WIKI_AGENT_API_ORIGIN="http://127.0.0.1:$server_port" LLM_WIKI_AGENT_DISABLE_HMR=1 npm run dev -w @llm-wiki-agent/web -- --host 127.0.0.1 --port "$web_port" --force > "$tmp_dir/web.log" 2>&1 &
 web_pid="$!"
 
 for _ in $(seq 1 120); do
