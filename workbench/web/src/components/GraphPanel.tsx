@@ -24,6 +24,10 @@ import {
 } from "../lib/api";
 import type { GraphSelectionCommand } from "../lib/graph-summary-actions";
 import { applyCommunityEnter } from "../lib/graph-community-enter";
+import {
+	graphDrawerOverlayActive,
+	shouldAccommodateNodeDrawer
+} from "../lib/graph-node-drawer-accommodation";
 import { cn } from "../lib/utils";
 import { DEFAULT_GRAPH_STATUS, type GraphStatusKind, type GraphStatusSnapshot } from "../lib/view-status";
 
@@ -44,6 +48,9 @@ interface Props {
 	pendingDiff?: GraphDiff | null;
 	refreshToken?: number;
 	onDiffConsumed?: () => void;
+	// #122：右侧节点详情抽屉是否全屏。社区阅读普通单击节点打开抽屉时，宽屏并排布局下
+	// 镜头让位到剩余画布；窄屏覆盖/全屏由策略判定为不让位。
+	drawerFullscreen?: boolean;
 }
 
 interface ResetNotice {
@@ -79,6 +86,7 @@ export function GraphPanel({
 	pendingDiff,
 	refreshToken = 0,
 	onDiffConsumed,
+	drawerFullscreen = false,
 }: Props) {
 	const hostRef = useRef<HTMLDivElement | null>(null);
 	const engineRef = useRef<GraphEngine | null>(null);
@@ -96,6 +104,7 @@ export function GraphPanel({
 	const onGraphVisibilityChangeRef = useRef(onGraphVisibilityChange);
 	const onSelectionChangeRef = useRef(onSelectionChange);
 	const onViewResetRef = useRef(onViewReset);
+	const drawerFullscreenRef = useRef(drawerFullscreen);
 	const diffQueueRef = useRef(new GraphDiffQueue({ visible: true }));
 	const lastRefreshTokenRef = useRef(refreshToken);
 	const devGraphTestRef = useRef("");
@@ -239,6 +248,10 @@ export function GraphPanel({
 	useLayoutEffect(() => {
 		onSelectionChangeRef.current = onSelectionChange;
 	}, [onSelectionChange]);
+
+	useLayoutEffect(() => {
+		drawerFullscreenRef.current = drawerFullscreen;
+	}, [drawerFullscreen]);
 
 	useLayoutEffect(() => {
 		onStatusChange?.({
@@ -463,6 +476,15 @@ export function GraphPanel({
 			aggregationMarkers,
 			capabilities: createGraphWorkbenchCapabilities({
 				onOpenPage: (payload) => onOpenPageRef.current?.(payload),
+				// #122：社区阅读普通单击节点（非 Shift 多选）触发右侧抽屉的镜头让位。窄屏覆盖
+				// 抽屉/全屏阅读面板由策略判定为不让位；reduced motion 由引擎层直跳保持节点可见。
+				onCommunityNodeOpen: (nodeId) => {
+					if (!shouldAccommodateNodeDrawer({
+						overlay: graphDrawerOverlayActive(),
+						drawerFullscreen: drawerFullscreenRef.current,
+					})) return;
+					engineRef.current?.accommodateNodeForDrawer(nodeId);
+				},
 				onSelectionChange: (nextSelection) => onSelectionChangeRef.current?.(nextSelection),
 				onSelectionClear: () => onSelectionChangeRef.current?.(null),
 				onViewReset: () => {

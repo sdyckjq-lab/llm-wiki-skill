@@ -1092,6 +1092,7 @@ function App() {
 									pendingDiff={pendingGraphDiff}
 									refreshToken={graphRefreshToken}
 									onDiffConsumed={() => setPendingGraphDiff(null)}
+									drawerFullscreen={drawerFullscreen}
 								/>
 							)}
 						</div>
