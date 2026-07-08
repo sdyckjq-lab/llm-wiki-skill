@@ -106,6 +106,7 @@ export interface GraphRendererAdapterEdge {
     relationFocusDepth: GraphRelationFocusDepth;
     skeleton: boolean;
     traceable: boolean;
+    selectedRelation: boolean;
   };
 }
 
@@ -297,7 +298,8 @@ export function buildGraphRendererAdapterData(
         communityMapLayer: edge.communityMapLayer,
         relationFocusDepth: edge.relationFocusDepth,
         skeleton: edge.skeleton,
-        traceable: edge.traceable
+        traceable: edge.traceable,
+        selectedRelation: edge.selectedRelation
       }
     };
   });

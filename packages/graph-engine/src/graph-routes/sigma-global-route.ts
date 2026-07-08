@@ -89,7 +89,7 @@ export function sigmaGlobalHitActionForSigmaHit(
 }
 
 export type SigmaCommunityReadingHitAction =
-  | { kind: "select"; selection: SelectionInput; relationFocusNodeId: NodeId }
+  | { kind: "select"; selection: SelectionInput; relationFocusNodeId: NodeId | null }
   | { kind: "open-node"; nodeId: NodeId; selection: SelectionInput }
   | { kind: "edge-preview"; edgeId: string }
   | { kind: "clear" }
@@ -112,7 +112,12 @@ export function sigmaCommunityReadingHitActionForSigmaHit(
     };
   }
   const selection = communityReadingSelectionInputForAdditiveNodeHit(data, current, target.id);
-  return selection ? { kind: "select", selection, relationFocusNodeId: target.id } : { kind: "clear" };
+  // #136 Shift multi-select: do NOT pin single-node relation focus to the
+  // last-clicked node (that would fan out its first-degree edges, violating
+  // "only real relations between selected nodes"). Pass null so the model
+  // drives emphasis from between-selected real edges instead. A subsequent
+  // hover still previews a single node's first-degree relations transiently.
+  return selection ? { kind: "select", selection, relationFocusNodeId: null } : { kind: "clear" };
 }
 
 export function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererFactoryInput): GraphFacadeRenderer {

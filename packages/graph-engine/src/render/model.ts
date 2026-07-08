@@ -12,7 +12,7 @@ import { getCommunityColor } from "../themes";
 import { computeCommunityWash } from "./community-wash";
 import { GRAPH_WORLD_SIZE, worldBoundsForPoints, worldPointToCssPercentPoint, worldPointToMinimapPoint, type GraphWorldBounds } from "./geometry";
 import { pinPositionToWorldPoint } from "./pin-position";
-import { resolveGraphRelationFocus, type GraphRelationFocusDepth } from "./relation-focus";
+import { resolveGraphRelationFocus, resolveGraphSelectedNodeRelations, type GraphRelationFocusDepth } from "./relation-focus";
 
 export type DensityMode = "card" | "compact-card" | "point-plus-focus" | "overview";
 export type NodeDisplayMode = "card" | "compact-card" | "point" | "overview";
@@ -189,6 +189,10 @@ export interface RenderableEdge {
   relationFocusDepth: GraphRelationFocusDepth;
   // Phase 2: shared local-map edge layer, derived from skeleton/interaction signals.
   communityMapLayer: CommunityMapEdgeLayer;
+  // #136: true only for a REAL edge whose both endpoints are in a Shift
+  // multi-selection. Decided from the edge set directly (never invented), so
+  // selection emphasis stays inside the selected set.
+  selectedRelation: boolean;
 }
 
 export interface RenderableCommunity {
@@ -540,6 +544,15 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
     ...relationFocusNodeSet,
     ...relationFocusState.secondNodeIds
   ]);
+  // #136 Shift multi-select: real relations whose both endpoints are selected.
+  // Only computed for an explicit nodes-selection with >=2 nodes, and only from
+  // the real filtered edge set, so selection emphasis never invents links.
+  const multiSelectNodeIds =
+    options.selection?.kind === "nodes" && options.selection.ids.length >= 2 ? options.selection.ids : [];
+  const selectedNodeRelations = resolveGraphSelectedNodeRelations({
+    selectedNodeIds: multiSelectNodeIds,
+    edges: filteredVisibleEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target }))
+  });
   const aggregationMarkers = options.aggregationMarkers ?? [];
   const stableCoreNodeIds = selectStableCoreNodeIds(filteredVisibleNodes, budgetLimits.maxLabels, {
     labelNodeIds: labelIds,
@@ -752,8 +765,7 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
     const relationType = normalizeEdgeRelationType(edge);
     const localMapLayer = communityMapEdgeLayer(edge, {
       skeletonEdgeIds: stableSkeletonEdgeSet,
-      interactionEdgeIds: interactionEdgeIdSet,
-      relationFocusDepth: relationFocusState.edgeDepthById.get(edge.id) ?? "none"
+      interactionEdgeIds: interactionEdgeIdSet
     });
     return [{
       id: edge.id,
@@ -771,7 +783,8 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
       skeleton: stableSkeletonEdgeSet.has(edge.id),
       traceable: interactionEdgeIdSet.has(edge.id),
       relationFocusDepth: relationFocusState.edgeDepthById.get(edge.id) ?? "none",
-      communityMapLayer: localMapLayer
+      communityMapLayer: localMapLayer,
+      selectedRelation: selectedNodeRelations.betweenSelectedEdgeIds.has(edge.id)
     }];
   });
   const renderedEdgeIds = new Set(edges.map((edge) => edge.id));
@@ -1620,17 +1633,23 @@ function communityMapNodeTier(
   return "peripheral";
 }
 
+// STATIC community-map edge layer (#135/#136). This is intentionally decoupled
+// from the interaction state: it expresses only structural prominence
+// (skeleton = spanning-forest structure line, related = traceable interaction
+// baseline, background = faint context) and stays STABLE across hover/selection.
+// The interaction emphasis (hover/select first-degree, Shift multi-select) is a
+// SEPARATE dimension — relationFocusDepth and selectedRelation — that the Sigma
+// style composes on top. Decoupling is what prevents #136 hover from quietly
+// rewriting the #135 skeleton label (e.g. a second-degree focus edge used to be
+// relabeled "skeleton", and a skeleton edge first-degree to a hover was demoted
+// to "related"). The label is now structural-only; depth is read separately.
 function communityMapEdgeLayer(
   edge: AtlasEdge,
   signals: {
     skeletonEdgeIds: Set<string>;
     interactionEdgeIds: Set<string>;
-    relationFocusDepth: GraphRelationFocusDepth;
   }
 ): CommunityMapEdgeLayer {
-  if (signals.relationFocusDepth === "first") return "related";
-  if (signals.relationFocusDepth === "second") return "skeleton";
-  if (signals.relationFocusDepth === "unrelated") return "background";
   if (signals.skeletonEdgeIds.has(edge.id)) return "skeleton";
   if (signals.interactionEdgeIds.has(edge.id)) return "related";
   return "background";

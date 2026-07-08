@@ -170,7 +170,8 @@ describe("Sigma global renderer production boundary", () => {
       sourceCommunityId: "adapter-community",
       targetCommunityId: "adapter-community",
       communityMapLayer: "skeleton",
-      relationFocusDepth: "none"
+      relationFocusDepth: "none",
+      selectedRelation: false
     });
     assert.equal(graph.source("adapter-edge"), "render-alpha");
     assert.equal(graph.target("adapter-edge"), "render-beta");
@@ -246,7 +247,8 @@ describe("Sigma global renderer production boundary", () => {
       sourceCommunityId: "adapter-community",
       targetCommunityId: "adapter-community",
       communityMapLayer: "skeleton",
-      relationFocusDepth: "none"
+      relationFocusDepth: "none",
+      selectedRelation: false
     });
   });
 
@@ -365,7 +367,18 @@ describe("Sigma global renderer production boundary", () => {
     const communityBase = adapterDataWithEdgeConfidence(communityReadingAdapterDataFixture(), "INFERRED");
     const communityData: GraphRendererAdapterData = {
       ...communityBase,
-      edges: communityBase.edges.map((edge) => ({ ...edge, render: { ...edge.render, communityMapLayer: "background" as const } }))
+      edges: communityBase.edges.map((edge) => ({
+        ...edge,
+        render: {
+          ...edge.render,
+          communityMapLayer: "background" as const,
+          // #136: neutralize the interaction dimension (the fixture sets depth
+          // "first" on all edges) so confidence is measured in isolation, the way
+          // this test isolates the skeleton layer via communityMapLayer "background".
+          relationFocusDepth: "none" as const,
+          selectedRelation: false
+        }
+      }))
     };
     const globalGraph = buildSigmaGlobalGraphologyGraph(globalData, { GraphologyGraph });
     const communityGraph = buildSigmaGlobalGraphologyGraph(communityData, { GraphologyGraph });

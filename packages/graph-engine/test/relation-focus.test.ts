@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveGraphRelationFocus } from "../src/render/relation-focus";
+import { resolveGraphRelationFocus, resolveGraphSelectedNodeRelations } from "../src/render/relation-focus";
 
 describe("graph relation focus", () => {
   it("classifies focus, first-degree, second-degree, and unrelated nodes", () => {
@@ -111,5 +111,59 @@ describe("graph relation focus", () => {
     assert.equal(focus.nodeDepthById.get("B"), "first");
     assert.equal(focus.edgeDepthById.get("A-B-1"), "first");
     assert.equal(focus.edgeDepthById.get("B-A-2"), "first");
+  });
+});
+
+// #136 Shift multi-select: emphasize only real relations whose BOTH endpoints
+// are in the selected set. No invented links, no single-endpoint fan-out.
+describe("graph selected-node relations (Shift multi-select)", () => {
+  const edges = [
+    { id: "A-B", source: "A", target: "B" },
+    { id: "B-C", source: "B", target: "C" },
+    { id: "C-D", source: "C", target: "D" },
+    { id: "D-E", source: "D", target: "E" }
+  ];
+
+  it("keeps only real edges whose both endpoints are selected", () => {
+    const result = resolveGraphSelectedNodeRelations({
+      selectedNodeIds: ["B", "C", "D"],
+      edges
+    });
+
+    // B-C and C-D have both endpoints selected; A-B (A not selected) and D-E (E not) do not.
+    assert.deepEqual([...result.betweenSelectedEdgeIds].sort(), ["B-C", "C-D"]);
+  });
+
+  it("ignores edges that touch only one selected node (no fan-out)", () => {
+    const result = resolveGraphSelectedNodeRelations({
+      selectedNodeIds: ["B", "D"],
+      edges
+    });
+
+    // No edge directly connects B and D, so nothing is emphasized — even though
+    // both are selected and each has its own first-degree neighbors.
+    assert.deepEqual([...result.betweenSelectedEdgeIds], []);
+  });
+
+  it("never invents edges: output is always a subset of input edge ids", () => {
+    const result = resolveGraphSelectedNodeRelations({
+      selectedNodeIds: ["A", "B", "C", "D", "E"],
+      edges
+    });
+
+    const inputIds = new Set(edges.map((edge) => edge.id));
+    for (const id of result.betweenSelectedEdgeIds) {
+      assert.ok(inputIds.has(id), `invented edge ${id} must not appear`);
+    }
+    assert.deepEqual([...result.betweenSelectedEdgeIds].sort(), ["A-B", "B-C", "C-D", "D-E"]);
+  });
+
+  it("returns no between-selected edges for a single selected node", () => {
+    const result = resolveGraphSelectedNodeRelations({
+      selectedNodeIds: ["B"],
+      edges
+    });
+
+    assert.deepEqual([...result.betweenSelectedEdgeIds], []);
   });
 });

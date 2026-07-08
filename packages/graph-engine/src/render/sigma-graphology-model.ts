@@ -49,6 +49,7 @@ export interface SigmaGlobalGraphologyEdgeAttributes {
   targetCommunityId: string | null;
   communityMapLayer: CommunityMapEdgeLayer;
   relationFocusDepth: GraphRelationFocusDepth;
+  selectedRelation: boolean;
 }
 
 export interface SigmaGlobalGraphologyCommunityAttributes {
@@ -204,12 +205,31 @@ export function sigmaGlobalNodeAttributes(
   const spotlight = sigmaGlobalNodeSpotlightState(node, selectedCommunityIds);
   const baseSize = sigmaGlobalNodeSize(node);
   const baseColor = sigmaGlobalNodeColor(node, communityColorById, theme);
+  // Community-reading interaction emphasis (#136). relationFocusDepth is only
+  // resolved for a focused community (it is "none" on the global route), so this
+  // is implicitly scoped to community reading without a flag. The focus node and
+  // first-degree neighbors grow; second-degree reads as faint context; unrelated
+  // recedes. Composed on top of the spotlight/structural baseline, never erasing
+  // the static community-map dot, and never changing the relation-type color.
+  const depth = node.relationFocusDepth ?? "none";
+  let nodeSize = spotlight.dimmed ? baseSize * 0.72 : baseSize;
+  let nodeAlpha = spotlight.dimmed ? 0.2 : 1;
+  if (depth === "focus") {
+    nodeSize *= 1.4;
+  } else if (depth === "first") {
+    nodeSize *= 1.15;
+  } else if (depth === "second") {
+    nodeAlpha *= 0.55;
+  } else if (depth === "unrelated") {
+    nodeSize *= 0.8;
+    nodeAlpha *= 0.16;
+  }
   return {
     x: finiteNumber(node.point.x, 0),
     y: finiteNumber(node.point.y, 0),
     label: sigmaGlobalNodeCanvasLabel(node, options),
-    size: spotlight.dimmed ? roundNumber(baseSize * 0.72, 2) : baseSize,
-    color: spotlight.dimmed ? rgbaColor(baseColor, 0.2) : baseColor,
+    size: roundNumber(nodeSize, 2),
+    color: nodeAlpha >= 1 ? baseColor : rgbaColor(baseColor, nodeAlpha),
     type: "circle",
     graphNodeType: node.type,
     communityId: node.communityId,
@@ -290,7 +310,8 @@ export function sigmaGlobalEdgeAttributes(
     sourceCommunityId: edge.sourceCommunityId,
     targetCommunityId: edge.targetCommunityId,
     communityMapLayer: edge.render.communityMapLayer,
-    relationFocusDepth: edge.render.relationFocusDepth ?? "none"
+    relationFocusDepth: edge.render.relationFocusDepth ?? "none",
+    selectedRelation: edge.render.selectedRelation ?? false
   };
 }
 
@@ -345,15 +366,20 @@ export function sigmaGlobalEdgeStyle(
     }
   }
 
-  // Community reading edge layers (#135): structure connection lines (skeleton)
-  // read clearly while background relations recede; related edges stay in between.
-  // Color still means relation type only (ADR-23); the layer adjusts weight (size)
-  // and presence (alpha), never the relation color. Global route ignores the layer.
-  // Reads the STATIC communityMapLayer only. #136 hover/selection reuses the
-  // "skeleton" label for second-degree focus edges, so distinguishing interaction-
-  // state layering here (a separate interactionRole, or also reading
-  // relationFocusDepth) is a follow-up — otherwise hover can quietly drop static
-  // skeleton emphasis.
+  // Community reading edge emphasis (#135 + #136). Two orthogonal dimensions,
+  // composed so the static structure is never quietly dropped by interaction:
+  //
+  // 1. STATIC structural layer (#135) — `communityMapLayer`, stable across
+  //    hover/selection. skeleton (structure line) reads clearly, background
+  //    recedes, related is baseline. This is the at-rest readability.
+  // 2. INTERACTION (#136) — `relationFocusDepth` (hover/single-select: first is
+  //    strongest, second is faint context, unrelated recedes) plus
+  //    `selectedRelation` (Shift multi-select: real edges between selected
+  //    nodes). Applied on top of the static layer, so a skeleton edge that is
+  //    first-degree to a hover keeps its skeleton boost AND gains first-degree
+  //    emphasis — it is never demoted below its rest state (the #135↔#136
+  //    regression). Color still means relation type only (ADR-23); only weight
+  //    (size) and presence (alpha) move. Global route ignores both dimensions.
   if (context.communityReading) {
     const layer = edge.render?.communityMapLayer;
     if (layer === "skeleton") {
@@ -362,6 +388,23 @@ export function sigmaGlobalEdgeStyle(
     } else if (layer === "background") {
       size *= 0.7;
       alpha *= 0.55;
+    }
+
+    const depth = edge.render?.relationFocusDepth ?? "none";
+    if (depth === "first") {
+      size += 0.9;
+      alpha = alpha * 1.25 + 0.12;
+    } else if (depth === "second") {
+      size *= 0.85;
+      alpha *= 0.5;
+    } else if (depth === "unrelated") {
+      size *= 0.55;
+      alpha *= 0.14;
+    }
+
+    if (edge.render?.selectedRelation) {
+      size += 0.8;
+      alpha = alpha * 1.2 + 0.1;
     }
   }
 

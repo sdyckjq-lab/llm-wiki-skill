@@ -10,10 +10,12 @@ import {
   canPatchSigmaGlobalGraphAttributes,
   patchSigmaGlobalGraphAttributes,
   sigmaGlobalEdgeStyle,
+  sigmaGlobalNodeAttributes,
   sigmaGlobalNodeColor
 } from "../src/render/sigma-graphology-model";
 import { getThemeTokens } from "../src/themes";
 import type { GraphRendererAdapterNode, GraphRendererAdapterEdge } from "../src/render/adapter";
+import type { GraphRelationFocusDepth } from "../src/render/relation-focus";
 import type { GraphData } from "../src/types";
 
 describe("Sigma graphology render model", () => {
@@ -76,7 +78,8 @@ describe("Sigma graphology render model", () => {
       sourceCommunityId: "community-a",
       targetCommunityId: "community-a",
       communityMapLayer: "skeleton",
-      relationFocusDepth: "none"
+      relationFocusDepth: "none",
+      selectedRelation: false
     });
     assert.deepEqual(
       sigmaGlobalEdgeStyle({
@@ -275,7 +278,7 @@ function adapterDataFixture(options: {
         relationType: "depends-on",
         confidence: "EXTRACTED",
         weight: 0.75,
-        render: { strokeWidth: 3, opacity: 0.42, communityMapLayer: "skeleton", relationFocusDepth: "none", skeleton: true, traceable: true }
+        render: { strokeWidth: 3, opacity: 0.42, communityMapLayer: "skeleton", relationFocusDepth: "none", skeleton: true, traceable: true, selectedRelation: false }
       }
     ],
     communities: [
@@ -592,6 +595,7 @@ function adapterNode(overrides: Partial<GraphRendererAdapterNode> = {}): GraphRe
     selected: false,
     searchHit: false,
     relationFocusDepth: "none",
+    aggregationIds: [],
     pinHint: { pinned: false },
     point: { x: 0, y: 0 },
     render: { labelVisible: false, displayMode: "point", priority: 0, visualRole: "normal" },
@@ -687,17 +691,202 @@ describe("sigmaGlobalEdgeStyle community reading layers", () => {
   });
 });
 
-function layerEdge(layer: "skeleton" | "related" | "background"): GraphRendererAdapterEdge {
+// #136 community interaction: Sigma composes the STATIC communityMapLayer with
+// the interaction depth (relationFocusDepth) and Shift multi-select
+// (selectedRelation). All assertions check FINAL size/alpha — not label values
+// — so a missing style branch cannot hide behind a correct label (eng review F4).
+describe("sigmaGlobalEdgeStyle community reading interaction (#136)", () => {
+  it("makes a first-degree interaction edge the thickest and brightest, ahead of static skeleton", () => {
+    const first = sigmaGlobalEdgeStyle(styledEdge({ layer: "skeleton", depth: "first" }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const skeleton = sigmaGlobalEdgeStyle(styledEdge({ layer: "skeleton", depth: "none" }), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(first.size > skeleton.size, `first-degree size (${first.size}) must exceed static skeleton (${skeleton.size})`);
+    assert.ok(
+      alphaOf(first.color) > alphaOf(skeleton.color),
+      `first-degree alpha (${alphaOf(first.color)}) must exceed static skeleton (${alphaOf(skeleton.color)})`
+    );
+  });
+
+  it("preserves the static skeleton boost under first-degree hover (no quiet skeleton drop)", () => {
+    // The #135↔#136 regression: a skeleton edge first-degree to the hover used to
+    // be relabeled "related" and LOSE its skeleton boost. It must stay at least as
+    // prominent as its own no-hover state.
+    const resting = sigmaGlobalEdgeStyle(styledEdge({ layer: "skeleton", depth: "none" }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const hoveredFirst = sigmaGlobalEdgeStyle(styledEdge({ layer: "skeleton", depth: "first" }), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(hoveredFirst.size >= resting.size, "first-degree hover must not thin a skeleton edge");
+    assert.ok(alphaOf(hoveredFirst.color) >= alphaOf(resting.color), "first-degree hover must not dim a skeleton edge");
+  });
+
+  it("orders interaction depth monotonically: first > second > unrelated", () => {
+    const first = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "first" }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const second = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "second" }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const unrelated = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "unrelated" }), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(first.size > second.size, `first size (${first.size}) must exceed second (${second.size})`);
+    assert.ok(second.size > unrelated.size, `second size (${second.size}) must exceed unrelated (${unrelated.size})`);
+    assert.ok(alphaOf(first.color) > alphaOf(unrelated.color), "first alpha must exceed unrelated");
+    assert.ok(alphaOf(second.color) > alphaOf(unrelated.color), "second alpha must exceed unrelated");
+  });
+
+  it("recedes unrelated edges below the no-focus baseline while first-degree rises above it", () => {
+    const baseline = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "none" }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const first = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "first" }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const unrelated = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "unrelated" }), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(first.size > baseline.size, "hover must promote first-degree edges above baseline");
+    assert.ok(alphaOf(first.color) > alphaOf(baseline.color), "hover must brighten first-degree edges above baseline");
+    assert.ok(unrelated.size < baseline.size, "hover must thin unrelated edges below baseline");
+    assert.ok(alphaOf(unrelated.color) < alphaOf(baseline.color), "hover must dim unrelated edges below baseline");
+  });
+
+  it("emphasizes a Shift-multi-select selectedRelation edge like a first-degree edge", () => {
+    const selected = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", selectedRelation: true }), "shan-shui", undefined, new Set(), { communityReading: true });
+    const baseline = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", selectedRelation: false }), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(selected.size > baseline.size, "selectedRelation edge must be thicker than a non-selected edge");
+    assert.ok(alphaOf(selected.color) > alphaOf(baseline.color), "selectedRelation edge must be brighter than a non-selected edge");
+  });
+
+  it("ignores interaction depth outside community reading so the global route stays unchanged", () => {
+    const first = sigmaGlobalEdgeStyle(styledEdge({ layer: "skeleton", depth: "first" }), "shan-shui", undefined, new Set(), {});
+    const unrelated = sigmaGlobalEdgeStyle(styledEdge({ layer: "background", depth: "unrelated" }), "shan-shui", undefined, new Set(), {});
+
+    // Global route keys only on relation class/bridge/weight; depth/layer must not move size.
+    assert.equal(first.size, unrelated.size);
+  });
+});
+
+// #136 node emphasis: in community reading, the active node and first-degree
+// neighbors stand out while second/unrelated recede. relationFocusDepth is "none"
+// on the global route, so this is implicitly community-reading-scoped.
+describe("sigmaGlobalNodeAttributes community reading interaction (#136)", () => {
+  const communityColors = new Map<string, string>();
+  const theme = "shan-shui" as const;
+
+  it("makes the focus (hovered/selected) node larger than a baseline point node", () => {
+    const baseline = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "none" }), communityColors, new Set(), theme);
+    const focus = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "focus" }), communityColors, new Set(), theme);
+
+    assert.ok(focus.size > baseline.size, `focus size (${focus.size}) must exceed baseline (${baseline.size})`);
+  });
+
+  it("makes a first-degree neighbor larger than the baseline", () => {
+    const baseline = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "none" }), communityColors, new Set(), theme);
+    const first = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "first" }), communityColors, new Set(), theme);
+
+    assert.ok(first.size > baseline.size, `first-degree size (${first.size}) must exceed baseline (${baseline.size})`);
+  });
+
+  it("recedes an unrelated node: smaller and dimmer than baseline", () => {
+    const baseline = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "none" }), communityColors, new Set(), theme);
+    const unrelated = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "unrelated" }), communityColors, new Set(), theme);
+
+    assert.ok(unrelated.size < baseline.size, "unrelated node must be smaller than baseline");
+    assert.ok(alphaOf(unrelated.color) < alphaOf(baseline.color), "unrelated node must be dimmer than baseline");
+  });
+
+  it("dims a second-degree node as faint context without shrinking it", () => {
+    const baseline = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "none" }), communityColors, new Set(), theme);
+    const second = sigmaGlobalNodeAttributes(adapterNode({ relationFocusDepth: "second" }), communityColors, new Set(), theme);
+
+    assert.equal(second.size, baseline.size, "second-degree node keeps baseline size");
+    assert.ok(alphaOf(second.color) < alphaOf(baseline.color), "second-degree node must be dimmer than baseline");
+  });
+});
+
+// 5-node community where a-b and a-c can land between a {a,b,c} multi-select
+// while c-d and d-e stay outside it. Same shape as the render-model fixture so
+// the between-selected classification is unambiguous.
+function multiSelectCommunityGraphData(): GraphData {
   return {
-    id: "layer-edge",
+    meta: { build_date: "2026-07-08T00:00:00.000Z", wiki_title: "Multi-select fixture", total_nodes: 5, total_edges: 4 },
+    nodes: [
+      { id: "a", label: "Alpha", type: "topic", community: "c1", source_path: "wiki/a.md", weight: 80, x: 10, y: 20 },
+      { id: "b", label: "Beta", type: "entity", community: "c1", source_path: "wiki/b.md", weight: 70, x: 25, y: 35 },
+      { id: "c", label: "Gamma", type: "source", community: "c1", source_path: "wiki/c.md", weight: 60, x: 45, y: 30 },
+      { id: "d", label: "Delta", type: "entity", community: "c1", source_path: "wiki/d.md", weight: 50, x: 65, y: 50 },
+      { id: "e", label: "Epsilon", type: "entity", community: "c1", source_path: "wiki/e.md", weight: 10, x: 85, y: 70 }
+    ],
+    edges: [
+      { id: "a-b", from: "a", to: "b", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "实现", weight: 1 },
+      { id: "a-c", from: "a", to: "c", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.8 },
+      { id: "c-d", from: "c", to: "d", type: "INFERRED", confidence: "INFERRED", relation_type: "衍生", weight: 0.5 },
+      { id: "d-e", from: "d", to: "e", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.4 }
+    ],
+    learning: {
+      version: 1,
+      entry: { recommended_start_node_id: "a", recommended_start_reason: "fixture", default_mode: "global" },
+      views: {
+        path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+        community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+        global: { enabled: true, node_ids: ["a", "b", "c", "d", "e"], degraded: false }
+      },
+      communities: [{ id: "c1", label: "Community 1", node_count: 5, color_index: 0, recommended_start_node_id: "a" }]
+    }
+  };
+}
+
+// #136 end-to-end: Shift multi-select must emphasize only REAL edges between
+// selected nodes, thicker than non-between-selected edges, with no camera/drawer
+// involvement. Exercises the full model → adapter → Sigma graphology path.
+describe("Sigma community reading Shift multi-select (#136)", () => {
+  it("renders real between-selected edges thicker than other community edges", () => {
+    const adapter = buildGraphRendererAdapterData(multiSelectCommunityGraphData(), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      sourceCommunityId: "c1",
+      selection: { kind: "nodes", ids: ["a", "b", "c"] }
+    });
+    const graph = buildSigmaGlobalGraphologyGraph(adapter, { GraphologyGraph });
+
+    // a-b and a-c have both endpoints selected; c-d and d-e do not.
+    const betweenSize = (id: string): number => graph.getEdgeAttribute(id, "size");
+    const ab = betweenSize("a-b");
+    const ac = betweenSize("a-c");
+    const cd = betweenSize("c-d");
+    const de = betweenSize("d-e");
+
+    assert.ok(ab > cd, `between-selected a-b (${ab}) must be thicker than c-d (${cd})`);
+    assert.ok(ac > cd, `between-selected a-c (${ac}) must be thicker than c-d (${cd})`);
+    assert.ok(ab > de && ac > de, "between-selected edges must be thicker than the unrelated d-e edge");
+    // Selected nodes stay full-opacity and readable (selectedRelation never dims).
+    assert.ok(alphaOf(graph.getNodeAttribute("a", "color")) >= alphaOf(graph.getNodeAttribute("d", "color")));
+  });
+});
+
+function layerEdge(layer: "skeleton" | "related" | "background"): GraphRendererAdapterEdge {
+  return styledEdge({ layer });
+}
+// #136 edge fixture: lets a test pin BOTH the static communityMapLayer and the
+// interaction state (relationFocusDepth, selectedRelation) on the same edge, so
+// assertions can prove the Sigma style composes them into final size/alpha
+// instead of trusting a label value (anti-fake-green per #134 eng review F4).
+function styledEdge(options: {
+  layer?: "skeleton" | "related" | "background";
+  depth?: GraphRelationFocusDepth;
+  selectedRelation?: boolean;
+  weight?: number;
+}): GraphRendererAdapterEdge {
+  const layer = options.layer ?? "related";
+  return {
+    id: "styled-edge",
     sourceNodeId: "a",
     targetNodeId: "b",
     sourceCommunityId: "c1",
     targetCommunityId: "c1",
     relationType: "依赖",
     confidence: "EXTRACTED",
-    weight: 0.5,
-    render: { strokeWidth: 1, opacity: 0.3, communityMapLayer: layer, relationFocusDepth: "none", skeleton: false, traceable: false }
+    weight: options.weight ?? 0.5,
+    render: {
+      strokeWidth: 1,
+      opacity: 0.3,
+      communityMapLayer: layer,
+      relationFocusDepth: options.depth ?? "none",
+      skeleton: layer === "skeleton",
+      traceable: false,
+      selectedRelation: options.selectedRelation ?? false
+    }
   } as GraphRendererAdapterEdge;
 }
 

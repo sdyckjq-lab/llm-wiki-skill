@@ -1614,7 +1614,7 @@ describe("selectionInputForSigmaHit", () => {
       {
         kind: "select",
         selection: { kind: "nodes", ids: ["a1"] },
-        relationFocusNodeId: "a1"
+        relationFocusNodeId: null
       }
     );
     assert.deepEqual(
@@ -1622,7 +1622,7 @@ describe("selectionInputForSigmaHit", () => {
       {
         kind: "select",
         selection: { kind: "nodes", ids: ["a1", "a2"] },
-        relationFocusNodeId: "a2"
+        relationFocusNodeId: null
       }
     );
     assert.deepEqual(
@@ -1630,7 +1630,7 @@ describe("selectionInputForSigmaHit", () => {
       {
         kind: "select",
         selection: { kind: "nodes", ids: ["a2"] },
-        relationFocusNodeId: "a1"
+        relationFocusNodeId: null
       }
     );
     assert.deepEqual(

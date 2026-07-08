@@ -36,6 +36,10 @@ describe("sigma shift multi-select hit action boundary", () => {
     // Shift 命中走 select 多选；社区阅读的 select 分支不带 resetCamera（不动镜头）。
     assert.equal(action.kind, "select");
     assert.equal("resetCamera" in action, false);
+    // #136: multi-select must not pin single-node relation focus to the clicked
+    // node (no first-degree fan-out). Emphasis comes from between-selected real
+    // edges instead, so the action carries a null relationFocusNodeId.
+    assert.equal(action.kind === "select" ? action.relationFocusNodeId : "unexpected", null);
   });
 
   it("grows the selection through toggle on successive shift node hits", () => {

@@ -715,6 +715,7 @@ describe("buildRenderableGraph", () => {
     });
 
     const nodeDepths = Object.fromEntries(graph.nodes.map((node) => [node.id, node.relationFocusDepth]));
+    const edgeDepths = Object.fromEntries(graph.edges.map((edge) => [edge.id, edge.relationFocusDepth]));
     const edgeLayers = Object.fromEntries(graph.edges.map((edge) => [edge.id, edge.communityMapLayer]));
 
     assert.equal(graph.selectedNodeId, "b");
@@ -725,13 +726,160 @@ describe("buildRenderableGraph", () => {
       d: "second",
       e: "unrelated"
     });
-    assert.equal(edgeLayers["a-b"], "related");
-    assert.equal(edgeLayers["a-c"], "related");
-    assert.equal(edgeLayers["c-d"], "skeleton");
-    assert.equal(edgeLayers["d-e"], "background");
+    // The interaction depth is carried by relationFocusDepth (the seam reused
+    // from #135), NOT baked into the static communityMapLayer.
+    assert.equal(edgeDepths["a-b"], "first");
+    assert.equal(edgeDepths["a-c"], "first");
+    assert.equal(edgeDepths["c-d"], "second");
+    assert.equal(edgeDepths["d-e"], "unrelated");
+    // The static layer is structural-only and stable: this 5-node community's
+    // spanning skeleton is its full 4-edge tree, so every edge is a structure
+    // line regardless of hover. Hover must NOT rewrite the layer (#135/#136).
+    for (const id of ["a-b", "a-c", "c-d", "d-e"]) {
+      assert.equal(edgeLayers[id], "skeleton", `edge ${id} layer must stay static under hover`);
+    }
     assert.equal(graph.nodes.find((node) => node.id === "a")?.labelVisible, true);
     assert.equal(graph.nodes.find((node) => node.id === "b")?.labelVisible, true);
     assert.ok(graph.nodes.filter((node) => node.labelVisible).length <= graph.budget.limits.maxLabels);
+  });
+
+  it("keeps the static communityMapLayer identical with and without hover (no quiet skeleton drop)", () => {
+    const data = relationFocusCommunityGraph();
+    const base = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" }
+    });
+    const hovered = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      relationFocusNodeId: "a"
+    });
+
+    const baseLayers = Object.fromEntries(base.edges.map((edge) => [edge.id, edge.communityMapLayer]));
+    const hoveredLayers = Object.fromEntries(hovered.edges.map((edge) => [edge.id, edge.communityMapLayer]));
+    // The #135↔#136 fix: the structural layer label must not change when hover
+    // assigns first/second/unrelated depth — otherwise hover quietly drops or
+    // rewrites the static skeleton emphasis.
+    assert.deepEqual(hoveredLayers, baseLayers);
+  });
+
+  it("marks only real edges between Shift-multi-selected nodes and never invents links", () => {
+    const graph = buildRenderableGraph(relationFocusCommunityGraph(), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      selection: { kind: "nodes", ids: ["a", "b", "c"] }
+    });
+
+    const selectedRelation = Object.fromEntries(graph.edges.map((edge) => [edge.id, edge.selectedRelation]));
+    // a-b and a-c have both endpoints selected; c-d (d not selected) and d-e do not.
+    assert.equal(selectedRelation["a-b"], true);
+    assert.equal(selectedRelation["a-c"], true);
+    assert.equal(selectedRelation["c-d"], false);
+    assert.equal(selectedRelation["d-e"], false);
+    // No invented edge id can appear — selectedRelation is only ever read off
+    // real renderable edges.
+    assert.deepEqual(
+      graph.edges.filter((edge) => edge.selectedRelation).map((edge) => edge.id).sort(),
+      ["a-b", "a-c"]
+    );
+  });
+
+  it("marks no selected-relation edge when selected nodes share no direct edge", () => {
+    const graph = buildRenderableGraph(relationFocusCommunityGraph(), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      selection: { kind: "nodes", ids: ["b", "d"] }
+    });
+
+    // b and d are both selected but no edge directly connects them, so nothing
+    // is emphasized — no fan-out to each node's first-degree neighbors.
+    assert.equal(graph.edges.some((edge) => edge.selectedRelation), false);
+  });
+
+  it("leaves no stale emphasis when a hover ends and there is no selection (#136)", () => {
+    const data = relationFocusCommunityGraph();
+    const hovered = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      relationFocusNodeId: "a"
+    });
+    // pointer leave → relationFocusNodeId clears, no selection remains
+    const cleared = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" }
+    });
+
+    // While hovered, interaction depth is active.
+    assert.equal(hovered.nodes.find((node) => node.id === "a")?.relationFocusDepth, "focus");
+    assert.equal(hovered.edges.find((edge) => edge.id === "a-b")?.relationFocusDepth, "first");
+    // After leave, every interaction signal resets to baseline — no residue.
+    assert.equal(cleared.nodes.every((node) => node.relationFocusDepth === "none"), true);
+    assert.equal(cleared.edges.every((edge) => edge.relationFocusDepth === "none"), true);
+    assert.equal(cleared.edges.every((edge) => !edge.selectedRelation), true);
+    // The static structural layer is the same before and after (no stale rewrite).
+    const hoverLayers = Object.fromEntries(hovered.edges.map((edge) => [edge.id, edge.communityMapLayer]));
+    const clearedLayers = Object.fromEntries(cleared.edges.map((edge) => [edge.id, edge.communityMapLayer]));
+    assert.deepEqual(clearedLayers, hoverLayers);
+  });
+
+  it("previews a hovered node over a multi-selection and returns to the multi-select baseline on leave (#136)", () => {
+    const data = relationFocusCommunityGraph();
+    const base = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      selection: { kind: "nodes", ids: ["a", "b"] }
+    });
+    const previewing = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      selection: { kind: "nodes", ids: ["a", "b"] },
+      relationFocusNodeId: "c"
+    });
+
+    // Fixed multi-select baseline: only the real a-b edge is between-selected; no single-node depth.
+    assert.equal(base.edges.find((edge) => edge.id === "a-b")?.selectedRelation, true);
+    assert.equal(base.nodes.every((node) => node.relationFocusDepth === "none"), true);
+
+    // Hovering c temporarily previews c's first-order relations on top of the selection.
+    assert.equal(previewing.nodes.find((node) => node.id === "c")?.relationFocusDepth, "focus");
+    assert.equal(previewing.edges.find((edge) => edge.id === "a-c")?.relationFocusDepth, "first");
+    // The fixed between-selected emphasis survives the preview.
+    assert.equal(previewing.edges.find((edge) => edge.id === "a-b")?.selectedRelation, true);
+
+    // On leave (back to `base`), the preview depth is gone but the selection baseline remains.
+    assert.equal(base.nodes.find((node) => node.id === "c")?.relationFocusDepth, "none");
+    assert.equal(base.edges.find((edge) => edge.id === "a-c")?.relationFocusDepth, "none");
+    assert.equal(base.edges.find((edge) => edge.id === "a-b")?.selectedRelation, true);
+  });
+
+  it("keeps every structure line a real edge and never reintroduces filtered-out edges (#136)", () => {
+    const data = relationFocusCommunityGraph();
+    // Filter out "entity" nodes (b, d, e). Only a (topic) and c (source) survive,
+    // so the only renderable edge is a-c. Structure/relation styling must not
+    // pull c-d, d-e, or a-b back through the skeleton or interaction layer.
+    const graph = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" },
+      typeFilters: { topic: true, source: true, entity: false }
+    });
+
+    const realEdgeIds = new Set(data.edges.map((edge) => edge.id));
+    const survivorIds = new Set(["a", "c"]);
+    const renderedIds = graph.edges.map((edge) => edge.id);
+
+    // No invented edge id; every rendered edge is a real data edge.
+    for (const id of renderedIds) assert.ok(realEdgeIds.has(id), `rendered edge ${id} must be a real data edge`);
+    // Filtered endpoints never come back: every rendered edge stays inside survivors.
+    for (const edge of graph.edges) {
+      assert.ok(survivorIds.has(edge.source), `edge ${edge.id} source ${edge.source} must survive the filter`);
+      assert.ok(survivorIds.has(edge.target), `edge ${edge.id} target ${edge.target} must survive the filter`);
+    }
+    // The skeleton subset is machine-checked against real edges (eng review F4:
+    // turn the "real-edge-only" convention into an assertion).
+    for (const edge of graph.edges) {
+      if (edge.skeleton) assert.ok(realEdgeIds.has(edge.id), `skeleton edge ${edge.id} must be a real data edge`);
+    }
+    assert.deepEqual(renderedIds, ["a-c"]);
   });
 
   it("restores selected-node relation focus when temporary hover focus is removed", () => {

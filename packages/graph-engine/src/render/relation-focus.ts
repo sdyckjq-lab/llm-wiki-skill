@@ -89,3 +89,32 @@ export function resolveGraphRelationFocus(input: ResolveGraphRelationFocusInput)
 
   return { activeNodeId, nodeDepthById, edgeDepthById, firstNodeIds, secondNodeIds, directEdgeIds };
 }
+
+// Shift multi-select classifier (#136): emphasizes only REAL relations whose
+// both endpoints are in the selected set. Unlike resolveGraphRelationFocus (a
+// single active node fanning out to first/second degree), this never reaches
+// beyond the selected set and never invents edges — it only filters input edges
+// by endpoint membership, so user stories #32 / #52 (no fabricated selection
+// links) hold by construction. Invalid selected ids are ignored automatically:
+// they can never be a real edge endpoint, so they contribute nothing.
+export interface ResolveGraphSelectedNodeRelationsInput {
+  selectedNodeIds: string[];
+  edges: GraphRelationFocusEdgeLike[];
+}
+
+export interface GraphSelectedNodeRelationsState {
+  betweenSelectedEdgeIds: Set<string>;
+}
+
+export function resolveGraphSelectedNodeRelations(
+  input: ResolveGraphSelectedNodeRelationsInput
+): GraphSelectedNodeRelationsState {
+  const selected = new Set(input.selectedNodeIds);
+  const betweenSelectedEdgeIds = new Set<string>();
+  for (const edge of input.edges) {
+    if (selected.has(edge.source) && selected.has(edge.target)) {
+      betweenSelectedEdgeIds.add(edge.id);
+    }
+  }
+  return { betweenSelectedEdgeIds };
+}
