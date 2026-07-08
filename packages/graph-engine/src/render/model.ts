@@ -419,6 +419,17 @@ export const GRAPH_COMMUNITY_FOCUS_BUDGETS: Record<GraphCommunityFocusSizeBand, 
   }
 };
 
+// Structure-span budget per the #116 design table. Caps how many edges the
+// community structure skeleton may spend so it stays "few and precise" instead of
+// approaching the full visible edge set in dense communities (#135 acceptance).
+function structureSkeletonBudget(nodeCount: number): number {
+  const count = Math.max(0, Math.floor(Number(nodeCount) || 0));
+  if (count <= 8) return Math.max(0, count - 1);
+  if (count <= 24) return 14;
+  if (count <= 60) return 22;
+  return 32;
+}
+
 export function createRenderPathCache(): RenderPathCache {
   const edgeCurves = new Map<string, number>();
   return {
@@ -537,8 +548,10 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
     previewNodeId
   });
   const stableCoreNodeSet = new Set(stableCoreNodeIds);
-  const stableSkeletonEdgeSet = selectBudgetedIds(filteredVisibleEdges, budgetLimits.maxVisibleEdges, (edge) =>
-    stableEdgeImportance(edge, { importantNodeIds: importantIds, coreNodeIds: stableCoreNodeSet })
+  const stableSkeletonEdgeSet = selectStableStructureSkeletonEdges(
+    filteredVisibleEdges,
+    structureSkeletonBudget(filteredVisibleNodes.length),
+    { importantNodeIds: importantIds, coreNodeIds: stableCoreNodeSet }
   );
   const temporaryBoostNodeSet = new Set(
     filteredVisibleNodes
@@ -1379,6 +1392,49 @@ function selectBudgetedIds<T extends { id: string }>(
       .slice(0, budget)
       .map((entry) => entry.item.id)
   );
+}
+
+// Structure-span selector for the community skeleton (#135). Unlike
+// selectBudgetedIds (a generic top-K by score), this picks a real-edge-only
+// spanning forest: each selected edge must bridge two previously-separate
+// components, so the budget spreads to reach core nodes and small clusters instead
+// of piling redundant high-weight edges inside the densest cluster (#116 rule 3,
+// user story #17). Deterministic scoring keeps it stable across hover/select.
+function selectStableStructureSkeletonEdges(
+  edges: AtlasEdge[],
+  budget: number,
+  signals: {
+    importantNodeIds: Record<string, boolean>;
+    coreNodeIds: Set<string>;
+  }
+): Set<string> {
+  if (budget <= 0 || edges.length === 0) return new Set();
+  const ranked = edges
+    .map((edge, index) => ({ edge, index, score: stableEdgeImportance(edge, signals) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    let current = id;
+    while (parent.get(current) !== current) {
+      const next = parent.get(current) as string;
+      parent.set(current, parent.get(next) as string);
+      current = next;
+    }
+    return current;
+  };
+  const result = new Set<string>();
+  for (const entry of ranked) {
+    if (result.size >= budget) break;
+    const { source, target } = entry.edge;
+    if (!parent.has(source)) parent.set(source, source);
+    if (!parent.has(target)) parent.set(target, target);
+    const rootSource = find(source);
+    const rootTarget = find(target);
+    if (rootSource === rootTarget) continue;
+    parent.set(rootSource, rootTarget);
+    result.add(entry.edge.id);
+  }
+  return result;
 }
 
 function nodeRenderPriority(

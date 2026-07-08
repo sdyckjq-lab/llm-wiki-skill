@@ -13,7 +13,7 @@ import {
   sigmaGlobalNodeColor
 } from "../src/render/sigma-graphology-model";
 import { getThemeTokens } from "../src/themes";
-import type { GraphRendererAdapterNode } from "../src/render/adapter";
+import type { GraphRendererAdapterNode, GraphRendererAdapterEdge } from "../src/render/adapter";
 import type { GraphData } from "../src/types";
 
 describe("Sigma graphology render model", () => {
@@ -422,6 +422,67 @@ function sigmaCommunityReadingGraphData(): GraphData {
   };
 }
 
+// 11-node community (8 core nodes + a peripheral triangle) so the small-community
+// core budget (maxLabels 8) leaves p1/p2/p3 genuinely peripheral. The peripheral
+// triangle's closing edge lands outside the spanning skeleton and outside the
+// core-touched interaction set, so buildRenderableGraph emits it as a background
+// edge alongside skeleton edges — exercising the Sigma layer path end-to-end.
+function sigmaLayerCommunityGraphData(): GraphData {
+  const coreNodes = Array.from({ length: 8 }, (_, index) => ({
+    id: `core${index + 1}`,
+    label: `核心${index + 1}`,
+    type: index === 0 ? "topic" : "entity",
+    community: "community-a",
+    source_path: `wiki/core${index + 1}.md`,
+    weight: 100 - index * 3,
+    x: 20 + (index % 4) * 8,
+    y: 20 + Math.floor(index / 4) * 10
+  }));
+  const peripheral = ["p1", "p2", "p3"].map((id, index) => ({
+    id,
+    label: id,
+    type: "entity",
+    community: "community-a",
+    source_path: `wiki/${id}.md`,
+    weight: 12 + index * 2,
+    x: 70 + index * 6,
+    y: 70 + index * 5
+  }));
+  return {
+    meta: { build_date: "2026-07-08T00:00:00.000Z", wiki_title: "Sigma layer fixture", total_nodes: 12, total_edges: 13 },
+    nodes: [
+      ...coreNodes,
+      ...peripheral,
+      { id: "outside", label: "Outside", type: "source", community: "community-b", source_path: "wiki/outside.md", weight: 50, x: 95, y: 95 }
+    ],
+    edges: [
+      { id: "core1-core2", from: "core1", to: "core2", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "实现", weight: 1 },
+      { id: "core2-core3", from: "core2", to: "core3", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.95 },
+      { id: "core1-core3", from: "core1", to: "core3", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "衍生", weight: 0.9 },
+      { id: "core1-core4", from: "core1", to: "core4", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.7 },
+      { id: "core3-core5", from: "core3", to: "core5", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "衍生", weight: 0.6 },
+      { id: "core4-core6", from: "core4", to: "core6", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.5 },
+      { id: "core1-p1", from: "core1", to: "p1", type: "INFERRED", confidence: "INFERRED", relation_type: "依赖", weight: 0.3 },
+      { id: "p1-p2", from: "p1", to: "p2", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.2 },
+      { id: "p2-p3", from: "p2", to: "p3", type: "INFERRED", confidence: "INFERRED", relation_type: "衍生", weight: 0.18 },
+      { id: "p1-p3", from: "p1", to: "p3", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.15 }
+    ],
+    learning: {
+      version: 1,
+      entry: { recommended_start_node_id: "core1", recommended_start_reason: "fixture", default_mode: "global" },
+      views: {
+        path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+        community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+        global: { enabled: true, node_ids: [...coreNodes.map((node) => node.id), ...peripheral.map((node) => node.id), "outside"], degraded: false }
+      },
+      communities: [
+        { id: "community-a", label: "Community A", node_count: 11, color_index: 0, recommended_start_node_id: "core1" },
+        { id: "community-b", label: "Community B", node_count: 1, color_index: 1 }
+      ]
+    }
+  };
+}
+
 function communityColorMap(adapterData: GraphRendererAdapterData): Map<string, string> {
   return new Map(adapterData.renderable.communities.map((community) => [community.id, community.color]));
 }
@@ -568,3 +629,79 @@ describe("sigmaGlobalNodeColor theme tokens", () => {
     assert.equal(sigmaGlobalNodeColor(adapterNode(), map, "mo-ye"), vars["--muted"]);
   });
 });
+
+describe("sigmaGlobalEdgeStyle community reading layers", () => {
+  it("makes skeleton edges clearly thicker and brighter than background edges in community reading", () => {
+    const skeleton = sigmaGlobalEdgeStyle(layerEdge("skeleton"), "shan-shui", undefined, new Set(), { communityReading: true });
+    const background = sigmaGlobalEdgeStyle(layerEdge("background"), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(skeleton.size > background.size, `skeleton size (${skeleton.size}) must exceed background (${background.size})`);
+    assert.ok(skeleton.size - background.size >= 0.5, `skeleton should be clearly thicker, diff only ${skeleton.size - background.size}`);
+    assert.ok(
+      alphaOf(skeleton.color) > alphaOf(background.color),
+      `skeleton alpha (${alphaOf(skeleton.color)}) must exceed background (${alphaOf(background.color)})`
+    );
+  });
+
+  it("keeps related edges between skeleton and background in community reading", () => {
+    const skeleton = sigmaGlobalEdgeStyle(layerEdge("skeleton"), "shan-shui", undefined, new Set(), { communityReading: true });
+    const related = sigmaGlobalEdgeStyle(layerEdge("related"), "shan-shui", undefined, new Set(), { communityReading: true });
+    const background = sigmaGlobalEdgeStyle(layerEdge("background"), "shan-shui", undefined, new Set(), { communityReading: true });
+
+    assert.ok(related.size >= background.size, "related edges should not be quieter than background");
+    assert.ok(
+      alphaOf(related.color) <= alphaOf(skeleton.color),
+      "related edges should not outshine skeleton edges"
+    );
+  });
+
+  it("ignores communityMapLayer outside community reading so the global route stays unchanged", () => {
+    const skeleton = sigmaGlobalEdgeStyle(layerEdge("skeleton"), "shan-shui", undefined, new Set(), {});
+    const background = sigmaGlobalEdgeStyle(layerEdge("background"), "shan-shui", undefined, new Set(), {});
+
+    assert.equal(skeleton.size, background.size);
+    assert.equal(skeleton.color, background.color);
+  });
+
+  it("renders skeleton edges thicker than background edges end-to-end in Sigma community reading", () => {
+    const adapter = buildGraphRendererAdapterData(sigmaLayerCommunityGraphData(), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "community-a" },
+      sourceCommunityId: "community-a"
+    });
+    const graph = buildSigmaGlobalGraphologyGraph(adapter, { GraphologyGraph });
+
+    const skeletonSizes: number[] = [];
+    const backgroundSizes: number[] = [];
+    for (const edge of adapter.edges) {
+      const layer = edge.render.communityMapLayer;
+      if (layer === "skeleton") skeletonSizes.push(graph.getEdgeAttribute(edge.id, "size"));
+      else if (layer === "background") backgroundSizes.push(graph.getEdgeAttribute(edge.id, "size"));
+    }
+    assert.ok(skeletonSizes.length > 0, "fixture should produce skeleton edges");
+    assert.ok(backgroundSizes.length > 0, "fixture should produce background edges");
+    assert.ok(
+      Math.min(...skeletonSizes) > Math.max(...backgroundSizes),
+      `min skeleton size ${Math.min(...skeletonSizes)} must exceed max background size ${Math.max(...backgroundSizes)}`
+    );
+  });
+});
+
+function layerEdge(layer: "skeleton" | "related" | "background"): GraphRendererAdapterEdge {
+  return {
+    id: "layer-edge",
+    sourceNodeId: "a",
+    targetNodeId: "b",
+    sourceCommunityId: "c1",
+    targetCommunityId: "c1",
+    relationType: "依赖",
+    confidence: "EXTRACTED",
+    weight: 0.5,
+    render: { strokeWidth: 1, opacity: 0.3, communityMapLayer: layer, relationFocusDepth: "none", skeleton: false, traceable: false }
+  } as GraphRendererAdapterEdge;
+}
+
+function alphaOf(color: string): number {
+  const match = /rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(?:,\s*([\d.]+)\s*)?\)/.exec(color);
+  return match && match[1] !== undefined ? Number(match[1]) : 1;
+}

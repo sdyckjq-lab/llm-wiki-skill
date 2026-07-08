@@ -337,17 +337,17 @@ describe("Sigma global renderer production boundary", () => {
       relationType: "依赖",
       confidence: "EXTRACTED",
       weight: 0.4
-    }), "shan-shui", undefined, new Set(), { communityReadingConfidence: true });
+    }), "shan-shui", undefined, new Set(), { communityReading: true });
     const inferred = sigmaGlobalEdgeStyle(sigmaEdgeFixture({
       relationType: "依赖",
       confidence: "INFERRED",
       weight: 0.4
-    }), "shan-shui", undefined, new Set(), { communityReadingConfidence: true });
+    }), "shan-shui", undefined, new Set(), { communityReading: true });
     const ambiguous = sigmaGlobalEdgeStyle(sigmaEdgeFixture({
       relationType: "依赖",
       confidence: "AMBIGUOUS",
       weight: 0.4
-    }), "shan-shui", undefined, new Set(), { communityReadingConfidence: true });
+    }), "shan-shui", undefined, new Set(), { communityReading: true });
 
     assert.equal(edgeStyleRgb(inferred.color), edgeStyleRgb(extracted.color));
     assert.equal(edgeStyleRgb(ambiguous.color), edgeStyleRgb(extracted.color));
@@ -359,7 +359,14 @@ describe("Sigma global renderer production boundary", () => {
 
   it("passes the community-reading confidence treatment into Graphology edge attributes", () => {
     const globalData = adapterDataWithEdgeConfidence(adapterDataFixture(), "INFERRED");
-    const communityData = adapterDataWithEdgeConfidence(communityReadingAdapterDataFixture(), "INFERRED");
+    // Measure confidence on a background edge so the treatment is isolated: a
+    // skeleton edge is intentionally kept clear by the layer styling (#135) and
+    // would mask the confidence-driven alpha/size reduction.
+    const communityBase = adapterDataWithEdgeConfidence(communityReadingAdapterDataFixture(), "INFERRED");
+    const communityData: GraphRendererAdapterData = {
+      ...communityBase,
+      edges: communityBase.edges.map((edge) => ({ ...edge, render: { ...edge.render, communityMapLayer: "background" as const } }))
+    };
     const globalGraph = buildSigmaGlobalGraphologyGraph(globalData, { GraphologyGraph });
     const communityGraph = buildSigmaGlobalGraphologyGraph(communityData, { GraphologyGraph });
 

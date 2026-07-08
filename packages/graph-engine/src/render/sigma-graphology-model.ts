@@ -88,7 +88,7 @@ export interface SigmaGlobalEdgeStyle {
 }
 
 export interface SigmaGlobalEdgeStyleContext {
-  communityReadingConfidence?: boolean;
+  communityReading?: boolean;
 }
 
 const SIGMA_COMMUNITY_READING_LABEL_MAX_WIDTH = 180;
@@ -119,7 +119,7 @@ export function buildSigmaGlobalGraphologyGraph(
       theme,
       edgeStyle,
       selectedCommunityIds,
-      { communityReadingConfidence: adapterData.renderable.communityMap?.active === true }
+      { communityReading: adapterData.renderable.communityMap?.active === true }
     ));
   }
 
@@ -174,7 +174,13 @@ export function patchSigmaGlobalGraphAttributes(
     graph.mergeNodeAttributes(node.id, sigmaGlobalNodeAttributes(node, communityColorById, spotlightCommunityIds, theme, { communityReadingLabelBudget }));
   }
   for (const edge of adapterData.edges) {
-    graph.mergeEdgeAttributes(edge.id, sigmaGlobalEdgeAttributes(edge, theme, edgeStyle, selectedCommunityIds));
+    graph.mergeEdgeAttributes(edge.id, sigmaGlobalEdgeAttributes(
+      edge,
+      theme,
+      edgeStyle,
+      selectedCommunityIds,
+      { communityReading: adapterData.renderable.communityMap?.active === true }
+    ));
   }
   graph.setAttribute("counts", adapterData.counts);
   graph.setAttribute("selection", adapterData.selection);
@@ -325,7 +331,7 @@ export function sigmaGlobalEdgeStyle(
     }
   }
 
-  if (context.communityReadingConfidence) {
+  if (context.communityReading) {
     const confidence = String(edge.confidence || "EXTRACTED").toUpperCase();
     if (confidence === "INFERRED") {
       alpha *= 0.78;
@@ -336,6 +342,26 @@ export function sigmaGlobalEdgeStyle(
     } else if (confidence === "UNVERIFIED") {
       alpha *= 0.5;
       size *= 0.68;
+    }
+  }
+
+  // Community reading edge layers (#135): structure connection lines (skeleton)
+  // read clearly while background relations recede; related edges stay in between.
+  // Color still means relation type only (ADR-23); the layer adjusts weight (size)
+  // and presence (alpha), never the relation color. Global route ignores the layer.
+  // Reads the STATIC communityMapLayer only. #136 hover/selection reuses the
+  // "skeleton" label for second-degree focus edges, so distinguishing interaction-
+  // state layering here (a separate interactionRole, or also reading
+  // relationFocusDepth) is a follow-up — otherwise hover can quietly drop static
+  // skeleton emphasis.
+  if (context.communityReading) {
+    const layer = edge.render?.communityMapLayer;
+    if (layer === "skeleton") {
+      size += 0.7;
+      alpha = alpha * 1.18 + 0.04;
+    } else if (layer === "background") {
+      size *= 0.7;
+      alpha *= 0.55;
     }
   }
 

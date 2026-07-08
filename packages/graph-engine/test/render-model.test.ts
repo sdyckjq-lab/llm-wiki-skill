@@ -203,6 +203,42 @@ function budgetGraph(nodeCount: number, edgeCount: number): GraphData {
   };
 }
 
+// A community whose internal structure is dominated by a dense high-weight core
+// triangle, with three low-weight "small-cluster" leaves hanging off it. Used to
+// prove the structure-span selector reaches the leaves instead of piling the whole
+// budget onto the core triangle's strongest edges.
+function structureSpanGraph(): GraphData {
+  return {
+    meta: { build_date: "2026-07-08T00:00:00.000Z", wiki_title: "Structure Span", total_nodes: 6, total_edges: 6 },
+    nodes: [
+      { id: "core1", label: "核心1", type: "topic", community: "c1", source_path: "wiki/core1.md", weight: 100, x: 30, y: 30 },
+      { id: "core2", label: "核心2", type: "topic", community: "c1", source_path: "wiki/core2.md", weight: 90, x: 36, y: 36 },
+      { id: "core3", label: "核心3", type: "topic", community: "c1", source_path: "wiki/core3.md", weight: 85, x: 42, y: 30 },
+      { id: "leaf1", label: "叶1", type: "entity", community: "c1", source_path: "wiki/leaf1.md", weight: 30, x: 14, y: 50 },
+      { id: "leaf2", label: "叶2", type: "entity", community: "c1", source_path: "wiki/leaf2.md", weight: 25, x: 50, y: 56 },
+      { id: "leaf3", label: "叶3", type: "entity", community: "c1", source_path: "wiki/leaf3.md", weight: 20, x: 62, y: 40 }
+    ],
+    edges: [
+      { id: "core1-core2", from: "core1", to: "core2", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "实现", weight: 1 },
+      { id: "core2-core3", from: "core2", to: "core3", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.95 },
+      { id: "core1-core3", from: "core1", to: "core3", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "衍生", weight: 0.9 },
+      { id: "core1-leaf1", from: "core1", to: "leaf1", type: "EXTRACTED", confidence: "EXTRACTED", relation_type: "依赖", weight: 0.3 },
+      { id: "core2-leaf2", from: "core2", to: "leaf2", type: "INFERRED", confidence: "INFERRED", relation_type: "对比", weight: 0.25 },
+      { id: "core3-leaf3", from: "core3", to: "leaf3", type: "INFERRED", confidence: "INFERRED", relation_type: "衍生", weight: 0.2 }
+    ],
+    learning: {
+      version: 1,
+      entry: { recommended_start_node_id: "core1", recommended_start_reason: "fixture", default_mode: "global" },
+      views: {
+        path: { enabled: false, start_node_id: null, node_ids: [], degraded: true },
+        community: { enabled: false, community_id: null, label: null, node_ids: [], is_weak: false, degraded: true },
+        global: { enabled: true, node_ids: ["core1", "core2", "core3", "leaf1", "leaf2", "leaf3"], degraded: false }
+      },
+      communities: [{ id: "c1", label: "Structure", node_count: 6, color_index: 0, recommended_start_node_id: "core1" }]
+    }
+  };
+}
+
 function densePointMapGraph(): GraphData {
   const nodeCount = 2000;
   const edgeTarget = 3996;
@@ -1462,7 +1498,110 @@ describe("buildRenderableGraph", () => {
     assert.ok(withSource.budget.usage.maxLabels <= withSource.budget.limits.maxLabels);
     assert.ok(withSource.budget.usage.maxVisibleEdges <= withSource.budget.limits.maxVisibleEdges);
   });
+
+  it("caps structure skeleton edges by community size band", () => {
+    // 30-node community lands in the 25-60 band: design budget cap is 22.
+    const graph = buildRenderableGraph(budgetGraph(30, 400), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" }
+    });
+    const skeletonCount = graph.importance.stableSkeletonEdgeIds.length;
+    assert.ok(skeletonCount <= 22, `30-node community skeleton must respect the 25-60 band cap (22), got ${skeletonCount}`);
+    // Skeleton is a subset of the visible-edge budget, leaving room for background
+    // relations — never a second independent budget that crowds them out (#135).
+    assert.ok(
+      skeletonCount < graph.edges.length,
+      `skeleton must leave visible edges for the background layer, got ${skeletonCount} of ${graph.edges.length} rendered`
+    );
+
+    // 15-node community lands in the 9-24 band: design budget cap is 14.
+    const medium = buildRenderableGraph(budgetGraph(15, 120), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" }
+    });
+    const mediumCount = medium.importance.stableSkeletonEdgeIds.length;
+    assert.ok(mediumCount <= 14, `15-node community skeleton must respect the 9-24 band cap (14), got ${mediumCount}`);
+  });
+
+  it("picks structure skeleton edges that reach small clusters, not just the highest-weight edges", () => {
+    const graph = buildRenderableGraph(structureSpanGraph(), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" }
+    });
+    const skeletonIds = new Set(graph.importance.stableSkeletonEdgeIds);
+    // 6-node community → 1-8 band → cap is nodeCount-1 = 5.
+    assert.ok(skeletonIds.size <= 5, `skeleton budget exceeded: ${skeletonIds.size}`);
+
+    // Every small-cluster leaf should be reached by a structure line. A naive
+    // top-K-by-weight selector would spend the budget on the core triangle and
+    // leave the weakest leaf (leaf3) disconnected.
+    const reachedNodes = new Set<string>();
+    for (const edge of graph.edges) {
+      if (skeletonIds.has(edge.id)) {
+        reachedNodes.add(edge.source);
+        reachedNodes.add(edge.target);
+      }
+    }
+    for (const leaf of ["leaf1", "leaf2", "leaf3"]) {
+      assert.ok(reachedNodes.has(leaf), `small-cluster ${leaf} must be reached by a structure line, not crowded out by the dense core`);
+    }
+
+    // Structure lines form a forest (no cycle): the core triangle may contribute at
+    // most two edges, never all three. A top-K selector that ignores connectivity
+    // would select all three high-weight triangle edges and close a cycle.
+    assertOkForest(graph.edges.filter((edge) => skeletonIds.has(edge.id)), graph.nodes.map((node) => node.id));
+  });
+
+  it("keeps structure skeleton edges a subset of real graph edges", () => {
+    const data = structureSpanGraph();
+    const graph = buildRenderableGraph(data, { theme: "shan-shui", focus: { kind: "community", id: "c1" } });
+    const realEdgeIds = new Set((data.edges ?? []).map((edge) => edge.id));
+    assert.ok(realEdgeIds.size > 0);
+    for (const id of graph.importance.stableSkeletonEdgeIds) {
+      assert.ok(realEdgeIds.has(id), `skeleton edge ${id} must be a real graph edge, not fabricated`);
+    }
+  });
+
+  it("does not force structure lines beyond what a sparse community's real edges support", () => {
+    // 30 nodes but only 5 real edges: a sparse community must not fabricate or
+    // over-extend structure. Skeleton stays within the real edge count.
+    const graph = buildRenderableGraph(budgetGraph(30, 5), {
+      theme: "shan-shui",
+      focus: { kind: "community", id: "c1" }
+    });
+    assert.ok(
+      graph.importance.stableSkeletonEdgeIds.length <= 5,
+      `sparse community must not exceed its real edge count, got ${graph.importance.stableSkeletonEdgeIds.length}`
+    );
+  });
 });
+
+// Union-Find check that a set of edges forms a forest (acyclic). Used to prove the
+// structure-span selector never piles redundant edges inside an already-connected
+// cluster — each selected edge must bridge two previously-separate components.
+function assertOkForest(edges: Array<{ id: string; source: string; target: string }>, nodeIds: string[]): void {
+  const parent = new Map<string, string>();
+  for (const id of nodeIds) parent.set(id, id);
+  const find = (id: string): string => {
+    let current = id;
+    while (parent.get(current) !== current) {
+      const next = parent.get(current)!;
+      parent.set(current, parent.get(next)!);
+      current = next;
+    }
+    return current;
+  };
+  for (const edge of edges) {
+    const rootA = find(edge.source);
+    const rootB = find(edge.target);
+    assert.notEqual(
+      rootA,
+      rootB,
+      `structure skeleton must be a forest, but edge ${edge.id} (${edge.source}-${edge.target}) closes a cycle`
+    );
+    parent.set(rootA, rootB);
+  }
+}
 
 function communityWashStates(graph: ReturnType<typeof buildRenderableGraph>): Array<[string, boolean]> {
   return graph.communities
