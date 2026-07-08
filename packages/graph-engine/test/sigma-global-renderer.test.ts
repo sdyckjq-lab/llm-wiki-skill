@@ -819,6 +819,46 @@ describe("Sigma global renderer production boundary", () => {
     renderer.destroy();
   });
 
+  it("restores selected global node relation focus after a hover preview clears", () => {
+    const runtime = fakeRuntime();
+    const baseAdapterData = adapterDataFixture({ selectedCommunityIds: [] });
+    const adapterData = {
+      ...baseAdapterData,
+      nodes: baseAdapterData.nodes.map((node) =>
+        node.id === "render-alpha"
+          ? { ...node, relationFocusDepth: "focus" as const }
+          : { ...node, relationFocusDepth: "first" as const }
+      ),
+      edges: baseAdapterData.edges.map((edge) => ({
+        ...edge,
+        render: { ...edge.render, relationFocusDepth: "first" as const }
+      }))
+    };
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData,
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    const selectedEdge = { ...renderer.graph.getEdgeAttributes("adapter-edge") };
+
+    renderer.setRelationFocusPreview("render-beta");
+    assert.equal(renderer.graph.getNodeAttribute("render-beta", "relationFocusDepth"), "focus");
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "relationFocusDepth"), "first");
+
+    renderer.setRelationFocusPreview(null);
+
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "relationFocusDepth"), "focus");
+    assert.equal(renderer.graph.getNodeAttribute("render-beta", "relationFocusDepth"), "first");
+    assert.equal(renderer.graph.getEdgeAttribute("adapter-edge", "relationFocusDepth"), "first");
+    assert.equal(renderer.graph.getEdgeAttribute("adapter-edge", "size"), selectedEdge.size);
+    assert.equal(renderer.graph.getEdgeAttribute("adapter-edge", "color"), selectedEdge.color);
+    assert.equal(sigma.setGraphCalls.length, 0);
+
+    renderer.destroy();
+  });
+
   it("refreshes the Sigma canvas and overlays when the host resizes", () => {
     let resizeCallback: ResizeObserverCallback | null = null;
     let observedElement: Element | null = null;
