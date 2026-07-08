@@ -1295,6 +1295,63 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 
+  it("previews global node relations on hover without selection, drawer, camera, or graph rebuild", async () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const runtime = fakeSigmaRouteRuntime();
+    const selections: SelectionInput[] = [];
+    const opened: Array<[string, unknown]> = [];
+    const renderer = createSigmaGlobalFacadeRenderer({
+      container: container as unknown as HTMLElement,
+      sigmaRuntime: runtime,
+      options: {
+        data: relationFocusGraphData(),
+        pins: {},
+        theme: "shan-shui",
+        focus: null,
+        typeFilters: {},
+        aggregationMarkers: [],
+        selection: null,
+        sourceCommunityId: null,
+        searchQuery: "",
+        searchResultIds: [],
+        temporaryObject: null,
+        callbacks: {
+          onSelectionInput: (selection) => selections.push(selection),
+          onNodeOpen: (id, origin) => opened.push([id, origin])
+        }
+      }
+    });
+
+    await Promise.resolve();
+    const sigma = runtime.instances[0];
+    assert.ok(sigma);
+    const graph = sigma.getGraph();
+    const baselineEdge = { ...graph.getEdgeAttributes("a-b") };
+
+    sigma.emit("enterNode", { node: "a" });
+
+    const previewEdge = graph.getEdgeAttributes("a-b");
+    assert.deepEqual(selections, []);
+    assert.deepEqual(opened, []);
+    assert.equal(sigma.getCamera().animateCalls.length, 0);
+    assert.equal(sigma.setGraphCalls.length, 0);
+    assert.equal(graph.getNodeAttribute("a", "relationFocusDepth"), "focus");
+    assert.equal(graph.getNodeAttribute("b", "relationFocusDepth"), "first");
+    assert.equal(previewEdge.relationFocusDepth, "first");
+    assert.ok(previewEdge.size > baselineEdge.size);
+
+    sigma.emit("leaveNode");
+
+    assert.equal(graph.getNodeAttribute("a", "relationFocusDepth"), "none");
+    assert.equal(graph.getNodeAttribute("b", "relationFocusDepth"), "none");
+    assert.equal(graph.getEdgeAttribute("a-b", "relationFocusDepth"), "none");
+    assert.equal(graph.getEdgeAttribute("a-b", "size"), baselineEdge.size);
+    assert.equal(sigma.setGraphCalls.length, 0);
+
+    renderer.destroy();
+  });
+
   it("applies Escape priority without clearing pins or resetting layout", async () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
@@ -2018,6 +2075,7 @@ class FakeRouteSigma implements SigmaGlobalSigmaLike {
   private readonly listeners = new Map<string, Set<(payload?: unknown) => void>>();
   private readonly camera = new FakeRouteCamera();
   private readonly mouseCaptor = new FakeRouteMouseCaptor();
+  readonly setGraphCalls: SigmaGlobalGraphologyGraph[] = [];
 
   constructor(graph: SigmaGlobalGraphologyGraph, _container: HTMLElement, settings: Record<string, unknown> = {}) {
     this.graph = graph;
@@ -2038,6 +2096,7 @@ class FakeRouteSigma implements SigmaGlobalSigmaLike {
 
   setGraph(graph: SigmaGlobalGraphologyGraph): void {
     this.graph = graph;
+    this.setGraphCalls.push(graph);
   }
 
   getSetting(key: string): unknown {

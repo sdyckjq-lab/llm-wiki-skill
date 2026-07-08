@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveGraphRelationFocus, resolveGraphSelectedNodeRelations } from "../src/render/relation-focus";
+import {
+  resolveGraphFirstOrderRelationFocus,
+  resolveGraphRelationFocus,
+  resolveGraphSelectedNodeRelations
+} from "../src/render/relation-focus";
 
 describe("graph relation focus", () => {
   it("classifies focus, first-degree, second-degree, and unrelated nodes", () => {
@@ -111,6 +115,69 @@ describe("graph relation focus", () => {
     assert.equal(focus.nodeDepthById.get("B"), "first");
     assert.equal(focus.edgeDepthById.get("A-B-1"), "first");
     assert.equal(focus.edgeDepthById.get("B-A-2"), "first");
+  });
+});
+
+describe("graph first-order relation focus preview", () => {
+  it("touches only the active node's incident edges for lightweight global hover", () => {
+    const nodeIds = new Set(["A", "B", "C", "D", "E", "F"]);
+    const edges = new Map([
+      ["A-B", { source: "A", target: "B" }],
+      ["A-C", { source: "A", target: "C" }],
+      ["B-D", { source: "B", target: "D" }],
+      ["C-E", { source: "C", target: "E" }],
+      ["D-F", { source: "D", target: "F" }]
+    ]);
+    const incidentReads: string[] = [];
+    const endpointReads: string[] = [];
+
+    const focus = resolveGraphFirstOrderRelationFocus({
+      activeNodeId: "A",
+      hasNode: (id) => nodeIds.has(id),
+      incidentEdgeIds: (id) => {
+        incidentReads.push(id);
+        return id === "A" ? ["A-B", "A-C"] : [];
+      },
+      edgeSource: (id) => {
+        endpointReads.push(`source:${id}`);
+        return edges.get(id)?.source ?? "";
+      },
+      edgeTarget: (id) => {
+        endpointReads.push(`target:${id}`);
+        return edges.get(id)?.target ?? "";
+      }
+    });
+
+    assert.equal(focus.activeNodeId, "A");
+    assert.equal(focus.nodeDepthById.get("A"), "focus");
+    assert.equal(focus.nodeDepthById.get("B"), "first");
+    assert.equal(focus.nodeDepthById.get("C"), "first");
+    assert.equal(focus.nodeDepthById.has("D"), false);
+    assert.equal(focus.edgeDepthById.get("A-B"), "first");
+    assert.equal(focus.edgeDepthById.get("A-C"), "first");
+    assert.equal(focus.edgeDepthById.has("B-D"), false);
+    assert.deepEqual([...focus.touched.nodeIds].sort(), ["A", "B", "C"]);
+    assert.deepEqual([...focus.touched.edgeIds].sort(), ["A-B", "A-C"]);
+    assert.deepEqual(incidentReads, ["A"]);
+    assert.deepEqual(endpointReads.sort(), ["source:A-B", "source:A-C", "target:A-B", "target:A-C"]);
+  });
+
+  it("returns an empty patch when the active node is missing", () => {
+    const focus = resolveGraphFirstOrderRelationFocus({
+      activeNodeId: "missing",
+      hasNode: (id) => id === "A",
+      incidentEdgeIds: () => {
+        throw new Error("missing nodes should not read incident edges");
+      },
+      edgeSource: () => "",
+      edgeTarget: () => ""
+    });
+
+    assert.equal(focus.activeNodeId, null);
+    assert.equal(focus.nodeDepthById.size, 0);
+    assert.equal(focus.edgeDepthById.size, 0);
+    assert.equal(focus.touched.nodeIds.size, 0);
+    assert.equal(focus.touched.edgeIds.size, 0);
   });
 });
 

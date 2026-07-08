@@ -147,6 +147,27 @@ describe("Sigma graphology render model", () => {
     assert.equal(graph.getNodeAttribute("alpha", "y"), 222);
   });
 
+  it("renders global selected-node relation focus through final Sigma attributes", () => {
+    const adapter = buildGraphRendererAdapterData(multiSelectCommunityGraphData(), {
+      theme: "shan-shui",
+      selection: { kind: "node", id: "a" }
+    });
+    const graph = buildSigmaGlobalGraphologyGraph(adapter, { GraphologyGraph });
+
+    assert.equal(adapter.renderable.budget.view, "global");
+    assert.equal(graph.getNodeAttribute("a", "relationFocusDepth"), "focus");
+    assert.equal(graph.getNodeAttribute("b", "relationFocusDepth"), "first");
+    assert.equal(graph.getEdgeAttribute("a-b", "relationFocusDepth"), "first");
+    assert.ok(
+      graph.getEdgeAttribute("a-b", "size") > graph.getEdgeAttribute("d-e", "size"),
+      "first-order global edge should be thicker than unrelated context"
+    );
+    assert.ok(
+      alphaOf(graph.getEdgeAttribute("a-b", "color")) > alphaOf(graph.getEdgeAttribute("d-e", "color")),
+      "first-order global edge should be brighter than unrelated context"
+    );
+  });
+
   it("truncates long canvas labels in narrow Sigma community reading", () => {
     const data = sigmaCommunityReadingGraphData();
     const longLabel = "一个标题非常长用来测试社区阅读标签截断是否稳定的核心节点";
@@ -691,6 +712,55 @@ describe("sigmaGlobalEdgeStyle community reading layers", () => {
   });
 });
 
+describe("sigmaGlobalEdgeStyle selected global community preview (#137)", () => {
+  it("surfaces a few selected-community structure and bridge edges without promoting the whole mesh", () => {
+    const selected = new Set(["c1"]);
+    const internalSkeleton = sigmaGlobalEdgeStyle(styledEdge({
+      layer: "skeleton",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c1"
+    }), "shan-shui", undefined, selected, {});
+    const internalBackground = sigmaGlobalEdgeStyle(styledEdge({
+      layer: "background",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c1"
+    }), "shan-shui", undefined, selected, {});
+    const bridge = sigmaGlobalEdgeStyle(styledEdge({
+      layer: "related",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c2"
+    }), "shan-shui", undefined, selected, {});
+    const genericBridge = sigmaGlobalEdgeStyle(styledEdge({
+      layer: "background",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c2"
+    }), "shan-shui", undefined, selected, {});
+    const genericBridgeBaseline = sigmaGlobalEdgeStyle(styledEdge({
+      layer: "background",
+      sourceCommunityId: "c1",
+      targetCommunityId: "c2"
+    }), "shan-shui", undefined, new Set(), {});
+    const unrelated = sigmaGlobalEdgeStyle(styledEdge({
+      layer: "skeleton",
+      sourceCommunityId: "c2",
+      targetCommunityId: "c3"
+    }), "shan-shui", undefined, selected, {});
+
+    assert.ok(internalSkeleton.size > internalBackground.size, "internal structure should stand above internal background");
+    assert.ok(alphaOf(internalSkeleton.color) > alphaOf(internalBackground.color), "internal structure should be brighter than background mesh");
+    assert.ok(bridge.size > unrelated.size, "bridge context touching the selected community should stand above unrelated edges");
+    assert.ok(alphaOf(bridge.color) > alphaOf(unrelated.color), "bridge context should be more visible than unrelated context");
+    assert.ok(bridge.size > genericBridge.size, "only preview-budget bridge edges should get the selected-community lift");
+    assert.ok(alphaOf(bridge.color) > alphaOf(genericBridge.color), "generic cross-community edges should stay quieter than preview bridges");
+    assert.ok(genericBridge.size <= genericBridgeBaseline.size, "generic bridge edges should not be promoted above their neutral state");
+    assert.ok(alphaOf(genericBridge.color) <= alphaOf(genericBridgeBaseline.color), "generic bridge edges should not be brightened above neutral");
+    assert.ok(
+      internalBackground.size <= genericBridge.size,
+      "background mesh should stay no stronger than quiet bridge context"
+    );
+  });
+});
+
 // #136 community interaction: Sigma composes the STATIC communityMapLayer with
 // the interaction depth (relationFocusDepth) and Shift multi-select
 // (selectedRelation). All assertions check FINAL size/alpha — not label values
@@ -752,14 +822,33 @@ describe("sigmaGlobalEdgeStyle community reading interaction (#136)", () => {
     const first = sigmaGlobalEdgeStyle(styledEdge({ layer: "skeleton", depth: "first" }), "shan-shui", undefined, new Set(), {});
     const unrelated = sigmaGlobalEdgeStyle(styledEdge({ layer: "background", depth: "unrelated" }), "shan-shui", undefined, new Set(), {});
 
-    // Global route keys only on relation class/bridge/weight; depth/layer must not move size.
+    // A stray depth value alone is inert; the route must explicitly say relation
+    // focus is active before global styles use it.
     assert.equal(first.size, unrelated.size);
+  });
+
+  it("keeps selectedRelation inert outside community reading unless the route opts in", () => {
+    const selected = sigmaGlobalEdgeStyle(styledEdge({ selectedRelation: true }), "shan-shui", undefined, new Set(), {});
+    const baseline = sigmaGlobalEdgeStyle(styledEdge({ selectedRelation: false }), "shan-shui", undefined, new Set(), {});
+
+    assert.deepEqual(selected, baseline);
+  });
+
+  it("uses global relation focus depth when the route marks relation focus active", () => {
+    const first = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "first" }), "shan-shui", undefined, new Set(), { relationFocusActive: true });
+    const baseline = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "none" }), "shan-shui", undefined, new Set(), { relationFocusActive: true });
+    const unrelated = sigmaGlobalEdgeStyle(styledEdge({ layer: "related", depth: "unrelated" }), "shan-shui", undefined, new Set(), { relationFocusActive: true });
+
+    assert.ok(first.size > baseline.size, "global first-order focus edge must rise above baseline");
+    assert.ok(alphaOf(first.color) > alphaOf(baseline.color), "global first-order focus edge must brighten");
+    assert.ok(unrelated.size < baseline.size, "global unrelated edge must recede below baseline");
+    assert.ok(alphaOf(unrelated.color) < alphaOf(baseline.color), "global unrelated edge must fade");
   });
 });
 
-// #136 node emphasis: in community reading, the active node and first-degree
-// neighbors stand out while second/unrelated recede. relationFocusDepth is "none"
-// on the global route, so this is implicitly community-reading-scoped.
+// #136/#137 node emphasis: the active node and first-degree neighbors stand out
+// while second/unrelated recede. Community reading gets this from model rebuilds;
+// global hover can also apply it through the Sigma local preview patch.
 describe("sigmaGlobalNodeAttributes community reading interaction (#136)", () => {
   const communityColors = new Map<string, string>();
   const theme = "shan-shui" as const;
@@ -867,14 +956,17 @@ function styledEdge(options: {
   depth?: GraphRelationFocusDepth;
   selectedRelation?: boolean;
   weight?: number;
+  sourceCommunityId?: string | null;
+  targetCommunityId?: string | null;
+  traceable?: boolean;
 }): GraphRendererAdapterEdge {
   const layer = options.layer ?? "related";
   return {
     id: "styled-edge",
     sourceNodeId: "a",
     targetNodeId: "b",
-    sourceCommunityId: "c1",
-    targetCommunityId: "c1",
+    sourceCommunityId: options.sourceCommunityId ?? "c1",
+    targetCommunityId: options.targetCommunityId ?? "c1",
     relationType: "依赖",
     confidence: "EXTRACTED",
     weight: options.weight ?? 0.5,
@@ -884,7 +976,7 @@ function styledEdge(options: {
       communityMapLayer: layer,
       relationFocusDepth: options.depth ?? "none",
       skeleton: layer === "skeleton",
-      traceable: false,
+      traceable: options.traceable ?? false,
       selectedRelation: options.selectedRelation ?? false
     }
   } as GraphRendererAdapterEdge;

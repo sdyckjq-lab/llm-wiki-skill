@@ -123,6 +123,7 @@ export interface SigmaGlobalRenderer {
   accommodateNodeDrawer(nodeId: string, options?: { durationMs?: number }): void;
   zoomIn(): void;
   zoomOut(): void;
+  setRelationFocusPreview(nodeId: string | null): void;
   update(options: SigmaGlobalRendererUpdateOptions): void;
   destroy(): void;
 }

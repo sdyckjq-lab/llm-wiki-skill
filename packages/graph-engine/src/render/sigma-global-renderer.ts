@@ -11,6 +11,10 @@ import type { GraphScreenPoint } from "./geometry";
 import type { GraphGestureTarget } from "./gestures";
 import type { GraphRendererAdapterData } from "./adapter";
 import { DEFAULT_RENDERER_VIEWPORT, type RendererViewport, type RendererViewportSize } from "./viewport";
+import {
+  emptyGraphFirstOrderRelationFocusTouched,
+  resolveGraphFirstOrderRelationFocus
+} from "./relation-focus";
 import { overlayPointerScreenPoint, sigmaScreenPointToWorldPoint, sigmaWorldPointToScreenPoint } from "./sigma-coordinates";
 import {
   SIGMA_READING_COMMUNITY_CLOUD_MIN_HEIGHT,
@@ -51,6 +55,11 @@ import {
   buildSigmaGlobalGraphologyGraph,
   canPatchSigmaGlobalGraphAttributes,
   patchSigmaGlobalGraphAttributes,
+  sigmaAdapterDataHasRelationFocus,
+  sigmaGlobalEdgeAttributes,
+  sigmaGlobalEdgeStyleContext,
+  sigmaGlobalNodeAttributes,
+  sigmaSelectedCommunityIds,
   sigmaSpotlightCommunityId
 } from "./sigma-graphology-model";
 import {
@@ -160,6 +169,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let currentTheme = options.theme;
   let currentEdgeStyle = options.edgeStyle;
   let adapterData = options.adapterData;
+  let adapterNodeById = sigmaAdapterNodeById(adapterData);
+  let adapterEdgeById = sigmaAdapterEdgeById(adapterData);
+  let adapterRelationFocusActive = sigmaAdapterDataHasRelationFocus(adapterData);
   let graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime, currentTheme, currentEdgeStyle);
   const sigmaRoot = createSigmaRoot(options.container, currentTheme);
   const overlayRoot = createSigmaOverlayRoot(sigmaRoot);
@@ -186,6 +198,8 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
   let lastHitTarget: GraphGestureTarget | null = null;
   let activeNodeDrag: SigmaGlobalNodeDragSession | null = null;
   let currentPins: PinMap = { ...(options.pins ?? {}) };
+  let relationFocusPreviewNodeId: string | null = null;
+  let relationFocusPreviewTouched = emptyGraphFirstOrderRelationFocusTouched();
   let cameraSpotlightKey: string | null = sigmaSpotlightCameraKey(adapterData);
   let suppressNextNodeClickId: string | null = null;
   let suppressNextNodeClickTimer: ReturnType<typeof setTimeout> | null = null;
@@ -330,6 +344,10 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       assertActive();
       zoomSigmaCameraAtViewportPoint(sigmaViewportCenter(sigmaRoot), "out", true);
     },
+    setRelationFocusPreview(nodeId) {
+      assertActive();
+      applySigmaRelationFocusPreview(nodeId);
+    },
     update(updateOptions) {
       assertActive();
       const cameraState = readCameraState(sigma);
@@ -342,6 +360,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       const finalizeUpdate = (): void => {
         try {
           syncSigmaEdgeEventSetting();
+          restoreSigmaRelationFocusPreviewAfterUpdate();
           restoreCameraState(sigma, cameraState);
           sigma.refresh?.();
           overlayDomController?.rebuild();
@@ -368,6 +387,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       }
       if (canPatchSigmaGlobalGraphAttributes(adapterData, nextAdapterData, currentTheme, nextTheme)) {
         adapterData = nextAdapterData;
+        syncSigmaAdapterIndexes();
         currentEdgeStyle = nextEdgeStyle;
         currentPins = nextPins;
         syncSigmaRootMetadata();
@@ -383,6 +403,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         return;
       }
       adapterData = updateOptions.adapterData;
+      syncSigmaAdapterIndexes();
       syncSigmaRootMetadata();
       cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
       currentTheme = updateOptions.theme ?? currentTheme;
@@ -443,6 +464,82 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       adapterData,
       viewportSize: currentViewportSize
     };
+  }
+
+  function syncSigmaAdapterIndexes(): void {
+    adapterNodeById = sigmaAdapterNodeById(adapterData);
+    adapterEdgeById = sigmaAdapterEdgeById(adapterData);
+    adapterRelationFocusActive = sigmaAdapterDataHasRelationFocus(adapterData);
+  }
+
+  function restoreSigmaRelationFocusPreviewAfterUpdate(): void {
+    if (!relationFocusPreviewNodeId) {
+      relationFocusPreviewTouched = emptyGraphFirstOrderRelationFocusTouched();
+      return;
+    }
+    applySigmaRelationFocusPreview(relationFocusPreviewNodeId, { refresh: false });
+  }
+
+  function applySigmaRelationFocusPreview(
+    nodeId: string | null,
+    options: { refresh?: boolean } = {}
+  ): void {
+    const activeNodeId = nodeId && graph.hasNode(nodeId) ? nodeId : null;
+    const nextFocus = resolveGraphFirstOrderRelationFocus({
+      activeNodeId,
+      hasNode: (id) => graph.hasNode(id),
+      incidentEdgeIds: (id) => graph.edges(id),
+      edgeSource: (id) => graph.source(id),
+      edgeTarget: (id) => graph.target(id)
+    });
+    const nodeIds = new Set([...relationFocusPreviewTouched.nodeIds, ...nextFocus.touched.nodeIds]);
+    const edgeIds = new Set([...relationFocusPreviewTouched.edgeIds, ...nextFocus.touched.edgeIds]);
+    const communityColorById = new Map(adapterData.renderable.communities.map((community) => [community.id, community.color]));
+    const spotlightCommunityId = sigmaSpotlightCommunityId(adapterData);
+    const spotlightCommunityIds = spotlightCommunityId ? new Set([spotlightCommunityId]) : new Set<string>();
+    const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
+    const edgeContext = sigmaGlobalEdgeStyleContext(adapterData, {
+      relationFocusActive: Boolean(activeNodeId) || adapterRelationFocusActive
+    });
+    const communityReadingLabelBudget = adapterData.renderable.communityMap?.active
+      ? adapterData.renderable.communityMap.current?.labelBudget.limit ?? null
+      : null;
+
+    for (const id of nodeIds) {
+      const node = adapterNodeById.get(id);
+      if (!node || !graph.hasNode(id)) continue;
+      const relationFocusDepth = nextFocus.nodeDepthById.get(id) ?? node.relationFocusDepth ?? "none";
+      graph.mergeNodeAttributes(id, sigmaGlobalNodeAttributes(
+        { ...node, relationFocusDepth },
+        communityColorById,
+        spotlightCommunityIds,
+        currentTheme,
+        { communityReadingLabelBudget }
+      ));
+    }
+
+    for (const id of edgeIds) {
+      const edge = adapterEdgeById.get(id);
+      if (!edge || !graph.hasEdge(id)) continue;
+      const relationFocusDepth = nextFocus.edgeDepthById.get(id) ?? edge.render.relationFocusDepth ?? "none";
+      graph.mergeEdgeAttributes(id, sigmaGlobalEdgeAttributes(
+        {
+          ...edge,
+          render: {
+            ...edge.render,
+            relationFocusDepth
+          }
+        },
+        currentTheme,
+        currentEdgeStyle,
+        selectedCommunityIds,
+        edgeContext
+      ));
+    }
+
+    relationFocusPreviewNodeId = activeNodeId;
+    relationFocusPreviewTouched = nextFocus.touched;
+    if (options.refresh !== false) sigma.refresh?.();
   }
 
   function bindSigmaEvents(): void {
@@ -1171,6 +1268,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       pinned
     });
     adapterData = sigmaAdapterDataWithNodePoint(adapterData, nodeId, point, pinned, pinPosition);
+    syncSigmaAdapterIndexes();
     sigma.refresh?.();
     if (!dragging) {
       cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithNodePoint(cloudBasisByCommunityId, adapterData, nodeId);
@@ -1271,6 +1369,18 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     sigmaRoot.dataset.lastHitId = "id" in target && typeof target.id === "string" ? target.id : "";
   }
 
+}
+
+function sigmaAdapterNodeById(
+  adapterData: GraphRendererAdapterData
+): Map<string, GraphRendererAdapterData["nodes"][number]> {
+  return new Map(adapterData.nodes.map((node) => [node.id, node]));
+}
+
+function sigmaAdapterEdgeById(
+  adapterData: GraphRendererAdapterData
+): Map<string, GraphRendererAdapterData["edges"][number]> {
+  return new Map(adapterData.edges.map((edge) => [edge.id, edge]));
 }
 
 function sigmaSpotlightCameraCommunityId(adapterData: GraphRendererAdapterData): string | null {

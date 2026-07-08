@@ -531,8 +531,9 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
   );
   const pinnedNodeSet = resolvePinnedNodeIds(model.nodes, options.pins);
   const searchResultSet = new Set(options.searchResultIds || []);
+  const activeRelationFocusNodeId = options.relationFocusNodeId ?? selectedNodeId;
   const relationFocusState = resolveGraphRelationFocus({
-    activeNodeId: focus?.kind === "community" ? (options.relationFocusNodeId ?? selectedNodeId) : null,
+    activeNodeId: activeRelationFocusNodeId,
     nodes: filteredVisibleNodes,
     edges: filteredVisibleEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target }))
   });
@@ -732,15 +733,44 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const isFocusedView = focus?.kind === "community";
+  const selectedGlobalCommunityId =
+    !isFocusedView && options.selection?.kind === "community" && model.communityById[options.selection.id]
+      ? options.selection.id
+      : null;
   const renderableEdgeCandidates = filteredVisibleEdges.filter((edge) => nodeById.has(edge.source) && nodeById.has(edge.target));
-  const edgeIdSet = selectBudgetedIds(renderableEdgeCandidates, budgetLimits.maxVisibleEdges, (edge) =>
+  const selectedGlobalCommunityBridgeEdgeSet = selectedGlobalCommunityId
+    ? selectBudgetedIds(
+        renderableEdgeCandidates.filter((edge) => selectedGlobalCommunityBridgeEdge(edge, selectedGlobalCommunityId, nodeById)),
+        selectedGlobalCommunityPreviewBridgeBudget(filteredVisibleNodes.filter((node) => node.community === selectedGlobalCommunityId).length),
+        (edge) => edgeRenderPriority(edge, {
+          selectedNodeIds: selectedNodeSet,
+          pinnedNodeIds: pinnedNodeSet,
+          searchResultIds: searchResultSet,
+          importantNodeIds: importantIds,
+          coreNodeIds: stableCoreNodeSet,
+          relationFocusDepth: relationFocusState.edgeDepthById.get(edge.id) ?? "none"
+        })
+      )
+    : new Set<string>();
+  const renderableEdgeBudgetCandidates = selectedGlobalCommunityId
+    ? renderableEdgeCandidates.filter((edge) =>
+        selectedGlobalCommunityPreviewAllowsEdge(edge, selectedGlobalCommunityId, nodeById, {
+          skeletonEdgeIds: stableSkeletonEdgeSet,
+          bridgeEdgeIds: selectedGlobalCommunityBridgeEdgeSet
+        })
+      )
+    : renderableEdgeCandidates;
+  const edgeIdSet = selectBudgetedIds(renderableEdgeBudgetCandidates, budgetLimits.maxVisibleEdges, (edge) =>
     edgeRenderPriority(edge, {
       selectedNodeIds: selectedNodeSet,
       pinnedNodeIds: pinnedNodeSet,
       searchResultIds: searchResultSet,
       importantNodeIds: importantIds,
       coreNodeIds: stableCoreNodeSet,
-      relationFocusDepth: relationFocusState.edgeDepthById.get(edge.id) ?? "none"
+      relationFocusDepth: relationFocusState.edgeDepthById.get(edge.id) ?? "none",
+      selectedGlobalCommunityId,
+      selectedGlobalCommunityBridgeEdgeIds: selectedGlobalCommunityBridgeEdgeSet,
+      skeletonEdgeIds: stableSkeletonEdgeSet
     })
   );
   const interactionEdgeBudget = Math.max(8, Math.min(edgeIdSet.size, Math.ceil(budgetLimits.maxVisibleEdges * 0.22)));
@@ -1476,12 +1506,17 @@ function edgeRenderPriority(
     importantNodeIds: Record<string, boolean>;
     coreNodeIds: Set<string>;
     relationFocusDepth?: GraphRelationFocusDepth;
+    selectedGlobalCommunityId?: string | null;
+    selectedGlobalCommunityBridgeEdgeIds?: Set<string>;
+    skeletonEdgeIds?: Set<string>;
   }
 ): number {
   const endpoints = [edge.source, edge.target];
   let score = stableEdgeImportance(edge, signals);
   if (signals.relationFocusDepth === "first") score += 1000000;
   if (signals.relationFocusDepth === "second") score += 300000;
+  if (signals.selectedGlobalCommunityId && signals.selectedGlobalCommunityBridgeEdgeIds?.has(edge.id)) score += 800000;
+  if (signals.selectedGlobalCommunityId && signals.skeletonEdgeIds?.has(edge.id)) score += 600000;
   for (const id of endpoints) {
     if (signals.selectedNodeIds.has(id)) score += 100000;
     if (signals.searchResultIds.has(id)) score += 50000;
@@ -1489,6 +1524,44 @@ function edgeRenderPriority(
     if (signals.importantNodeIds[id]) score += 12000;
   }
   return score;
+}
+
+function selectedGlobalCommunityPreviewBridgeBudget(nodeCount: number): number {
+  const count = Math.max(0, Math.floor(Number(nodeCount) || 0));
+  if (count <= 0) return 0;
+  if (count <= 8) return 2;
+  if (count <= 24) return 4;
+  if (count <= 60) return 6;
+  return 10;
+}
+
+function selectedGlobalCommunityBridgeEdge(
+  edge: AtlasEdge,
+  communityId: string,
+  nodeById: ReadonlyMap<string, { community: string }>
+): boolean {
+  const sourceCommunity = nodeById.get(edge.source)?.community;
+  const targetCommunity = nodeById.get(edge.target)?.community;
+  if (!sourceCommunity || !targetCommunity || sourceCommunity === targetCommunity) return false;
+  return sourceCommunity === communityId || targetCommunity === communityId;
+}
+
+function selectedGlobalCommunityPreviewAllowsEdge(
+  edge: AtlasEdge,
+  communityId: string,
+  nodeById: ReadonlyMap<string, { community: string }>,
+  signals: {
+    skeletonEdgeIds: Set<string>;
+    bridgeEdgeIds: Set<string>;
+  }
+): boolean {
+  const sourceCommunity = nodeById.get(edge.source)?.community;
+  const targetCommunity = nodeById.get(edge.target)?.community;
+  const sourceSelected = sourceCommunity === communityId;
+  const targetSelected = targetCommunity === communityId;
+  if (sourceSelected && targetSelected) return signals.skeletonEdgeIds.has(edge.id);
+  if (sourceSelected || targetSelected) return signals.bridgeEdgeIds.has(edge.id);
+  return true;
 }
 
 function selectStableCoreNodeIds(

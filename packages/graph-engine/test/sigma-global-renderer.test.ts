@@ -162,8 +162,8 @@ describe("Sigma global renderer production boundary", () => {
       }
     });
     assert.deepEqual(graph.getEdgeAttributes("adapter-edge"), {
-      size: 1.13,
-      color: "rgba(49, 95, 114, 0.145)",
+      size: 1.68,
+      color: "rgba(49, 95, 114, 0.211)",
       relationType: "depends-on-adapter",
       confidence: "ADAPTER_CONFIDENCE",
       weight: 0.75,
@@ -777,6 +777,44 @@ describe("Sigma global renderer production boundary", () => {
     assert.notDeepEqual(updatedEdge, originalEdge);
     assert.ok(edgeStyleAlpha(updatedEdge.color) < edgeStyleAlpha(originalEdge.color));
     assert.ok(updatedEdge.size < originalEdge.size);
+
+    renderer.destroy();
+  });
+
+  it("applies global hover relation focus by patching graph attributes in place", () => {
+    const runtime = fakeRuntime();
+    const adapterData = adapterDataFixture({ selectedCommunityIds: [] });
+    const renderer = createSigmaGlobalRenderer({
+      container: fakeContainer(),
+      adapterData,
+      theme: "shan-shui",
+      runtime
+    });
+    const sigma = runtime.instances[0];
+    const originalGraph = renderer.graph;
+    const originalEdge = { ...renderer.graph.getEdgeAttributes("adapter-edge") };
+
+    renderer.setRelationFocusPreview("render-alpha");
+
+    const previewEdge = renderer.graph.getEdgeAttributes("adapter-edge");
+    assert.equal(renderer.graph, originalGraph);
+    assert.equal(sigma.setGraphCalls.length, 0);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "relationFocusDepth"), "focus");
+    assert.equal(renderer.graph.getNodeAttribute("render-beta", "relationFocusDepth"), "first");
+    assert.equal(previewEdge.relationFocusDepth, "first");
+    assert.ok(previewEdge.size > originalEdge.size, "hovered first-order edge should be patched thicker");
+    assert.ok(edgeStyleAlpha(previewEdge.color) > edgeStyleAlpha(originalEdge.color), "hovered first-order edge should be patched brighter");
+
+    renderer.setRelationFocusPreview(null);
+
+    const clearedEdge = renderer.graph.getEdgeAttributes("adapter-edge");
+    assert.equal(renderer.graph, originalGraph);
+    assert.equal(sigma.setGraphCalls.length, 0);
+    assert.equal(renderer.graph.getNodeAttribute("render-alpha", "relationFocusDepth"), "none");
+    assert.equal(renderer.graph.getNodeAttribute("render-beta", "relationFocusDepth"), "none");
+    assert.equal(clearedEdge.relationFocusDepth, "none");
+    assert.equal(clearedEdge.size, originalEdge.size);
+    assert.equal(clearedEdge.color, originalEdge.color);
 
     renderer.destroy();
   });

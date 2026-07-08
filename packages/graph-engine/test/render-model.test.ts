@@ -658,6 +658,41 @@ describe("buildRenderableGraph", () => {
     assert.equal(graph.overflow.edges.total, 1200);
   });
 
+  it("uses selected global nodes as fixed first-order relation focus", () => {
+    const graph = buildRenderableGraph(relationFocusCommunityGraph(), {
+      theme: "shan-shui",
+      selection: { kind: "node", id: "a" }
+    });
+
+    const nodeDepths = Object.fromEntries(graph.nodes.map((node) => [node.id, node.relationFocusDepth]));
+    const edgeDepths = Object.fromEntries(graph.edges.map((edge) => [edge.id, edge.relationFocusDepth]));
+
+    assert.equal(graph.budget.view, "global");
+    assert.equal(graph.selectedNodeId, "a");
+    assert.equal(nodeDepths.a, "focus");
+    assert.equal(nodeDepths.b, "first");
+    assert.equal(nodeDepths.c, "first");
+    assert.equal(nodeDepths.e, "unrelated");
+    assert.equal(edgeDepths["a-b"], "first");
+    assert.equal(edgeDepths["a-c"], "first");
+    assert.equal(edgeDepths["d-e"], "unrelated");
+  });
+
+  it("clears explicit global relation focus without leaving stale depths", () => {
+    const data = relationFocusCommunityGraph();
+    const hovered = buildRenderableGraph(data, {
+      theme: "shan-shui",
+      relationFocusNodeId: "a"
+    });
+    const cleared = buildRenderableGraph(data, { theme: "shan-shui" });
+
+    assert.equal(hovered.nodes.find((node) => node.id === "a")?.relationFocusDepth, "focus");
+    assert.equal(hovered.edges.find((edge) => edge.id === "a-b")?.relationFocusDepth, "first");
+    assert.equal(cleared.nodes.every((node) => node.relationFocusDepth === "none"), true);
+    assert.equal(cleared.edges.every((edge) => edge.relationFocusDepth === "none"), true);
+    assert.equal(cleared.selectedNodeId, null);
+  });
+
   it("keeps interaction-time detail updates inside budget while preserving anchors", () => {
     const data = budgetGraph(200, 1200);
     const graph = buildRenderableGraph(data, {
@@ -676,6 +711,46 @@ describe("buildRenderableGraph", () => {
     assert.ok(graph.interaction.preservedNodeIds.includes("n198"), "searched node should stay traceable");
     assert.ok(graph.interaction.preservedNodeIds.includes("n197"), "pinned node should stay traceable");
     assert.ok(graph.interaction.preservedNodeIds.some((id) => graph.importance.stableCoreNodeIds.includes(id)), "stable core anchors should stay traceable");
+  });
+
+  it("keeps selected global community preview partial while preserving bridge context", () => {
+    const graph = buildRenderableGraph(graphWithExternalTemporaryNode(), {
+      theme: "shan-shui",
+      selection: { kind: "community", id: "c1" },
+      sourceCommunityId: "c1"
+    });
+
+    assert.equal(graph.budget.view, "global");
+    assert.equal(graph.communityMap.active, false);
+    assert.equal(graph.communityMap.current?.source, "source-context");
+    assert.deepEqual(Object.keys(graph.communityMap.current?.nodeRulesById ?? {}).sort(), ["entity", "topic"]);
+    assert.deepEqual(Object.keys(graph.communityMap.current?.edgeRulesById ?? {}), ["internal"]);
+    assert.ok(graph.edges.some((edge) => edge.id === "bridge"), "cross-community bridge edge should remain available in global preview");
+    assert.equal(
+      graph.communityMap.current?.edgeRulesById["external-peer-edge"],
+      undefined,
+      "preview must not expand into the external community's full internal reading"
+    );
+  });
+
+  it("caps selected global community preview instead of exposing a dense internal mesh", () => {
+    const graph = buildRenderableGraph(budgetGraph(30, 200), {
+      theme: "shan-shui",
+      selection: { kind: "community", id: "c1" },
+      sourceCommunityId: "c1"
+    });
+    const communityEdges = Object.values(graph.communityMap.current?.edgeRulesById ?? {});
+
+    assert.equal(graph.budget.view, "global");
+    assert.ok(communityEdges.length <= graph.importance.stableSkeletonEdgeIds.length);
+    assert.ok(communityEdges.length <= 22, `selected-community preview should stay sparse, got ${communityEdges.length} edges`);
+    assert.equal(graph.communityMap.current?.edgeLayers.background, 0);
+    assert.equal(graph.communityMap.current?.edgeLayers.related, 0);
+    assert.equal(
+      graph.edges.every((edge) => edge.communityMapLayer !== "background" && edge.communityMapLayer !== "related"),
+      true,
+      "selected-community preview must not render the dense internal background mesh"
+    );
   });
 
   it("keeps focused community nodes as a lightweight map without full cards", () => {

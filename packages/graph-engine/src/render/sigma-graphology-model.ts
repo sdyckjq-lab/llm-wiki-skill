@@ -90,6 +90,7 @@ export interface SigmaGlobalEdgeStyle {
 
 export interface SigmaGlobalEdgeStyleContext {
   communityReading?: boolean;
+  relationFocusActive?: boolean;
 }
 
 const SIGMA_COMMUNITY_READING_LABEL_MAX_WIDTH = 180;
@@ -106,6 +107,7 @@ export function buildSigmaGlobalGraphologyGraph(
   const aggregationRenderById = new Map(adapterData.renderable.aggregationContainers.map((aggregation) => [aggregation.id, aggregation]));
   const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
   const spotlightCommunityIds = sigmaSpotlightCommunityIds(adapterData);
+  const edgeContext = sigmaGlobalEdgeStyleContext(adapterData);
   const communityReadingLabelBudget = adapterData.renderable.communityMap?.active
     ? adapterData.renderable.communityMap.current?.labelBudget.limit ?? null
     : null;
@@ -120,7 +122,7 @@ export function buildSigmaGlobalGraphologyGraph(
       theme,
       edgeStyle,
       selectedCommunityIds,
-      { communityReading: adapterData.renderable.communityMap?.active === true }
+      edgeContext
     ));
   }
 
@@ -166,6 +168,7 @@ export function patchSigmaGlobalGraphAttributes(
   const aggregationRenderById = new Map(adapterData.renderable.aggregationContainers.map((aggregation) => [aggregation.id, aggregation]));
   const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
   const spotlightCommunityIds = sigmaSpotlightCommunityIds(adapterData);
+  const edgeContext = sigmaGlobalEdgeStyleContext(adapterData);
   const communityReadingLabelBudget = adapterData.renderable.communityMap?.active
     ? adapterData.renderable.communityMap.current?.labelBudget.limit ?? null
     : null;
@@ -180,7 +183,7 @@ export function patchSigmaGlobalGraphAttributes(
       theme,
       edgeStyle,
       selectedCommunityIds,
-      { communityReading: adapterData.renderable.communityMap?.active === true }
+      edgeContext
     ));
   }
   graph.setAttribute("counts", adapterData.counts);
@@ -274,6 +277,23 @@ export function sigmaSpotlightCommunityIds(adapterData: GraphRendererAdapterData
   return communityId ? new Set([communityId]) : new Set();
 }
 
+export function sigmaGlobalEdgeStyleContext(
+  adapterData: GraphRendererAdapterData,
+  options: { relationFocusPreviewActive?: boolean; relationFocusActive?: boolean } = {}
+): SigmaGlobalEdgeStyleContext {
+  return {
+    communityReading: adapterData.renderable.communityMap?.active === true,
+    relationFocusActive: options.relationFocusActive ?? (options.relationFocusPreviewActive === true || sigmaAdapterDataHasRelationFocus(adapterData))
+  };
+}
+
+export function sigmaAdapterDataHasRelationFocus(adapterData: GraphRendererAdapterData): boolean {
+  return adapterData.nodes.some((node) => (node.relationFocusDepth ?? "none") !== "none")
+    || adapterData.edges.some((edge) =>
+      (edge.render.relationFocusDepth ?? "none") !== "none"
+    );
+}
+
 export function sigmaSpotlightCommunityId(adapterData: GraphRendererAdapterData): string | null {
   if (adapterData.selection.input?.kind === "community") return adapterData.selection.input.id;
   // Phase 2: after returning to global, no selection exists but the source
@@ -352,6 +372,35 @@ export function sigmaGlobalEdgeStyle(
     }
   }
 
+  if (!style?.focusHighlight && !context.communityReading && selectedCommunityIds.size > 0) {
+    const sourceSelected = Boolean(edge.sourceCommunityId && selectedCommunityIds.has(edge.sourceCommunityId));
+    const targetSelected = Boolean(edge.targetCommunityId && selectedCommunityIds.has(edge.targetCommunityId));
+    const touchesSelectedCommunity = sourceSelected || targetSelected;
+    const internalSelectedCommunity = sourceSelected && targetSelected;
+    if (internalSelectedCommunity) {
+      const layer = edge.render?.communityMapLayer;
+      if (layer === "skeleton") {
+        size += 0.55;
+        alpha = alpha * 1.18 + 0.04;
+      } else if (layer === "related") {
+        size += 0.15;
+        alpha = alpha * 1.05 + 0.01;
+      } else {
+        size *= 0.78;
+        alpha *= 0.62;
+      }
+    } else if (touchesSelectedCommunity && sigmaSelectedCommunityPreviewBridgeEdge(edge)) {
+      size += 0.35;
+      alpha = alpha * 1.16 + 0.04;
+    } else if (touchesSelectedCommunity) {
+      size *= 0.78;
+      alpha *= 0.62;
+    } else {
+      size *= 0.72;
+      alpha *= 0.42;
+    }
+  }
+
   if (context.communityReading) {
     const confidence = String(edge.confidence || "EXTRACTED").toUpperCase();
     if (confidence === "INFERRED") {
@@ -379,7 +428,10 @@ export function sigmaGlobalEdgeStyle(
   //    first-degree to a hover keeps its skeleton boost AND gains first-degree
   //    emphasis — it is never demoted below its rest state (the #135↔#136
   //    regression). Color still means relation type only (ADR-23); only weight
-  //    (size) and presence (alpha) move. Global route ignores both dimensions.
+  //    (size) and presence (alpha) move. Global route opts into the interaction
+  //    dimension for selected-node focus and lightweight hover previews, while
+  //    the static structure layer remains community-reading scoped.
+  const relationFocusActive = context.communityReading || context.relationFocusActive === true;
   if (context.communityReading) {
     const layer = edge.render?.communityMapLayer;
     if (layer === "skeleton") {
@@ -389,7 +441,9 @@ export function sigmaGlobalEdgeStyle(
       size *= 0.7;
       alpha *= 0.55;
     }
+  }
 
+  if (relationFocusActive) {
     const depth = edge.render?.relationFocusDepth ?? "none";
     if (depth === "first") {
       size += 0.9;
@@ -415,6 +469,11 @@ export function sigmaGlobalEdgeStyle(
     color: rgbaColor(sigmaGlobalEdgeRelationColor(relationClass, theme), alpha),
     size
   };
+}
+
+function sigmaSelectedCommunityPreviewBridgeEdge(edge: GraphRendererAdapterEdge): boolean {
+  const layer = edge.render?.communityMapLayer;
+  return edge.render?.skeleton === true || edge.render?.traceable === true || layer === "skeleton" || layer === "related";
 }
 
 export function sigmaGlobalEdgeRelationColor(relationClass: string, theme: ThemeId): string {

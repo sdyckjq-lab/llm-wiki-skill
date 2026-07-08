@@ -25,6 +25,26 @@ export interface GraphRelationFocusState {
   directEdgeIds: Set<string>;
 }
 
+export interface ResolveGraphFirstOrderRelationFocusInput {
+  activeNodeId: string | null;
+  hasNode: (id: string) => boolean;
+  incidentEdgeIds: (nodeId: string) => Iterable<string>;
+  edgeSource: (edgeId: string) => string;
+  edgeTarget: (edgeId: string) => string;
+}
+
+export interface GraphFirstOrderRelationFocusTouched {
+  nodeIds: Set<string>;
+  edgeIds: Set<string>;
+}
+
+export interface GraphFirstOrderRelationFocusState {
+  activeNodeId: string | null;
+  nodeDepthById: Map<string, GraphRelationFocusDepth>;
+  edgeDepthById: Map<string, GraphRelationFocusDepth>;
+  touched: GraphFirstOrderRelationFocusTouched;
+}
+
 export function resolveGraphRelationFocus(input: ResolveGraphRelationFocusInput): GraphRelationFocusState {
   const nodeIds = new Set(input.nodes.map((node) => node.id));
   const activeNodeId = input.activeNodeId && nodeIds.has(input.activeNodeId) ? input.activeNodeId : null;
@@ -88,6 +108,45 @@ export function resolveGraphRelationFocus(input: ResolveGraphRelationFocusInput)
   }
 
   return { activeNodeId, nodeDepthById, edgeDepthById, firstNodeIds, secondNodeIds, directEdgeIds };
+}
+
+export function emptyGraphFirstOrderRelationFocusTouched(): GraphFirstOrderRelationFocusTouched {
+  return { nodeIds: new Set(), edgeIds: new Set() };
+}
+
+export function resolveGraphFirstOrderRelationFocus(
+  input: ResolveGraphFirstOrderRelationFocusInput
+): GraphFirstOrderRelationFocusState {
+  const nodeDepthById = new Map<string, GraphRelationFocusDepth>();
+  const edgeDepthById = new Map<string, GraphRelationFocusDepth>();
+  const activeNodeId = input.activeNodeId && input.hasNode(input.activeNodeId) ? input.activeNodeId : null;
+  if (!activeNodeId) {
+    return {
+      activeNodeId: null,
+      nodeDepthById,
+      edgeDepthById,
+      touched: emptyGraphFirstOrderRelationFocusTouched()
+    };
+  }
+
+  nodeDepthById.set(activeNodeId, "focus");
+  for (const edgeId of input.incidentEdgeIds(activeNodeId)) {
+    edgeDepthById.set(edgeId, "first");
+    const source = input.edgeSource(edgeId);
+    const target = input.edgeTarget(edgeId);
+    if (source !== activeNodeId && input.hasNode(source)) nodeDepthById.set(source, "first");
+    if (target !== activeNodeId && input.hasNode(target)) nodeDepthById.set(target, "first");
+  }
+
+  return {
+    activeNodeId,
+    nodeDepthById,
+    edgeDepthById,
+    touched: {
+      nodeIds: new Set(nodeDepthById.keys()),
+      edgeIds: new Set(edgeDepthById.keys())
+    }
+  };
 }
 
 // Shift multi-select classifier (#136): emphasizes only REAL relations whose

@@ -10,7 +10,7 @@ Based on [Andrej Karpathy](https://karpathy.ai/)'s [llm-wiki methodology](https:
 
 Turn scattered information into a growing, interconnected knowledge base
 
-[![version](https://img.shields.io/badge/v3.6.35-Community%20node%20interaction-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.36-Global%20intent%20feedback-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -90,6 +90,7 @@ The key difference: knowledge is **compiled once, maintained continuously** — 
 | | Feature | Description |
 |---|---|---|
 | 🧭 | **Community Close-up Map** | Entering a community now feels like zooming into the same region from the global graph; positions, tiers, labels, and return highlights stay stable, then fade after the global view settles |
+| 🧩 | **Global Intent Feedback** | Hovering a global node lightly previews first-order real relationships; clicking fixes that emphasis with the summary drawer; selecting a community reveals only a small internal and bridge preview instead of full reading |
 
 ---
 
@@ -131,6 +132,7 @@ Each platform has its own setup guide:
 - **Claude Companion Upgrade Command** — `/llm-wiki-upgrade` included after installation
 - **Material Deletion** — Cascade-delete with automatic cleanup of associated pages, broken links, and cache
 - **Sigma Graph Main Route** — Both the global map and community reading now run on Sigma/Graphology; DOM/SVG remains only as fallback, comparison, and abnormal-case safety net
+- **Global Graph Intent Feedback** — In the global view, hovering a node lightly highlights its first-order real relationships and restores on leave without opening drawers or moving the camera; clicking fixes the relationship emphasis and opens the node summary; selecting a community shows only a small internal and cross-community bridge preview instead of entering full community reading
 - **Community Close-up Map** — Entering a community is one continuous transition: the summary drawer exits, the canvas expands smoothly, and the camera continues from the global community close-up into the community reading close-up, landing on the Sigma community reading route without reopening the summary (under reduced motion the drawer just closes, with no large camera push); inside, only that community's nodes and internal relationships stay visible while preserving node positions, community color, edge tiers, local search/filter, Shift multi-select, and return highlights
 - **Community Node Reading Accommodation** — Clicking a node inside community reading opens the right reader drawer while the canvas and camera make room continuously; widescreen layouts keep the node comfortable in the remaining canvas, while overlay and fullscreen drawers avoid forced camera movement
 - **Query Persistence** — Save valuable comprehensive answers back to the knowledge base

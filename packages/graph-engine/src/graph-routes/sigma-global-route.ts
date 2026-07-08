@@ -417,19 +417,24 @@ export function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererF
     hoverEdgeId = null;
     syncSigmaEdgeHoverPreview();
     hoverNodeId = relationFocusNodeId;
+    if (options.focus?.kind !== "community") renderer?.setRelationFocusPreview(null);
     input.options.callbacks.onSelectionInput?.(selection);
     updateSigmaSelection(selection);
   }
 
   function handleSigmaNodeHover(nodeId: string | null): void {
-    const nextHoverNodeId = options.focus?.kind === "community" ? nodeId : null;
+    const nextHoverNodeId = nodeId;
     if (hoverNodeId === nextHoverNodeId) return;
     if (nextHoverNodeId) {
       hoverEdgeId = null;
       syncSigmaEdgeHoverPreview();
     }
     hoverNodeId = nextHoverNodeId;
-    updateSigmaRenderer();
+    if (options.focus?.kind === "community") {
+      updateSigmaRenderer();
+      return;
+    }
+    renderer?.setRelationFocusPreview(nextHoverNodeId);
   }
 
   function handleSigmaEdgeHover(edgeId: string | null): void {
@@ -449,6 +454,7 @@ export function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererF
   function clearSigmaTransientHoverState(): void {
     hoverNodeId = null;
     hoverEdgeId = null;
+    if (options.focus?.kind !== "community") renderer?.setRelationFocusPreview(null);
     syncSigmaEdgeHoverPreview();
   }
 
@@ -825,7 +831,7 @@ function adapterDataForSigmaRoute(
     typeFilters,
     viewportSize,
     sourceCommunityId: options.sourceCommunityId,
-    relationFocusNodeId: hoverNodeId,
+    relationFocusNodeId: options.focus?.kind === "community" ? hoverNodeId : null,
     temporaryObject: options.temporaryObject
   });
 }
