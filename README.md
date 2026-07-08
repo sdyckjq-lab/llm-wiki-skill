@@ -10,7 +10,7 @@
 
 把碎片化的信息变成持续积累、互相链接的知识库
 
-[![version](https://img.shields.io/badge/v3.6.33-Hooks%20lint%20修复-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.34-社区边视觉分层-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-多平台-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -139,6 +139,7 @@ bash install.sh --platform claude --with-optional-adapters
 - **统一社区抽屉** — 普通社区和"未分组"使用同一套概览、固定动作、可展开核心节点和对话入口；"进入社区"放在顶部，未分组默认推荐探索潜在关系
 - **全局边线调参** — 工作台全局图谱边线自动分主次，调参面板支持语义强调和聚焦点亮；社区图谱保留原有边线和图例
 - **社区近景地图** — 进入社区是一段连续过渡：摘要抽屉退场、画布平滑扩展，镜头从全局社区高亮近景继续推进到社区阅读近景，过渡后落在 Sigma 社区阅读主路径且不重开摘要（减少动态效果下抽屉直接关闭、不做大幅推进）；进入社区后沿用 Sigma 主图，只显示当前社区内部节点和关系；节点位置、身份色、边层级和标签预算保持连续，搜索、类型筛选和 Shift 多选只影响当前社区，返回全图时社区高亮会跟随视野稳定后再淡出；社区阅读点“回全图”是一段更短的连续退出过渡，镜头拉回全局构图、保留来源社区高亮，不重开摘要抽屉、不清钉扎位置和全局筛选偏好
+- **社区阅读关系视觉分层** — 进入社区默认第一眼就能区分结构连接线和背景关系：结构跨度选择器只从真实边里按社区规模分档挑出少量骨架边，优先串起核心节点和小团块，而不是堆在权重最强的关系上；Sigma 社区阅读主路径让结构连接线比背景关系更粗更亮，关系颜色仍只表达关系类型。沿用明亮、直线视觉语言，不引入曲线或粗重主路线
 - **社区节点阅读让位** — 社区内单击节点打开右侧阅读抽屉时，画布变窄和镜头让位保持连续；宽屏下节点留在剩余画布的舒适位置，窄屏覆盖或全屏阅读时不强行移动镜头
 - **选区抽屉查看全部 / 收起** — Shift 多选攒下的选区抽屉默认只显示前 3 个选中页面，超过 3 个可"查看全部"，展开后可"收起"；继续 Shift 多选保持展开 / 收起状态，抽屉静默实时更新（不重开、不抢焦点、不清补充说明），多选全程不移动镜头
 - **图谱视野稳定** — 点击社区摘要或重复点击同一位置时，图谱保持原视角，不会被右侧抽屉挤动
