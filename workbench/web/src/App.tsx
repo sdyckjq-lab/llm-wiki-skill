@@ -54,12 +54,12 @@ import {
 } from "@/lib/drawer-state";
 import type { GraphReaderActionId } from "@/lib/graph-reader";
 import { graphReaderFilteredHidden } from "@/lib/graph-data-refresh";
-import { planActiveMapReadingWorkflow } from "@/lib/active-map-reading-workflow";
+import { planActiveMapReadingWorkflow, type ActiveMapReadingWorkflowPlan } from "@/lib/active-map-reading-workflow";
 import {
 	type GraphSelectionCommand,
 } from "@/lib/graph-summary-actions";
 import { COMMUNITY_ENTER_EXIT_DURATION_MS } from "@/lib/graph-community-enter";
-import { useDrawerExitRail } from "@/lib/use-drawer-exit-rail";
+import { useActiveMapReadingWorkflow } from "@/lib/use-active-map-reading-workflow";
 import { WIKI_LINK_SEEN_EVENT } from "@/lib/wiki-links";
 import {
 	applyAppearance,
@@ -80,8 +80,6 @@ import {
 	clampDrawerWidthForViewport,
 	sidebarLayoutWidth,
 } from "@/lib/drawer-layout";
-
-type ActiveMapReadingWorkflowPlan = ReturnType<typeof planActiveMapReadingWorkflow>;
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "llm-wiki-agent-sidebar-collapsed";
 const DRAWER_WIDTH_STORAGE_KEY = "llm-wiki-agent-drawer-width";
@@ -153,15 +151,6 @@ function App() {
 	const [graphStatus, setGraphStatus] = useState<GraphStatusSnapshot>(DEFAULT_GRAPH_STATUS);
 	const [artifacts, setArtifacts] = useState<ArtifactManifest[]>([]);
 	const [drawerFullscreen, setDrawerFullscreen] = useState(false);
-	// 进入社区退场轨道（#120）：exit 期间保留社区摘要挂载做退场，结束后落回 closed。
-	const {
-		drawer,
-		setDrawer,
-		isExiting: drawerExitIsExiting,
-		stage: stageDrawerExit,
-		complete: handleDrawerExitComplete,
-		isProtected: isDrawerExitProtected,
-	} = useDrawerExitRail();
 	const [batchJob, setBatchJob] = useState<BatchDigestJob | null>(null);
 	const [pendingGraphPrompt, setPendingGraphPrompt] = useState<{
 		id: string;
@@ -185,33 +174,49 @@ function App() {
 	});
 	const mainViewRef = useRef(mainView);
 	const graphTemporaryObjectRef = useRef<GraphSummaryObjectRef | null>(null);
-	const drawerRef = useRef(drawer);
+	const drawerRef = useRef<DrawerState>(closedDrawer());
 	const activeConversationId = active?.conversation.id ?? null;
 	const createGraphCommandId = useCallback((prefix: string) => (
 		`${prefix}-${Math.random().toString(36).slice(2, 10)}`
 	), []);
+	const setGraphTemporaryObjectWithRef = useCallback((temporaryObject: GraphSummaryObjectRef | null) => {
+		graphTemporaryObjectRef.current = temporaryObject;
+		setGraphTemporaryObject(temporaryObject);
+	}, []);
+	const activeMapReadingWorkflow = useActiveMapReadingWorkflow({
+		data: graphData,
+		pins: graphPins,
+		visibility: graphVisibilityState,
+		temporaryObject: graphTemporaryObject,
+		setTemporaryObject: setGraphTemporaryObjectWithRef,
+		setSelectionCommand,
+		setGraphFocusPath,
+		createCommandId: createGraphCommandId,
+	});
+	const {
+		drawer,
+		setDrawer,
+		updateDrawer,
+		executePlan,
+		drawerExitIsExiting,
+		handleDrawerExitComplete,
+		isDrawerExitProtected,
+	} = activeMapReadingWorkflow;
 	const setDrawerWithRef = useCallback((next: DrawerState) => {
 		drawerRef.current = next;
 		setDrawer(next);
 	}, [setDrawer]);
 	const updateDrawerWithRef = useCallback((updater: (current: DrawerState) => DrawerState) => {
-		setDrawer((current) => {
+		updateDrawer((current) => {
 			const next = updater(current);
 			drawerRef.current = next;
 			return next;
 		});
-	}, [setDrawer]);
-
+	}, [updateDrawer]);
 	const applyActiveMapReadingPlan = useCallback((plan: ActiveMapReadingWorkflowPlan) => {
-		if ("temporaryObject" in plan) {
-			graphTemporaryObjectRef.current = plan.temporaryObject ?? null;
-			setGraphTemporaryObject(plan.temporaryObject ?? null);
-		}
-		if (plan.clearGraphFocusPath) setGraphFocusPath(null);
-		if (plan.selectionCommand) setSelectionCommand(plan.selectionCommand);
-		if ("drawerExit" in plan) stageDrawerExit(plan.drawerExit ? plan.drawerExit.drawer : null);
-		setDrawerWithRef(plan.drawer);
-	}, [setDrawerWithRef, stageDrawerExit]);
+		drawerRef.current = plan.drawer;
+		executePlan(plan);
+	}, [executePlan]);
 
 	useEffect(() => {
 		drawerRef.current = drawer;
