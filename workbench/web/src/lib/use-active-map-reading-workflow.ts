@@ -13,7 +13,8 @@ import {
 	type ActiveMapReadingWorkflowEvent,
 	type ActiveMapReadingWorkflowPlan,
 } from "./active-map-reading-workflow";
-import { isGraphInteractionDrawer, type DrawerState } from "./drawer-state";
+import { closedDrawer, isGraphInteractionDrawer, type DrawerState } from "./drawer-state";
+import type { GraphReaderActionId } from "./graph-reader";
 import type { GraphSelectionCommand } from "./graph-summary-actions";
 import { useDrawerExitRail } from "./use-drawer-exit-rail";
 
@@ -63,9 +64,14 @@ export interface ActiveMapReadingWorkflowController {
 	handleGraphSummaryNodeSelect: (nodeId: string) => ActiveMapReadingWorkflowPlan;
 	handleGraphSummaryNodePreview: (nodeId: string | null) => ActiveMapReadingWorkflowPlan;
 	handleGraphSummaryReturnCommunity: (communityId: string) => ActiveMapReadingWorkflowPlan;
+	handleGraphReaderAction: (actionId: GraphReaderActionId) => ActiveMapReadingWorkflowPlan;
+	handleGraphSelectionAsk: (actionId: string | null, newConversation: boolean) => ActiveMapReadingWorkflowPlan;
+	handleGraphCommunityAsk: (actionId: string | null, newConversation: boolean) => ActiveMapReadingWorkflowPlan;
+	handleDrawerClose: (reason: "button" | "escape") => ActiveMapReadingWorkflowPlan;
 	syncGraphDataAndVisibility: () => ActiveMapReadingWorkflowPlan;
 	handleDrawerExitComplete: () => void;
 	isDrawerExitProtected: (current: DrawerState) => boolean;
+	reset: () => void;
 }
 
 export function useActiveMapReadingWorkflow(
@@ -238,6 +244,28 @@ export function useActiveMapReadingWorkflow(
 		runEvent({ type: "graph-summary-return-community", communityId })
 	), [runEvent]);
 
+	const handleGraphReaderAction = useCallback((actionId: GraphReaderActionId): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-reader-action", actionId })
+	), [runEvent]);
+
+	const handleGraphSelectionAsk = useCallback((
+		actionId: string | null,
+		newConversation: boolean,
+	): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-selection-ask", actionId, newConversation })
+	), [runEvent]);
+
+	const handleGraphCommunityAsk = useCallback((
+		actionId: string | null,
+		newConversation: boolean,
+	): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-community-ask", actionId, newConversation })
+	), [runEvent]);
+
+	const handleDrawerClose = useCallback((reason: "button" | "escape"): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-drawer-close", reason })
+	), [runEvent]);
+
 	const syncGraphDataAndVisibility = useCallback((): ActiveMapReadingWorkflowPlan => {
 		if (skipNextDataSyncRef.current) {
 			skipNextDataSyncRef.current = false;
@@ -262,6 +290,25 @@ export function useActiveMapReadingWorkflow(
 		return plan;
 	}, [applyPlannedTemporaryObject, executePlan, isProtected]);
 
+	const reset = useCallback((): void => {
+		dataRef.current = null;
+		pinsRef.current = {};
+		visibilityRef.current = null;
+		temporaryObjectRef.current = null;
+		setDataRef.current?.(null);
+		setPinsRef.current?.({});
+		setVisibilityRef.current?.(null);
+		setTemporaryObjectRef.current?.(null);
+		setGraphFocusPathRef.current?.(null);
+		setSelectionCommandRef.current?.({
+			id: createCommandIdRef.current?.("reset-active-map-reading")
+				?? `reset-active-map-reading-${Math.random().toString(36).slice(2, 10)}`,
+			type: "clear",
+		});
+		stage(null);
+		setDrawer(closedDrawer());
+	}, [setDrawer, stage]);
+
 	return {
 		drawer,
 		drawerExitIsExiting: isExiting,
@@ -278,8 +325,13 @@ export function useActiveMapReadingWorkflow(
 		handleGraphSummaryNodeSelect,
 		handleGraphSummaryNodePreview,
 		handleGraphSummaryReturnCommunity,
+		handleGraphReaderAction,
+		handleGraphSelectionAsk,
+		handleGraphCommunityAsk,
+		handleDrawerClose,
 		syncGraphDataAndVisibility,
 		handleDrawerExitComplete: complete,
 		isDrawerExitProtected: isProtected,
+		reset,
 	};
 }

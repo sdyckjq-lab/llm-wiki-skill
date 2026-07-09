@@ -250,6 +250,118 @@ describe("useActiveMapReadingWorkflow", () => {
 			type: "clear-temporary-object-display",
 		});
 	});
+
+	it("clears every active map reading state through a single cleanup entry", () => {
+		const dataUpdates: Array<GraphData | null> = [];
+		const pinUpdates: Array<PinMap> = [];
+		const visibilityUpdates: Array<GraphVisibilityState | null> = [];
+		const temporaryObjects: Array<GraphSummaryObjectRef | null> = [];
+		const focusClears: Array<string | null> = [];
+		const commands: GraphSelectionCommand[] = [];
+		const { result } = renderHook(() => useActiveMapReadingWorkflow({
+			data: graphFixture(),
+			pins: { "wiki/a.md": { x: 1, y: 2 } } as PinMap,
+			visibility: { ...emptyVisibility(), focusCommunityId: "c1" },
+			temporaryObject: { kind: "node", nodeId: "a" },
+			setData: (next) => dataUpdates.push(next),
+			setPins: (next) => pinUpdates.push(next),
+			setVisibility: (next) => visibilityUpdates.push(next),
+			setTemporaryObject: (next) => temporaryObjects.push(next),
+			setGraphFocusPath: (path) => focusClears.push(path),
+			setSelectionCommand: (command) => commands.push(command),
+			createCommandId: (prefix) => `${prefix}-id`,
+		}));
+
+		act(() => result.current.setDrawer(graphCommunitySummaryDrawer(communitySummaryPayloadFixture())));
+		act(() => result.current.runEvent({
+			type: "graph-summary-command",
+			command: { kind: "enter-community", communityId: "c1", label: "进入社区" },
+			reducedMotion: false,
+		}));
+		assert.equal(result.current.drawerExitIsExiting, true);
+
+		act(() => result.current.reset());
+
+		assert.equal(result.current.drawer.mode, "closed");
+		assert.equal(result.current.drawerExitIsExiting, false);
+		assert.equal(result.current.isDrawerExitProtected(result.current.drawer), false);
+		assert.equal(dataUpdates.at(-1), null);
+		assert.deepEqual(pinUpdates.at(-1), {});
+		assert.equal(visibilityUpdates.at(-1), null);
+		assert.equal(temporaryObjects.at(-1), null);
+		assert.equal(focusClears.at(-1), null);
+		assert.equal(commands.at(-1)?.type, "clear");
+	});
+
+	it("routes reader actions, asks, and drawer close through user-action methods", () => {
+		const commands: GraphSelectionCommand[] = [];
+		const focusClears: Array<string | null> = [];
+		const handoffs: Array<{ displayText: string; newConversation: boolean }> = [];
+		const { result } = renderHook(() => useActiveMapReadingWorkflow({
+			data: graphFixture(),
+			pins: emptyPins,
+			visibility: null,
+			temporaryObject: null,
+			setSelectionCommand: (command) => commands.push(command),
+			setGraphFocusPath: (path) => focusClears.push(path),
+			onConversationHandoff: (handoff) => handoffs.push({
+				displayText: handoff.displayText,
+				newConversation: handoff.newConversation,
+			}),
+			createCommandId: (prefix) => `${prefix}-id`,
+		}));
+
+		// 节点阅读：找相关页面保持为邻居选择命令，抽屉不变
+		act(() => result.current.setDrawer(graphReaderDrawer(graphReaderPayloadFixture(), { content: "Alpha" })));
+		act(() => result.current.handleGraphReaderAction("find_related_pages"));
+		assert.deepEqual(commands.at(-1), { id: "a", type: "neighbors" });
+		assert.equal(result.current.drawer.mode, "graph-reader");
+
+		// 非阅读态下触发节点阅读动作是 no-op（规则层守护，按钮也仅在阅读态出现）
+		const commandCountBeforeWrongMode = commands.length;
+		act(() => result.current.setDrawer(graphSelectionDrawer(manualMultiSelection(), "Alpha/Beta", "")));
+		act(() => result.current.handleGraphReaderAction("find_related_pages"));
+		assert.equal(commands.length, commandCountBeforeWrongMode);
+		assert.equal(result.current.drawer.mode, "graph-selection");
+
+		// 选区发问：交接提示词并关闭抽屉
+		act(() => result.current.setDrawer(graphSelectionDrawer(manualMultiSelection(), "Alpha/Beta", "只看差异")));
+		act(() => result.current.handleGraphSelectionAsk(null, false));
+		assert.equal(result.current.drawer.mode, "closed");
+		assert.equal(handoffs.at(-1)?.newConversation, false);
+		assert.match(handoffs.at(-1)?.displayText ?? "", /只看差异/);
+
+		// 社区发问：交接提示词并关闭抽屉
+		act(() => result.current.setDrawer(graphCommunitySummaryDrawer(communitySummaryPayloadFixture(), "社区补充")));
+		act(() => result.current.handleGraphCommunityAsk(null, true));
+		assert.equal(result.current.drawer.mode, "closed");
+		assert.equal(handoffs.at(-1)?.newConversation, true);
+		assert.match(handoffs.at(-1)?.displayText ?? "", /社区补充/);
+
+		// graph-reader 用 Escape 关：发 clear 命令并清焦点
+		act(() => result.current.setDrawer(graphReaderDrawer(graphReaderPayloadFixture(), { content: "Alpha" })));
+		act(() => result.current.handleDrawerClose("escape"));
+		assert.equal(result.current.drawer.mode, "closed");
+		assert.equal(commands.at(-1)?.type, "clear");
+		assert.equal(focusClears.at(-1), null);
+
+		// graph-reader 用按钮关：直接关闭，不发命令、不清焦点（按钮 ≠ Escape）
+		const commandCountBeforeButton = commands.length;
+		const focusCountBeforeButton = focusClears.length;
+		act(() => result.current.setDrawer(graphReaderDrawer(graphReaderPayloadFixture(), { content: "Alpha" })));
+		act(() => result.current.handleDrawerClose("button"));
+		assert.equal(result.current.drawer.mode, "closed");
+		assert.equal(commands.length, commandCountBeforeButton);
+		assert.equal(focusClears.length, focusCountBeforeButton);
+
+		// 进入社区时减少动效偏好被转发，未被写死为默认
+		act(() => result.current.setDrawer(graphCommunitySummaryDrawer(communitySummaryPayloadFixture())));
+		act(() => result.current.handleGraphSummaryCommand(
+			{ kind: "enter-community", communityId: "c1", label: "进入社区" },
+			{ reducedMotion: true },
+		));
+		assert.equal(result.current.drawerExitIsExiting, false);
+	});
 });
 
 const emptyPins: PinMap = {};

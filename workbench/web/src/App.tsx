@@ -198,7 +198,6 @@ function App() {
 		drawer,
 		setDrawer,
 		updateDrawer,
-		runEvent: runActiveMapReadingEvent,
 		handleGraphSelectionChange,
 		handleGraphVisibilityChange,
 		handleGraphDataChange,
@@ -208,9 +207,14 @@ function App() {
 		handleGraphSummaryNodeSelect,
 		handleGraphSummaryNodePreview,
 		handleGraphSummaryReturnCommunity,
+		handleGraphReaderAction: runGraphReaderAction,
+		handleGraphSelectionAsk: runGraphSelectionAsk,
+		handleGraphCommunityAsk: runGraphCommunityAsk,
+		handleDrawerClose: runDrawerClose,
 		syncGraphDataAndVisibility,
 		drawerExitIsExiting,
 		handleDrawerExitComplete,
+		reset: resetActiveMapReading,
 	} = activeMapReadingWorkflow;
 	const setDrawerWithRef = useCallback((next: DrawerState) => {
 		drawerRef.current = next;
@@ -328,14 +332,14 @@ function App() {
 				setConversations([]);
 				setArtifacts([]);
 				setGraphBuildError(null);
-				setDrawerWithRef(closedDrawer());
+				resetActiveMapReading();
 			}
 		} catch (err) {
 			setSidebarError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setLoading(false);
 		}
-	}, [refreshConversations, setDrawerWithRef]);
+	}, [refreshConversations, resetActiveMapReading]);
 
 	useEffect(() => {
 		refreshAll();
@@ -370,15 +374,11 @@ function App() {
 		setChatKey((k) => k + 1);
 		setChatStatus(DEFAULT_CHAT_STATUS);
 		setGraphStatus(DEFAULT_GRAPH_STATUS);
-		setDrawerWithRef(closedDrawer());
+		resetActiveMapReading();
 		setArtifacts([]);
 		setPendingGraphDiff(null);
 		setGraphBuildError(null);
 		setGraphHasPendingUpdate(false);
-		setGraphData(null);
-		setGraphPins({});
-		setSelectionCommand({ id: Math.random().toString(36).slice(2, 10), type: "clear" });
-		setGraphFocusPath(null);
 	};
 
 	const handleSelectKb = async (item: KnowledgeBaseInfo) => {
@@ -455,7 +455,7 @@ function App() {
 	}, [updateDrawerWithRef]);
 
 	const handleGraphSelectionAsk = (actionId: string | null, newConversation: boolean) => {
-		const plan = runActiveMapReadingEvent({ type: "graph-selection-ask", actionId, newConversation });
+		const plan = runGraphSelectionAsk(actionId, newConversation);
 		void handleGraphConversationHandoff(plan.conversationHandoff);
 	};
 
@@ -468,19 +468,18 @@ function App() {
 	}, [updateDrawerWithRef]);
 
 	const handleGraphCommunityAsk = (actionId: string | null, newConversation: boolean) => {
-		const plan = runActiveMapReadingEvent({ type: "graph-community-ask", actionId, newConversation });
+		const plan = runGraphCommunityAsk(actionId, newConversation);
 		void handleGraphConversationHandoff(plan.conversationHandoff);
 	};
 
 	const handleGraphReaderAction = (actionId: GraphReaderActionId) => {
-		if (drawer.mode !== "graph-reader") return;
-		const plan = runActiveMapReadingEvent({ type: "graph-reader-action", actionId }, { drawer });
+		const plan = runGraphReaderAction(actionId);
 		void handleGraphConversationHandoff(plan.conversationHandoff);
 	};
 
 	const handleCloseDrawer = useCallback((reason: "button" | "escape") => {
-		runActiveMapReadingEvent({ type: "graph-drawer-close", reason }, { drawer });
-	}, [drawer, runActiveMapReadingEvent]);
+		runDrawerClose(reason);
+	}, [runDrawerClose]);
 
 	const handleAddExternal = async (path: string) => {
 		const { info } = await registerExternalKnowledgeBase(path);
