@@ -49,7 +49,6 @@ export interface ActiveMapReadingWorkflowController {
 	readonly drawer: DrawerState;
 	readonly drawerExitIsExiting: boolean;
 	setDrawer: SetDrawer;
-	updateDrawer: (updater: (current: DrawerState) => DrawerState) => void;
 	executePlan: (plan: ActiveMapReadingWorkflowPlan) => void;
 	runEvent: (event: ActiveMapReadingWorkflowEvent, options?: ActiveMapReadingWorkflowRunOptions) => ActiveMapReadingWorkflowPlan;
 	handleGraphSelectionChange: (selection: Selection | null) => ActiveMapReadingWorkflowPlan;
@@ -152,10 +151,6 @@ export function useActiveMapReadingWorkflow(
 			return nextDrawer;
 		});
 	}, [setDrawerOnRail]);
-
-	const updateDrawer = useCallback((updater: (current: DrawerState) => DrawerState): void => {
-		setDrawer(updater);
-	}, [setDrawer]);
 
 	const applyPlannedTemporaryObject = useCallback((plan: ActiveMapReadingWorkflowPlan): void => {
 		if ("temporaryObject" in plan) {
@@ -313,7 +308,6 @@ export function useActiveMapReadingWorkflow(
 		drawer,
 		drawerExitIsExiting: isExiting,
 		setDrawer,
-		updateDrawer,
 		executePlan,
 		runEvent,
 		handleGraphSelectionChange,

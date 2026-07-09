@@ -197,7 +197,6 @@ function App() {
 	const {
 		drawer,
 		setDrawer,
-		updateDrawer,
 		handleGraphSelectionChange,
 		handleGraphVisibilityChange,
 		handleGraphDataChange,
@@ -221,12 +220,12 @@ function App() {
 		setDrawer(next);
 	}, [setDrawer]);
 	const updateDrawerWithRef = useCallback((updater: (current: DrawerState) => DrawerState) => {
-		updateDrawer((current) => {
+		setDrawer((current) => {
 			const next = updater(current);
 			drawerRef.current = next;
 			return next;
 		});
-	}, [updateDrawer]);
+	}, [setDrawer]);
 	useEffect(() => {
 		drawerRef.current = drawer;
 	}, [drawer]);
