@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import {
 	resolveSelection,
 	type GraphData,
@@ -1004,6 +1004,7 @@ function App() {
 
 	const drawerOpen = drawer.mode !== "closed";
 	const graphDrawerOverlay = mainView === "graph" && isGraphInteractionDrawer(drawer) && !drawerFullscreen;
+	const appBodyStyle = { "--drawer-width": `${drawerWidth}px` } as CSSProperties;
 
 	return (
 		<TooltipProvider delayDuration={200}>
@@ -1028,6 +1029,7 @@ function App() {
 					className="app-body"
 					data-drawer-open={drawerOpen ? "true" : "false"}
 					data-graph-drawer-overlay={graphDrawerOverlay ? "true" : "false"}
+					style={appBodyStyle}
 				>
 					<Sidebar
 						knowledgeBases={kbs}

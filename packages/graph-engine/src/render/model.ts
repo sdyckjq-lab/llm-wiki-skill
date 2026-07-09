@@ -773,7 +773,7 @@ export function buildRenderableGraph(data: GraphData, options: BuildRenderableGr
       skeletonEdgeIds: stableSkeletonEdgeSet
     })
   );
-  const interactionEdgeBudget = Math.max(8, Math.min(edgeIdSet.size, Math.ceil(budgetLimits.maxVisibleEdges * 0.22)));
+  const interactionEdgeBudget = Math.max(0, Math.min(edgeIdSet.size, Math.ceil(edgeIdSet.size * 0.22)));
   const interactionEdgeIdSet = selectBudgetedIds(
     renderableEdgeCandidates.filter((edge) => edgeIdSet.has(edge.id) && (traceableNodeIds.has(edge.source) || traceableNodeIds.has(edge.target) || stableSkeletonEdgeSet.has(edge.id) || relationFocusState.edgeDepthById.get(edge.id) === "first")),
     interactionEdgeBudget,

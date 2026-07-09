@@ -752,44 +752,52 @@ export function GraphPanel({
 								aria-controls="graph-edge-tuning-panel"
 								disabled={!edgeTuningAvailable}
 								onClick={() => setEdgeTuningOpen((open) => !open)}
-								title="调参"
+								title="增强显示"
 							>
 								<SlidersHorizontal />
-								调参
+								增强显示
 							</button>
 							{edgeTuningOpen && (
 								<div
 									id="graph-edge-tuning-panel"
 									className="graph-edge-tuning-panel"
 									role="dialog"
-									aria-label="图谱调参"
+									aria-label="图谱增强显示"
 								>
 									<div className="graph-edge-tuning-heading">
-										<strong>图谱调参</strong>
+										<strong>增强显示</strong>
 									</div>
-									<div className="graph-edge-tuning-base">分主次</div>
+									<div className="graph-edge-tuning-base">默认已分清主次</div>
 									<label className="graph-edge-tuning-toggle">
 										<input
 											type="checkbox"
 											ref={edgeTuningFirstToggleRef}
+											aria-label="语义强调：突出对比和矛盾"
 											checked={activeEdgeStyle.semanticEmphasis}
 											onChange={(event) => {
 												const checked = event.currentTarget.checked;
 												updateActiveEdgeStyle({ semanticEmphasis: checked });
 											}}
 										/>
-										<span>语义强调</span>
+										<span className="graph-edge-tuning-copy">
+											<span>语义强调</span>
+											<small>突出对比和矛盾</small>
+										</span>
 									</label>
 									<label className="graph-edge-tuning-toggle">
 										<input
 											type="checkbox"
+											aria-label="聚焦点亮：点亮当前范围"
 											checked={activeEdgeStyle.focusHighlight}
 											onChange={(event) => {
 												const checked = event.currentTarget.checked;
 												updateActiveEdgeStyle({ focusHighlight: checked });
 											}}
 										/>
-										<span>聚焦点亮</span>
+										<span className="graph-edge-tuning-copy">
+											<span>聚焦点亮</span>
+											<small>点亮当前范围</small>
+										</span>
 									</label>
 								</div>
 							)}

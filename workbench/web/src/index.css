@@ -960,9 +960,14 @@
 
   .main-view-content {
     flex: 1;
+    box-sizing: border-box;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .app-body[data-graph-drawer-overlay="true"] .main-view-content {
+    padding-right: var(--drawer-width, 420px);
   }
 
   .chat-host {
@@ -1324,6 +1329,9 @@
 
   .graph-screen {
     display: flex;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     height: 100%;
     min-height: 0;
     min-width: 0;
@@ -1334,6 +1342,9 @@
 
   .graph-shell {
     display: grid;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     grid-template-rows: auto minmax(0, 1fr);
     flex: 1;
     min-height: 0;
@@ -1345,6 +1356,10 @@
     position: relative;
     z-index: 1;
     display: flex;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: 44px;
     flex-shrink: 0;
     align-items: center;
@@ -1374,7 +1389,24 @@
 
   .graph-shell-toolbar-actions {
     flex-shrink: 0;
+    max-width: 100%;
     justify-content: flex-end;
+  }
+
+  .app-body[data-graph-drawer-overlay="true"] .graph-shell-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .app-body[data-graph-drawer-overlay="true"] .graph-shell-toolbar-left {
+    min-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .app-body[data-graph-drawer-overlay="true"] .graph-shell-toolbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .graph-shell-toolbar-dot {
@@ -1481,7 +1513,7 @@
     right: 0;
     z-index: 10;
     display: grid;
-    width: min(220px, calc(100vw - 28px));
+    width: min(260px, calc(100vw - 28px));
     gap: 8px;
     padding: 10px;
     border: 1px solid color-mix(in srgb, var(--app-border-strong) 68%, transparent);
@@ -1525,6 +1557,23 @@
     color: var(--app-fg);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .graph-edge-tuning-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .graph-edge-tuning-copy span {
+    overflow-wrap: anywhere;
+  }
+
+  .graph-edge-tuning-copy small {
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1.2;
   }
 
   .graph-edge-tuning-toggle:hover {
@@ -1577,6 +1626,9 @@
 
   .graph-stage {
     position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
@@ -4309,6 +4361,10 @@
   }
 
   @media (max-width: 900px) {
+    .app-body[data-graph-drawer-overlay="true"] .main-view-content {
+      padding-right: 0;
+    }
+
     .drawer-panel-open {
       position: fixed;
       inset: 60px 0 0 auto;
@@ -4453,11 +4509,11 @@
     }
 
     .graph-screen {
-      padding: 8px;
+      padding: 6px;
     }
 
     .graph-shell {
-      gap: 8px;
+      gap: 6px;
     }
 
     .graph-shell-toolbar {
@@ -4473,7 +4529,13 @@
     .graph-shell-toolbar-actions {
       width: 100%;
       justify-content: flex-start;
-      overflow-x: auto;
+      flex-wrap: wrap;
+      overflow-x: visible;
+    }
+
+    .graph-edge-tuning-panel {
+      right: auto;
+      left: 0;
     }
   }
 }

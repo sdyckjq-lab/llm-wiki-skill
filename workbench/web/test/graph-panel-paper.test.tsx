@@ -29,7 +29,7 @@ describe("GraphPanel Paper shell", () => {
 		assert.equal(toolbar.classList.contains("graph-shell-toolbar"), true);
 		assert.match(toolbar.textContent ?? "", /图谱活地图/);
 		assert.ok(screen.getByRole("button", { name: /重置布局/ }));
-		assert.ok(screen.getByRole("button", { name: /调参/ }));
+		assert.ok(screen.getByRole("button", { name: /增强显示/ }));
 		assert.ok(screen.getByRole("button", { name: /重构/ }));
 		assert.notEqual(toolbar.querySelector(".graph-shell-legend"), null);
 
@@ -60,16 +60,18 @@ describe("GraphPanel Paper shell", () => {
 			/>,
 		);
 
-		const tuningButton = screen.getByRole("button", { name: /调参/ }) as HTMLButtonElement;
+		const tuningButton = screen.getByRole("button", { name: /增强显示/ }) as HTMLButtonElement;
 		await waitFor(() => {
 			assert.equal(tuningButton.disabled, false);
 		});
 		await click(tuningButton);
 
-		const panel = screen.getByRole("dialog", { name: "图谱调参" });
-		assert.match(panel.textContent ?? "", /分主次/);
-		const semanticToggle = screen.getByRole("checkbox", { name: "语义强调" });
-		const focusToggle = screen.getByRole("checkbox", { name: "聚焦点亮" });
+		const panel = screen.getByRole("dialog", { name: "图谱增强显示" });
+		assert.match(panel.textContent ?? "", /默认已分清主次/);
+		assert.match(panel.textContent ?? "", /突出对比和矛盾/);
+		assert.match(panel.textContent ?? "", /点亮当前范围/);
+		const semanticToggle = screen.getByRole("checkbox", { name: /语义强调/ });
+		const focusToggle = screen.getByRole("checkbox", { name: /聚焦点亮/ });
 		assert.equal((semanticToggle as HTMLInputElement).checked, false);
 		assert.equal((focusToggle as HTMLInputElement).checked, false);
 		assert.equal(document.activeElement, semanticToggle);
@@ -90,7 +92,7 @@ describe("GraphPanel Paper shell", () => {
 
 		await pressKey(document, "Escape");
 
-		assert.equal(screen.queryByRole("dialog", { name: "图谱调参" }), null);
+		assert.equal(screen.queryByRole("dialog", { name: "图谱增强显示" }), null);
 		assert.equal(document.activeElement, tuningButton);
 	});
 
@@ -125,9 +127,9 @@ describe("GraphPanel Paper shell", () => {
 			assert.notEqual(screen.queryByRole("button", { name: "回全图" }), null);
 		});
 
-		const tuningButton = screen.getByRole("button", { name: /调参/ }) as HTMLButtonElement;
+		const tuningButton = screen.getByRole("button", { name: /增强显示/ }) as HTMLButtonElement;
 		await click(tuningButton);
-		const semanticToggle = screen.getByRole("checkbox", { name: "语义强调" }) as HTMLInputElement;
+		const semanticToggle = screen.getByRole("checkbox", { name: /语义强调/ }) as HTMLInputElement;
 		await click(semanticToggle);
 
 		await waitFor(() => {
@@ -141,7 +143,7 @@ describe("GraphPanel Paper shell", () => {
 			assert.equal(localStorage.getItem("llm-wiki.graph.edge-style"), null);
 		});
 		await click(tuningButton);
-		const returnedSemanticToggle = screen.getByRole("checkbox", { name: "语义强调" }) as HTMLInputElement;
+		const returnedSemanticToggle = screen.getByRole("checkbox", { name: /语义强调/ }) as HTMLInputElement;
 		assert.equal(returnedSemanticToggle.checked, false);
 	});
 

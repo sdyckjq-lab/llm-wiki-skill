@@ -167,6 +167,7 @@ export function createSigmaOverlayDomController(input: SigmaOverlayDomController
       element.dataset.searchHit = node.searchHit ? "true" : "false";
       element.dataset.selected = node.selected ? "true" : "false";
       element.dataset.pinned = node.pinHint.pinned ? "true" : "false";
+      element.dataset.labelVisible = node.render.labelVisible ? "true" : "false";
       element.dataset.relationFocusDepth = node.relationFocusDepth ?? "none";
       element.dataset.communityDimmed = sigmaGlobalNodeSpotlightState(node, spotlightCommunityIds).dimmed ? "true" : "false";
       ordered.push(element);
@@ -223,12 +224,13 @@ export function createSigmaOverlayDomController(input: SigmaOverlayDomController
       const element = overlayLabelEntries.get(community.id);
       if (!element) continue;
       const center = communityLabelScreenPoint(community, adapterData, sigma, options);
-      applyOverlayBox(element, {
+      const labelWidth = sigmaCommunityLabelWidth(options.viewportSize);
+      applyOverlayBox(element, clampCommunityLabelBox({
         left: center.x,
         top: center.y,
-        width: 160,
+        width: labelWidth,
         height: 22
-      });
+      }, options.viewportSize, input.overlayRoot));
     }
     refreshCameraAnimationBaseline(adapterData, sigma, options);
   }
@@ -500,6 +502,85 @@ function overlayBoxFromWorldEllipse(
   };
 }
 
+function sigmaCommunityLabelWidth(viewportSize?: { width: number; height: number }): number {
+  const width = finiteOverlayNumber(viewportSize?.width, 0);
+  if (width <= 0) return 160;
+  return Math.min(160, Math.max(72, width - 8));
+}
+
+function clampCommunityLabelBox(
+  box: { left: number; top: number; width: number; height: number },
+  viewportSize?: { width: number; height: number },
+  overlayRoot?: HTMLElement
+): { left: number; top: number; width: number; height: number } {
+  const bounds = communityLabelClampBounds(box, viewportSize, overlayRoot);
+  if (!bounds) return box;
+  return {
+    ...box,
+    left: clampOverlayCoordinate(box.left, bounds.minX, bounds.maxX),
+    top: clampOverlayCoordinate(box.top, bounds.minY, bounds.maxY)
+  };
+}
+
+function communityLabelClampBounds(
+  box: { width: number; height: number },
+  viewportSize?: { width: number; height: number },
+  overlayRoot?: HTMLElement
+): { minX: number; maxX: number; minY: number; maxY: number } | null {
+  const width = finiteOverlayNumber(viewportSize?.width, 0);
+  const height = finiteOverlayNumber(viewportSize?.height, 0);
+  if (width <= 0 || height <= 0) return null;
+  const halfWidth = box.width / 2;
+  const halfHeight = box.height / 2;
+  const fallback = {
+    minX: halfWidth,
+    maxX: Math.max(halfWidth, width - halfWidth),
+    minY: halfHeight,
+    maxY: Math.max(halfHeight, height - halfHeight)
+  };
+  const rootRect = overlayRootRect(overlayRoot);
+  const windowSize = overlayWindowSize(overlayRoot);
+  if (!rootRect || !windowSize) return fallback;
+  const minX = Math.max(fallback.minX, halfWidth - rootRect.left);
+  const maxX = Math.min(fallback.maxX, windowSize.width - rootRect.left - halfWidth);
+  const minY = Math.max(fallback.minY, halfHeight - rootRect.top);
+  const maxY = Math.min(fallback.maxY, windowSize.height - rootRect.top - halfHeight);
+  return {
+    minX,
+    maxX: Math.max(minX, maxX),
+    minY,
+    maxY: Math.max(minY, maxY)
+  };
+}
+
+function overlayRootRect(overlayRoot?: HTMLElement): { left: number; top: number } | null {
+  const getBoundingClientRect = overlayRoot?.getBoundingClientRect;
+  if (typeof getBoundingClientRect !== "function") return null;
+  const rect = getBoundingClientRect.call(overlayRoot);
+  if (!rect) return null;
+  return {
+    left: finiteOverlayNumber(rect.left, 0),
+    top: finiteOverlayNumber(rect.top, 0)
+  };
+}
+
+function overlayWindowSize(overlayRoot?: HTMLElement): { width: number; height: number } | null {
+  const view = overlayRoot?.ownerDocument?.defaultView;
+  if (!view) return null;
+  const width = finiteOverlayNumber(view.innerWidth, 0);
+  const height = finiteOverlayNumber(view.innerHeight, 0);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+function clampOverlayCoordinate(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+function finiteOverlayNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 export function sigmaOverlayNodes(adapterData: GraphRendererAdapterData): GraphRendererAdapterNode[] {
   const nodes = adapterData.nodes;
   const seen = new Set<string>();
@@ -528,6 +609,13 @@ export function sigmaOverlayNodes(adapterData: GraphRendererAdapterData): GraphR
   }
   append(nodes.filter((node) => node.searchHit), 80);
   append(nodes.filter((node) => node.pinHint.pinned), 80);
+  if (
+    !adapterData.renderable.communityMap?.active
+    && !sourceContextCommunityId
+    && adapterData.selection.input?.kind !== "community"
+  ) {
+    append(nodes, SIGMA_GLOBAL_NODE_HIT_TARGET_LIMIT);
+  }
   return output;
 }
 

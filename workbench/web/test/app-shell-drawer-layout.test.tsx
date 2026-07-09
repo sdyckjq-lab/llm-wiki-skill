@@ -19,10 +19,16 @@ describe("App shell drawer layout", () => {
 		assert.match(css, /\.drawer-panel-open[\s\S]*width:\s*var\(--drawer-width/);
 		assert.match(css, /\.app-body\[data-graph-drawer-overlay="true"\]\s+\.drawer-panel-open[\s\S]*position:\s*absolute/);
 		assert.match(css, /\.app-body\[data-graph-drawer-overlay="true"\]\s+\.drawer-panel-open[\s\S]*inset:\s*0 0 0 auto/);
+		assert.match(css, /\.app-body\[data-graph-drawer-overlay="true"\]\s+\.main-view-content\s*\{[^}]*padding-right:\s*var\(--drawer-width,\s*420px\)/);
+		assert.match(css, /\.graph-screen\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*100%[^}]*max-width:\s*100%/);
+		assert.match(css, /\.graph-shell-toolbar\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*min-width:\s*0/);
+		assert.match(css, /\.app-body\[data-graph-drawer-overlay="true"\]\s+\.graph-shell-toolbar\s*\{[^}]*flex-wrap:\s*wrap/);
+		assert.doesNotMatch(css, /\.app-body\[data-graph-drawer-overlay="true"\]\s+\.main-view-content\s*\{[^}]*42vw/);
 		assert.doesNotMatch(css, /@media \(max-width:\s*1180px\)[\s\S]*\.drawer-panel-open[\s\S]*position:\s*fixed/);
 		assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*\.drawer-panel-open[\s\S]*position:\s*fixed/);
 		assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*\.drawer-panel-open[\s\S]*inset:\s*60px 0 0 auto/);
-		assert.doesNotMatch(css, /@media \(max-width:\s*768px\)[\s\S]*\.shell-sidebar[\s\S]*display:\s*none/);
+		assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*\.app-body\[data-graph-drawer-overlay="true"\]\s+\.main-view-content\s*\{[^}]*padding-right:\s*0/);
+		assert.doesNotMatch(css, /@media \(max-width:\s*768px\)[\s\S]*\.shell-sidebar\s*\{[^}]*display:\s*none/);
 		assert.match(css, /\.drawer-panel\.drawer-panel-fullscreen[\s\S]*inset:\s*0/);
 	});
 

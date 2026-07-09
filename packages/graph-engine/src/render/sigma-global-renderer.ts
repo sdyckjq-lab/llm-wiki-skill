@@ -1,4 +1,4 @@
-import type { PinMap, PinPosition, ThemeId } from "../types";
+import type { GraphEdgeStyleOptions, PinMap, PinPosition, ThemeId } from "../types";
 import { getThemeTokens } from "../themes";
 import {
   createSigmaGlobalNodeDragSession,
@@ -10,6 +10,7 @@ import {
 import type { GraphScreenPoint } from "./geometry";
 import type { GraphGestureTarget } from "./gestures";
 import type { GraphRendererAdapterData } from "./adapter";
+import { edgeRelationClass } from "./model";
 import { DEFAULT_RENDERER_VIEWPORT, type RendererViewport, type RendererViewportSize } from "./viewport";
 import {
   emptyGraphFirstOrderRelationFocusTouched,
@@ -56,6 +57,8 @@ import {
   canPatchSigmaGlobalGraphAttributes,
   patchSigmaGlobalGraphAttributes,
   sigmaAdapterDataHasRelationFocus,
+  type SigmaGlobalGraphologyEdgeAttributes,
+  type SigmaGlobalGraphologyNodeAttributes,
   sigmaGlobalEdgeAttributes,
   sigmaGlobalEdgeStyleContext,
   sigmaGlobalNodeAttributes,
@@ -267,6 +270,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     bindSigmaRootClickFallback();
     bindSigmaRootCameraTakeover();
     bindSigmaResizeObserver();
+    syncSigmaRootMetadata();
     overlayDomController.rebuild();
   } catch (error) {
     options.onFatalError?.(error);
@@ -390,9 +394,9 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         syncSigmaAdapterIndexes();
         currentEdgeStyle = nextEdgeStyle;
         currentPins = nextPins;
-        syncSigmaRootMetadata();
         cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
         patchSigmaGlobalGraphAttributes(graph, adapterData, currentTheme, currentEdgeStyle);
+        syncSigmaRootMetadata();
         projector = createSigmaGlobalHitProjector({
           adapterData,
           viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
@@ -404,12 +408,12 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
       }
       adapterData = updateOptions.adapterData;
       syncSigmaAdapterIndexes();
-      syncSigmaRootMetadata();
       cloudBasisByCommunityId = sigmaCommunityCloudBasisByIdWithReuse(cloudBasisByCommunityId, adapterData);
       currentTheme = updateOptions.theme ?? currentTheme;
       currentEdgeStyle = updateOptions.edgeStyle ?? currentEdgeStyle;
       currentPins = { ...(updateOptions.pins ?? currentPins) };
       graph = buildSigmaGlobalGraphologyGraph(adapterData, runtime, currentTheme, currentEdgeStyle);
+      syncSigmaRootMetadata();
       projector = createSigmaGlobalHitProjector({
         adapterData,
         viewport: options.viewport ?? DEFAULT_RENDERER_VIEWPORT,
@@ -539,6 +543,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
 
     relationFocusPreviewNodeId = activeNodeId;
     relationFocusPreviewTouched = nextFocus.touched;
+    syncSigmaRootMetadata();
     if (options.refresh !== false) sigma.refresh?.();
   }
 
@@ -1103,6 +1108,7 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
         });
         sigma.refresh?.();
         overlayDomController?.reposition();
+        syncSigmaRootMetadata();
       } catch (error) {
         options.onFatalError?.(error);
       }
@@ -1362,6 +1368,45 @@ export function createSigmaGlobalRenderer(options: SigmaGlobalRendererCreateOpti
     sigmaRoot.dataset.sourceCommunityId = adapterData.sourceCommunityId ?? "";
     sigmaRoot.dataset.communityMapLabelLimit = String(communityMap?.current?.labelBudget.limit ?? 0);
     sigmaRoot.dataset.communityMapVisibleLabels = String(communityMap?.current?.labelBudget.visible ?? 0);
+    const sigmaForVisualSummary = typeof sigma === "undefined" ? null : sigma;
+    if (sigmaForVisualSummary && shouldExposeSigmaEdgeVisualSummary(sigmaRoot.ownerDocument.defaultView)) {
+      sigmaRoot.dataset.edgeVisualSummary = JSON.stringify(sigmaEdgeVisualSummary(
+        graph,
+        adapterData,
+        sigmaForVisualSummary,
+        sigmaRoot,
+        rendererCoordinateOptions(),
+        currentEdgeStyle
+      ));
+      sigmaRoot.dataset.nodeVisualSummary = JSON.stringify(sigmaNodeVisualSummary());
+    } else {
+      delete sigmaRoot.dataset.edgeVisualSummary;
+      delete sigmaRoot.dataset.nodeVisualSummary;
+    }
+  }
+
+  function sigmaNodeVisualSummary(): SigmaNodeVisualSummary {
+    const nodes: SigmaNodeVisualSummary["nodes"] = [];
+    const rootRect = sigmaRoot.getBoundingClientRect();
+    for (const node of adapterData.nodes) {
+      if (!graph.hasNode(node.id)) continue;
+      const attributes = graph.getNodeAttributes(node.id) as Partial<SigmaGlobalGraphologyNodeAttributes>;
+      const worldPoint = {
+        x: finiteNumber(attributes.x, node.point.x),
+        y: finiteNumber(attributes.y, node.point.y)
+      };
+      const screenPoint = sigmaWorldPointToScreenPoint(sigma, worldPoint, rendererCoordinateOptions());
+      nodes.push({
+        id: node.id,
+        x: roundMetadataNumber(rootRect.left + screenPoint.x),
+        y: roundMetadataNumber(rootRect.top + screenPoint.y),
+        selected: attributes.selected === true || node.selected,
+        searchHit: attributes.searchHit === true || node.searchHit,
+        relationFocusDepth: String(attributes.relationFocusDepth ?? node.relationFocusDepth ?? "none"),
+        size: roundMetadataNumber(finiteNumber(attributes.size, 0))
+      });
+    }
+    return { nodeCount: nodes.length, nodes };
   }
 
   function syncSigmaRootLastHitMetadata(target: GraphGestureTarget): void {
@@ -1391,7 +1436,39 @@ function sigmaSpotlightCameraCommunityId(adapterData: GraphRendererAdapterData):
 function sigmaSpotlightCameraKey(adapterData: GraphRendererAdapterData): string | null {
   const communityId = sigmaSpotlightCameraCommunityId(adapterData);
   if (!communityId) return null;
-  return `${adapterData.renderable.communityMap?.active ? "reading" : "global"}:${communityId}`;
+  if (!adapterData.renderable.communityMap?.active) return `global:${communityId}`;
+  return `reading:${communityId}:${sigmaCommunityReadingCameraSignature(adapterData, communityId)}`;
+}
+
+function sigmaCommunityReadingCameraSignature(adapterData: GraphRendererAdapterData, communityId: string): string {
+  const nodes = adapterData.nodes
+    .filter((node) => node.communityId === communityId)
+    .map((node) => ({
+      id: node.id,
+      x: finiteNumber(node.point.x, 0),
+      y: finiteNumber(node.point.y, 0)
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (nodes.length === 0) return "empty";
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const node of nodes) {
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x);
+    maxY = Math.max(maxY, node.y);
+  }
+  const ids = nodes.map((node) => node.id).join(",");
+  return [
+    nodes.length,
+    ids,
+    roundMetadataNumber(minX),
+    roundMetadataNumber(minY),
+    roundMetadataNumber(maxX),
+    roundMetadataNumber(maxY)
+  ].join(":");
 }
 
 function shouldRefitSpotlightCameraAfterViewportChange(
@@ -1430,6 +1507,326 @@ export function sigmaSettingsForTheme(theme: ThemeId): Record<string, unknown> {
     minCameraRatio: SIGMA_CAMERA_MIN_RATIO,
     maxCameraRatio: SIGMA_CAMERA_MAX_RATIO
   };
+}
+
+interface SigmaEdgeVisualBucket {
+  count: number;
+  minSize: number | null;
+  maxSize: number | null;
+  minAlpha: number | null;
+  maxAlpha: number | null;
+  colors: string[];
+}
+
+interface SigmaEdgeVisualBounds {
+  count: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+interface MutableSigmaEdgeVisualBucket {
+  count: number;
+  minSize: number;
+  maxSize: number;
+  minAlpha: number;
+  maxAlpha: number;
+  colors: Set<string>;
+}
+
+interface MutableSigmaEdgeVisualBounds {
+  count: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+interface SigmaEdgeVisualSummary {
+  edgeCount: number;
+  geometry: {
+    edgeShape: "straight" | "curved";
+    curvedEdgeProgram: boolean;
+  };
+  style: {
+    semanticEmphasis: boolean;
+    focusHighlight: boolean;
+  };
+  all: SigmaEdgeVisualBucket;
+  relations: Record<string, SigmaEdgeVisualBucket>;
+  layers: Record<string, SigmaEdgeVisualBucket>;
+  focusDepths: Record<string, SigmaEdgeVisualBucket>;
+  selectedRelations: SigmaEdgeVisualBucket;
+  bridgeRelations: SigmaEdgeVisualBucket;
+  selectedCommunityInternalRelations: SigmaEdgeVisualBucket;
+  selectedCommunityBridgeRelations: SigmaEdgeVisualBucket;
+  lineBounds: SigmaEdgeVisualBounds | null;
+  emphasizedLineBounds: SigmaEdgeVisualBounds | null;
+}
+
+interface SigmaNodeVisualSummary {
+  nodeCount: number;
+  nodes: Array<{
+    id: string;
+    x: number;
+    y: number;
+    selected: boolean;
+    searchHit: boolean;
+    relationFocusDepth: string;
+    size: number;
+  }>;
+}
+
+function shouldExposeSigmaEdgeVisualSummary(view: Window | null): boolean {
+  const visualAcceptanceView = view as (Window & { __LLM_WIKI_GRAPH_VISUAL_ACCEPTANCE__?: boolean }) | null;
+  return visualAcceptanceView?.__LLM_WIKI_GRAPH_VISUAL_ACCEPTANCE__ === true;
+}
+
+function sigmaEdgeVisualSummary(
+  graph: SigmaGlobalGraphologyGraph,
+  adapterData: GraphRendererAdapterData,
+  sigma: SigmaGlobalSigmaLike,
+  sigmaRoot: HTMLElement,
+  coordinateOptions: Pick<SigmaGlobalRendererCreateOptions, "viewport" | "viewportSize" | "adapterData">,
+  edgeStyle?: GraphEdgeStyleOptions
+): SigmaEdgeVisualSummary {
+  const all = mutableSigmaEdgeVisualBucket();
+  const relations: Record<string, MutableSigmaEdgeVisualBucket> = {};
+  const layers: Record<string, MutableSigmaEdgeVisualBucket> = {};
+  const focusDepths: Record<string, MutableSigmaEdgeVisualBucket> = {};
+  const selectedRelations = mutableSigmaEdgeVisualBucket();
+  const bridgeRelations = mutableSigmaEdgeVisualBucket();
+  const selectedCommunityInternalRelations = mutableSigmaEdgeVisualBucket();
+  const selectedCommunityBridgeRelations = mutableSigmaEdgeVisualBucket();
+  const lineBounds = mutableSigmaEdgeVisualBounds();
+  const emphasizedLineBounds = mutableSigmaEdgeVisualBounds();
+  const nodesById = sigmaAdapterNodeById(adapterData);
+  const selectedCommunityIds = sigmaSelectedCommunityIds(adapterData);
+  const rootRect = sigmaRoot.getBoundingClientRect();
+
+  for (const edge of adapterData.edges) {
+    if (!graph.hasEdge(edge.id)) continue;
+    const attributes = graph.getEdgeAttributes(edge.id) as Partial<SigmaGlobalGraphologyEdgeAttributes>;
+    const size = typeof attributes.size === "number" && Number.isFinite(attributes.size) ? attributes.size : null;
+    const color = typeof attributes.color === "string" ? attributes.color : "";
+    if (size == null || !color) continue;
+    const alpha = sigmaEdgeVisualAlpha(color);
+    const relationKey = edgeRelationClass(attributes.relationType ?? edge.relationType);
+    const layerKey = String(attributes.communityMapLayer ?? edge.render?.communityMapLayer ?? "none");
+    const focusKey = String(attributes.relationFocusDepth ?? edge.render?.relationFocusDepth ?? "none");
+    const bridge = Boolean(edge.sourceCommunityId && edge.targetCommunityId && edge.sourceCommunityId !== edge.targetCommunityId);
+    const sourceSelected = Boolean(edge.sourceCommunityId && selectedCommunityIds.has(edge.sourceCommunityId));
+    const targetSelected = Boolean(edge.targetCommunityId && selectedCommunityIds.has(edge.targetCommunityId));
+    const internalSelectedCommunity = sourceSelected && targetSelected;
+    const touchesSelectedCommunity = sourceSelected || targetSelected;
+    const selectedCommunityBridge = bridge
+      && touchesSelectedCommunity
+      && !internalSelectedCommunity
+      && (edge.render?.skeleton === true || edge.render?.traceable === true || layerKey === "skeleton" || layerKey === "related");
+
+    addSigmaEdgeVisualSample(all, size, alpha, color);
+    addSigmaEdgeVisualSample(bucketFor(relations, relationKey), size, alpha, color);
+    addSigmaEdgeVisualSample(bucketFor(layers, layerKey), size, alpha, color);
+    addSigmaEdgeVisualSample(bucketFor(focusDepths, focusKey), size, alpha, color);
+    if (bridge) addSigmaEdgeVisualSample(bridgeRelations, size, alpha, color);
+    if (internalSelectedCommunity) addSigmaEdgeVisualSample(selectedCommunityInternalRelations, size, alpha, color);
+    if (selectedCommunityBridge) addSigmaEdgeVisualSample(selectedCommunityBridgeRelations, size, alpha, color);
+    if (attributes.selectedRelation === true || edge.render?.selectedRelation === true) {
+      addSigmaEdgeVisualSample(selectedRelations, size, alpha, color);
+    }
+    const bounds = sigmaEdgeViewportBounds(edge, nodesById, sigma, coordinateOptions, rootRect);
+    if (bounds) {
+      addSigmaEdgeVisualBounds(lineBounds, bounds);
+      if (
+        focusKey === "first"
+        || attributes.selectedRelation === true
+        || edge.render?.selectedRelation === true
+        || selectedCommunityBridge
+        || (internalSelectedCommunity && (layerKey === "skeleton" || layerKey === "related"))
+      ) {
+        addSigmaEdgeVisualBounds(emphasizedLineBounds, bounds);
+      }
+    }
+  }
+
+  return {
+    edgeCount: all.count,
+    geometry: sigmaEdgeGeometrySummary(sigma),
+    style: {
+      semanticEmphasis: edgeStyle?.semanticEmphasis === true,
+      focusHighlight: edgeStyle?.focusHighlight === true
+    },
+    all: finalizeSigmaEdgeVisualBucket(all),
+    relations: finalizeSigmaEdgeVisualBuckets(relations),
+    layers: finalizeSigmaEdgeVisualBuckets(layers),
+    focusDepths: finalizeSigmaEdgeVisualBuckets(focusDepths),
+    selectedRelations: finalizeSigmaEdgeVisualBucket(selectedRelations),
+    bridgeRelations: finalizeSigmaEdgeVisualBucket(bridgeRelations),
+    selectedCommunityInternalRelations: finalizeSigmaEdgeVisualBucket(selectedCommunityInternalRelations),
+    selectedCommunityBridgeRelations: finalizeSigmaEdgeVisualBucket(selectedCommunityBridgeRelations),
+    lineBounds: finalizeSigmaEdgeVisualBounds(lineBounds),
+    emphasizedLineBounds: finalizeSigmaEdgeVisualBounds(emphasizedLineBounds)
+  };
+}
+
+function sigmaEdgeGeometrySummary(sigma: SigmaGlobalSigmaLike): SigmaEdgeVisualSummary["geometry"] {
+  const defaultEdgeType = String(sigma.getSetting?.("defaultEdgeType") ?? "");
+  const edgeProgramClasses = sigma.getSetting?.("edgeProgramClasses");
+  const programNames = edgeProgramClassNames(edgeProgramClasses);
+  const curvedEdgeProgram = [defaultEdgeType, ...programNames].some((name) => /curv|arc|bezier/i.test(name));
+  return {
+    edgeShape: curvedEdgeProgram ? "curved" : "straight",
+    curvedEdgeProgram
+  };
+}
+
+function edgeProgramClassNames(edgeProgramClasses: unknown): string[] {
+  if (!edgeProgramClasses || typeof edgeProgramClasses !== "object") return [];
+  return Object.entries(edgeProgramClasses as Record<string, unknown>).flatMap(([key, value]) => {
+    const constructorName =
+      typeof value === "function" && "name" in value ? String((value as { name?: string }).name ?? "") : "";
+    return [key, constructorName].filter(Boolean);
+  });
+}
+
+function sigmaEdgeViewportBounds(
+  edge: GraphRendererAdapterData["edges"][number],
+  nodesById: Map<string, GraphRendererAdapterData["nodes"][number]>,
+  sigma: SigmaGlobalSigmaLike,
+  coordinateOptions: Pick<SigmaGlobalRendererCreateOptions, "viewport" | "viewportSize" | "adapterData">,
+  rootRect: DOMRect
+): { left: number; top: number; right: number; bottom: number } | null {
+  const source = nodesById.get(edge.sourceNodeId);
+  const target = nodesById.get(edge.targetNodeId);
+  if (!source || !target) return null;
+  const sourcePoint = sigmaWorldPointToScreenPoint(sigma, source.point, coordinateOptions);
+  const targetPoint = sigmaWorldPointToScreenPoint(sigma, target.point, coordinateOptions);
+  const left = rootRect.left + Math.min(sourcePoint.x, targetPoint.x);
+  const top = rootRect.top + Math.min(sourcePoint.y, targetPoint.y);
+  const right = rootRect.left + Math.max(sourcePoint.x, targetPoint.x);
+  const bottom = rootRect.top + Math.max(sourcePoint.y, targetPoint.y);
+  if (![left, top, right, bottom].every(Number.isFinite)) return null;
+  return { left, top, right, bottom };
+}
+
+function mutableSigmaEdgeVisualBucket(): MutableSigmaEdgeVisualBucket {
+  return {
+    count: 0,
+    minSize: Number.POSITIVE_INFINITY,
+    maxSize: Number.NEGATIVE_INFINITY,
+    minAlpha: Number.POSITIVE_INFINITY,
+    maxAlpha: Number.NEGATIVE_INFINITY,
+    colors: new Set<string>()
+  };
+}
+
+function mutableSigmaEdgeVisualBounds(): MutableSigmaEdgeVisualBounds {
+  return {
+    count: 0,
+    left: Number.POSITIVE_INFINITY,
+    top: Number.POSITIVE_INFINITY,
+    right: Number.NEGATIVE_INFINITY,
+    bottom: Number.NEGATIVE_INFINITY
+  };
+}
+
+function bucketFor(
+  buckets: Record<string, MutableSigmaEdgeVisualBucket>,
+  key: string
+): MutableSigmaEdgeVisualBucket {
+  buckets[key] = buckets[key] ?? mutableSigmaEdgeVisualBucket();
+  return buckets[key];
+}
+
+function addSigmaEdgeVisualSample(
+  bucket: MutableSigmaEdgeVisualBucket,
+  size: number,
+  alpha: number,
+  color: string
+): void {
+  bucket.count += 1;
+  bucket.minSize = Math.min(bucket.minSize, size);
+  bucket.maxSize = Math.max(bucket.maxSize, size);
+  bucket.minAlpha = Math.min(bucket.minAlpha, alpha);
+  bucket.maxAlpha = Math.max(bucket.maxAlpha, alpha);
+  bucket.colors.add(color);
+}
+
+function addSigmaEdgeVisualBounds(
+  bucket: MutableSigmaEdgeVisualBounds,
+  bounds: { left: number; top: number; right: number; bottom: number }
+): void {
+  bucket.count += 1;
+  bucket.left = Math.min(bucket.left, bounds.left);
+  bucket.top = Math.min(bucket.top, bounds.top);
+  bucket.right = Math.max(bucket.right, bounds.right);
+  bucket.bottom = Math.max(bucket.bottom, bounds.bottom);
+}
+
+function finalizeSigmaEdgeVisualBuckets(
+  buckets: Record<string, MutableSigmaEdgeVisualBucket>
+): Record<string, SigmaEdgeVisualBucket> {
+  return Object.fromEntries(
+    Object.entries(buckets).map(([key, bucket]) => [key, finalizeSigmaEdgeVisualBucket(bucket)])
+  );
+}
+
+function finalizeSigmaEdgeVisualBucket(bucket: MutableSigmaEdgeVisualBucket): SigmaEdgeVisualBucket {
+  if (bucket.count === 0) {
+    return {
+      count: 0,
+      minSize: null,
+      maxSize: null,
+      minAlpha: null,
+      maxAlpha: null,
+      colors: []
+    };
+  }
+  return {
+    count: bucket.count,
+    minSize: roundMetadataNumber(bucket.minSize),
+    maxSize: roundMetadataNumber(bucket.maxSize),
+    minAlpha: roundMetadataNumber(bucket.minAlpha),
+    maxAlpha: roundMetadataNumber(bucket.maxAlpha),
+    colors: [...bucket.colors].slice(0, 6)
+  };
+}
+
+function finalizeSigmaEdgeVisualBounds(bucket: MutableSigmaEdgeVisualBounds): SigmaEdgeVisualBounds | null {
+  if (bucket.count === 0) return null;
+  const left = roundMetadataNumber(bucket.left);
+  const top = roundMetadataNumber(bucket.top);
+  const right = roundMetadataNumber(bucket.right);
+  const bottom = roundMetadataNumber(bucket.bottom);
+  return {
+    count: bucket.count,
+    left,
+    top,
+    right,
+    bottom,
+    width: roundMetadataNumber(right - left),
+    height: roundMetadataNumber(bottom - top)
+  };
+}
+
+function sigmaEdgeVisualAlpha(color: string): number {
+  const rgba = color.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\s*\)/i);
+  if (rgba?.[1]) return clampMetadataNumber(Number(rgba[1]), 0, 1);
+  const srgb = color.match(/\/\s*([0-9.]+)\s*\)/i);
+  if (srgb?.[1]) return clampMetadataNumber(Number(srgb[1]), 0, 1);
+  return 1;
+}
+
+function roundMetadataNumber(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function clampMetadataNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }
 
 function sigmaSettingsForAdapterData(theme: ThemeId, adapterData: GraphRendererAdapterData): Record<string, unknown> {
