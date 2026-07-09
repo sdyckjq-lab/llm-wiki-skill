@@ -177,3 +177,16 @@ export function graphEmptyDrawer(
 export function graphErrorDrawer(title: string, message: string): DrawerState {
 	return { mode: "graph-error", title, message };
 }
+
+export function isGraphInteractionDrawer(drawer: DrawerState): boolean {
+	return drawer.mode === "graph-selection"
+		|| drawer.mode === "graph-node-summary"
+		|| drawer.mode === "graph-community-summary"
+		|| drawer.mode === "graph-search-results"
+		|| drawer.mode === "graph-excluded-object"
+		|| drawer.mode === "graph-unavailable-object"
+		|| drawer.mode === "graph-global-overview"
+		|| drawer.mode === "graph-loading"
+		|| drawer.mode === "graph-empty"
+		|| drawer.mode === "graph-error";
+}

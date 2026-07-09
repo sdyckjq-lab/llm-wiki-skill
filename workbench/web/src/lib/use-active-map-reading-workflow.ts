@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type {
 	GraphData,
+	GraphSummaryCommand,
 	GraphSummaryObjectRef,
 	GraphVisibilityState,
 	PinMap,
+	Selection,
 } from "@llm-wiki/graph-engine";
 
 import {
@@ -11,7 +13,7 @@ import {
 	type ActiveMapReadingWorkflowEvent,
 	type ActiveMapReadingWorkflowPlan,
 } from "./active-map-reading-workflow";
-import type { DrawerState } from "./drawer-state";
+import { isGraphInteractionDrawer, type DrawerState } from "./drawer-state";
 import type { GraphSelectionCommand } from "./graph-summary-actions";
 import { useDrawerExitRail } from "./use-drawer-exit-rail";
 
@@ -22,10 +24,14 @@ export interface ActiveMapReadingWorkflowOptions {
 	pins: PinMap;
 	visibility: GraphVisibilityState | null;
 	temporaryObject?: GraphSummaryObjectRef | null;
+	setData?: (data: GraphData | null) => void;
+	setPins?: (pins: PinMap) => void;
+	setVisibility?: (visibility: GraphVisibilityState | null) => void;
 	setTemporaryObject?: (temporaryObject: GraphSummaryObjectRef | null) => void;
 	setSelectionCommand?: (command: GraphSelectionCommand) => void;
 	setGraphFocusPath?: (path: string | null) => void;
 	createCommandId?: (prefix: string) => string;
+	onDrawerChange?: (drawer: DrawerState) => void;
 	onPageReadRequest?: (request: NonNullable<ActiveMapReadingWorkflowPlan["pageReadRequest"]>) => void;
 	onConversationHandoff?: (handoff: NonNullable<ActiveMapReadingWorkflowPlan["conversationHandoff"]>) => void;
 }
@@ -45,6 +51,19 @@ export interface ActiveMapReadingWorkflowController {
 	updateDrawer: (updater: (current: DrawerState) => DrawerState) => void;
 	executePlan: (plan: ActiveMapReadingWorkflowPlan) => void;
 	runEvent: (event: ActiveMapReadingWorkflowEvent, options?: ActiveMapReadingWorkflowRunOptions) => ActiveMapReadingWorkflowPlan;
+	handleGraphSelectionChange: (selection: Selection | null) => ActiveMapReadingWorkflowPlan;
+	handleGraphVisibilityChange: (visibility: GraphVisibilityState | null) => ActiveMapReadingWorkflowPlan;
+	handleGraphDataChange: (data: GraphData | null) => ActiveMapReadingWorkflowPlan;
+	handleGraphPinsChange: (pins: PinMap) => void;
+	handleGraphViewReset: () => ActiveMapReadingWorkflowPlan;
+	handleGraphSummaryCommand: (
+		command: GraphSummaryCommand,
+		options?: { reducedMotion?: boolean },
+	) => ActiveMapReadingWorkflowPlan;
+	handleGraphSummaryNodeSelect: (nodeId: string) => ActiveMapReadingWorkflowPlan;
+	handleGraphSummaryNodePreview: (nodeId: string | null) => ActiveMapReadingWorkflowPlan;
+	handleGraphSummaryReturnCommunity: (communityId: string) => ActiveMapReadingWorkflowPlan;
+	syncGraphDataAndVisibility: () => ActiveMapReadingWorkflowPlan;
 	handleDrawerExitComplete: () => void;
 	isDrawerExitProtected: (current: DrawerState) => boolean;
 }
@@ -65,12 +84,17 @@ export function useActiveMapReadingWorkflow(
 	const pinsRef = useRef(options.pins);
 	const visibilityRef = useRef(options.visibility);
 	const temporaryObjectRef = useRef(options.temporaryObject ?? null);
+	const setDataRef = useRef(options.setData);
+	const setPinsRef = useRef(options.setPins);
+	const setVisibilityRef = useRef(options.setVisibility);
 	const setTemporaryObjectRef = useRef(options.setTemporaryObject);
 	const setSelectionCommandRef = useRef(options.setSelectionCommand);
 	const setGraphFocusPathRef = useRef(options.setGraphFocusPath);
 	const createCommandIdRef = useRef(options.createCommandId);
+	const onDrawerChangeRef = useRef(options.onDrawerChange);
 	const onPageReadRequestRef = useRef(options.onPageReadRequest);
 	const onConversationHandoffRef = useRef(options.onConversationHandoff);
+	const skipNextDataSyncRef = useRef(false);
 
 	useEffect(() => {
 		drawerRef.current = drawer;
@@ -81,29 +105,44 @@ export function useActiveMapReadingWorkflow(
 		pinsRef.current = options.pins;
 		visibilityRef.current = options.visibility;
 		temporaryObjectRef.current = options.temporaryObject ?? null;
+		setDataRef.current = options.setData;
+		setPinsRef.current = options.setPins;
+		setVisibilityRef.current = options.setVisibility;
 		setTemporaryObjectRef.current = options.setTemporaryObject;
 		setSelectionCommandRef.current = options.setSelectionCommand;
 		setGraphFocusPathRef.current = options.setGraphFocusPath;
 		createCommandIdRef.current = options.createCommandId;
+		onDrawerChangeRef.current = options.onDrawerChange;
 		onPageReadRequestRef.current = options.onPageReadRequest;
 		onConversationHandoffRef.current = options.onConversationHandoff;
 	}, [
 		options.createCommandId,
 		options.data,
+		options.onDrawerChange,
 		options.onConversationHandoff,
 		options.onPageReadRequest,
 		options.pins,
+		options.setData,
 		options.setGraphFocusPath,
+		options.setPins,
 		options.setSelectionCommand,
 		options.setTemporaryObject,
+		options.setVisibility,
 		options.temporaryObject,
 		options.visibility,
 	]);
 
 	const setDrawer = useCallback<SetDrawer>((next) => {
+		if (typeof next !== "function") {
+			drawerRef.current = next;
+			onDrawerChangeRef.current?.(next);
+			setDrawerOnRail(next);
+			return;
+		}
 		setDrawerOnRail((current) => {
-			const nextDrawer = typeof next === "function" ? next(current) : next;
+			const nextDrawer = next(current);
 			drawerRef.current = nextDrawer;
+			onDrawerChangeRef.current?.(nextDrawer);
 			return nextDrawer;
 		});
 	}, [setDrawerOnRail]);
@@ -112,19 +151,23 @@ export function useActiveMapReadingWorkflow(
 		setDrawer(updater);
 	}, [setDrawer]);
 
-	const executePlan = useCallback((plan: ActiveMapReadingWorkflowPlan): void => {
+	const applyPlannedTemporaryObject = useCallback((plan: ActiveMapReadingWorkflowPlan): void => {
 		if ("temporaryObject" in plan) {
 			const nextTemporaryObject = plan.temporaryObject ?? null;
 			temporaryObjectRef.current = nextTemporaryObject;
 			setTemporaryObjectRef.current?.(nextTemporaryObject);
 		}
+	}, []);
+
+	const executePlan = useCallback((plan: ActiveMapReadingWorkflowPlan): void => {
+		applyPlannedTemporaryObject(plan);
 		if (plan.clearGraphFocusPath) setGraphFocusPathRef.current?.(null);
 		if (plan.selectionCommand) setSelectionCommandRef.current?.(plan.selectionCommand);
 		if ("drawerExit" in plan) stage(plan.drawerExit ? plan.drawerExit.drawer : null);
 		setDrawer(plan.drawer);
 		if (plan.pageReadRequest) onPageReadRequestRef.current?.(plan.pageReadRequest);
 		if (plan.conversationHandoff) onConversationHandoffRef.current?.(plan.conversationHandoff);
-	}, [setDrawer, stage]);
+	}, [applyPlannedTemporaryObject, setDrawer, stage]);
 
 	const runEvent = useCallback((
 		event: ActiveMapReadingWorkflowEvent,
@@ -147,6 +190,78 @@ export function useActiveMapReadingWorkflow(
 		return plan;
 	}, [executePlan, isProtected]);
 
+	const handleGraphSelectionChange = useCallback((selection: Selection | null): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-selection-change", selection })
+	), [runEvent]);
+
+	const handleGraphVisibilityChange = useCallback((
+		visibility: GraphVisibilityState | null,
+	): ActiveMapReadingWorkflowPlan => {
+		visibilityRef.current = visibility;
+		setVisibilityRef.current?.(visibility);
+		return runEvent({ type: "graph-visibility-change" }, { visibility });
+	}, [runEvent]);
+
+	const handleGraphDataChange = useCallback((data: GraphData | null): ActiveMapReadingWorkflowPlan => {
+		dataRef.current = data;
+		setDataRef.current?.(data);
+		const plan = runEvent({ type: "graph-data-change" }, { data });
+		skipNextDataSyncRef.current = true;
+		return plan;
+	}, [runEvent]);
+
+	const handleGraphPinsChange = useCallback((pins: PinMap): void => {
+		pinsRef.current = pins;
+		setPinsRef.current?.(pins);
+	}, []);
+
+	const handleGraphViewReset = useCallback((): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-view-reset" })
+	), [runEvent]);
+
+	const handleGraphSummaryCommand = useCallback((
+		command: GraphSummaryCommand,
+		options: { reducedMotion?: boolean } = {},
+	): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-summary-command", command, reducedMotion: options.reducedMotion ?? false })
+	), [runEvent]);
+
+	const handleGraphSummaryNodeSelect = useCallback((nodeId: string): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-summary-node-select", nodeId })
+	), [runEvent]);
+
+	const handleGraphSummaryNodePreview = useCallback((nodeId: string | null): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-summary-node-preview", nodeId })
+	), [runEvent]);
+
+	const handleGraphSummaryReturnCommunity = useCallback((communityId: string): ActiveMapReadingWorkflowPlan => (
+		runEvent({ type: "graph-summary-return-community", communityId })
+	), [runEvent]);
+
+	const syncGraphDataAndVisibility = useCallback((): ActiveMapReadingWorkflowPlan => {
+		if (skipNextDataSyncRef.current) {
+			skipNextDataSyncRef.current = false;
+			return { drawer: drawerRef.current };
+		}
+		const currentDrawer = drawerRef.current;
+		const plan = planActiveMapReadingWorkflow({
+			event: { type: "graph-data-change" },
+			data: dataRef.current,
+			drawer: currentDrawer,
+			pins: pinsRef.current,
+			visibility: visibilityRef.current,
+			temporaryObject: temporaryObjectRef.current,
+			drawerExitProtected: isProtected(currentDrawer),
+			createCommandId: createCommandIdRef.current,
+		});
+		if (isGraphInteractionDrawer(currentDrawer)) {
+			executePlan(plan);
+			return plan;
+		}
+		applyPlannedTemporaryObject(plan);
+		return plan;
+	}, [applyPlannedTemporaryObject, executePlan, isProtected]);
+
 	return {
 		drawer,
 		drawerExitIsExiting: isExiting,
@@ -154,6 +269,16 @@ export function useActiveMapReadingWorkflow(
 		updateDrawer,
 		executePlan,
 		runEvent,
+		handleGraphSelectionChange,
+		handleGraphVisibilityChange,
+		handleGraphDataChange,
+		handleGraphPinsChange,
+		handleGraphViewReset,
+		handleGraphSummaryCommand,
+		handleGraphSummaryNodeSelect,
+		handleGraphSummaryNodePreview,
+		handleGraphSummaryReturnCommunity,
+		syncGraphDataAndVisibility,
 		handleDrawerExitComplete: complete,
 		isDrawerExitProtected: isProtected,
 	};

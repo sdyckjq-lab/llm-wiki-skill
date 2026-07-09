@@ -2,12 +2,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { act, renderHook } from "@testing-library/react";
-import type { GraphData, GraphOpenPagePayload, GraphSummaryObjectRef, PinMap, Selection } from "@llm-wiki/graph-engine";
+import type { GraphData, GraphOpenPagePayload, GraphSummaryObjectRef, GraphVisibilityState, PinMap, Selection } from "@llm-wiki/graph-engine";
 
 import { useActiveMapReadingWorkflow } from "../src/lib/use-active-map-reading-workflow";
 import {
 	closedDrawer,
 	graphCommunitySummaryDrawer,
+	graphNodeSummaryDrawer,
+	graphReaderDrawer,
 	graphSelectionDrawer,
 	wikiDrawer,
 	type DrawerState,
@@ -120,6 +122,134 @@ describe("useActiveMapReadingWorkflow", () => {
 		act(() => result.current.runEvent({ type: "graph-summary-node-preview", nodeId: "a" }));
 		assert.deepEqual(commands.at(-1), { id: "preview-a-id", nodeId: "a", type: "preview-node" });
 	});
+
+	it("handles graph canvas selections and clears through user-action methods", () => {
+		const { result } = renderHook(() => useActiveMapReadingWorkflow({
+			data: graphFixture(),
+			pins: emptyPins,
+			visibility: null,
+			temporaryObject: null,
+			createCommandId: (prefix) => `${prefix}-id`,
+		}));
+
+		act(() => result.current.handleGraphSelectionChange(nodeSelection()));
+		assert.equal(result.current.drawer.mode, "graph-node-summary");
+		assert.equal(result.current.drawer.mode === "graph-node-summary" ? result.current.drawer.payload.nodeId : null, "a");
+
+		act(() => result.current.handleGraphSelectionChange(communitySelection()));
+		assert.equal(result.current.drawer.mode, "graph-community-summary");
+		assert.equal(result.current.drawer.mode === "graph-community-summary" ? result.current.drawer.payload.communityId : null, "c1");
+
+		act(() => result.current.handleGraphSelectionChange(manualSingleSelection()));
+		assert.equal(result.current.drawer.mode, "graph-selection");
+		assert.deepEqual(result.current.drawer.mode === "graph-selection" ? result.current.drawer.selection.nodeIds : [], ["a"]);
+
+		act(() => result.current.handleGraphSelectionChange(manualMultiSelection()));
+		assert.equal(result.current.drawer.mode, "graph-selection");
+		assert.deepEqual(result.current.drawer.mode === "graph-selection" ? result.current.drawer.selection.nodeIds : [], ["a", "b"]);
+
+		act(() => result.current.handleGraphSelectionChange(null));
+		assert.equal(result.current.drawer.mode, "closed");
+	});
+
+	it("handles graph data, visibility, and sync refresh paths through the manager", () => {
+		const graphDataUpdates: Array<GraphData | null> = [];
+		const visibilityUpdates: Array<GraphVisibilityState | null> = [];
+		const temporaryObjects: Array<GraphSummaryObjectRef | null> = [];
+		const { result, rerender } = renderHook(
+			({ data, visibility, temporaryObject }: {
+				data: GraphData | null;
+				visibility: GraphVisibilityState | null;
+				temporaryObject: GraphSummaryObjectRef | null;
+			}) => useActiveMapReadingWorkflow({
+				data,
+				pins: emptyPins,
+				visibility,
+				temporaryObject,
+				setData: (nextData) => graphDataUpdates.push(nextData),
+				setVisibility: (nextVisibility) => visibilityUpdates.push(nextVisibility),
+				setTemporaryObject: (object) => temporaryObjects.push(object),
+				createCommandId: (prefix) => `${prefix}-id`,
+			}),
+			{
+				initialProps: {
+					data: graphFixture() as GraphData | null,
+					visibility: null as GraphVisibilityState | null,
+					temporaryObject: { kind: "node", nodeId: "a" } as GraphSummaryObjectRef | null,
+				},
+			},
+		);
+
+		act(() => result.current.setDrawer(graphNodeSummaryDrawer(nodeSummaryPayloadFixture())));
+		const renamed = graphFixtureWithRenamedNode();
+		act(() => result.current.handleGraphDataChange(renamed));
+		assert.equal(graphDataUpdates.at(-1), renamed);
+		assert.equal(result.current.drawer.mode, "graph-node-summary");
+		assert.equal(result.current.drawer.mode === "graph-node-summary" ? result.current.drawer.payload.label : null, "Alpha renamed");
+		assert.deepEqual(temporaryObjects.at(-1), { kind: "node", nodeId: "a" });
+		const temporaryUpdateCountAfterDirectRefresh = temporaryObjects.length;
+		act(() => result.current.syncGraphDataAndVisibility());
+		assert.equal(temporaryObjects.length, temporaryUpdateCountAfterDirectRefresh);
+
+		const visibility = { ...emptyVisibility(), hiddenReadingNodeId: "a" };
+		act(() => result.current.handleGraphVisibilityChange(visibility));
+		assert.equal(visibilityUpdates.at(-1), visibility);
+
+		act(() => result.current.setDrawer(wikiDrawer("wiki/a.md", { content: "Alpha" })));
+		rerender({
+			data: graphFixtureWithoutNodeA(),
+			visibility,
+			temporaryObject: { kind: "node", nodeId: "a" },
+		});
+		act(() => result.current.syncGraphDataAndVisibility());
+		assert.equal(result.current.drawer.mode, "wiki");
+		assert.equal(temporaryObjects.at(-1), null);
+	});
+
+	it("dispatches graph view reset, pinning, preview, and temporary-object commands", () => {
+		const commands: GraphSelectionCommand[] = [];
+		const temporaryObjects: Array<GraphSummaryObjectRef | null> = [];
+		const focusClears: Array<string | null> = [];
+		const { result } = renderHook(() => useActiveMapReadingWorkflow({
+			data: graphFixture(),
+			pins: emptyPins,
+			visibility: null,
+			temporaryObject: null,
+			setSelectionCommand: (command) => commands.push(command),
+			setTemporaryObject: (object) => temporaryObjects.push(object),
+			setGraphFocusPath: (path) => focusClears.push(path),
+			createCommandId: (prefix) => `${prefix}-id`,
+		}));
+
+		act(() => result.current.setDrawer(graphReaderDrawer(graphReaderPayloadFixture(), { content: "Alpha" })));
+		act(() => result.current.handleGraphViewReset());
+		assert.equal(result.current.drawer.mode, "graph-node-summary");
+		assert.deepEqual(focusClears, [null]);
+
+		act(() => result.current.handleGraphSummaryNodePreview("a"));
+		assert.deepEqual(commands.at(-1), { id: "preview-a-id", nodeId: "a", type: "preview-node" });
+
+		act(() => result.current.handleGraphSummaryCommand({ kind: "set-fixed-position", nodeId: "a", mode: "fix", label: "固定位置" }));
+		assert.deepEqual(commands.at(-1), { id: "fix-a-id", nodeId: "a", mode: "fix", type: "set-fixed-position" });
+
+		act(() => result.current.handleGraphSummaryCommand({ kind: "set-fixed-position", nodeId: "a", mode: "unfix", label: "取消固定" }));
+		assert.deepEqual(commands.at(-1), { id: "unfix-a-id", nodeId: "a", mode: "unfix", type: "set-fixed-position" });
+
+		act(() => result.current.handleGraphSummaryCommand({ kind: "show-this-object", object: { kind: "node", nodeId: "b" }, label: "显示节点" }));
+		assert.deepEqual(temporaryObjects.at(-1), { kind: "node", nodeId: "b" });
+		assert.deepEqual(commands.at(-1), {
+			id: "show-temporary-object-id",
+			object: { kind: "node", nodeId: "b" },
+			type: "show-temporary-object",
+		});
+
+		act(() => result.current.handleGraphSummaryCommand({ kind: "clear-temporary-object-display", label: "清理临时对象" }));
+		assert.equal(temporaryObjects.at(-1), null);
+		assert.deepEqual(commands.at(-1), {
+			id: "clear-temporary-object-display-id",
+			type: "clear-temporary-object-display",
+		});
+	});
 });
 
 const emptyPins: PinMap = {};
@@ -132,6 +262,36 @@ function manualMultiSelection(): Selection {
 		facts: { pageCount: 2, internalLinkCount: 1, communityCount: 1, isolatedCount: 0 },
 		input: { kind: "nodes", ids: ["a", "b"] },
 		actions: [],
+	};
+}
+
+function nodeSelection(nodeId = "a"): Selection {
+	return {
+		id: `node:${nodeId}`,
+		nodeIds: [nodeId],
+		communityIds: ["c1"],
+		facts: { pageCount: 1, internalLinkCount: 0, communityCount: 1, isolatedCount: 0 },
+		input: { kind: "node", id: nodeId },
+		actions: [],
+	};
+}
+
+function communitySelection(): Selection {
+	return {
+		id: "community:a,b",
+		nodeIds: ["a", "b"],
+		communityIds: ["c1"],
+		facts: { pageCount: 2, internalLinkCount: 1, communityCount: 1, isolatedCount: 0 },
+		input: { kind: "community", id: "c1" },
+		actions: [],
+	};
+}
+
+function manualSingleSelection(): Selection {
+	return {
+		...nodeSelection(),
+		id: "nodes:a",
+		input: { kind: "nodes", ids: ["a"] },
 	};
 }
 
@@ -166,6 +326,59 @@ function graphFixtureWithRenamedNode(): GraphData {
 	return {
 		...data,
 		nodes: data.nodes.map((node) => (node.id === "a" ? { ...node, label: "Alpha renamed" } : node)),
+	};
+}
+
+function graphFixtureWithoutNodeA(): GraphData {
+	const data = graphFixture();
+	return {
+		...data,
+		nodes: data.nodes.filter((node) => node.id !== "a"),
+		edges: [],
+	};
+}
+
+function emptyVisibility(): GraphVisibilityState {
+	return {
+		searchQuery: "",
+		searchResultIds: [],
+		typeFilters: {},
+		temporaryObject: null,
+		focusCommunityId: null,
+		hiddenReadingNodeId: null,
+	};
+}
+
+function nodeSummaryPayloadFixture(): Extract<DrawerState, { mode: "graph-node-summary" }>["payload"] {
+	return {
+		kind: "node-summary",
+		object: { kind: "node", nodeId: "a" },
+		nodeId: "a",
+		label: "Alpha",
+		type: "topic",
+		sourcePath: "wiki/a.md",
+		facts: { pageCount: 1, internalLinkCount: 0, communityCount: 1, isolatedCount: 0 },
+		summary: "Alpha summary",
+		community: { id: "c1", label: "Community" },
+		searchResultIds: [],
+		pinHints: [],
+		strongestRelations: [],
+		bridgeRelations: [],
+		aggregationMarkers: [],
+		commands: [
+			{ kind: "open-detail-read", nodeId: "a", path: "wiki/a.md", label: "打开详情" },
+			{ kind: "select-neighbors", nodeId: "a", label: "找相关页面" },
+			{ kind: "set-fixed-position", nodeId: "a", mode: "fix", label: "固定位置" },
+			{ kind: "enter-node-community", communityId: "c1", nodeId: "a", path: "wiki/a.md", label: "进入所属社区" },
+		],
+	};
+}
+
+function graphReaderPayloadFixture(): GraphOpenPagePayload {
+	return {
+		origin: "node-summary",
+		path: "wiki/a.md",
+		node: { id: "a", label: "Alpha", sourcePath: "wiki/a.md" },
 	};
 }
 
