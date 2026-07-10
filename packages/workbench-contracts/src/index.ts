@@ -16,4 +16,6 @@ export * from "./health.js";
 export * from "./config.js";
 export * from "./auth.js";
 export * from "./knowledge-bases.js";
+export * from "./pages.js";
+export * from "./artifacts.js";
 export * from "./endpoints.js";

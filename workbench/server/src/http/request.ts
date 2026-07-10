@@ -35,16 +35,11 @@ export async function parseJsonBody(c: Context): Promise<unknown> {
 	}
 }
 
-/**
- * 解析并按 schema 校验 JSON body。校验失败抛 INVALID_REQUEST，details 只含
- * 字段级 issues（path + message），不含原始 body。
- */
-export async function parseValidatedBody<T>(
-	c: Context,
+export function parseValidatedInput<T>(
 	schema: ZodType<T>,
-): Promise<T> {
-	const raw = await parseJsonBody(c);
-	const result = schema.safeParse(raw);
+	input: unknown,
+): T {
+	const result = schema.safeParse(input);
 	if (!result.success) {
 		throw new HttpContractError("INVALID_REQUEST", "请求字段不符合 schema", {
 			issues: result.error.issues.map((issue) => ({
@@ -54,4 +49,15 @@ export async function parseValidatedBody<T>(
 		});
 	}
 	return result.data;
+}
+
+/**
+ * 解析并按 schema 校验 JSON body。校验失败抛 INVALID_REQUEST，details 只含
+ * 字段级 issues（path + message），不含原始 body。
+ */
+export async function parseValidatedBody<T>(
+	c: Context,
+	schema: ZodType<T>,
+): Promise<T> {
+	return parseValidatedInput(schema, await parseJsonBody(c));
 }

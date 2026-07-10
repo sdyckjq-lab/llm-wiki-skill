@@ -232,14 +232,14 @@ export const ENDPOINT_REGISTRY = [
 	{
 		method: "GET",
 		path: "/api/refs",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "read-only",
 		description: "页面引用候选",
 	},
 	{
 		method: "GET",
 		path: "/api/page",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "read-only",
 		description: "读 wiki 页面",
 	},
@@ -281,14 +281,14 @@ export const ENDPOINT_REGISTRY = [
 	{
 		method: "GET",
 		path: "/api/artifacts",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "read-only",
 		description: "列出产物",
 	},
 	{
 		method: "GET",
 		path: "/api/artifacts/:id",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "read-only",
 		description: "产物 manifest",
 	},

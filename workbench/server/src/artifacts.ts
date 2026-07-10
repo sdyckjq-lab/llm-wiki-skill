@@ -4,30 +4,14 @@ import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+import type {
+	ArtifactKind,
+	ArtifactManifest,
+} from "@llm-wiki/workbench-contracts";
+
 import { APP_DIR } from "./config.js";
 
-export type ArtifactKind = "html" | "pdf" | "docx" | "pptx" | "xlsx";
-export type ArtifactRenderer = "iframe" | "download-only";
-
-export interface ArtifactManifest {
-	id: string;
-	kind: ArtifactKind;
-	renderer: ArtifactRenderer;
-	metadata: {
-		title: string;
-		createdAt: string;
-		sourceConversationId: string;
-		sourceKbPath: string;
-		sourceSkill: string;
-		sizeBytes: number;
-	};
-	files: Array<{
-		name: string;
-		sizeBytes: number;
-		mimeType: string;
-	}>;
-	primaryFile: string;
-}
+export type { ArtifactKind, ArtifactManifest } from "@llm-wiki/workbench-contracts";
 
 interface PendingArtifact {
 	id: string;

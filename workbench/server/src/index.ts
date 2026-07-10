@@ -22,7 +22,6 @@
 import { serve } from "@hono/node-server";
 import { streamSSE } from "hono/streaming";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -30,10 +29,6 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createApp } from "./app.js";
 import {
 	artifactEvents,
-	getArtifact,
-	isValidArtifactId,
-	listArtifacts,
-	resolveArtifactFile,
 	type ArtifactCreatedEvent,
 } from "./artifacts.js";
 import {
@@ -65,7 +60,6 @@ import {
 import {
 	assertRegisteredKnowledgeBase,
 } from "./knowledge-bases.js";
-import { listPageRefs, readWikiPage } from "./pages.js";
 import { localHostOnly } from "./security/host.js";
 import { createSecurityMiddleware } from "./security/middleware.js";
 import {
@@ -312,42 +306,6 @@ app.put("/api/graph/layout", async (c) => {
 	}
 });
 
-// ============= Wiki 页面引用候选 =============
-
-app.get("/api/refs", async (c) => {
-	const kbPath = c.req.query("kb");
-	if (!kbPath) return c.json({ ok: false, error: "Missing query param 'kb'" }, 400);
-	const q = c.req.query("q") ?? "";
-	const rawLimit = Number(c.req.query("limit") ?? 20);
-	const limit = Number.isFinite(rawLimit) ? rawLimit : 20;
-	try {
-		const items = await listPageRefs(kbPath, q, limit);
-		return c.json({ ok: true, items });
-	} catch (err) {
-		return c.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			400,
-		);
-	}
-});
-
-app.get("/api/page", async (c) => {
-	const kbPath = c.req.query("kb");
-	const relPath = c.req.query("path");
-	if (!kbPath || !relPath) {
-		return c.json({ ok: false, error: "Missing query params 'kb' or 'path'" }, 400);
-	}
-	try {
-		const content = await readWikiPage(kbPath, relPath);
-		return c.json({ ok: true, content });
-	} catch (err) {
-		return c.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			400,
-		);
-	}
-});
-
 // ============= Slash 命令列表 =============
 
 app.get("/api/commands", async (c) => {
@@ -482,46 +440,6 @@ app.post("/api/knowledge-bases/batch-digest", async (c) => {
 			resumeGraphWatcher(body.kbPath as string, { trigger: completed });
 		}
 	});
-});
-
-// ============= 产物 Artifacts =============
-
-app.get("/api/artifacts", (c) => {
-	const conversationId = c.req.query("conversation");
-	return c.json({ ok: true, items: listArtifacts(conversationId) });
-});
-
-app.get("/api/artifacts/:id", (c) => {
-	const id = c.req.param("id");
-	if (!isValidArtifactId(id)) {
-		return c.json({ ok: false, error: "Invalid artifact id" }, 400);
-	}
-	const manifest = getArtifact(id);
-	if (!manifest) return c.json({ ok: false, error: "Artifact not found" }, 404);
-	return c.json({ ok: true, manifest });
-});
-
-app.get("/api/artifacts/:id/files/:filename", async (c) => {
-	const id = c.req.param("id");
-	const filename = c.req.param("filename");
-	if (!isValidArtifactId(id)) {
-		return c.json({ ok: false, error: "Invalid artifact id" }, 400);
-	}
-	try {
-		const file = resolveArtifactFile(id, filename);
-		const body = await readFile(file.path);
-		return new Response(body, {
-			headers: {
-				"Content-Type": file.mimeType,
-				"Content-Length": String(file.sizeBytes),
-				"Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
-			},
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		const status = message.includes("不存在") || message.includes("不在 manifest") ? 404 : 400;
-		return c.json({ ok: false, error: message }, status);
-	}
 });
 
 // ============= 模型认证 =============

@@ -17,22 +17,35 @@ import {
 	unregisterExternalKnowledgeBase as unregisterExternalKnowledgeBaseMigrated,
 } from "./api/knowledge-bases";
 import {
+	getArtifactFileUrl as getArtifactFileUrlMigrated,
+	getArtifactManifest as getArtifactManifestMigrated,
+	listArtifacts as listArtifactsMigrated,
+} from "./api/artifacts";
+import {
+	listRefs as listRefsMigrated,
+	readPage as readPageMigrated,
+} from "./api/pages";
+import {
 	type ActiveContext,
 	type AppConfig,
+	type ArtifactManifest,
 	type AuthStatusData,
 	type AvailableModelInfo,
 	type InspectKnowledgeBasePathData,
 	type KnowledgeBaseInfo,
 	type ModelRef,
+	type PageRef,
 } from "@llm-wiki/workbench-contracts";
 import type { GraphData, GraphDiff, GraphLayoutFile, PinMap } from "@llm-wiki/graph-engine";
 
 export type {
 	ActiveContext,
 	AppConfig,
+	ArtifactManifest,
 	AvailableModelInfo,
 	KnowledgeBaseInfo,
 	ModelRef,
+	PageRef,
 	UIMessage,
 } from "@llm-wiki/workbench-contracts";
 
@@ -53,33 +66,6 @@ export interface CommandItem {
 	description: string;
 	source: "builtin" | "pi-default" | "user-global";
 	skillPath: string | null;
-}
-
-export interface PageRef {
-	path: string;
-	name: string;
-	category: string;
-	title: string;
-}
-
-export interface ArtifactManifest {
-	id: string;
-	kind: "html" | "pdf" | "docx" | "pptx" | "xlsx";
-	renderer: "iframe" | "download-only";
-	metadata: {
-		title: string;
-		createdAt: string;
-		sourceConversationId: string;
-		sourceKbPath: string;
-		sourceSkill: string;
-		sizeBytes: number;
-	};
-	files: Array<{
-		name: string;
-		sizeBytes: number;
-		mimeType: string;
-	}>;
-	primaryFile: string;
 }
 
 export type ExportKind = "pdf" | "docx" | "pptx" | "xlsx" | "html";
@@ -404,20 +390,12 @@ export async function streamBatchDigest(
 	return parseSSE(res.body);
 }
 
-export async function listRefs(kbPath: string, query: string, limit = 20): Promise<PageRef[]> {
-	const url = `/api/refs?kb=${encodeURIComponent(kbPath)}&q=${encodeURIComponent(query)}&limit=${limit}`;
-	const res = await fetch(url);
-	const json = (await res.json()) as { ok: boolean; items?: PageRef[]; error?: string };
-	if (!res.ok || !json.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-	return json.items ?? [];
+export function listRefs(kbPath: string, query: string, limit = 20): Promise<PageRef[]> {
+	return listRefsMigrated(kbPath, query, limit);
 }
 
-export async function readPage(kbPath: string, relPath: string): Promise<string> {
-	const url = `/api/page?kb=${encodeURIComponent(kbPath)}&path=${encodeURIComponent(relPath)}`;
-	const res = await fetch(url);
-	const json = (await res.json()) as { ok: boolean; content?: string; error?: string };
-	if (!res.ok || !json.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-	return json.content ?? "";
+export function readPage(kbPath: string, relPath: string): Promise<string> {
+	return readPageMigrated(kbPath, relPath);
 }
 
 function kbQuery(kbPath: string): string {
@@ -456,23 +434,16 @@ export async function putGraphLayout(kbPath: string, pins: PinMap): Promise<Grap
 	return json;
 }
 
-export async function listArtifacts(conversationId?: string): Promise<ArtifactManifest[]> {
-	const suffix = conversationId ? `?conversation=${encodeURIComponent(conversationId)}` : "";
-	const res = await fetch(`/api/artifacts${suffix}`);
-	const json = (await res.json()) as { ok: boolean; items?: ArtifactManifest[]; error?: string };
-	if (!res.ok || !json.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-	return json.items ?? [];
+export function listArtifacts(conversationId?: string): Promise<ArtifactManifest[]> {
+	return listArtifactsMigrated(conversationId);
 }
 
-export async function getArtifactManifest(id: string): Promise<ArtifactManifest> {
-	const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}`);
-	const json = (await res.json()) as { ok: boolean; manifest?: ArtifactManifest; error?: string };
-	if (!res.ok || !json.ok || !json.manifest) throw new Error(json.error ?? `HTTP ${res.status}`);
-	return json.manifest;
+export function getArtifactManifest(id: string): Promise<ArtifactManifest> {
+	return getArtifactManifestMigrated(id);
 }
 
 export function getArtifactFileUrl(id: string, filename: string): string {
-	return `/api/artifacts/${encodeURIComponent(id)}/files/${encodeURIComponent(filename)}`;
+	return getArtifactFileUrlMigrated(id, filename);
 }
 
 const EXPORT_LABELS: Record<ExportKind, { skillName: string; kindLabel: string; ext: string }> = {

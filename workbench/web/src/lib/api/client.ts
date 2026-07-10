@@ -47,6 +47,10 @@ export interface RequestOptions<T> {
 	responseSchema: z.ZodType<T>;
 	method?: HttpMethod;
 	body?: unknown;
+	/** query 参数由 client 编码，避免领域 module 绕过 registry path。 */
+	query?: Record<string, string | number | undefined>;
+	/** 替换 registry path 中的动态段（如 `:id`），不能改变 endpoint 结构。 */
+	pathParams?: Record<string, string>;
 	signal?: AbortSignal;
 }
 
@@ -75,7 +79,8 @@ export async function request<T>(
 		init.signal = options.signal;
 	}
 
-	const res = await fetch(path, init);
+	const fetchPath = buildFetchPath(path, options.pathParams, options.query);
+	const res = await fetch(fetchPath, init);
 	const json: unknown = await res.json();
 
 	const failureParse = FailureEnvelopeSchema.safeParse(json);
@@ -90,4 +95,25 @@ export async function request<T>(
 		throw new ContractMismatchError(path, res.status);
 	}
 	return successParse.data.data;
+}
+
+function buildFetchPath(
+	path: MigratedJsonPath,
+	pathParams: Record<string, string> | undefined,
+	query: Record<string, string | number | undefined> | undefined,
+): string {
+	const resolvedPath = path.replace(/:([A-Za-z0-9_]+)/g, (_match, key: string) => {
+		const value = pathParams?.[key];
+		if (value === undefined) {
+			throw new Error(`缺少 endpoint path 参数：${key}`);
+		}
+		return encodeURIComponent(value);
+	});
+	if (!query) return resolvedPath;
+	const search = new URLSearchParams();
+	for (const [key, value] of Object.entries(query)) {
+		if (value !== undefined) search.set(key, String(value));
+	}
+	const suffix = search.toString();
+	return suffix ? `${resolvedPath}?${suffix}` : resolvedPath;
 }

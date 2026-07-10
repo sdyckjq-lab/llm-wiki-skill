@@ -1,14 +1,11 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
+import type { PageRef } from "@llm-wiki/workbench-contracts";
+
 import { assertRegisteredKnowledgeBase } from "./knowledge-bases.js";
 
-export interface PageRef {
-	path: string;
-	name: string;
-	category: string;
-	title: string;
-}
+export type { PageRef } from "@llm-wiki/workbench-contracts";
 
 const PAGE_DIRS = ["entities", "topics", "sources", "comparisons", "synthesis"];
 const IGNORE_NAMES = new Set([".obsidian", ".DS_Store", ".wiki-tmp", ".git", "node_modules"]);

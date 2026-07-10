@@ -42,9 +42,17 @@ function buildApp(
 		authService: {
 			getAuthStatus: async () => ({ authFileExists: false, providers: [], envKeys: [] }),
 		},
+		artifactService: {
+			listArtifacts: () => [],
+			getArtifact: () => null,
+			readArtifactFile: async () => ({
+				body: new TextEncoder().encode("report"),
+				mimeType: "text/markdown; charset=utf-8",
+				sizeBytes: 6,
+			}),
+		},
 	});
 	app.post("/api/echo", (c) => c.json({ ok: true }));
-	app.get("/api/artifacts/:id/files/:filename", (c) => c.json({ ok: true }));
 	app.post("/api/knowledge-bases/new", (c) => c.json({ ok: true }));
 	app.post("/api/prompt", (c) => c.json({ ok: true }));
 	return app;
@@ -81,7 +89,9 @@ test("POST 不等于需要 token：read-only 的 POST /api/echo 无 token 放行
 
 test("文件下载 GET 无 token / 来源即放行", async () => {
 	const app = buildApp();
-	const res = await app.request("/api/artifacts/abc/files/report.md");
+	const res = await app.request(
+		"/api/artifacts/11111111-1111-4111-8111-111111111111/files/report.md",
+	);
 	assert.equal(res.status, 200);
 });
 

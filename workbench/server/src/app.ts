@@ -7,10 +7,12 @@ import type { MiddlewareHandler } from "hono";
 import { failure } from "@llm-wiki/workbench-contracts";
 
 import { HttpContractError } from "./http/request.js";
+import { createArtifactRoutes, defaultArtifactRouteService, type ArtifactRouteService } from "./routes/artifacts.js";
 import { createAuthRoutes, defaultAuthRouteService, type AuthRouteService } from "./routes/auth.js";
 import { createConfigRoutes, createModelRoutes, defaultConfigRouteService, type ConfigRouteService } from "./routes/config.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createKnowledgeBaseRoutes, defaultKnowledgeBaseRouteService, type KnowledgeBaseRouteService } from "./routes/knowledge-bases.js";
+import { createPageRoutes, defaultPageRouteService, type PageRouteService } from "./routes/pages.js";
 
 export type WorkbenchAppMode = "test" | "dev" | "desktop";
 
@@ -37,6 +39,10 @@ export interface WorkbenchAppDeps {
 	authService?: AuthRouteService;
 	/** 知识库 / active context route 依赖；route 测试必须注入 fake。 */
 	knowledgeBaseService?: KnowledgeBaseRouteService;
+	/** wiki 页面读取 / 引用候选 route 依赖。 */
+	pageService?: PageRouteService;
+	/** artifact manifest/list/file route 依赖。 */
+	artifactService?: ArtifactRouteService;
 }
 
 /**
@@ -83,6 +89,14 @@ export function createApp(deps: WorkbenchAppDeps = {}): Hono {
 		createKnowledgeBaseRoutes(
 			deps.knowledgeBaseService ?? defaultKnowledgeBaseRouteService,
 		),
+	);
+	app.route(
+		"/api",
+		createPageRoutes(deps.pageService ?? defaultPageRouteService),
+	);
+	app.route(
+		"/api",
+		createArtifactRoutes(deps.artifactService ?? defaultArtifactRouteService),
 	);
 
 	return app;
