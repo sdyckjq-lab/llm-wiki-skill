@@ -18,10 +18,10 @@ describe("graph API helpers", () => {
 	it("binds graph reads, rebuilds, and layout writes to the requested knowledge base", async () => {
 		const requests: Array<{ url: string; method: string; body?: BodyInit | null }> = [];
 		const responses: unknown[] = [
-			{ ok: true, needsBuild: true, graphPath: "/kb/wiki/graph-data.json" },
-			{ ok: true, layoutPath: "/kb/.wiki-graph-layout.json", layout: { version: 1, pins: {}, updatedAt: "" } },
+			{ ok: true, data: { needsBuild: true } },
+			{ ok: true, data: { version: 2, pins: {}, updatedAt: "" } },
 			{ ok: true, status: "started" },
-			{ ok: true, layoutPath: "/kb/.wiki-graph-layout.json", layout: { version: 1, pins: {}, updatedAt: "" } },
+			{ ok: true, data: { version: 2, pins: {}, updatedAt: "" } },
 		];
 		globalThis.fetch = (async (input, init) => {
 			requests.push({
@@ -43,10 +43,10 @@ describe("graph API helpers", () => {
 		assert.deepEqual(
 			requests.map((request) => request.url),
 			[
-				"/api/graph?kb=%2Ftmp%2FKnowledge%20Base",
-				"/api/graph/layout?kb=%2Ftmp%2FKnowledge%20Base",
+				"/api/graph?kb=%2Ftmp%2FKnowledge+Base",
+				"/api/graph/layout?kb=%2Ftmp%2FKnowledge+Base",
 				"/api/graph/rebuild?kb=%2Ftmp%2FKnowledge%20Base",
-				"/api/graph/layout?kb=%2Ftmp%2FKnowledge%20Base",
+				"/api/graph/layout",
 			],
 		);
 		assert.deepEqual(
@@ -54,6 +54,7 @@ describe("graph API helpers", () => {
 			["GET", "GET", "POST", "PUT"],
 		);
 		assert.deepEqual(JSON.parse(String(requests[3]?.body)), {
+			kbPath,
 			version: 2,
 			pins: { "wiki/a.md": { x: 1, y: 2 } },
 		});

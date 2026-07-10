@@ -11,6 +11,7 @@ import { createArtifactRoutes, defaultArtifactRouteService, type ArtifactRouteSe
 import { createAuthRoutes, defaultAuthRouteService, type AuthRouteService } from "./routes/auth.js";
 import { createConfigRoutes, createModelRoutes, defaultConfigRouteService, type ConfigRouteService } from "./routes/config.js";
 import { createHealthRoutes } from "./routes/health.js";
+import { createGraphRoutes, defaultGraphRouteService, type GraphRouteService } from "./routes/graph.js";
 import { createKnowledgeBaseRoutes, defaultKnowledgeBaseRouteService, type KnowledgeBaseRouteService } from "./routes/knowledge-bases.js";
 import { createPageRoutes, defaultPageRouteService, type PageRouteService } from "./routes/pages.js";
 
@@ -41,6 +42,8 @@ export interface WorkbenchAppDeps {
 	knowledgeBaseService?: KnowledgeBaseRouteService;
 	/** wiki 页面读取 / 引用候选 route 依赖。 */
 	pageService?: PageRouteService;
+	/** 图谱读取与 layout 读写 route 依赖；不包含 rebuild。 */
+	graphService?: GraphRouteService;
 	/** artifact manifest/list/file route 依赖。 */
 	artifactService?: ArtifactRouteService;
 }
@@ -93,6 +96,10 @@ export function createApp(deps: WorkbenchAppDeps = {}): Hono {
 	app.route(
 		"/api",
 		createPageRoutes(deps.pageService ?? defaultPageRouteService),
+	);
+	app.route(
+		"/api",
+		createGraphRoutes(deps.graphService ?? defaultGraphRouteService),
 	);
 	app.route(
 		"/api",

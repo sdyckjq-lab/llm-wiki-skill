@@ -204,7 +204,7 @@ export const ENDPOINT_REGISTRY = [
 	{
 		method: "GET",
 		path: "/api/graph",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "read-only",
 		description: "读图谱",
 	},
@@ -218,14 +218,14 @@ export const ENDPOINT_REGISTRY = [
 	{
 		method: "GET",
 		path: "/api/graph/layout",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "read-only",
 		description: "读图谱布局",
 	},
 	{
 		method: "PUT",
 		path: "/api/graph/layout",
-		kind: "legacy",
+		kind: "migrated-json",
 		safety: "state-changing",
 		description: "写图谱布局",
 	},
@@ -437,6 +437,6 @@ export function requiresCapabilityToken(method: string, path: string): boolean {
 // "Unused '@ts-expect-error' directive" → 强制更新本护栏。这样"新 client 误
 // 处理 legacy endpoint"在编译期即可被发现。
 //
-// @ts-expect-error /api/graph 是 legacy，MigratedJsonPath 必须拒绝
-const _legacyPathRejectedByClient: MigratedJsonPath = "/api/graph";
+// @ts-expect-error /api/graph/rebuild 是 legacy，MigratedJsonPath 必须拒绝
+const _legacyPathRejectedByClient: MigratedJsonPath = "/api/graph/rebuild";
 void _legacyPathRejectedByClient;

@@ -22,6 +22,11 @@ import {
 	listArtifacts as listArtifactsMigrated,
 } from "./api/artifacts";
 import {
+	getGraphData as getGraphDataMigrated,
+	getGraphLayout as getGraphLayoutMigrated,
+	putGraphLayout as putGraphLayoutMigrated,
+} from "./api/graph";
+import {
 	listRefs as listRefsMigrated,
 	readPage as readPageMigrated,
 } from "./api/pages";
@@ -84,10 +89,10 @@ export type BatchDigestEvent =
 	| { type: "done"; total: number; completed: number; failed: number; outputDir: string };
 
 export type GraphApiResult =
-	| { ok: true; needsBuild: true; graphPath: string }
-	| { ok: true; needsBuild: false; graphPath: string; data: GraphData };
+	| { needsBuild: true }
+	| { needsBuild: false; data: GraphData };
 
-export type GraphLayoutApiResult = { ok: true; layoutPath: string; layout: GraphLayoutFile };
+export type GraphLayoutApiResult = GraphLayoutFile;
 
 export type GraphEvent =
 	| {
@@ -402,11 +407,8 @@ function kbQuery(kbPath: string): string {
 	return `kb=${encodeURIComponent(kbPath)}`;
 }
 
-export async function getGraphData(kbPath: string): Promise<GraphApiResult> {
-	const res = await fetch(`/api/graph?${kbQuery(kbPath)}`);
-	const json = (await res.json()) as GraphApiResult | { ok: false; error?: string };
-	if (!res.ok || !json.ok) throw new Error(("error" in json && json.error) || `HTTP ${res.status}`);
-	return json;
+export function getGraphData(kbPath: string): Promise<GraphApiResult> {
+	return getGraphDataMigrated(kbPath);
 }
 
 export async function rebuildGraph(kbPath: string): Promise<"started" | "queued"> {
@@ -416,22 +418,15 @@ export async function rebuildGraph(kbPath: string): Promise<"started" | "queued"
 	return json.status;
 }
 
-export async function getGraphLayout(kbPath: string): Promise<GraphLayoutApiResult> {
-	const res = await fetch(`/api/graph/layout?${kbQuery(kbPath)}`);
-	const json = (await res.json()) as GraphLayoutApiResult | { ok: false; error?: string };
-	if (!res.ok || !json.ok) throw new Error(("error" in json && json.error) || `HTTP ${res.status}`);
-	return json;
+export function getGraphLayout(kbPath: string): Promise<GraphLayoutApiResult> {
+	return getGraphLayoutMigrated(kbPath);
 }
 
-export async function putGraphLayout(kbPath: string, pins: PinMap): Promise<GraphLayoutApiResult> {
-	const res = await fetch(`/api/graph/layout?${kbQuery(kbPath)}`, {
-		method: "PUT",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ version: 2, pins }),
-	});
-	const json = (await res.json()) as GraphLayoutApiResult | { ok: false; error?: string };
-	if (!res.ok || !json.ok) throw new Error(("error" in json && json.error) || `HTTP ${res.status}`);
-	return json;
+export function putGraphLayout(
+	kbPath: string,
+	pins: PinMap,
+): Promise<GraphLayoutApiResult> {
+	return putGraphLayoutMigrated(kbPath, pins);
 }
 
 export function listArtifacts(conversationId?: string): Promise<ArtifactManifest[]> {

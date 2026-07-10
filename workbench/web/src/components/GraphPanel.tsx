@@ -376,7 +376,7 @@ export function GraphPanel({
 		try {
 			const [result, layout] = await Promise.all([getGraphData(kbPath), getGraphLayout(kbPath)]);
 			if (loadRequestRef.current !== requestId || activeKbPathRef.current !== kbPath) return false;
-			const nextPins = { ...layout.layout.pins, ...layoutPinsRef.current };
+			const nextPins = { ...layout.pins, ...layoutPinsRef.current };
 			applyLayoutPins(nextPins);
 			if (result.needsBuild) {
 				setData(null);

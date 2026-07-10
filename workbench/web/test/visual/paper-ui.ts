@@ -603,17 +603,14 @@ async function fulfillMockApi(route: Route, url: URL, method: string) {
 	if (pathname === "/api/graph") {
 		await json({
 			ok: true,
-			needsBuild: false,
-			graphPath: `${visualKbPath}/.llm-wiki/graph.json`,
-			data: visualGraphData(),
+			data: { needsBuild: false, data: visualGraphData() },
 		});
 		return;
 	}
 	if (pathname === "/api/graph/layout") {
 		await json({
 			ok: true,
-			layoutPath: `${visualKbPath}/.llm-wiki/graph-layout.json`,
-			layout: { version: 1, pins: {}, updatedAt: "2026-06-20T00:00:00.000Z" },
+			data: { version: 2, pins: {}, updatedAt: "2026-06-20T00:00:00.000Z" },
 		});
 		return;
 	}

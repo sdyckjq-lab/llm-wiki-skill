@@ -259,36 +259,42 @@ function mockGraphFetch(options: { needsBuild?: boolean } = {}) {
 		if (url.startsWith("/api/graph/layout")) {
 			return jsonResponse({
 				ok: true,
-				layout: { version: 1, pins: {}, updatedAt: "2026-06-20T00:00:00.000Z" },
+				data: { version: 2, pins: {}, updatedAt: "2026-06-20T00:00:00.000Z" },
 			});
 		}
 		if (url.startsWith("/api/graph?")) {
 			if (options.needsBuild) {
 				return jsonResponse({
 					ok: true,
-					needsBuild: true,
-					graphPath: "/kb/.llm-wiki/graph.json",
+					data: { needsBuild: true },
 				});
 			}
 			return jsonResponse({
 				ok: true,
-				needsBuild: false,
 				data: {
-					meta: { build_date: "2026-06-20T00:00:00.000Z" },
-					nodes: [
-						{
-							id: "wiki/paper.md",
-							label: "Paper",
-							title: "Paper",
-							type: "topic",
-							community: "paper",
-							path: "wiki/paper.md",
+					needsBuild: false,
+					data: {
+						meta: {
+							build_date: "2026-06-20T00:00:00.000Z",
+							wiki_title: "AI 学习库",
+							total_nodes: 1,
+							total_edges: 0,
 						},
-					],
-					edges: [],
-					communities: [],
+						nodes: [
+							{
+								id: "wiki/paper.md",
+								label: "Paper",
+								title: "Paper",
+								type: "topic",
+								community: "paper",
+								path: "wiki/paper.md",
+							},
+						],
+						edges: [],
+						communities: [],
+					},
 				},
-				});
+			});
 			}
 		if (url.startsWith("/api/graph/rebuild")) {
 			return jsonResponse({ ok: true, status: "started" });
