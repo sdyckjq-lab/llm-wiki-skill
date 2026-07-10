@@ -13,7 +13,7 @@ import {
 	type ActiveMapReadingWorkflowEvent,
 	type ActiveMapReadingWorkflowPlan,
 } from "./active-map-reading-workflow";
-import { closedDrawer, isGraphInteractionDrawer, type DrawerState } from "./drawer-state";
+import { closedDrawer, graphCommunitySummaryDrawer, graphSelectionDrawer, isGraphInteractionDrawer, type DrawerState } from "./drawer-state";
 import type { GraphReaderActionId } from "./graph-reader";
 import type { GraphSelectionCommand } from "./graph-summary-actions";
 import { useDrawerExitRail } from "./use-drawer-exit-rail";
@@ -64,6 +64,12 @@ export interface ActiveMapReadingWorkflowController {
 	handleGraphSummaryNodePreview: (nodeId: string | null) => ActiveMapReadingWorkflowPlan;
 	handleGraphSummaryReturnCommunity: (communityId: string) => ActiveMapReadingWorkflowPlan;
 	handleGraphReaderAction: (actionId: GraphReaderActionId) => ActiveMapReadingWorkflowPlan;
+	handleGraphPageReadRequest: (
+		payload: NonNullable<ActiveMapReadingWorkflowPlan["pageReadRequest"]>["payload"],
+		options?: { syncGraphFocus?: boolean },
+	) => ActiveMapReadingWorkflowPlan;
+	handleGraphSelectionTextChange: (value: string) => void;
+	handleGraphCommunityTextChange: (value: string) => void;
 	handleGraphSelectionAsk: (actionId: string | null, newConversation: boolean) => ActiveMapReadingWorkflowPlan;
 	handleGraphCommunityAsk: (actionId: string | null, newConversation: boolean) => ActiveMapReadingWorkflowPlan;
 	handleDrawerClose: (reason: "button" | "escape") => ActiveMapReadingWorkflowPlan;
@@ -99,7 +105,11 @@ export function useActiveMapReadingWorkflow(
 	const onDrawerChangeRef = useRef(options.onDrawerChange);
 	const onPageReadRequestRef = useRef(options.onPageReadRequest);
 	const onConversationHandoffRef = useRef(options.onConversationHandoff);
-	const skipNextDataSyncRef = useRef(false);
+	const skipNextDataSyncRef = useRef<{
+		data: GraphData | null;
+		pins: PinMap;
+		visibility: GraphVisibilityState | null;
+	} | null>(null);
 
 	useEffect(() => {
 		drawerRef.current = drawer;
@@ -207,7 +217,11 @@ export function useActiveMapReadingWorkflow(
 		dataRef.current = data;
 		setDataRef.current?.(data);
 		const plan = runEvent({ type: "graph-data-change" }, { data });
-		skipNextDataSyncRef.current = true;
+		skipNextDataSyncRef.current = {
+			data,
+			pins: pinsRef.current,
+			visibility: visibilityRef.current,
+		};
 		return plan;
 	}, [runEvent]);
 
@@ -243,6 +257,33 @@ export function useActiveMapReadingWorkflow(
 		runEvent({ type: "graph-reader-action", actionId })
 	), [runEvent]);
 
+	const handleGraphPageReadRequest = useCallback((
+		payload: NonNullable<ActiveMapReadingWorkflowPlan["pageReadRequest"]>["payload"],
+		options: { syncGraphFocus?: boolean } = {},
+	): ActiveMapReadingWorkflowPlan => {
+		const plan = {
+			drawer: drawerRef.current,
+			pageReadRequest: {
+				payload,
+				syncGraphFocus: options.syncGraphFocus ?? true,
+			},
+		};
+		executePlan(plan);
+		return plan;
+	}, [executePlan]);
+
+	const handleGraphSelectionTextChange = useCallback((value: string): void => {
+		setDrawer((current) => current.mode === "graph-selection"
+			? graphSelectionDrawer(current.selection, current.title, value)
+			: current);
+	}, [setDrawer]);
+
+	const handleGraphCommunityTextChange = useCallback((value: string): void => {
+		setDrawer((current) => current.mode === "graph-community-summary"
+			? graphCommunitySummaryDrawer(current.payload, value)
+			: current);
+	}, [setDrawer]);
+
 	const handleGraphSelectionAsk = useCallback((
 		actionId: string | null,
 		newConversation: boolean,
@@ -262,10 +303,17 @@ export function useActiveMapReadingWorkflow(
 	), [runEvent]);
 
 	const syncGraphDataAndVisibility = useCallback((): ActiveMapReadingWorkflowPlan => {
-		if (skipNextDataSyncRef.current) {
-			skipNextDataSyncRef.current = false;
+		const skipped = skipNextDataSyncRef.current;
+		if (
+			skipped
+			&& skipped.data === dataRef.current
+			&& skipped.pins === pinsRef.current
+			&& skipped.visibility === visibilityRef.current
+		) {
+			skipNextDataSyncRef.current = null;
 			return { drawer: drawerRef.current };
 		}
+		skipNextDataSyncRef.current = null;
 		const currentDrawer = drawerRef.current;
 		const plan = planActiveMapReadingWorkflow({
 			event: { type: "graph-data-change" },
@@ -320,6 +368,9 @@ export function useActiveMapReadingWorkflow(
 		handleGraphSummaryNodePreview,
 		handleGraphSummaryReturnCommunity,
 		handleGraphReaderAction,
+		handleGraphPageReadRequest,
+		handleGraphSelectionTextChange,
+		handleGraphCommunityTextChange,
 		handleGraphSelectionAsk,
 		handleGraphCommunityAsk,
 		handleDrawerClose,

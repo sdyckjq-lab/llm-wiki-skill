@@ -37,6 +37,7 @@ export type DrawerState =
 			loading: boolean;
 			error: string | null;
 			filteredHidden: boolean;
+				requestKey: string | null;
 		}
 		| {
 			mode: "graph-selection";
@@ -108,7 +109,7 @@ export function artifactDrawer(artifacts: ArtifactManifest[], activeArtifactId: 
 export function graphReaderDrawer(
 	payload: GraphOpenPagePayload,
 	state: PageState = {},
-	options: { filteredHidden?: boolean } = {},
+	options: { filteredHidden?: boolean; requestKey?: string | null } = {},
 ): DrawerState {
 	return {
 		mode: "graph-reader",
@@ -117,13 +118,19 @@ export function graphReaderDrawer(
 		loading: state.loading ?? false,
 		error: state.error ?? null,
 		filteredHidden: options.filteredHidden ?? false,
+		requestKey: options.requestKey ?? null,
 	};
 }
 
-export function shouldApplyGraphReaderResult(current: DrawerState, payload: GraphOpenPagePayload): boolean {
+export function shouldApplyGraphReaderResult(
+	current: DrawerState,
+	payload: GraphOpenPagePayload,
+	options: { requestKey?: string | null } = {},
+): current is Extract<DrawerState, { mode: "graph-reader" }> {
 	return current.mode === "graph-reader"
 		&& current.payload.path === payload.path
-		&& current.payload.node.id === payload.node.id;
+		&& current.payload.node.id === payload.node.id
+		&& current.requestKey === (options.requestKey ?? null);
 }
 
 export function graphSelectionDrawer(selection: Selection, title: string, freeText = ""): DrawerState {

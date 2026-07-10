@@ -157,13 +157,14 @@ describe("useActiveMapReadingWorkflow", () => {
 		const visibilityUpdates: Array<GraphVisibilityState | null> = [];
 		const temporaryObjects: Array<GraphSummaryObjectRef | null> = [];
 		const { result, rerender } = renderHook(
-			({ data, visibility, temporaryObject }: {
+			({ data, pins, visibility, temporaryObject }: {
 				data: GraphData | null;
+				pins: PinMap;
 				visibility: GraphVisibilityState | null;
 				temporaryObject: GraphSummaryObjectRef | null;
 			}) => useActiveMapReadingWorkflow({
 				data,
-				pins: emptyPins,
+				pins,
 				visibility,
 				temporaryObject,
 				setData: (nextData) => graphDataUpdates.push(nextData),
@@ -174,6 +175,7 @@ describe("useActiveMapReadingWorkflow", () => {
 			{
 				initialProps: {
 					data: graphFixture() as GraphData | null,
+					pins: emptyPins,
 					visibility: null as GraphVisibilityState | null,
 					temporaryObject: { kind: "node", nodeId: "a" } as GraphSummaryObjectRef | null,
 				},
@@ -184,12 +186,35 @@ describe("useActiveMapReadingWorkflow", () => {
 		const renamed = graphFixtureWithRenamedNode();
 		act(() => result.current.handleGraphDataChange(renamed));
 		assert.equal(graphDataUpdates.at(-1), renamed);
+		rerender({
+			data: renamed,
+			pins: emptyPins,
+			visibility: null,
+			temporaryObject: { kind: "node", nodeId: "a" },
+		});
 		assert.equal(result.current.drawer.mode, "graph-node-summary");
 		assert.equal(result.current.drawer.mode === "graph-node-summary" ? result.current.drawer.payload.label : null, "Alpha renamed");
 		assert.deepEqual(temporaryObjects.at(-1), { kind: "node", nodeId: "a" });
 		const temporaryUpdateCountAfterDirectRefresh = temporaryObjects.length;
 		act(() => result.current.syncGraphDataAndVisibility());
 		assert.equal(temporaryObjects.length, temporaryUpdateCountAfterDirectRefresh);
+
+		const graphPins = { "wiki/a.md": { x: 1, y: 2 } } as PinMap;
+		act(() => result.current.handleGraphPinsChange(graphPins));
+		rerender({
+			data: renamed,
+			pins: graphPins,
+			visibility: null,
+			temporaryObject: { kind: "node", nodeId: "a" },
+		});
+		act(() => result.current.syncGraphDataAndVisibility());
+		assert.equal(result.current.drawer.mode, "graph-node-summary");
+		assert.equal(
+			result.current.drawer.mode === "graph-node-summary"
+				? result.current.drawer.payload.pinHint.pinned
+				: false,
+			true,
+		);
 
 		const visibility = { ...emptyVisibility(), hiddenReadingNodeId: "a" };
 		act(() => result.current.handleGraphVisibilityChange(visibility));
@@ -198,6 +223,7 @@ describe("useActiveMapReadingWorkflow", () => {
 		act(() => result.current.setDrawer(wikiDrawer("wiki/a.md", { content: "Alpha" })));
 		rerender({
 			data: graphFixtureWithoutNodeA(),
+			pins: graphPins,
 			visibility,
 			temporaryObject: { kind: "node", nodeId: "a" },
 		});
@@ -325,14 +351,16 @@ describe("useActiveMapReadingWorkflow", () => {
 		assert.equal(result.current.drawer.mode, "graph-selection");
 
 		// 选区发问：交接提示词并关闭抽屉
-		act(() => result.current.setDrawer(graphSelectionDrawer(manualMultiSelection(), "Alpha/Beta", "只看差异")));
+		act(() => result.current.setDrawer(graphSelectionDrawer(manualMultiSelection(), "Alpha/Beta", "")));
+		act(() => result.current.handleGraphSelectionTextChange("只看差异"));
 		act(() => result.current.handleGraphSelectionAsk(null, false));
 		assert.equal(result.current.drawer.mode, "closed");
 		assert.equal(handoffs.at(-1)?.newConversation, false);
 		assert.match(handoffs.at(-1)?.displayText ?? "", /只看差异/);
 
 		// 社区发问：交接提示词并关闭抽屉
-		act(() => result.current.setDrawer(graphCommunitySummaryDrawer(communitySummaryPayloadFixture(), "社区补充")));
+		act(() => result.current.setDrawer(graphCommunitySummaryDrawer(communitySummaryPayloadFixture(), "")));
+		act(() => result.current.handleGraphCommunityTextChange("社区补充"));
 		act(() => result.current.handleGraphCommunityAsk(null, true));
 		assert.equal(result.current.drawer.mode, "closed");
 		assert.equal(handoffs.at(-1)?.newConversation, true);

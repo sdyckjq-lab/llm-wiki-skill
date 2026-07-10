@@ -45,9 +45,7 @@ import {
 	artifactDrawer,
 	closedDrawer,
 	type DrawerState,
-	graphCommunitySummaryDrawer,
 	graphReaderDrawer,
-	graphSelectionDrawer,
 	isGraphInteractionDrawer,
 	shouldApplyGraphReaderResult,
 	wikiDrawer,
@@ -175,6 +173,8 @@ function App() {
 	const mainViewRef = useRef(mainView);
 	const drawerRef = useRef<DrawerState>(closedDrawer());
 	const activeConversationId = active?.conversation.id ?? null;
+	const graphPageReadRequestRef = useRef<(request: NonNullable<ActiveMapReadingWorkflowPlan["pageReadRequest"]>) => void>(() => {});
+	const graphConversationHandoffRef = useRef<(input: NonNullable<ActiveMapReadingWorkflowPlan["conversationHandoff"]>) => void>(() => {});
 	const createGraphCommandId = useCallback((prefix: string) => (
 		`${prefix}-${Math.random().toString(36).slice(2, 10)}`
 	), []);
@@ -193,6 +193,8 @@ function App() {
 		onDrawerChange: (nextDrawer) => {
 			drawerRef.current = nextDrawer;
 		},
+		onPageReadRequest: (request) => graphPageReadRequestRef.current(request),
+		onConversationHandoff: (handoff) => graphConversationHandoffRef.current(handoff),
 	});
 	const {
 		drawer,
@@ -207,6 +209,9 @@ function App() {
 		handleGraphSummaryNodePreview,
 		handleGraphSummaryReturnCommunity,
 		handleGraphReaderAction: runGraphReaderAction,
+		handleGraphPageReadRequest: runGraphPageReadRequest,
+		handleGraphSelectionTextChange: runGraphSelectionTextChange,
+		handleGraphCommunityTextChange: runGraphCommunityTextChange,
 		handleGraphSelectionAsk: runGraphSelectionAsk,
 		handleGraphCommunityAsk: runGraphCommunityAsk,
 		handleDrawerClose: runDrawerClose,
@@ -373,6 +378,7 @@ function App() {
 		setChatKey((k) => k + 1);
 		setChatStatus(DEFAULT_CHAT_STATUS);
 		setGraphStatus(DEFAULT_GRAPH_STATUS);
+		setDrawerFullscreen(false);
 		resetActiveMapReading();
 		setArtifacts([]);
 		setPendingGraphDiff(null);
@@ -446,34 +452,23 @@ function App() {
 	};
 
 	const handleGraphSelectionTextChange = useCallback((value: string) => {
-		updateDrawerWithRef((current) => (
-			current.mode === "graph-selection"
-				? graphSelectionDrawer(current.selection, current.title, value)
-				: current
-		));
-	}, [updateDrawerWithRef]);
+		runGraphSelectionTextChange(value);
+	}, [runGraphSelectionTextChange]);
 
 	const handleGraphSelectionAsk = (actionId: string | null, newConversation: boolean) => {
-		const plan = runGraphSelectionAsk(actionId, newConversation);
-		void handleGraphConversationHandoff(plan.conversationHandoff);
+		runGraphSelectionAsk(actionId, newConversation);
 	};
 
 	const handleGraphCommunityTextChange = useCallback((value: string) => {
-		updateDrawerWithRef((current) => (
-			current.mode === "graph-community-summary"
-				? graphCommunitySummaryDrawer(current.payload, value)
-				: current
-		));
-	}, [updateDrawerWithRef]);
+		runGraphCommunityTextChange(value);
+	}, [runGraphCommunityTextChange]);
 
 	const handleGraphCommunityAsk = (actionId: string | null, newConversation: boolean) => {
-		const plan = runGraphCommunityAsk(actionId, newConversation);
-		void handleGraphConversationHandoff(plan.conversationHandoff);
+		runGraphCommunityAsk(actionId, newConversation);
 	};
 
 	const handleGraphReaderAction = (actionId: GraphReaderActionId) => {
-		const plan = runGraphReaderAction(actionId);
-		void handleGraphConversationHandoff(plan.conversationHandoff);
+		runGraphReaderAction(actionId);
 	};
 
 	const handleCloseDrawer = useCallback((reason: "button" | "escape") => {
@@ -519,34 +514,38 @@ function App() {
 				sourcePath: toRelativePagePath(payload.node.sourcePath, active.kb.path) ?? payload.node.sourcePath,
 			},
 		};
+		const requestKey = `${active.kb.path}:${normalizedPagePath}:${normalizedPayload.node.id}:${Math.random().toString(36).slice(2, 10)}`;
 		if (syncGraphFocus && normalizedPagePath.startsWith("wiki/")) setGraphFocusPath(normalizedPagePath);
 		setDrawerWithRef(graphReaderDrawer(normalizedPayload, { loading: true }, {
 			filteredHidden: graphReaderFilteredHidden(normalizedPayload.node.id, graphVisibilityState),
+			requestKey,
 		}));
 		try {
 			const content = await readPage(active.kb.path, normalizedPagePath);
 			updateDrawerWithRef((current) => (
-				current.mode === "graph-reader" && shouldApplyGraphReaderResult(current, normalizedPayload)
-					? graphReaderDrawer(normalizedPayload, { content }, { filteredHidden: current.filteredHidden })
+				shouldApplyGraphReaderResult(current, normalizedPayload, { requestKey })
+					? graphReaderDrawer(normalizedPayload, { content }, { filteredHidden: current.filteredHidden, requestKey })
 					: current
 			));
 		} catch (err) {
 			updateDrawerWithRef((current) => (
-				current.mode === "graph-reader" && shouldApplyGraphReaderResult(current, normalizedPayload)
-					? graphReaderDrawer(normalizedPayload, { error: err instanceof Error ? err.message : String(err) }, { filteredHidden: current.filteredHidden })
+				shouldApplyGraphReaderResult(current, normalizedPayload, { requestKey })
+					? graphReaderDrawer(normalizedPayload, { error: err instanceof Error ? err.message : String(err) }, { filteredHidden: current.filteredHidden, requestKey })
 				: current
 			));
 		}
 	}, [active, graphVisibilityState, setDrawerWithRef, updateDrawerWithRef]);
 
 	const handleGraphSummaryCommand = useCallback((command: GraphSummaryCommand) => {
-		const plan = runGraphSummaryCommand(command, { reducedMotion: prefersReducedMotion() });
-		if (plan.pageReadRequest) {
-			void handleOpenGraphPage(plan.pageReadRequest.payload, {
-				syncGraphFocus: plan.pageReadRequest.syncGraphFocus,
-			});
-		}
-	}, [handleOpenGraphPage, runGraphSummaryCommand]);
+		runGraphSummaryCommand(command, { reducedMotion: prefersReducedMotion() });
+	}, [runGraphSummaryCommand]);
+
+	graphPageReadRequestRef.current = (request) => {
+		void handleOpenGraphPage(request.payload, { syncGraphFocus: request.syncGraphFocus });
+	};
+	graphConversationHandoffRef.current = (handoff) => {
+		void handleGraphConversationHandoff(handoff);
+	};
 
 	useEffect(() => {
 		syncGraphDataAndVisibility();
@@ -846,7 +845,7 @@ function App() {
 									currentKnowledgeBasePath={active?.kb.path ?? null}
 									theme={theme}
 									graphBuildError={graphBuildError}
-									onOpenPage={handleOpenGraphPage}
+									onOpenPage={(payload) => runGraphPageReadRequest(payload)}
 									onGraphDataChange={handleGraphDataChange}
 									onGraphPinsChange={handleGraphPinsChange}
 									onGraphVisibilityChange={handleGraphVisibilityChange}

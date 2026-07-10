@@ -12,6 +12,27 @@ describe("graph reader async request guards", () => {
 		assert.equal(shouldApplyGraphReaderResult(graphReaderDrawer(first, { loading: true }), first), true);
 		assert.equal(shouldApplyGraphReaderResult(graphReaderDrawer(second, { loading: true }), first), false);
 	});
+
+	it("rejects stale results from an older request for the same graph reader target", () => {
+		const payload = graphPayload("a", "wiki/entities/A.md");
+
+		assert.equal(
+			shouldApplyGraphReaderResult(
+				graphReaderDrawer(payload, { loading: true }, { requestKey: "kb-b:request-2" }),
+				payload,
+				{ requestKey: "kb-a:request-1" },
+			),
+			false,
+		);
+		assert.equal(
+			shouldApplyGraphReaderResult(
+				graphReaderDrawer(payload, { loading: true }, { requestKey: "kb-a:request-1" }),
+				payload,
+				{ requestKey: "kb-a:request-1" },
+			),
+			true,
+		);
+	});
 });
 
 function graphPayload(id: string, path: string): GraphOpenPagePayload {
