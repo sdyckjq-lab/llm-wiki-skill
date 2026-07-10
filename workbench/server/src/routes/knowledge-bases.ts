@@ -184,7 +184,7 @@ export function createKnowledgeBaseRoutes(
 	return router;
 }
 
-function serializeActiveContext(
+export function serializeActiveContext(
 	ctx: AgentActiveContext | null,
 ): ActiveKnowledgeBaseData {
 	if (!ctx) return { active: null };

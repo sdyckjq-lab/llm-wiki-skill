@@ -423,7 +423,7 @@ async function selectConversationSerial(
 	const list = await listConversations(kbPath);
 	const target = list.find((c) => c.id === conversationId);
 	if (!target) {
-		throw new Error(`对话不存在：${conversationId}`);
+		throw Object.assign(new Error("对话不存在"), { code: "NOT_FOUND" });
 	}
 
 	await disposeActive();

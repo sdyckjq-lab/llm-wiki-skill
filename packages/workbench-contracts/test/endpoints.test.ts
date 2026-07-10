@@ -173,6 +173,33 @@ test("knowledge bases 与 active context 路由已迁移并保持安全分类", 
 	}
 });
 
+test("conversations 路由已迁移并保持安全分类", () => {
+	const cases = [
+		{ method: "GET", path: "/api/conversations", safety: "read-only" },
+		{
+			method: "POST",
+			path: "/api/conversations",
+			safety: "state-changing",
+		},
+		{
+			method: "POST",
+			path: "/api/conversations/new",
+			safety: "state-changing",
+		},
+	] as const;
+	for (const item of cases) {
+		const entry = findEndpoint(item.method, item.path);
+		assert.equal(entry?.kind, "migrated-json", `${item.method} ${item.path}`);
+		assert.equal(entry?.safety, item.safety, `${item.method} ${item.path}`);
+		assert.equal(isMigratedJsonPath(item.path), true, item.path);
+		assert.equal(
+			requiresCapabilityToken(item.method, item.path),
+			item.safety === "state-changing",
+			`${item.method} ${item.path}`,
+		);
+	}
+});
+
 // ============= #166 安全边界查询 =============
 
 test("禁止 GET 产生副作用：registry 里没有任何 GET 被标记为 state-changing", () => {

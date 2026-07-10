@@ -516,16 +516,14 @@ async function fulfillMockApi(route: Route, url: URL, method: string) {
 	if (pathname === "/api/conversations") {
 		await json({
 			ok: true,
-			items: [
+			data: [
 				{
 					id: "visual-conversation",
-					path: `${visualKbPath}/.llm-wiki/conversations/visual.jsonl`,
 					firstMessage: "Transformer vs Mamba 长文本",
 					modifiedAt: Date.parse("2026-06-20T10:00:00.000Z"),
 				},
 				{
 					id: "visual-rag",
-					path: `${visualKbPath}/.llm-wiki/conversations/rag.jsonl`,
 					firstMessage: "RAG 检索增强笔记",
 					modifiedAt: Date.parse("2026-06-19T10:00:00.000Z"),
 				},

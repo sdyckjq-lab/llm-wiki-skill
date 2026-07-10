@@ -10,6 +10,7 @@ import { HttpContractError } from "./http/request.js";
 import { createArtifactRoutes, defaultArtifactRouteService, type ArtifactRouteService } from "./routes/artifacts.js";
 import { createAuthRoutes, defaultAuthRouteService, type AuthRouteService } from "./routes/auth.js";
 import { createConfigRoutes, createModelRoutes, defaultConfigRouteService, type ConfigRouteService } from "./routes/config.js";
+import { createConversationRoutes, defaultConversationRouteService, type ConversationRouteService } from "./routes/conversations.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createGraphRoutes, defaultGraphRouteService, type GraphRouteService } from "./routes/graph.js";
 import { createKnowledgeBaseRoutes, defaultKnowledgeBaseRouteService, type KnowledgeBaseRouteService } from "./routes/knowledge-bases.js";
@@ -40,6 +41,8 @@ export interface WorkbenchAppDeps {
 	authService?: AuthRouteService;
 	/** 知识库 / active context route 依赖；route 测试必须注入 fake。 */
 	knowledgeBaseService?: KnowledgeBaseRouteService;
+	/** 对话列表 / 选择 / 新建 route 依赖。 */
+	conversationService?: ConversationRouteService;
 	/** wiki 页面读取 / 引用候选 route 依赖。 */
 	pageService?: PageRouteService;
 	/** 图谱读取与 layout 读写 route 依赖；不包含 rebuild。 */
@@ -91,6 +94,12 @@ export function createApp(deps: WorkbenchAppDeps = {}): Hono {
 		"/api",
 		createKnowledgeBaseRoutes(
 			deps.knowledgeBaseService ?? defaultKnowledgeBaseRouteService,
+		),
+	);
+	app.route(
+		"/api",
+		createConversationRoutes(
+			deps.conversationService ?? defaultConversationRouteService,
 		),
 	);
 	app.route(

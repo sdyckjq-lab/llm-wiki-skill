@@ -33,15 +33,12 @@ import {
 } from "./artifacts.js";
 import {
 	bootstrapFromConfig,
-	createNewConversation,
 	getActive,
 	getActiveSession,
 	listLoadedSkills,
-	selectConversation,
 } from "./agent.js";
 import { setAuthKey, testAuthConnection } from "./auth.js";
 import { loadConfig } from "./config.js";
-import { listConversations, piMessagesToUIMessages } from "./conversations.js";
 import { runBatchDigest } from "./digest/batch.js";
 import {
 	clearPendingKnowledgeContext,
@@ -80,19 +77,6 @@ import { createWiki, InitConflictError, initExistingWiki } from "./wiki-init.js"
 
 const execFileAsync = promisify(execFile);
 const promptRuns = new PromptRunRegistry();
-
-/** 从 session 安全取出模型 provider+id（pi 类型未导出 Model，用结构化访问） */
-function extractModelInfo(session: AgentSession): { provider: string; id: string } | null {
-	const model = (session.state as { model?: { provider?: unknown; id?: unknown } }).model;
-	if (
-		model &&
-		typeof model.provider === "string" &&
-		typeof model.id === "string"
-	) {
-		return { provider: model.provider, id: model.id };
-	}
-	return null;
-}
 
 function extractContextWindow(session: AgentSession): number | undefined {
 	const model = (session.state as { model?: { contextWindow?: unknown } }).model;
@@ -421,101 +405,6 @@ app.post("/api/auth/test", async (c) => {
 	}
 	const result = await testAuthConnection(body.provider);
 	return c.json(result);
-});
-
-// ============= 对话列表与切换 =============
-
-app.get("/api/conversations", async (c) => {
-	const kbPath = c.req.query("kb");
-	if (!kbPath) {
-		return c.json({ ok: false, error: "Missing query param 'kb'" }, 400);
-	}
-	try {
-		const items = await listConversations(kbPath);
-		// 新建后未发消息的活跃对话，pi 不会写盘 → list 不含 → UI 找不到。
-		// 这里前置一个合成 stub 让 UI 看得到。
-		const ctx = getActive();
-		if (
-			ctx &&
-			ctx.kb.path === kbPath &&
-			!items.some((i) => i.id === ctx.conversationId)
-		) {
-			items.unshift({
-				id: ctx.conversationId,
-				path: "",
-				firstMessage: "(新对话)",
-				modifiedAt: Date.now(),
-			});
-		}
-		return c.json({ ok: true, items });
-	} catch (err) {
-		return c.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			500,
-		);
-	}
-});
-
-app.post("/api/conversations", async (c) => {
-	let body: { kbPath?: unknown; conversationId?: unknown };
-	try {
-		body = await c.req.json();
-	} catch {
-		return c.json({ ok: false, error: "Invalid JSON body" }, 400);
-	}
-	if (typeof body.kbPath !== "string" || typeof body.conversationId !== "string") {
-		return c.json({ ok: false, error: "Missing 'kbPath' or 'conversationId'" }, 400);
-	}
-	try {
-		const ctx = await selectConversation(body.kbPath, body.conversationId);
-		watchKnowledgeBaseGraph(ctx.kb.path);
-		return c.json({
-			ok: true,
-			active: {
-				kb: ctx.kb,
-				conversation: {
-					id: ctx.conversationId,
-					isNew: false,
-					messages: piMessagesToUIMessages(ctx.session.state.messages),
-				},
-				model: extractModelInfo(ctx.session),
-			},
-		});
-	} catch (err) {
-		return c.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			400,
-		);
-	}
-});
-
-app.post("/api/conversations/new", async (c) => {
-	let body: { kbPath?: unknown };
-	try {
-		body = await c.req.json();
-	} catch {
-		return c.json({ ok: false, error: "Invalid JSON body" }, 400);
-	}
-	if (typeof body.kbPath !== "string") {
-		return c.json({ ok: false, error: "Missing 'kbPath'" }, 400);
-	}
-	try {
-		const ctx = await createNewConversation(body.kbPath);
-		watchKnowledgeBaseGraph(ctx.kb.path);
-		return c.json({
-			ok: true,
-			active: {
-				kb: ctx.kb,
-				conversation: { id: ctx.conversationId, isNew: true, messages: [] },
-				model: extractModelInfo(ctx.session),
-			},
-		});
-	} catch (err) {
-		return c.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			400,
-		);
-	}
 });
 
 // ============= Prompt（agent 事件流） =============

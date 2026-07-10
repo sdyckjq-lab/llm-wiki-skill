@@ -17,6 +17,11 @@ import {
 	unregisterExternalKnowledgeBase as unregisterExternalKnowledgeBaseMigrated,
 } from "./api/knowledge-bases";
 import {
+	createNewConversation as createNewConversationMigrated,
+	listConversations as listConversationsMigrated,
+	selectConversation as selectConversationMigrated,
+} from "./api/conversations";
+import {
 	getArtifactFileUrl as getArtifactFileUrlMigrated,
 	getArtifactManifest as getArtifactManifestMigrated,
 	listArtifacts as listArtifactsMigrated,
@@ -36,6 +41,7 @@ import {
 	type ArtifactManifest,
 	type AuthStatusData,
 	type AvailableModelInfo,
+	type ConversationInfo,
 	type InspectKnowledgeBasePathData,
 	type KnowledgeBaseInfo,
 	type ModelRef,
@@ -48,6 +54,7 @@ export type {
 	AppConfig,
 	ArtifactManifest,
 	AvailableModelInfo,
+	ConversationInfo,
 	KnowledgeBaseInfo,
 	ModelRef,
 	PageRef,
@@ -55,13 +62,6 @@ export type {
 } from "@llm-wiki/workbench-contracts";
 
 // ============= 类型 =============
-
-export interface ConversationInfo {
-	id: string;
-	path: string;
-	firstMessage: string;
-	modifiedAt: number;
-}
 
 export type AuthStatus = AuthStatusData;
 
@@ -280,50 +280,19 @@ export function unregisterExternalKnowledgeBase(
 
 // ============= 对话 =============
 
-export async function listConversations(kbPath: string): Promise<ConversationInfo[]> {
-	const url = `/api/conversations?kb=${encodeURIComponent(kbPath)}`;
-	const res = await fetch(url);
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	const json = (await res.json()) as { ok: boolean; items?: ConversationInfo[]; error?: string };
-	if (!json.ok) throw new Error(json.error ?? "未知错误");
-	return json.items ?? [];
+export function listConversations(kbPath: string): Promise<ConversationInfo[]> {
+	return listConversationsMigrated(kbPath);
 }
 
-export async function selectConversation(
+export function selectConversation(
 	kbPath: string,
 	conversationId: string,
 ): Promise<ActiveContext> {
-	const res = await fetch("/api/conversations", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ kbPath, conversationId }),
-	});
-	const json = (await res.json()) as {
-		ok: boolean;
-		active?: ActiveContext;
-		error?: string;
-	};
-	if (!res.ok || !json.ok || !json.active) {
-		throw new Error(json.error ?? `HTTP ${res.status}`);
-	}
-	return json.active;
+	return selectConversationMigrated(kbPath, conversationId);
 }
 
-export async function createNewConversation(kbPath: string): Promise<ActiveContext> {
-	const res = await fetch("/api/conversations/new", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ kbPath }),
-	});
-	const json = (await res.json()) as {
-		ok: boolean;
-		active?: ActiveContext;
-		error?: string;
-	};
-	if (!res.ok || !json.ok || !json.active) {
-		throw new Error(json.error ?? `HTTP ${res.status}`);
-	}
-	return json.active;
+export function createNewConversation(kbPath: string): Promise<ActiveContext> {
+	return createNewConversationMigrated(kbPath);
 }
 
 // ============= Prompt =============
