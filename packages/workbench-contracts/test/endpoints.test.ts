@@ -101,8 +101,7 @@ test("isMigratedJsonPath 接受 migrated-json、拒绝 legacy path", () => {
 	assert.equal(isMigratedJsonPath("/api/knowledge-bases"), true);
 	assert.equal(isMigratedJsonPath("/api/knowledge-base"), true);
 	assert.equal(isMigratedJsonPath("/api/graph"), true);
-	// graph rebuild 不在 #170，必须继续拒绝新 client
-	assert.equal(isMigratedJsonPath("/api/graph/rebuild"), false);
+	assert.equal(isMigratedJsonPath("/api/graph/rebuild"), true);
 	assert.equal(isMigratedJsonPath("/api/prompt"), false); // sse，不是 migrated-json
 	assert.equal(
 		isMigratedJsonPath("/api/artifacts/x/files/y.md"),

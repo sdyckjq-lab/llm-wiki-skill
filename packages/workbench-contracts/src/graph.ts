@@ -149,6 +149,13 @@ export const GraphReadDataSchema = z.discriminatedUnion("needsBuild", [
 ]);
 export type GraphReadData = z.infer<typeof GraphReadDataSchema>;
 
+export const GraphRebuildDataSchema = z
+	.object({
+		status: z.enum(["started", "queued"]),
+	})
+	.strict();
+export type GraphRebuildData = z.infer<typeof GraphRebuildDataSchema>;
+
 export const GraphPinPositionSchema = z
 	.object({
 		x: z.coerce.number().finite(),

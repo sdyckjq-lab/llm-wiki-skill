@@ -613,7 +613,7 @@ async function fulfillMockApi(route: Route, url: URL, method: string) {
 		return;
 	}
 	if (pathname === "/api/graph/rebuild") {
-		await json({ ok: true, status: "started" });
+		await json({ ok: true, data: { status: "started" } });
 		return;
 	}
 	await json({ ok: false, error: `Unhandled visual mock route: ${method} ${pathname}` }, 404);

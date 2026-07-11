@@ -5,6 +5,7 @@ import {
 	GraphLayoutDataSchema,
 	GraphLayoutWriteBodySchema,
 	GraphReadDataSchema,
+	GraphRebuildDataSchema,
 	findEndpoint,
 	isMigratedJsonPath,
 } from "../src/index.js";
@@ -100,9 +101,20 @@ test("layout 写入 body 复用 kbPath 口径并拒绝 schema mismatch", () => {
 	);
 });
 
-test("#170 只迁移 graph read/layout，rebuild 保持 legacy", () => {
+test("graph rebuild data schema 只接受明确的异步排队状态", () => {
+	assert.deepEqual(GraphRebuildDataSchema.parse({ status: "started" }), {
+		status: "started",
+	});
+	assert.deepEqual(GraphRebuildDataSchema.parse({ status: "queued" }), {
+		status: "queued",
+	});
+	assert.equal(GraphRebuildDataSchema.safeParse({ status: "done" }).success, false);
+});
+
+test("#172 单独迁移 graph rebuild，并保持 read/layout 的安全分类", () => {
 	for (const endpoint of [
 		{ method: "GET", path: "/api/graph", safety: "read-only" },
+		{ method: "POST", path: "/api/graph/rebuild", safety: "state-changing" },
 		{ method: "GET", path: "/api/graph/layout", safety: "read-only" },
 		{ method: "PUT", path: "/api/graph/layout", safety: "state-changing" },
 	] as const) {
@@ -111,6 +123,4 @@ test("#170 只迁移 graph read/layout，rebuild 保持 legacy", () => {
 		assert.equal(entry?.safety, endpoint.safety);
 		assert.equal(isMigratedJsonPath(endpoint.path), true);
 	}
-	assert.equal(findEndpoint("POST", "/api/graph/rebuild")?.kind, "legacy");
-	assert.equal(isMigratedJsonPath("/api/graph/rebuild"), false);
 });

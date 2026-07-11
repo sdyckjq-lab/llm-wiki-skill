@@ -20,7 +20,7 @@ describe("graph API helpers", () => {
 		const responses: unknown[] = [
 			{ ok: true, data: { needsBuild: true } },
 			{ ok: true, data: { version: 2, pins: {}, updatedAt: "" } },
-			{ ok: true, status: "started" },
+			{ ok: true, data: { status: "started" } },
 			{ ok: true, data: { version: 2, pins: {}, updatedAt: "" } },
 		];
 		globalThis.fetch = (async (input, init) => {
@@ -45,7 +45,7 @@ describe("graph API helpers", () => {
 			[
 				"/api/graph?kb=%2Ftmp%2FKnowledge+Base",
 				"/api/graph/layout?kb=%2Ftmp%2FKnowledge+Base",
-				"/api/graph/rebuild?kb=%2Ftmp%2FKnowledge%20Base",
+				"/api/graph/rebuild?kb=%2Ftmp%2FKnowledge+Base",
 				"/api/graph/layout",
 			],
 		);

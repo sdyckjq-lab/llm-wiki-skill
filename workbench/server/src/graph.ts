@@ -288,6 +288,11 @@ async function findRepoRoot(): Promise<string> {
 	throw new Error("Cannot locate repository root from server module path");
 }
 
+export function graphRebuildFailureMessage(_err: unknown): string {
+	return "图谱重建失败";
+}
+
+
 function emitGraphEvent(event: GraphEvent): void {
 	eventBus.emit("graph", event);
 }
@@ -314,7 +319,7 @@ function createDefaultRebuildQueue(kbPath: string): GraphRebuildQueue {
 			emitGraphEvent({
 				type: "graph_error",
 				kbPath,
-				message: err instanceof Error ? err.message : String(err),
+				message: graphRebuildFailureMessage(err),
 				rebuiltAt: new Date().toISOString(),
 			});
 		},

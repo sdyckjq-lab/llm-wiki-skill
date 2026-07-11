@@ -297,7 +297,7 @@ function mockGraphFetch(options: { needsBuild?: boolean } = {}) {
 			});
 			}
 		if (url.startsWith("/api/graph/rebuild")) {
-			return jsonResponse({ ok: true, status: "started" });
+			return jsonResponse({ ok: true, data: { status: "started" } });
 		}
 		return jsonResponse({ ok: false, error: `Unexpected request: ${url}` }, 500);
 	}) as typeof fetch;

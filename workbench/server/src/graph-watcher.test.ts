@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+	graphRebuildFailureMessage,
 	GraphRebuildQueue,
 	KnowledgeBaseGraphWatcher,
 	shouldIgnoreGraphWatchPath,
@@ -119,6 +120,56 @@ test("graph rebuild queue merges triggers into one pending rebuild while running
 	gates[1]?.resolve();
 	await queue.waitForIdle();
 	assert.deepEqual(calls, ["run", "run"]);
+});
+
+test("graph rebuild failure message is stable and does not expose build paths", () => {
+	assert.equal(
+		graphRebuildFailureMessage(new Error("spawn failed /Users/private/build.sh")),
+		"图谱重建失败",
+	);
+});
+test("graph rebuild queue recovers to started after a failed run", async () => {
+	let attempts = 0;
+	const errors: unknown[] = [];
+	const queue = new GraphRebuildQueue({
+		run: async () => {
+			attempts++;
+			if (attempts === 1) throw new Error("build failed");
+		},
+		onError: (err) => errors.push(err),
+	});
+
+	assert.equal(queue.trigger().status, "started");
+	await queue.waitForIdle();
+	assert.equal(errors.length, 1);
+	assert.equal(queue.trigger().status, "started");
+	await queue.waitForIdle();
+	assert.equal(attempts, 2);
+});
+
+test("graph rebuild queue runs a queued request after failure and then becomes idle", async () => {
+	const firstRun = deferred<void>();
+	let attempts = 0;
+	const errors: unknown[] = [];
+	const queue = new GraphRebuildQueue({
+		run: async () => {
+			attempts++;
+			if (attempts === 1) {
+				await firstRun.promise;
+				throw new Error("first build failed");
+			}
+		},
+		onError: (err) => errors.push(err),
+	});
+
+	assert.equal(queue.trigger().status, "started");
+	assert.equal(queue.trigger().status, "queued");
+	firstRun.resolve();
+	await queue.waitForIdle();
+	assert.equal(attempts, 2);
+	assert.equal(errors.length, 1);
+	assert.equal(queue.trigger().status, "started");
+	await queue.waitForIdle();
 });
 
 class FakeWatchSource {

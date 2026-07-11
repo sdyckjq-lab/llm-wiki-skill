@@ -4,6 +4,7 @@ import test from "node:test";
 import type {
 	GraphLayoutData,
 	GraphReadData,
+	GraphRebuildData,
 } from "@llm-wiki/workbench-contracts";
 
 import { createApp } from "./app.js";
@@ -48,6 +49,7 @@ function createGraphService(
 			}
 			return requested;
 		},
+		triggerGraphRebuild: (): GraphRebuildData => ({ status: "started" }),
 		readGraphData: async (): Promise<GraphReadData> => ({
 			needsBuild: false,
 			data: graphData,
@@ -65,6 +67,93 @@ function createGraphService(
 async function json(res: Response): Promise<Record<string, unknown>> {
 	return (await res.json()) as Record<string, unknown>;
 }
+
+test("graph rebuild 返回统一任务状态并复用 active context", async () => {
+	const triggered: string[] = [];
+	const app = createApp({
+		graphService: createGraphService({
+			triggerGraphRebuild: (resolvedPath) => {
+				triggered.push(resolvedPath);
+				return { status: triggered.length === 1 ? "started" : "queued" };
+			},
+		}),
+	});
+
+	let res = await app.request("/api/graph/rebuild", { method: "POST" });
+	assert.equal(res.status, 200);
+	assert.deepEqual(await json(res), { ok: true, data: { status: "started" } });
+
+	res = await app.request("/api/graph/rebuild", { method: "POST" });
+	assert.equal(res.status, 200);
+	assert.deepEqual(await json(res), { ok: true, data: { status: "queued" } });
+	assert.deepEqual(triggered, [kbPath, kbPath]);
+});
+
+test("graph rebuild 并发 BUSY 与触发失败返回稳定 failure envelope", async () => {
+	let app = createApp({
+		graphService: createGraphService({
+			triggerGraphRebuild: () => {
+				throw Object.assign(new Error("already running /Users/private"), {
+					code: "BUSY",
+				});
+			},
+		}),
+	});
+	let res = await app.request("/api/graph/rebuild", { method: "POST" });
+	assert.equal(res.status, 409);
+	assert.deepEqual(await json(res), {
+		ok: false,
+		code: "BUSY",
+		message: "图谱正在重建",
+	});
+
+	app = createApp({
+		graphService: createGraphService({
+			triggerGraphRebuild: () => {
+				throw new Error("spawn failed /Users/private/build.sh");
+			},
+		}),
+	});
+	res = await app.request("/api/graph/rebuild", { method: "POST" });
+	assert.equal(res.status, 500);
+	assert.equal((await json(res)).code, "INTERNAL_ERROR");
+	const graphResponse = await app.request("/api/graph");
+	assert.equal(JSON.stringify(await json(graphResponse)).includes("/Users/"), false);
+});
+
+test("graph rebuild 拒绝 no active KB 与 forbidden path，且不会触发任务", async () => {
+	let calls = 0;
+	let app = createApp({
+		graphService: createGraphService({
+			getActiveKnowledgeBasePath: () => null,
+			triggerGraphRebuild: () => {
+				calls++;
+				return { status: "started" };
+			},
+		}),
+	});
+	let res = await app.request("/api/graph/rebuild", { method: "POST" });
+	assert.equal(res.status, 400);
+	assert.equal((await json(res)).code, "NO_ACTIVE_KB");
+
+	app = createApp({
+		graphService: createGraphService({
+			triggerGraphRebuild: () => {
+				calls++;
+				return { status: "started" };
+			},
+		}),
+	});
+	res = await app.request("/api/graph/rebuild?kb=%2Ffake%2Fprivate", {
+		method: "POST",
+	});
+	assert.equal(res.status, 403);
+	const payload = await json(res);
+	assert.equal(payload.code, "FORBIDDEN_PATH");
+	assert.equal(JSON.stringify(payload).includes("/Users/"), false);
+	assert.equal(calls, 0);
+});
+
 
 test("graph read 与 layout read/save 返回统一 success envelope", async () => {
 	const writes: Array<{ kbPath: string; input: unknown }> = [];

@@ -45,7 +45,7 @@ export interface WorkbenchAppDeps {
 	conversationService?: ConversationRouteService;
 	/** wiki 页面读取 / 引用候选 route 依赖。 */
 	pageService?: PageRouteService;
-	/** 图谱读取与 layout 读写 route 依赖；不包含 rebuild。 */
+	/** 图谱读取、rebuild 与 layout 读写 route 依赖。 */
 	graphService?: GraphRouteService;
 	/** artifact manifest/list/file route 依赖。 */
 	artifactService?: ArtifactRouteService;

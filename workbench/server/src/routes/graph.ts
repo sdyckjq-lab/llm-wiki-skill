@@ -4,8 +4,10 @@ import {
 	GraphLayoutDataSchema,
 	GraphLayoutWriteBodySchema,
 	GraphReadDataSchema,
+	GraphRebuildDataSchema,
 	type GraphLayoutData,
 	type GraphReadData,
+	type GraphRebuildData,
 } from "@llm-wiki/workbench-contracts";
 
 import { getActive } from "../agent.js";
@@ -21,6 +23,7 @@ import { jsonOk } from "../http/response.js";
 import {
 	readGraphData,
 	readGraphLayout,
+	triggerGraphRebuild,
 	writeGraphLayout,
 } from "../graph.js";
 import { assertRegisteredKnowledgeBase } from "../knowledge-bases.js";
@@ -28,6 +31,7 @@ import { assertRegisteredKnowledgeBase } from "../knowledge-bases.js";
 export interface GraphRouteService {
 	getActiveKnowledgeBasePath: () => string | null;
 	assertRegisteredKnowledgeBase: (kbPath: string) => Promise<string>;
+	triggerGraphRebuild: (kbPath: string) => GraphRebuildData;
 	readGraphData: (kbPath: string) => Promise<GraphReadData>;
 	readGraphLayout: (kbPath: string) => Promise<GraphLayoutData>;
 	writeGraphLayout: (
@@ -39,6 +43,10 @@ export interface GraphRouteService {
 export const defaultGraphRouteService: GraphRouteService = {
 	getActiveKnowledgeBasePath: () => getActive()?.kb.path ?? null,
 	assertRegisteredKnowledgeBase,
+	triggerGraphRebuild: (kbPath) => {
+		const result = triggerGraphRebuild(kbPath);
+		return GraphRebuildDataSchema.parse({ status: result.status });
+	},
 	readGraphData: async (kbPath) => {
 		const result = await readGraphData(kbPath);
 		return GraphReadDataSchema.parse(
@@ -69,6 +77,18 @@ export function createGraphRoutes(service: GraphRouteService): Hono {
 			return jsonOk(
 				c,
 				GraphReadDataSchema.parse(await service.readGraphData(kbPath)),
+			);
+		} catch (err) {
+			throw mapGraphError(err);
+		}
+	});
+
+	router.post("/graph/rebuild", async (c) => {
+		const kbPath = await resolveGraphKnowledgeBase(c.req.query("kb"), service);
+		try {
+			return jsonOk(
+				c,
+				GraphRebuildDataSchema.parse(service.triggerGraphRebuild(kbPath)),
 			);
 		} catch (err) {
 			throw mapGraphError(err);
@@ -133,6 +153,9 @@ function resolveGraphKnowledgeBase(
 function mapGraphError(err: unknown): HttpContractError {
 	if (err instanceof HttpContractError) return err;
 	const source = err as { code?: unknown; statusCode?: unknown };
+	if (source.code === "BUSY") {
+		return new HttpContractError("BUSY", "图谱正在重建");
+	}
 	if (source.code === "ENOENT") {
 		return new HttpContractError("NOT_FOUND", "图谱数据不存在");
 	}

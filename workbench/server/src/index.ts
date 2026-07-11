@@ -48,12 +48,8 @@ import {
 	resumeGraphWatcher,
 	subscribeGraphEvents,
 	suspendGraphWatcher,
-	triggerGraphRebuild,
 	watchKnowledgeBaseGraph,
 } from "./graph.js";
-import {
-	assertRegisteredKnowledgeBase,
-} from "./knowledge-bases.js";
 import { localHostOnly } from "./security/host.js";
 import { createSecurityMiddleware } from "./security/middleware.js";
 import {
@@ -81,22 +77,6 @@ const promptRuns = new PromptRunRegistry();
 function extractContextWindow(session: AgentSession): number | undefined {
 	const model = (session.state as { model?: { contextWindow?: unknown } }).model;
 	return typeof model?.contextWindow === "number" ? model.contextWindow : undefined;
-}
-
-function requestedKnowledgeBasePath(queryValue: string | undefined, body?: unknown): string | null {
-	if (queryValue?.trim()) return queryValue.trim();
-	if (body && typeof body === "object") {
-		const bodyPath = (body as { kbPath?: unknown }).kbPath;
-		if (typeof bodyPath === "string" && bodyPath.trim()) return bodyPath.trim();
-	}
-	return getActive()?.kb.path ?? null;
-}
-
-function errorStatus(err: unknown, fallback: 400 | 500 = 500): 400 | 403 | 500 {
-	const statusCode = (err as { statusCode?: unknown })?.statusCode;
-	if (statusCode === 403) return 403;
-	if (statusCode === 400) return 400;
-	return fallback;
 }
 
 // 本次启动生成本地 capability token（#166）。token 写入运行期文件，供同机可信
@@ -214,22 +194,6 @@ app.post("/api/knowledge-bases/init-existing", async (c) => {
 		return c.json(
 			{ ok: false, error: err instanceof Error ? err.message : String(err) },
 			400,
-		);
-	}
-});
-
-// ============= 图谱重建（指定知识库；未传时回退当前知识库） =============
-
-app.post("/api/graph/rebuild", async (c) => {
-	try {
-		const requestedPath = requestedKnowledgeBasePath(c.req.query("kb"));
-		if (!requestedPath) return c.json({ ok: false, error: "请先选择一个知识库" }, 400);
-		const kbPath = await assertRegisteredKnowledgeBase(requestedPath);
-		return c.json(triggerGraphRebuild(kbPath));
-	} catch (err) {
-		return c.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			errorStatus(err),
 		);
 	}
 });

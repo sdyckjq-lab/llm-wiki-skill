@@ -30,6 +30,7 @@ import {
 	getGraphData as getGraphDataMigrated,
 	getGraphLayout as getGraphLayoutMigrated,
 	putGraphLayout as putGraphLayoutMigrated,
+	rebuildGraph as rebuildGraphMigrated,
 } from "./api/graph";
 import {
 	listRefs as listRefsMigrated,
@@ -372,19 +373,12 @@ export function readPage(kbPath: string, relPath: string): Promise<string> {
 	return readPageMigrated(kbPath, relPath);
 }
 
-function kbQuery(kbPath: string): string {
-	return `kb=${encodeURIComponent(kbPath)}`;
-}
-
 export function getGraphData(kbPath: string): Promise<GraphApiResult> {
 	return getGraphDataMigrated(kbPath);
 }
 
-export async function rebuildGraph(kbPath: string): Promise<"started" | "queued"> {
-	const res = await fetch(`/api/graph/rebuild?${kbQuery(kbPath)}`, { method: "POST" });
-	const json = (await res.json()) as { ok: true; status: "started" | "queued" } | { ok: false; error?: string };
-	if (!res.ok || !json.ok) throw new Error(("error" in json && json.error) || `HTTP ${res.status}`);
-	return json.status;
+export function rebuildGraph(kbPath: string): Promise<"started" | "queued"> {
+	return rebuildGraphMigrated(kbPath);
 }
 
 export function getGraphLayout(kbPath: string): Promise<GraphLayoutApiResult> {
