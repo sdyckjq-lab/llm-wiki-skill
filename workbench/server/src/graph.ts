@@ -316,6 +316,9 @@ function createDefaultRebuildQueue(kbPath: string): GraphRebuildQueue {
 			});
 		},
 		onError: (err) => {
+			console.warn(
+				`[graph] rebuild failed for ${kbPath}: ${err instanceof Error ? err.message : String(err)}`,
+			);
 			emitGraphEvent({
 				type: "graph_error",
 				kbPath,

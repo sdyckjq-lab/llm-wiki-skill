@@ -116,9 +116,9 @@ test("graph rebuild 并发 BUSY 与触发失败返回稳定 failure envelope", a
 	});
 	res = await app.request("/api/graph/rebuild", { method: "POST" });
 	assert.equal(res.status, 500);
-	assert.equal((await json(res)).code, "INTERNAL_ERROR");
-	const graphResponse = await app.request("/api/graph");
-	assert.equal(JSON.stringify(await json(graphResponse)).includes("/Users/"), false);
+	const failure = await json(res);
+	assert.equal(failure.code, "INTERNAL_ERROR");
+	assert.equal(JSON.stringify(failure).includes("/Users/"), false);
 });
 
 test("graph rebuild 拒绝 no active KB 与 forbidden path，且不会触发任务", async () => {
