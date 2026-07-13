@@ -12,7 +12,7 @@ import { request } from "./client";
 export type { ConversationInfo } from "@llm-wiki/workbench-contracts";
 
 export function listConversations(kbPath: string): Promise<ConversationInfo[]> {
-	return request("/api/conversations", {
+	return request({ method: "GET", path: "/api/conversations" }, {
 		query: { kb: kbPath },
 		responseSchema: ConversationListDataSchema,
 	});
@@ -23,8 +23,7 @@ export async function selectConversation(
 	conversationId: string,
 ): Promise<ActiveContext> {
 	const body = ConversationSelectBodySchema.parse({ kbPath, conversationId });
-	const { active } = await request("/api/conversations", {
-		method: "POST",
+	const { active } = await request({ method: "POST", path: "/api/conversations" }, {
 		body,
 		responseSchema: ConversationActiveDataSchema,
 	});
@@ -36,8 +35,7 @@ export async function createNewConversation(
 	kbPath: string,
 ): Promise<ActiveContext> {
 	const body = ConversationCreateBodySchema.parse({ kbPath });
-	const { active } = await request("/api/conversations/new", {
-		method: "POST",
+	const { active } = await request({ method: "POST", path: "/api/conversations/new" }, {
 		body,
 		responseSchema: ConversationActiveDataSchema,
 	});

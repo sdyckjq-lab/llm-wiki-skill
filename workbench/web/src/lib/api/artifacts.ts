@@ -9,14 +9,14 @@ import { request } from "./client";
 export function listArtifacts(
 	conversationId?: string,
 ): Promise<ArtifactManifest[]> {
-	return request("/api/artifacts", {
+	return request({ method: "GET", path: "/api/artifacts" }, {
 		responseSchema: ArtifactListDataSchema,
 		query: { conversation: conversationId },
 	});
 }
 
 export function getArtifactManifest(id: string): Promise<ArtifactManifest> {
-	return request("/api/artifacts/:id", {
+	return request({ method: "GET", path: "/api/artifacts/:id" }, {
 		responseSchema: ArtifactManifestDataSchema,
 		pathParams: { id },
 	});

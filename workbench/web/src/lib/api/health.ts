@@ -7,5 +7,8 @@ import { request } from "./client";
  * 旧 api.ts 的 getHealth 已移除，health 全部走新契约路径。
  */
 export function getHealth(): Promise<HealthData> {
-	return request("/api/health", { responseSchema: HealthDataSchema });
+	return request(
+		{ method: "GET", path: "/api/health" },
+		{ responseSchema: HealthDataSchema },
+	);
 }

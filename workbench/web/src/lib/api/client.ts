@@ -3,7 +3,9 @@ import { z } from "zod";
 import {
 	FailureEnvelopeSchema,
 	SuccessEnvelopeSchema,
+	isMigratedJsonEndpoint,
 	type FailureEnvelope,
+	type MigratedJsonEndpoint,
 	type MigratedJsonPath,
 } from "@llm-wiki/workbench-contracts";
 
@@ -40,12 +42,21 @@ export class ContractMismatchError extends Error {
 	}
 }
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+/** 调用方绕过类型后提供了未登记的 method + path 组合。 */
+export class EndpointContractError extends Error {
+	readonly method: string;
+	readonly path: string;
+	constructor(endpoint: Readonly<{ method: string; path: string }>) {
+		super(`endpoint contract 未登记（${endpoint.method} ${endpoint.path}）`);
+		this.name = "EndpointContractError";
+		this.method = endpoint.method;
+		this.path = endpoint.path;
+	}
+}
 
 export interface RequestOptions<T> {
 	/** 响应 data 的 Zod schema；client 用它校验成功 envelope 的 data。 */
 	responseSchema: z.ZodType<T>;
-	method?: HttpMethod;
 	body?: unknown;
 	/** query 参数由 client 编码，避免领域 module 绕过 registry path。 */
 	query?: Record<string, string | number | undefined>;
@@ -61,16 +72,19 @@ export interface RequestOptions<T> {
  * - 失败 envelope -> 抛 ApiError（带 code / details）。
  * - 旧格式 / data 校验失败 -> 抛 ContractMismatchError，绝不静默吞掉。
  *
- * `path` 类型为 MigratedJsonPath（派生自 @llm-wiki/workbench-contracts 的
- * endpoint registry）：编译期锁死，业务代码只能用本 client 调已迁移 endpoint，
- * 误调 legacy endpoint 会被 `npm run typecheck` 拒绝（静态检查）。未迁移
- * endpoint 继续走 legacy.ts，互不污染。
+ * `endpoint` 类型为 MigratedJsonEndpoint（派生自 registry）：编译期把 method +
+ * path 锁成合法组合。运行时在 fetch 前再次核对同一 registry，防止 `as` 或无类型
+ * 调用绕过。未迁移 endpoint 继续走 legacy.ts，互不污染。
  */
 export async function request<T>(
-	path: MigratedJsonPath,
+	endpoint: MigratedJsonEndpoint,
 	options: RequestOptions<T>,
 ): Promise<T> {
-	const init: RequestInit = { method: options.method ?? "GET" };
+	if (!isMigratedJsonEndpoint(endpoint)) {
+		throw new EndpointContractError(endpoint);
+	}
+	const { method, path } = endpoint;
+	const init: RequestInit = { method };
 	if (options.body !== undefined) {
 		init.headers = { "Content-Type": "application/json" };
 		init.body = JSON.stringify(options.body);

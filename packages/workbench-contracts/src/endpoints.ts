@@ -374,19 +374,39 @@ export const ENDPOINT_REGISTRY = [
 	},
 ] as const satisfies readonly EndpointEntry[];
 
-// ============= 从 registry 派生：migrated-json path =============
+// ============= 从 registry 派生：migrated-json method + path =============
 //
-// MigratedJsonPath 是 web `api/client.ts` 的 `request()` path 参数类型，编译期
-// 锁死：业务代码只能用新 client 调已迁移 endpoint，误调 legacy endpoint 会被
-// `npm run typecheck` 拒绝（静态检查）。派生自 registry，不维护第二份列表。
+// MigratedJsonEndpoint 是 web `api/client.ts` 的 `request()` endpoint 参数类型，
+// 编译期把 method + path 锁成 registry 里的合法组合。派生自 registry，不维护
+// 第二份列表。
 
 type RegistryEntry = (typeof ENDPOINT_REGISTRY)[number];
+
+type MethodPath<Entry extends EndpointEntry> = Entry extends EndpointEntry
+	? Pick<Entry, "method" | "path">
+	: never;
+
+function toMethodPath<Entry extends EndpointEntry>(entry: Entry): MethodPath<Entry> {
+	return { method: entry.method, path: entry.path } as MethodPath<Entry>;
+}
+
+/** 已迁移 JSON endpoint 的 method + path 判别联合，不能交叉组合。 */
+export type MigratedJsonEndpoint = MethodPath<
+	Extract<RegistryEntry, { kind: "migrated-json" }>
+>;
 
 /** 当前已迁移到统一 envelope 的静态 endpoint path 字面量联合。 */
 export type MigratedJsonPath = Extract<
 	RegistryEntry,
 	{ kind: "migrated-json" }
 >["path"];
+
+/** 已迁移 endpoint 组合列表（运行时校验用），从 registry 派生。 */
+export const MIGRATED_JSON_ENDPOINTS: readonly MigratedJsonEndpoint[] =
+	ENDPOINT_REGISTRY.filter(
+		(e): e is Extract<RegistryEntry, { kind: "migrated-json" }> =>
+			e.kind === "migrated-json",
+	).map(toMethodPath);
 
 /** 已迁移 endpoint path 列表（运行时校验 / 派生一致性测试用）。 */
 export const MIGRATED_JSON_PATHS: readonly MigratedJsonPath[] =
@@ -398,6 +418,16 @@ export const MIGRATED_JSON_PATHS: readonly MigratedJsonPath[] =
 /** 运行时判别：path 是否属于已迁移 endpoint（legacy 返回 false）。 */
 export function isMigratedJsonPath(path: string): path is MigratedJsonPath {
 	return (MIGRATED_JSON_PATHS as readonly string[]).includes(path);
+}
+
+/** 运行时判别：method + registry path 是否为已迁移 JSON endpoint 的合法组合。 */
+export function isMigratedJsonEndpoint(
+	endpoint: Readonly<{ method: string; path: string }>,
+): endpoint is MigratedJsonEndpoint {
+	return MIGRATED_JSON_ENDPOINTS.some(
+		(candidate) =>
+			candidate.method === endpoint.method && candidate.path === endpoint.path,
+	);
 }
 
 // ============= 从 registry 派生：安全边界查询（#166） =============
@@ -475,7 +505,18 @@ export function requiresTrustedSource(method: string, path: string): boolean {
 
 // ============= 静态自检（编译期护栏，被 typecheck 覆盖） =============
 //
-// 编译期证明 graph rebuild 已迁移，可由 typed client 调用。若 endpoint
-// 退回 legacy-json，赋值会触发类型错误，强制同步更新 client 与契约。
-const _graphRebuildAcceptedByClient: MigratedJsonPath = "/api/graph/rebuild";
+// 编译期证明 graph rebuild 已迁移，可由 typed client 调用。若 endpoint 退回
+// legacy-json，或 method/path 不再配对，赋值会触发类型错误。
+const _graphRebuildAcceptedByClient: MigratedJsonEndpoint = {
+	method: "POST",
+	path: "/api/graph/rebuild",
+};
 void _graphRebuildAcceptedByClient;
+
+// 反例：即使 path 已迁移，也不能搭配 registry 未登记的方法。
+// @ts-expect-error POST /api/health is not a registered migrated-json endpoint
+const _wrongMethodRejectedByClient: MigratedJsonEndpoint = {
+	method: "POST",
+	path: "/api/health",
+};
+void _wrongMethodRejectedByClient;

@@ -3,5 +3,8 @@ import { AuthStatusDataSchema, type AuthStatusData } from "@llm-wiki/workbench-c
 import { request } from "./client";
 
 export function getAuthStatus(): Promise<AuthStatusData> {
-	return request("/api/auth/status", { responseSchema: AuthStatusDataSchema });
+	return request(
+		{ method: "GET", path: "/api/auth/status" },
+		{ responseSchema: AuthStatusDataSchema },
+	);
 }

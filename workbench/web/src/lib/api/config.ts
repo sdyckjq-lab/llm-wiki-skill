@@ -10,17 +10,22 @@ import {
 import { request } from "./client";
 
 export function getConfig(): Promise<AppConfig> {
-	return request("/api/config", { responseSchema: AppConfigSchema });
+	return request(
+		{ method: "GET", path: "/api/config" },
+		{ responseSchema: AppConfigSchema },
+	);
 }
 
 export function setConfig(partial: ConfigPatch): Promise<AppConfig> {
-	return request("/api/config", {
-		method: "POST",
+	return request({ method: "POST", path: "/api/config" }, {
 		body: ConfigPatchSchema.parse(partial),
 		responseSchema: AppConfigSchema,
 	});
 }
 
 export function fetchAvailableModels(): Promise<AvailableModelsData> {
-	return request("/api/models", { responseSchema: AvailableModelsDataSchema });
+	return request(
+		{ method: "GET", path: "/api/models" },
+		{ responseSchema: AvailableModelsDataSchema },
+	);
 }

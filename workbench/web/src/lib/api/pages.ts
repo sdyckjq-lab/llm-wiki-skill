@@ -11,7 +11,7 @@ export async function listRefs(
 	query: string,
 	limit = 20,
 ): Promise<PageRef[]> {
-	return request("/api/refs", {
+	return request({ method: "GET", path: "/api/refs" }, {
 		responseSchema: PageRefsDataSchema,
 		query: { kb: kbPath, q: query, limit },
 	});
@@ -21,7 +21,7 @@ export async function readPage(
 	kbPath: string,
 	relPath: string,
 ): Promise<string> {
-	const data = await request("/api/page", {
+	const data = await request({ method: "GET", path: "/api/page" }, {
 		responseSchema: PageReadDataSchema,
 		query: { kb: kbPath, path: relPath },
 	});
