@@ -10,6 +10,7 @@ import { artifactEvents, type ArtifactCreatedEvent } from "../artifacts.js";
 import { getActive } from "../agent.js";
 import {
   clearPendingKnowledgeContext,
+  runWithPendingKnowledgeContextOwner,
   setPendingKnowledgeContext,
 } from "../extensions/knowledge-base.js";
 import { HttpContractError, parseValidatedBody } from "../http/request.js";
@@ -361,13 +362,16 @@ export const defaultPromptRouteService: PromptRouteService = {
       }
     }
     if (!isCurrentRun()) return;
+    const contextOwner = {
+      runId: ctx.runId,
+      conversationId: active.conversationId,
+    };
     if (knowledgeContext) {
-      setPendingKnowledgeContext(knowledgeContext, {
-        runId: ctx.runId,
-        conversationId: active.conversationId,
-      });
+      setPendingKnowledgeContext(knowledgeContext, contextOwner);
     }
-    await session.prompt(message);
+    await runWithPendingKnowledgeContextOwner(contextOwner, () =>
+      session.prompt(message),
+    );
     for (const event of ctx.adapter.finishAssistant()) {
       await ctx.writer.write(event);
     }
