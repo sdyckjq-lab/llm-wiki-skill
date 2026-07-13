@@ -10,7 +10,7 @@ Based on [Andrej Karpathy](https://karpathy.ai/)'s [llm-wiki methodology](https:
 
 Turn scattered information into a growing, interconnected knowledge base
 
-[![version](https://img.shields.io/badge/v3.6.46-Browser%20foundation-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.53-Browser%20main%20flows-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -93,7 +93,7 @@ The key difference: knowledge is **compiled once, maintained continuously** — 
 | 🧩 | **Global Intent Feedback** | Hovering a global node lightly previews first-order real relationships; clicking fixes that emphasis with the summary drawer; selecting a community reveals only a small internal and bridge preview instead of full reading |
 | 🔒 | **Local Workbench Access Protection** | Local settings, conversations, pages, graph events, files, and state changes require both a trusted source and the current startup credential |
 | ✅ | **Reliable Workbench Startup** | The server listens locally, failed launches preserve the active credential, restarts rotate it and restore the last knowledge base, and shutdown ends open streams and graph rebuild processes |
-| 🧪 | **Real Workbench Browser Checks** | Automated checks launch the real frontend and backend and validate fictional knowledge bases over real requests and event streams without real credentials or production test doubles |
+| 🧪 | **Real Workbench Browser Checks** | Automated checks cover seven primary workflows plus isolation, cancellation, disconnects, busy states, and failure recovery through the real frontend and backend |
 
 ---
 
@@ -143,7 +143,7 @@ Each platform has its own setup guide:
 - **Reliable Workbench Event Streams** — Batch progress and live graph updates now have explicit ordering and lifecycle rules; per-file failures can continue, overall failure or cancellation closes cleanly, and damaged connections stop or reconnect safely
 - **Local Workbench Access Protection** — Local content and state changes require both source and startup-credential checks, so untrusted web pages cannot read or alter them
 - **Reliable Workbench Startup** — Formal launches and automated checks share one restore and shutdown flow; failed launches preserve active credentials, shutdown ends open streams and graph rebuilds, and checks actively block real-user reads, writes outside the disposable home, and external network access
-- **Real Workbench Browser Checks** — A disposable user environment runs the real frontend, backend, ports, HTTP, and event stream against fictional knowledge bases and conversations; external model and system folder boundaries are replaced only in tests and never enter ordinary startup or production builds
+- **Real Workbench Browser Checks** — A disposable user environment runs seven primary workflows through the real frontend, backend, ports, HTTP, and event stream, including isolation, cancellation, disconnects, busy states, and failure recovery; external model and system folder boundaries are replaced only in tests and never enter ordinary startup or production builds
 - **Knowledge Base Health Check** — Scripts detect orphan pages, broken links, index consistency; plus AI-level contradiction and cross-reference checks
 - **Ingest Privacy Check** — First-time ingestion reminds you to check for phone numbers, API keys, etc.
 - **Graph Relationship Vocabulary** — Optional manual annotation vocabulary for more precise graph diagrams
