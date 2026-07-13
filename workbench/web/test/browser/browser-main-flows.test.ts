@@ -208,12 +208,13 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await page.getByText("atlas-notes", { exact: true }).click();
 		await page.getByLabel("当前知识库").getByText("atlas-notes").waitFor();
 
-		graphEventsSeen = false;
+		await page.goto("about:blank");
 		server = await restartBackend(server, home, backendPort, kbB, serverNetworkProbe);
+		graphEventsSeen = false;
 		const graphEventsResponse = page.waitForResponse((response) => (
 			new URL(response.url()).pathname === "/api/events" && response.status() === 200
 		));
-		await page.reload({ waitUntil: "domcontentloaded" });
+		await page.goto(webOrigin, { waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
 		await graphEventsResponse;
 		await waitUntil(() => graphEventsSeen, OPERATION_TIMEOUT_MS, "browser did not reconnect graph events");
 		await page.getByLabel("当前知识库").getByText("atlas-notes").waitFor({ timeout: START_TIMEOUT_MS });
