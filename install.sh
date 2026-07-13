@@ -34,6 +34,7 @@ MANAGED_ITEMS=(
   "templates"
   "deps"
   "platforms"
+  "packages/graph-engine/dist"
 )
 
 DEP_SKILLS=()
@@ -218,6 +219,7 @@ copy_item() {
   fi
 
   rm -rf "$target_path"
+  mkdir -p "$(dirname "$target_path")"
   cp -R "$source_path" "$target_path"
 }
 
@@ -283,9 +285,39 @@ install_companion_skills() {
   done < <(list_companion_skill_sources "$platform")
 }
 
+# build-graph-html.sh needs packages/graph-engine/dist/engine.iife.js, but the
+# engine is not committed -- so a fresh clone could not build the interactive
+# graph at all. Build it here if it is missing.
+ensure_graph_engine() {
+  local engine="$SCRIPT_DIR/packages/graph-engine/dist/engine.iife.js"
+
+  [ -f "$engine" ] && return 0
+  [ "$DRY_RUN" -eq 1 ] && { printf '[dry-run] build graph-engine\n'; return 0; }
+
+  if ! command -v npm >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+    warn "未找到 node/npm：跳过图谱引擎构建。"
+    warn "  交互式图谱（build-graph-html.sh）将无法使用；其余功能不受影响。"
+    warn "  安装 node 后重跑本脚本即可补上。"
+    return 0
+  fi
+
+  printf '正在构建图谱引擎（首次安装需要，约需 1 分钟）...\n'
+  if ( cd "$SCRIPT_DIR" \
+        && npm install --silent --no-audit --no-fund >/dev/null 2>&1 \
+        && npm run build -w @llm-wiki/graph-engine >/dev/null 2>&1 ) \
+     && [ -f "$engine" ]; then
+    ok "图谱引擎已构建"
+  else
+    warn "图谱引擎构建失败：交互式图谱将无法使用，其余功能不受影响"
+    warn "  可手动重试：npm install && npm run build -w @llm-wiki/graph-engine"
+  fi
+}
+
 install_bundle() {
   local target_dir="$1"
   local item source_path target_path
+
+  ensure_graph_engine
 
   for item in "${MANAGED_ITEMS[@]}"; do
     source_path="$SCRIPT_DIR/$item"
