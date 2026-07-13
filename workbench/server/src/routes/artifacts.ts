@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import {
+	ArtifactIdSchema,
 	ArtifactListDataSchema,
 	ArtifactListQuerySchema,
 	ArtifactManifestDataSchema,
@@ -50,7 +51,6 @@ export const defaultArtifactRouteService: ArtifactRouteService = {
 	},
 };
 
-const ArtifactIdSchema = z.string().uuid();
 const ArtifactFilenameSchema = z
 	.string()
 	.min(1)

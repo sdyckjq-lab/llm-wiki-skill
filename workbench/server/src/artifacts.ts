@@ -1,12 +1,13 @@
 import { EventEmitter } from "node:events";
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
-import type {
-	ArtifactKind,
-	ArtifactManifest,
+import {
+	ArtifactIdSchema,
+	type ArtifactKind,
+	type ArtifactManifest,
 } from "@llm-wiki/workbench-contracts";
 
 import { APP_DIR } from "./config.js";
@@ -33,14 +34,13 @@ export interface ArtifactCreatedEvent {
 
 export const ARTIFACTS_DIR = path.join(APP_DIR, "artifacts");
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const manifests = new Map<string, ArtifactManifest>();
 const pending = new Map<string, PendingArtifact>();
 export const artifactEvents = new EventEmitter();
 
 export function isValidArtifactId(id: string): boolean {
-	return UUID_RE.test(id);
+	return ArtifactIdSchema.safeParse(id).success;
 }
 
 export function artifactWorkspacePath(id: string): string {

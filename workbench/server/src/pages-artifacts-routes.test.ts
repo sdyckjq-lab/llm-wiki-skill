@@ -9,6 +9,7 @@ import type { PageRouteService } from "./routes/pages.js";
 
 const kbPath = "/fake/registered";
 const artifactId = "11111111-1111-4111-8111-111111111111";
+const nonV4ArtifactId = "11111111-1111-1111-8111-111111111111";
 const refs: PageRef[] = [
 	{ path: "wiki/topics/a.md", name: "a", category: "topics", title: "A" },
 ];
@@ -156,6 +157,45 @@ test("artifact list 与 manifest 返回统一 success/failure envelope", async (
 		code: "NOT_FOUND",
 		message: "产物不存在",
 	});
+});
+
+test("artifact manifest 与文件下载只让 v4 UUID 进入底层服务", async () => {
+	const manifestCalls: string[] = [];
+	const fileCalls: string[] = [];
+	const artifactService = createArtifactService({
+		getArtifact: (id) => {
+			manifestCalls.push(id);
+			return id === artifactId ? manifest : null;
+		},
+		readArtifactFile: async (id, filename) => {
+			fileCalls.push(id);
+			if (id !== artifactId || filename !== "report.html") return null;
+			return {
+				body: new TextEncoder().encode("<h1>报告</h1>"),
+				mimeType: "text/html; charset=utf-8",
+				sizeBytes: 15,
+			};
+		},
+	});
+	const app = createApp({ pageService: createPageService(), artifactService });
+
+	const manifestSuccess = await app.request(`/api/artifacts/${artifactId}`);
+	assert.equal(manifestSuccess.status, 200);
+	const fileSuccess = await app.request(`/api/artifacts/${artifactId}/files/report.html`);
+	assert.equal(fileSuccess.status, 200);
+	assert.deepEqual(manifestCalls, [artifactId]);
+	assert.deepEqual(fileCalls, [artifactId]);
+
+	const invalidManifest = await app.request(`/api/artifacts/${nonV4ArtifactId}`);
+	assert.equal(invalidManifest.status, 400);
+	assert.equal((await json(invalidManifest)).code, "INVALID_REQUEST");
+	const invalidFile = await app.request(
+		`/api/artifacts/${nonV4ArtifactId}/files/report.html`,
+	);
+	assert.equal(invalidFile.status, 400);
+	assert.equal((await json(invalidFile)).code, "INVALID_REQUEST");
+	assert.deepEqual(manifestCalls, [artifactId]);
+	assert.deepEqual(fileCalls, [artifactId]);
 });
 
 test("manifest 中的产物文件已从磁盘消失时返回统一 NOT_FOUND envelope", async () => {

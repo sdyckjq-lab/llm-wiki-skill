@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+	ArtifactIdSchema,
 	ArtifactListDataSchema,
 	ArtifactManifestDataSchema,
 	ArtifactManifestSchema,
@@ -12,8 +13,11 @@ import {
 	isMigratedJsonPath,
 } from "../src/index.js";
 
+const artifactId = "11111111-1111-4111-8111-111111111111";
+const nonV4ArtifactId = "11111111-1111-1111-8111-111111111111";
+
 const manifest = {
-	id: "11111111-1111-4111-8111-111111111111",
+	id: artifactId,
 	kind: "html" as const,
 	renderer: "iframe" as const,
 	metadata: {
@@ -27,6 +31,12 @@ const manifest = {
 	files: [{ name: "report.html", sizeBytes: 12, mimeType: "text/html; charset=utf-8" }],
 	primaryFile: "report.html",
 };
+
+test("artifact id schema 只接受 v4 UUID", () => {
+	assert.equal(ArtifactIdSchema.safeParse(artifactId).success, true);
+	assert.equal(ArtifactIdSchema.safeParse(nonV4ArtifactId).success, false);
+	assert.equal(ArtifactIdSchema.safeParse("not-an-id").success, false);
+});
 
 test("页面读取与引用候选共享 schema 只接受统一 data 形状", () => {
 	assert.deepEqual(PageReadDataSchema.parse({ content: "# 页面" }), { content: "# 页面" });
