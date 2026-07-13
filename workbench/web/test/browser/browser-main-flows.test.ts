@@ -1,25 +1,40 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { randomUUID } from "node:crypto";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import test from "node:test";
 
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { chromium, type Browser, type BrowserContext, type BrowserServer, type Page } from "playwright";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
-const WEB_ROOT = join(REPO_ROOT, "workbench/web");
-const SERVER_ENTRY = join(REPO_ROOT, "workbench/server/test/browser-entry.ts");
-const NETWORK_GUARD = join(REPO_ROOT, "workbench/server/test/support/network-guard.mjs");
-const VITE_ENTRY = join(REPO_ROOT, "node_modules/vite/bin/vite.js");
+import {
+	OPERATION_TIMEOUT_MS,
+	REPO_ROOT,
+	SERVER_ENTRY,
+	START_TIMEOUT_MS,
+	VITE_ENTRY,
+	WEB_ROOT,
+	assertPortAvailable,
+	assertProductionBuildExcludesBrowserFakes,
+	availablePort,
+	blockExternalBrowserTraffic,
+	closeBrowserResources,
+	createConversation,
+	createKnowledgeBase as createBaseKnowledgeBase,
+	isolatedEnvironment,
+	networkGuardEnvironment,
+	platformSandboxEnvironment,
+	prepareSandboxDirectories,
+	sanitizeBrowserOutput,
+	startProcess,
+	stopProcess,
+	type RunningProcess,
+	waitForFile,
+	waitUntil,
+} from "./support/browser-harness";
+
 const FAILURE_DIR = join(REPO_ROOT, ".tmp/browser-main-flows");
 const WEB_PORT = 5180;
-const START_TIMEOUT_MS = 30_000;
-const OPERATION_TIMEOUT_MS = 12_000;
-const STOP_TIMEOUT_MS = 5_000;
 const FORBIDDEN_PARENT_ENV = [
 	"ANTHROPIC_API_KEY",
 	"AWS_ACCESS_KEY_ID",
@@ -31,14 +46,10 @@ const FORBIDDEN_PARENT_ENV = [
 	"XDG_CONFIG_HOME",
 ] as const;
 
-interface RunningProcess {
-	child: ChildProcess;
-	output: () => string;
-}
-
 test("seven browser main flows cross the real frontend and backend", { timeout: 210_000 }, async (t) => {
 	for (const name of FORBIDDEN_PARENT_ENV) assert.equal(process.env[name], undefined, `${name} was not cleared`);
 	await rm(FAILURE_DIR, { recursive: true, force: true });
+	await assertPortAvailable(WEB_PORT);
 	const sandbox = await mkdtemp(join(tmpdir(), "llm-wiki-browser-main-flows-"));
 	const home = join(sandbox, "home");
 	const appDir = join(home, ".llm-wiki-agent");
@@ -46,7 +57,6 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 	const kbB = join(home, "llm-wiki", "harbor-notes");
 	const serverNetworkProbe = join(home, "server-network-probe.txt");
 	const viteNetworkProbe = join(home, "vite-network-probe.txt");
-	await assertPortAvailable(WEB_PORT);
 	const backendPort = await availablePort();
 	const webPort = WEB_PORT;
 	const webOrigin = `http://127.0.0.1:${webPort}`;
@@ -61,16 +71,9 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 	const cleanup = async () => {
 		if (cleanupComplete) return;
 		const errors: unknown[] = [];
-		if (context) await withTimeout(context.close(), STOP_TIMEOUT_MS, "browser context did not close").catch((error) => errors.push(error));
+		await closeBrowserResources({ context, browser, browserServer }).catch((error) => errors.push(error));
 		context = undefined;
-		if (browser) await withTimeout(browser.close(), STOP_TIMEOUT_MS, "browser did not close").catch((error) => errors.push(error));
 		browser = undefined;
-		if (browserServer && browserServer.process().exitCode === null && browserServer.process().signalCode === null) {
-			await withTimeout(browserServer.close(), STOP_TIMEOUT_MS, "browser server did not close").catch(async (error) => {
-				errors.push(error);
-				await withTimeout(browserServer!.kill(), STOP_TIMEOUT_MS, "browser process could not be killed").catch((killError) => errors.push(killError));
-			});
-		}
 		browserServer = undefined;
 		if (vite) await stopProcess(vite, [0, 143]).catch((error) => errors.push(error));
 		vite = undefined;
@@ -91,6 +94,12 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		const atlasConversation = await createConversation(appDir, kbA, "Atlas opening message");
 		const harborConversation = await createConversation(appDir, kbB, "Harbor opening message");
 		await createArtifacts(appDir, atlasConversation, kbA);
+		const authDir = join(home, ".pi", "agent");
+		await mkdir(authDir, { recursive: true });
+		await writeFile(join(authDir, "auth.json"), `${JSON.stringify({
+			anthropic: { type: "api_key", key: "fictional-browser-credential" },
+		}, null, 2)}\n`);
+		await chmod(join(authDir, "auth.json"), 0o600);
 		await mkdir(appDir, { recursive: true });
 		await writeFile(join(appDir, "config.json"), `${JSON.stringify({
 			version: 1,
@@ -149,6 +158,17 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await page.getByText("harbor-notes", { exact: true }).click();
 		await page.getByLabel("当前知识库").getByText("harbor-notes").waitFor();
 		assert.equal(await activeConversationId(page), harborConversation);
+		await page.getByLabel("用户气泡").getByText("Harbor opening message", { exact: true }).waitFor();
+		assert.equal(await page.getByLabel("用户气泡").getByText("Atlas opening message", { exact: true }).count(), 0);
+		assert.equal(await page.getByRole("button", { name: /产物/ }).count(), 0);
+		await startComposerMessage(page, "[refs] show harbor page");
+		await page.getByText("wiki/entities/shared.md", { exact: true }).last().click();
+		await page.getByText("Harbor-only fictional signal", { exact: false }).waitFor();
+		await page.getByLabel("关闭").last().click();
+		await page.getByRole("tab", { name: "图谱" }).click();
+		await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
+		await page.getByText("2 节点 · 0 关联", { exact: true }).waitFor();
+		await page.getByRole("tab", { name: "对话" }).click();
 		await assertBrowserJson(page, `/api/page?kb=${encodeURIComponent(kbB)}&path=${encodeURIComponent("wiki/entities/shared.md")}`, 200, /Harbor-only fictional signal/);
 		await assertBrowserJson(page, `/api/page?kb=${encodeURIComponent(kbA)}&path=${encodeURIComponent("wiki/entities/shared.md")}`, 200, /Atlas-only fictional signal/);
 		await assertBrowserJson(page, `/api/conversations?kb=${encodeURIComponent(kbB)}`, 200, /Harbor opening message/);
@@ -166,6 +186,9 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		server = await restartBackend(server, home, backendPort, kbB, serverNetworkProbe);
 		await page.reload({ waitUntil: "domcontentloaded" });
 		await page.getByLabel("当前知识库").getByText("atlas-notes").waitFor({ timeout: START_TIMEOUT_MS });
+		await page.getByLabel("用户气泡").getByText("Atlas opening message", { exact: true }).waitFor();
+		assert.equal(await page.getByLabel("用户气泡").getByText("Harbor opening message", { exact: true }).count(), 0);
+		await page.getByRole("button", { name: /产物 2/ }).waitFor();
 
 		// Conversations: create, retain an empty conversation, switch, and refresh.
 		await page.getByLabel("新对话").click();
@@ -197,6 +220,7 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		// Graph: real read, rebuild, queued busy state, failure recovery, and event stream.
 		await page.getByRole("tab", { name: "图谱" }).click();
 		await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
+		await page.getByText("1 节点 · 0 关联", { exact: true }).waitFor();
 		const rebuildRequest = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/graph/rebuild" && request.method() === "POST");
 		const rebuildClick = page.getByRole("button", { name: "重构" }).click();
 		await rebuildRequest;
@@ -207,6 +231,18 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await assertBrowserJson(page, `/api/graph?kb=${encodeURIComponent(join(home, "missing-kb"))}`, 404, /知识库/);
 		await waitUntil(() => graphEventsSeen, OPERATION_TIMEOUT_MS, "browser did not open graph events");
 		await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
+		if (process.platform !== "win32") {
+			const wikiDir = join(kbA, "wiki");
+			await chmod(wikiDir, 0o555);
+			try {
+				await page.getByRole("button", { name: "重构" }).click();
+				await page.locator("[data-graph-status='error']").waitFor({ timeout: START_TIMEOUT_MS });
+			} finally {
+				await chmod(wikiDir, 0o755);
+			}
+			await page.getByRole("button", { name: "重构" }).click();
+			await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
+		}
 
 		// Messages: normal send, duplicate while busy, cancellation, disconnect recovery, and failure recovery.
 		await page.getByRole("tab", { name: "对话" }).click();
@@ -221,7 +257,14 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		assert.match(duplicate.body, /BUSY/);
 		await page.getByRole("button", { name: "停止" }).click();
 		await page.getByPlaceholder(/写下想法/).waitFor({ state: "visible" });
-		await disconnectPrompt(page);
+		await context.setOffline(true);
+		try {
+			await startComposerMessage(page, "disconnect this response");
+			await page.getByText("出错", { exact: true }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
+		} finally {
+			await context.setOffline(false);
+		}
+		await page.getByPlaceholder(/写下想法/).waitFor({ state: "visible" });
 		await sendComposerMessage(page, "after disconnect recovery");
 		await startComposerMessage(page, "[fail] controlled failure");
 		await page.getByText("出错", { exact: true }).waitFor();
@@ -243,8 +286,8 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 
 		// Settings and models: persisted setting, model list, and redacted auth status.
 		await page.getByRole("button", { name: "设置" }).last().click();
-		await page.getByText("auth.json：未创建", { exact: true }).waitFor();
-		assert.equal((await page.locator("select").nth(1).locator("option").allTextContents()).length > 0, true);
+		await page.getByText("auth.json：已存在", { exact: true }).waitFor();
+		assert.equal((await page.locator("select").nth(1).locator("option").allTextContents()).length > 1, true);
 		const skillsToggle = page.getByRole("checkbox");
 		await skillsToggle.check();
 		await waitUntil(async () => {
@@ -252,10 +295,10 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 			return config.data?.showUserGlobalSkills === true;
 		}, OPERATION_TIMEOUT_MS, "settings were not saved");
 		const authBody = (await browserJson(page, "/api/auth/status")).text;
-		const authStatus = JSON.parse(authBody) as { data: { providers: unknown[]; envKeys: Array<{ present: boolean }> } };
-		assert.deepEqual(authStatus.data.providers, []);
+		const authStatus = JSON.parse(authBody) as { data: { providers: Array<{ id: string }>; envKeys: Array<{ present: boolean }> } };
+		assert.deepEqual(authStatus.data.providers.map((provider) => provider.id), ["anthropic"]);
 		assert.equal(authStatus.data.envKeys.every((item) => item.present === false), true);
-		assert.doesNotMatch(authBody, /\.pi\/agent\/auth\.json|(?:sk-|github_pat_)[A-Za-z0-9_-]{12,}/i);
+		assert.doesNotMatch(authBody, /\.pi\/agent\/auth\.json|fictional-browser-credential|(?:sk-|github_pat_)[A-Za-z0-9_-]{12,}/i);
 
 		assert.equal(apiRequests.has("/api/knowledge-base"), true);
 		assert.equal(apiRequests.has("/api/events"), true);
@@ -267,23 +310,20 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await mkdir(FAILURE_DIR, { recursive: true });
 		await page?.screenshot({ path: join(FAILURE_DIR, "failure.png"), fullPage: true }).catch(() => undefined);
 		const raw = `${server?.output() ?? ""}\n${vite?.output() ?? ""}\n${error instanceof Error ? error.stack ?? error.message : String(error)}`;
-		await writeFile(join(FAILURE_DIR, "failure.log"), sanitize(raw, sandbox), "utf8");
+		await writeFile(join(FAILURE_DIR, "failure.log"), sanitizeBrowserOutput(raw, sandbox), "utf8");
 		throw error;
 	}
 });
 
 async function startBackend(home: string, port: number, selectedDirectory: string, networkProbeFile: string) {
-	return startProcess(process.execPath, ["--import", "tsx", SERVER_ENTRY], REPO_ROOT, {
-		HOME: home,
-		HOST: "127.0.0.1",
-		PORT: String(port),
-		PATH: process.env.PATH ?? "/usr/bin:/bin",
-		TMPDIR: join(home, "tmp"),
-		LANG: "C.UTF-8",
-		LLM_WIKI_BROWSER_SELECTED_DIRECTORY: selectedDirectory,
-		...platformSandboxEnvironment(home),
-		...networkGuardEnvironment(networkProbeFile),
-	}, (output) => output.includes("listening on http://"), "browser backend");
+	return startProcess(
+		process.execPath,
+		["--import", "tsx", SERVER_ENTRY],
+		REPO_ROOT,
+		isolatedEnvironment(home, port, selectedDirectory, networkProbeFile),
+		(output) => output.includes("listening on http://"),
+		"browser backend",
+	);
 }
 
 async function restartBackend(running: RunningProcess, home: string, port: number, selectedDirectory: string, networkProbeFile: string) {
@@ -292,24 +332,15 @@ async function restartBackend(running: RunningProcess, home: string, port: numbe
 }
 
 async function createKnowledgeBase(path: string, title: string, sharedText: string): Promise<void> {
-	await mkdir(join(path, "wiki/entities"), { recursive: true });
-	await writeFile(join(path, ".wiki-schema.md"), `# ${title} schema\n`);
-	await writeFile(join(path, "wiki/entities/shared.md"), `# ${title}\n\n${sharedText}\n`);
+	await createBaseKnowledgeBase(path, title, sharedText);
+	const harborNode = title === "Harbor Notes"
+		? [{ id: "harbor-extra", label: "Harbor extra", type: "entity", community: null, content: "Harbor-only second node", source_path: join(path, "wiki/entities/shared.md") }]
+		: [];
 	await writeFile(join(path, "wiki/graph-data.json"), `${JSON.stringify({
-		meta: { build_date: "2026-07-13T00:00:00Z", wiki_title: title, total_nodes: 1, total_edges: 0, initial_view: ["shared"], degraded: false },
-		nodes: [{ id: "shared", label: `${title} shared`, type: "entity", community: null, content: sharedText, source_path: join(path, "wiki/entities/shared.md") }],
+		meta: { build_date: "2026-07-13T00:00:00Z", wiki_title: title, total_nodes: 1 + harborNode.length, total_edges: 0, initial_view: ["shared", ...harborNode.map((node) => node.id)], degraded: false },
+		nodes: [{ id: "shared", label: `${title} shared`, type: "entity", community: null, content: sharedText, source_path: join(path, "wiki/entities/shared.md") }, ...harborNode],
 		edges: [],
 	}, null, 2)}\n`);
-}
-
-async function createConversation(appDir: string, kbPath: string, message: string): Promise<string> {
-	const hash = createHash("sha256").update(kbPath).digest("hex").slice(0, 16);
-	const sessionDir = join(appDir, "sessions", hash);
-	await mkdir(sessionDir, { recursive: true });
-	const manager = SessionManager.create(REPO_ROOT, sessionDir);
-	manager.appendMessage({ role: "user", content: [{ type: "text", text: message }], timestamp: Date.now() } as never);
-	manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Fictional fixture reply" }], timestamp: Date.now() } as never);
-	return manager.getSessionId();
 }
 
 async function createArtifacts(appDir: string, conversationId: string, kbPath: string): Promise<void> {
@@ -344,22 +375,6 @@ async function startComposerMessage(page: Page, message: string): Promise<void> 
 	await page.getByRole("button", { name: "发送" }).click();
 }
 
-async function disconnectPrompt(page: Page): Promise<void> {
-	await page.evaluate(async () => {
-		const controller = new AbortController();
-		const request = fetch("/api/prompt", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ message: "[slow] disconnect this response" }),
-			signal: controller.signal,
-		}).catch((error) => ({ name: error.name }));
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		controller.abort();
-		await request;
-	});
-	await new Promise((resolvePromise) => setTimeout(resolvePromise, 150));
-}
-
 async function activeConversationId(page: Page): Promise<string> {
 	const result = await page.evaluate(() => fetch("/api/knowledge-base").then((response) => response.json())) as { data: { active: { conversation: { id: string } } } };
 	return result.data.active.conversation.id;
@@ -373,131 +388,4 @@ async function assertBrowserJson(page: Page, path: string, expectedStatus: numbe
 
 async function browserJson(page: Page, path: string): Promise<{ status: number; text: string }> {
 	return page.evaluate((url) => fetch(url, { signal: AbortSignal.timeout(8_000) }).then(async (response) => ({ status: response.status, text: await response.text() })), path);
-}
-
-async function blockExternalBrowserTraffic(context: BrowserContext, blocked: string[]): Promise<void> {
-	await context.route(/^https?:\/\/(?!127\.0\.0\.1(?::\d+)?(?:\/|$)|localhost(?::\d+)?(?:\/|$))/, async (route) => {
-		blocked.push(new URL(route.request().url()).origin);
-		await route.abort("blockedbyclient");
-	});
-	await context.routeWebSocket(/^wss?:\/\/(?!127\.0\.0\.1(?::\d+)?(?:\/|$)|localhost(?::\d+)?(?:\/|$))/, async (route) => {
-		blocked.push(new URL(route.url()).origin);
-		await route.close({ code: 1008, reason: "external connections are disabled in browser tests" });
-	});
-}
-
-function networkGuardEnvironment(probeFile: string): NodeJS.ProcessEnv {
-	return { NODE_OPTIONS: `--import=${NETWORK_GUARD}`, LLM_WIKI_BROWSER_NETWORK_PROBE_FILE: probeFile, LLM_WIKI_BROWSER_NETWORK_PROBE_TARGET: "http://192.0.2.1:9" };
-}
-
-async function prepareSandboxDirectories(home: string): Promise<void> {
-	const directories = [join(home, "tmp")];
-	if (process.platform === "win32") directories.push(join(home, "AppData", "Roaming"), join(home, "AppData", "Local"));
-	await Promise.all(directories.map((directory) => mkdir(directory, { recursive: true })));
-}
-
-function platformSandboxEnvironment(home: string): Record<string, string> {
-	if (process.platform !== "win32") return {};
-	return { USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming"), LOCALAPPDATA: join(home, "AppData", "Local"), TEMP: join(home, "tmp"), TMP: join(home, "tmp"), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) };
-}
-
-async function startProcess(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, ready: (output: string) => boolean, name: string): Promise<RunningProcess> {
-	const child = spawn(command, args, { cwd, detached: process.platform !== "win32", env, stdio: ["ignore", "pipe", "pipe"] });
-	let output = "";
-	child.stdout?.setEncoding("utf8"); child.stderr?.setEncoding("utf8");
-	child.stdout?.on("data", (chunk: string) => { output += chunk; }); child.stderr?.on("data", (chunk: string) => { output += chunk; });
-	const running = { child, output: () => output };
-	try {
-		await waitUntil(() => ready(output), START_TIMEOUT_MS, `${name} did not start`, child, running.output);
-		return running;
-	} catch (error) {
-		signalProcessTree(child, "SIGKILL");
-		await waitForExit(child, 1_000, running.output).catch(() => undefined);
-		throw new Error(`${String(error)}\n${output}`, { cause: error });
-	}
-}
-
-async function stopProcess(running: RunningProcess, expectedExitCodes: readonly number[] = [0]): Promise<void> {
-	if (running.child.exitCode !== null || running.child.signalCode !== null) return;
-	signalProcessTree(running.child, "SIGTERM");
-	let result: Awaited<ReturnType<typeof waitForExit>>;
-	try { result = await waitForExit(running.child, STOP_TIMEOUT_MS, running.output); }
-	catch (error) { signalProcessTree(running.child, "SIGKILL"); await waitForExit(running.child, 1_000, running.output).catch(() => undefined); throw error; }
-	assert.equal(result.signal, null, running.output());
-	if (process.platform !== "win32") assert.equal(expectedExitCodes.includes(result.code ?? -1), true, running.output());
-}
-
-async function waitUntil(predicate: () => boolean | Promise<boolean>, timeoutMs: number, message: string, child?: ChildProcess, output?: () => string): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (!(await predicate())) {
-		if (child && (child.exitCode !== null || child.signalCode !== null)) throw new Error(`${message}: process exited\n${output?.() ?? ""}`);
-		if (Date.now() >= deadline) throw new Error(`${message}\n${output?.() ?? ""}`);
-		await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
-	}
-}
-
-async function waitForFile(path: string): Promise<void> {
-	await waitUntil(() => stat(path).then(() => true, () => false), OPERATION_TIMEOUT_MS, `file did not appear: ${path}`);
-}
-
-async function waitForExit(child: ChildProcess, timeoutMs: number, output: () => string): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
-	if (child.exitCode !== null || child.signalCode !== null) return { code: child.exitCode, signal: child.signalCode };
-	return new Promise((resolvePromise, reject) => {
-		const timer = setTimeout(() => reject(new Error(`process did not stop within ${timeoutMs}ms\n${output()}`)), timeoutMs);
-		child.once("exit", (code, signal) => { clearTimeout(timer); resolvePromise({ code, signal }); });
-	});
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	try { return await Promise.race([promise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs); })]); }
-	finally { if (timer) clearTimeout(timer); }
-}
-
-function signalProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
-	if (!child.pid) return;
-	try {
-		if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-		else process.kill(-child.pid, signal);
-	} catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-}
-
-async function availablePort(): Promise<number> {
-	const server = createServer();
-	await new Promise<void>((resolvePromise, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolvePromise); });
-	const address = server.address(); assert(address && typeof address === "object"); const port = address.port;
-	await new Promise<void>((resolvePromise, reject) => server.close((error) => error ? reject(error) : resolvePromise()));
-	return port;
-}
-
-async function assertPortAvailable(port: number): Promise<void> {
-	const server = createServer();
-	await new Promise<void>((resolvePromise, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolvePromise); });
-	await new Promise<void>((resolvePromise, reject) => server.close((error) => error ? reject(error) : resolvePromise()));
-}
-
-function sanitize(value: string, sandbox: string): string {
-	return value.replaceAll(REPO_ROOT, "<repo>").replaceAll(sandbox, "<sandbox>").replace(/\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{12,}\b/g, "<redacted-token>");
-}
-
-async function assertProductionBuildExcludesBrowserFakes(): Promise<void> {
-	const dist = join(REPO_ROOT, "workbench/server/dist");
-	await stat(join(dist, "index.js"));
-	const files = await collectFiles(dist);
-	assert.equal(files.some((file) => file.includes("browser-entry")), false);
-	for (const file of files.filter((candidate) => candidate.endsWith(".js"))) {
-		const content = await readFile(file, "utf8");
-		assert.equal(content.includes("browser-foundation-fake-model"), false);
-		assert.equal(content.includes("LLM_WIKI_BROWSER_"), false);
-	}
-}
-
-async function collectFiles(path: string): Promise<string[]> {
-	const entries = await readdir(path, { withFileTypes: true });
-	const files: string[] = [];
-	for (const entry of entries) {
-		const entryPath = join(path, entry.name);
-		if (entry.isDirectory()) files.push(...await collectFiles(entryPath)); else files.push(entryPath);
-	}
-	return files;
 }
