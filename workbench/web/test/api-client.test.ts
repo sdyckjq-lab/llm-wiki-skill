@@ -128,6 +128,63 @@ describe("workbench api client", () => {
 		assert.equal(calls.length, 0);
 	});
 
+	it("只读取一次 endpoint，并始终发送通过校验的快照", async () => {
+		const calls = stubFetch({
+			ok: true,
+			data: { status: "ok", timestamp: 1 },
+		});
+		let methodReads = 0;
+		let pathReads = 0;
+		const endpoint = {
+			get method() {
+				methodReads += 1;
+				return methodReads === 1 ? "GET" : "POST";
+			},
+			get path() {
+				pathReads += 1;
+				return pathReads === 1 ? "/api/health" : "/api/auth/set";
+			},
+		};
+
+		await request(endpoint as never, { responseSchema: itemSchema });
+
+		assert.equal(methodReads, 1);
+		assert.equal(pathReads, 1);
+		assert.equal(calls[0]?.init?.method, "GET");
+		assert.equal(calls[0]?.url, "/api/health");
+	});
+
+	it("无类型调用传入无效 endpoint 时在 fetch 前拒绝", async () => {
+		const calls = stubFetch({
+			ok: true,
+			data: { status: "ok", timestamp: 1 },
+		});
+		for (const endpoint of [null, "GET /api/health", { method: 1, path: "/api/health" }]) {
+			await assert.rejects(
+				() => request(endpoint as never, { responseSchema: itemSchema }),
+				(error) => error instanceof EndpointContractError,
+			);
+		}
+		assert.equal(calls.length, 0);
+	});
+
+	it("动态路径参数不能通过特殊段跳出登记的 endpoint", async () => {
+		const calls = stubFetch({
+			ok: true,
+			data: { status: "ok", timestamp: 1 },
+		});
+		for (const id of ["", ".", ".."]) {
+			await assert.rejects(
+				() => request(
+					{ method: "GET", path: "/api/artifacts/:id" },
+					{ pathParams: { id }, responseSchema: itemSchema },
+				),
+				(error) => error instanceof EndpointContractError,
+			);
+		}
+		assert.equal(calls.length, 0);
+	});
+
 	it("request<T> 的返回类型是 responseSchema 推导的 data", async () => {
 		stubFetch({ ok: true, data: { status: "ok", timestamp: 7 } });
 		const data: Item = await request(

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
 	FailureEnvelopeSchema,
 	SuccessEnvelopeSchema,
+	findEndpoint,
 	isMigratedJsonEndpoint,
 	type FailureEnvelope,
 	type MigratedJsonEndpoint,
@@ -46,11 +47,11 @@ export class ContractMismatchError extends Error {
 export class EndpointContractError extends Error {
 	readonly method: string;
 	readonly path: string;
-	constructor(endpoint: Readonly<{ method: string; path: string }>) {
-		super(`endpoint contract 未登记（${endpoint.method} ${endpoint.path}）`);
+	constructor(method: string, path: string) {
+		super(`endpoint contract 未登记（${method} ${path}）`);
 		this.name = "EndpointContractError";
-		this.method = endpoint.method;
-		this.path = endpoint.path;
+		this.method = method;
+		this.path = path;
 	}
 }
 
@@ -80,10 +81,11 @@ export async function request<T>(
 	endpoint: MigratedJsonEndpoint,
 	options: RequestOptions<T>,
 ): Promise<T> {
-	if (!isMigratedJsonEndpoint(endpoint)) {
-		throw new EndpointContractError(endpoint);
+	const snapshot = snapshotEndpoint(endpoint);
+	if (!isMigratedJsonEndpoint(snapshot)) {
+		throw new EndpointContractError(snapshot.method, snapshot.path);
 	}
-	const { method, path } = endpoint;
+	const { method, path } = snapshot;
 	const init: RequestInit = { method };
 	if (options.body !== undefined) {
 		init.headers = { "Content-Type": "application/json" };
@@ -94,6 +96,15 @@ export async function request<T>(
 	}
 
 	const fetchPath = buildFetchPath(path, options.pathParams, options.query);
+	const normalizedPath = new URL(fetchPath, "http://workbench.invalid").pathname;
+	const matched = findEndpoint(method, normalizedPath);
+	if (
+		matched?.kind !== "migrated-json" ||
+		matched.method !== method ||
+		matched.path !== path
+	) {
+		throw new EndpointContractError(method, normalizedPath);
+	}
 	const res = await fetch(fetchPath, init);
 	const json: unknown = await res.json();
 
@@ -109,6 +120,26 @@ export async function request<T>(
 		throw new ContractMismatchError(path, res.status);
 	}
 	return successParse.data.data;
+}
+
+function snapshotEndpoint(endpoint: unknown): { method: string; path: string } {
+	if (typeof endpoint !== "object" || endpoint === null) {
+		throw new EndpointContractError("<invalid>", "<invalid>");
+	}
+	let method: unknown;
+	let path: unknown;
+	try {
+		({ method, path } = endpoint as { method?: unknown; path?: unknown });
+	} catch {
+		throw new EndpointContractError("<invalid>", "<invalid>");
+	}
+	if (typeof method !== "string" || typeof path !== "string") {
+		throw new EndpointContractError(
+			typeof method === "string" ? method : "<invalid>",
+			typeof path === "string" ? path : "<invalid>",
+		);
+	}
+	return { method, path };
 }
 
 function buildFetchPath(
