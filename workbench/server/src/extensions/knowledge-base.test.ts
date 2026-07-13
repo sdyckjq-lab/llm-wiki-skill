@@ -196,3 +196,11 @@ test("匹配 owner 的清理会移除知识上下文", () => {
     null,
   );
 });
+
+test("空知识上下文也会在消费后清理", () => {
+  const owner = { runId: "run-empty", conversationId: "conversation-empty" };
+  setPendingKnowledgeContext("", owner);
+
+  assert.equal(consumePendingKnowledgeContext(owner), "");
+  assert.equal(consumePendingKnowledgeContext(owner), null);
+});

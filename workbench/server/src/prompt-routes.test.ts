@@ -4,6 +4,11 @@ import test from "node:test";
 import { PromptSseEventSchema } from "@llm-wiki/workbench-contracts";
 
 import { createApp } from "./app.js";
+import {
+  clearPendingKnowledgeContext,
+  consumePendingKnowledgeContext,
+  setPendingKnowledgeContext,
+} from "./extensions/knowledge-base.js";
 import type {
   PromptActiveContext,
   PromptRunContext,
@@ -60,8 +65,15 @@ async function readSse(res: Response): Promise<SseFrame[]> {
 interface FakeOptions {
   active?: PromptActiveContext | null;
   /** runPrompt 内部行为；默认写一条 text delta 后 finishAssistant。 */
-  behavior?: "success" | "fail" | "empty" | "late-event" | "knowledge-search";
+  behavior?:
+    | "success"
+    | "fail"
+    | "empty"
+    | "late-event"
+    | "knowledge-search"
+    | "pending";
   throwOnSubscribe?: "session" | "artifacts";
+  onClearPendingKnowledgeContext?: (ctx: PromptRunContext) => void;
 }
 
 function createFakeService(options: FakeOptions = {}) {
@@ -76,6 +88,14 @@ function createFakeService(options: FakeOptions = {}) {
       : options.active;
   const behavior = options.behavior ?? "success";
   const throwOnSubscribe = options.throwOnSubscribe;
+  let releasePendingPrompt!: () => void;
+  const pendingPrompt = new Promise<void>((resolve) => {
+    releasePendingPrompt = resolve;
+  });
+  let resolveAbortObserved!: () => void;
+  const abortObserved = new Promise<void>((resolve) => {
+    resolveAbortObserved = resolve;
+  });
   const calls = {
     begun: [] as Array<[string, string]>,
     ended: [] as Array<[string, string]>,
@@ -86,6 +106,7 @@ function createFakeService(options: FakeOptions = {}) {
     artifactSubscribed: 0,
     artifactUnsubscribed: 0,
     cleared: 0,
+    clearOwners: [] as Array<{ runId: string; conversationId: string }>,
   };
   const session = {
     subscribe: () => () => {},
@@ -132,7 +153,9 @@ function createFakeService(options: FakeOptions = {}) {
     },
     runPrompt: async (ctx: PromptRunContext) => {
       calls.prompts.push(ctx.message);
-      if (behavior === "success") {
+      if (behavior === "pending") {
+        await pendingPrompt;
+      } else if (behavior === "success") {
         const delta = ctx.adapter.adapt({
           type: "message_update",
           message: { role: "assistant", content: [] },
@@ -199,12 +222,18 @@ function createFakeService(options: FakeOptions = {}) {
     },
     abortSession: () => {
       calls.aborted += 1;
+      resolveAbortObserved();
     },
-    clearPendingKnowledgeContext: () => {
+    clearPendingKnowledgeContext: (ctx) => {
       calls.cleared += 1;
+      calls.clearOwners.push({
+        runId: ctx.runId,
+        conversationId: ctx.active.conversationId,
+      });
+      options.onClearPendingKnowledgeContext?.(ctx);
     },
   };
-  return { service, calls };
+  return { service, calls, abortObserved, releasePendingPrompt };
 }
 
 function assertLifecycle(frames: SseFrame[]): void {
@@ -405,22 +434,58 @@ test("订阅抛错后释放 run registry，后续请求不会 BUSY", async () =>
     assert.equal(second.status, 200);
   }
 });
-test("transport abort 释放 registry，下一个 prompt 可立即开始", async () => {
-  const { service, calls } = createFakeService();
-  const app = createApp({ promptService: service });
-  const controller = new AbortController();
-  const res = await app.request("/api/prompt", post({ message: "你好" }), {
-    signal: controller.signal,
-  });
-  controller.abort();
-  try {
-    await res.text();
-  } catch {
-    // 连接中断读取抛错是正常的
+async function waitFor(
+  condition: () => boolean,
+  message: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (condition()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
-  // registry 必须释放：下一个 prompt 能立即 begin 且成功
+  assert.fail(message);
+}
+
+test("transport abort 只取消并清理所属 run，随后可立即开始新 prompt", async (t) => {
+  const cancelledOwner = { runId: "run-fixed", conversationId: "c-1" };
+  const unaffectedOwner = { runId: "run-other", conversationId: "c-other" };
+  setPendingKnowledgeContext("会被取消的上下文", cancelledOwner);
+  setPendingKnowledgeContext("不受影响的上下文", unaffectedOwner);
+  t.after(() => {
+    clearPendingKnowledgeContext(cancelledOwner);
+    clearPendingKnowledgeContext(unaffectedOwner);
+  });
+
+  const { service, calls, abortObserved, releasePendingPrompt } = createFakeService({
+    behavior: "pending",
+    onClearPendingKnowledgeContext: (ctx) => {
+      clearPendingKnowledgeContext({
+        runId: ctx.runId,
+        conversationId: ctx.active.conversationId,
+      });
+    },
+  });
+  const app = createApp({ promptService: service });
+  const res = await app.request("/api/prompt", post({ message: "你好" }));
+  assert.deepEqual(calls.prompts, ["你好"], "取消前 prompt 必须仍在运行");
+  const body = res.body;
+  assert.ok(body, "SSE response 必须有可取消的 body");
+  await body.cancel();
+  await abortObserved;
+
+  assert.equal(calls.aborted, 1, "取消必须实际调用 agent abort");
+  assert.deepEqual(calls.clearOwners, [cancelledOwner]);
+  assert.equal(consumePendingKnowledgeContext(cancelledOwner), null);
+  assert.equal(
+    consumePendingKnowledgeContext(unaffectedOwner),
+    "不受影响的上下文",
+  );
+
+  releasePendingPrompt();
+  await waitFor(() => calls.ended.length === 1, "取消后的 run 未完成清理");
+
+  // registry 必须释放：下一个 prompt 能立即 begin 且成功。
   const res2 = await app.request("/api/prompt", post({ message: "第二次" }));
   assert.equal(res2.status, 200);
   assert.equal(calls.prompts.includes("第二次"), true);
-  assert.equal(calls.aborted >= 0, true);
+  assertLifecycle(await readSse(res2));
 });

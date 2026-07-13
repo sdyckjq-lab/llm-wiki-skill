@@ -105,9 +105,11 @@ function streamBrowserModel(model: Model<Api>, context: Context, options?: Strea
 			stream.end(aborted);
 			return;
 		}
-		const responseText = prompt.includes("[refs]")
-			? "请查看 [[wiki/entities/shared.md]]，也可打开 [[wiki/entities/missing.md]]。"
-			: `可控的测试回复：${prompt}`;
+		const responseText = prompt.includes("[retrieval-owner]")
+			? `retrieval-owner:${retrievalOwner(context.systemPrompt)}`
+			: prompt.includes("[refs]")
+				? "请查看 [[wiki/entities/shared.md]]，也可打开 [[wiki/entities/missing.md]]。"
+				: `可控的测试回复：${prompt}`;
 		const message = browserAssistantMessage(model, responseText, "stop");
 		const partial = { ...message, content: [] };
 		stream.push({ type: "start", partial });
@@ -123,6 +125,12 @@ function streamBrowserModel(model: Model<Api>, context: Context, options?: Strea
 		stream.end(message);
 	});
 	return stream;
+}
+
+function retrievalOwner(systemPrompt: string | undefined): "atlas" | "harbor" | "none" {
+	if (systemPrompt?.includes("Atlas-only fictional signal")) return "atlas";
+	if (systemPrompt?.includes("Harbor-only fictional signal")) return "harbor";
+	return "none";
 }
 
 function browserAssistantMessage(

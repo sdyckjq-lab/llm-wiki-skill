@@ -39,12 +39,8 @@ export interface PendingKnowledgeContextOwner {
   conversationId: string;
 }
 
-interface PendingKnowledgeContext extends PendingKnowledgeContextOwner {
-  context: string;
-}
-
 let current: KnowledgeBaseState | null = null;
-const pendingKnowledgeContexts = new Map<string, PendingKnowledgeContext>();
+const pendingKnowledgeContexts = new Map<string, string>();
 const pendingKnowledgeContextOwner =
 	new AsyncLocalStorage<PendingKnowledgeContextOwner>();
 
@@ -87,10 +83,7 @@ export function setPendingKnowledgeContext(
   context: string,
   owner: PendingKnowledgeContextOwner,
 ): void {
-	pendingKnowledgeContexts.set(pendingKnowledgeContextKey(owner), {
-		context,
-		...owner,
-	});
+	pendingKnowledgeContexts.set(pendingKnowledgeContextKey(owner), context);
 }
 
 export function clearPendingKnowledgeContext(
@@ -103,10 +96,10 @@ export function consumePendingKnowledgeContext(
   owner: PendingKnowledgeContextOwner,
 ): string | null {
 	const key = pendingKnowledgeContextKey(owner);
-	const pending = pendingKnowledgeContexts.get(key);
-	if (!pending) return null;
+	const context = pendingKnowledgeContexts.get(key);
+	if (context === undefined) return null;
 	pendingKnowledgeContexts.delete(key);
-	return pending.context;
+	return context;
 }
 
 // ============= Extension =============

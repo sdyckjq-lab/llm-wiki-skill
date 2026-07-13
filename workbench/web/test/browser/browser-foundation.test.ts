@@ -199,7 +199,7 @@ test("browser foundation uses real frontend, HTTP, SSE, and backend processing",
 		const promptResponse = await fetch("/api/prompt", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ message: "Foundation probe" }),
+			body: JSON.stringify({ message: "[retrieval-owner] [[wiki/entities/shared.md]]" }),
 			signal: AbortSignal.timeout(operationTimeoutMs),
 		});
 		return {
@@ -243,7 +243,8 @@ test("browser foundation uses real frontend, HTTP, SSE, and backend processing",
 	});
 	assert.equal(evidence.promptStatus, 200);
 	assert.match(evidence.promptContentType ?? "", /text\/event-stream/);
-	assert.match(evidence.promptBody, /可控的测试回复/);
+	assert.match(evidence.promptBody, /retrieval-owner:atlas/);
+	assert.doesNotMatch(evidence.promptBody, /retrieval-owner:harbor|retrieval-owner:none/);
 	assert.match(evidence.promptBody, /assistant_done/);
 	assert.match(server.output(), new RegExp(FAKE_MODEL_MARKER));
 	assert.equal(apiRequests.has("/api/knowledge-base"), true);
