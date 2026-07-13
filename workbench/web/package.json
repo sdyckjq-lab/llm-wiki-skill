@@ -15,6 +15,7 @@
     "test:unit": "node --import tsx --test test/*.test.ts",
     "test:dom": "node --test-concurrency=1 --import tsx --import ./test/setup-dom.ts --test test/*.test.tsx",
     "test:browser:foundation": "node --import tsx test/browser/run-browser-foundation.ts",
+    "test:browser:main-flows": "node test/browser/run-browser-main-flows.mjs",
     "visual:paper": "node --import tsx test/visual/paper-ui.ts",
     "pretypecheck": "npm run build -w @llm-wiki/workbench-contracts && npm run build -w @llm-wiki/graph-engine",
     "typecheck": "tsc -b --noEmit --force && tsc -p tsconfig.browser.json --noEmit"

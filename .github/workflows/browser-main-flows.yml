@@ -1,0 +1,33 @@
+name: browser-main-flows
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  browser-main-flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser:main-flows -w @llm-wiki-agent/web
+      - name: Upload cleaned failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-main-flows-failure
+          path: .tmp/browser-main-flows/
+          if-no-files-found: ignore
+          retention-days: 7
