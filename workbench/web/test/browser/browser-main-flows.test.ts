@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -105,6 +105,9 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 			version: 1,
 			externalKnowledgeBases: [kbA, kbB],
 			lastUsedKbPath: kbA,
+			modelRoles: {
+				main: { provider: "browser-test-provider", modelId: "browser-test-model" },
+			},
 		}, null, 2)}\n`);
 
 		server = await startBackend(home, backendPort, kbB, serverNetworkProbe);
@@ -161,10 +164,32 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await page.getByLabel("用户气泡").getByText("Harbor opening message", { exact: true }).waitFor();
 		assert.equal(await page.getByLabel("用户气泡").getByText("Atlas opening message", { exact: true }).count(), 0);
 		assert.equal(await page.getByRole("button", { name: /产物/ }).count(), 0);
+		const retrievalLogDir = join(appDir, "logs", "retrieval");
 		await startComposerMessage(page, "[refs] show harbor page");
 		await page.getByText("wiki/entities/shared.md", { exact: true }).last().click();
 		await page.getByText("Harbor-only fictional signal", { exact: false }).waitFor();
 		await page.getByLabel("关闭").last().click();
+		await waitUntil(
+			() => readdir(retrievalLogDir).then((files) => files.some((file) => file.endsWith(".jsonl")), () => false),
+			OPERATION_TIMEOUT_MS,
+			"retrieval log did not appear",
+		);
+		const retrievalEntries = (await Promise.all(
+			(await readdir(retrievalLogDir))
+				.filter((file) => file.endsWith(".jsonl"))
+				.map((file) => readFile(join(retrievalLogDir, file), "utf8")),
+		)).flatMap((content) => content.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as {
+			sessionId: string;
+			kbPath: string;
+			triggered: boolean;
+			results: Array<{ path: string }>;
+		}));
+		assert.equal(retrievalEntries.some((entry) => (
+			entry.sessionId === harborConversation
+			&& entry.kbPath === kbB
+			&& entry.triggered
+			&& entry.results.some((result) => result.path === "wiki/entities/shared.md")
+		)), true);
 		await page.getByRole("tab", { name: "图谱" }).click();
 		await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
 		await page.getByText("2 节点 · 0 关联", { exact: true }).waitFor();
@@ -183,8 +208,14 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await page.getByText("atlas-notes", { exact: true }).click();
 		await page.getByLabel("当前知识库").getByText("atlas-notes").waitFor();
 
+		graphEventsSeen = false;
 		server = await restartBackend(server, home, backendPort, kbB, serverNetworkProbe);
+		const graphEventsResponse = page.waitForResponse((response) => (
+			new URL(response.url()).pathname === "/api/events" && response.status() === 200
+		));
 		await page.reload({ waitUntil: "domcontentloaded" });
+		await graphEventsResponse;
+		await waitUntil(() => graphEventsSeen, OPERATION_TIMEOUT_MS, "browser did not reconnect graph events");
 		await page.getByLabel("当前知识库").getByText("atlas-notes").waitFor({ timeout: START_TIMEOUT_MS });
 		await page.getByLabel("用户气泡").getByText("Atlas opening message", { exact: true }).waitFor();
 		assert.equal(await page.getByLabel("用户气泡").getByText("Harbor opening message", { exact: true }).count(), 0);
@@ -193,11 +224,15 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		// Conversations: create, retain an empty conversation, switch, and refresh.
 		await page.getByLabel("新对话").click();
 		await page.getByText("(新对话)", { exact: true }).waitFor();
-		const emptyConversationId = await activeConversationId(page);
+		let emptyConversationId: string | null = null;
+		await waitUntil(async () => {
+			emptyConversationId = await activeConversationId(page!);
+			return emptyConversationId !== null;
+		}, OPERATION_TIMEOUT_MS, "empty conversation did not become active");
 		await page.reload({ waitUntil: "domcontentloaded" });
-		assert.equal(
-			await activeConversationId(page),
-			emptyConversationId,
+		await waitUntil(
+			async () => await activeConversationId(page!) === emptyConversationId,
+			OPERATION_TIMEOUT_MS,
 			`empty conversation changed after refresh (original atlas conversation: ${atlasConversation})`,
 		);
 		await page.getByText("Atlas opening message", { exact: true }).click();
@@ -231,23 +266,31 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await assertBrowserJson(page, `/api/graph?kb=${encodeURIComponent(join(home, "missing-kb"))}`, 404, /知识库/);
 		await waitUntil(() => graphEventsSeen, OPERATION_TIMEOUT_MS, "browser did not open graph events");
 		await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
-		if (process.platform !== "win32") {
-			const wikiDir = join(kbA, "wiki");
-			await chmod(wikiDir, 0o555);
-			try {
-				await page.getByRole("button", { name: "重构" }).click();
-				await page.locator("[data-graph-status='error']").waitFor({ timeout: START_TIMEOUT_MS });
-			} finally {
-				await chmod(wikiDir, 0o755);
-			}
+		const graphDataPath = join(kbA, "wiki", "graph-data.json");
+		const graphData = await readFile(graphDataPath, "utf8");
+		await rm(graphDataPath, { force: true });
+		await mkdir(graphDataPath);
+		try {
 			await page.getByRole("button", { name: "重构" }).click();
-			await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
+			await page.locator("[data-graph-status='error']").waitFor({ timeout: START_TIMEOUT_MS });
+		} finally {
+			await rm(graphDataPath, { recursive: true, force: true });
+			await writeFile(graphDataPath, graphData);
 		}
+		await page.getByRole("button", { name: "重构" }).click();
+		await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
 
 		// Messages: normal send, duplicate while busy, cancellation, disconnect recovery, and failure recovery.
 		await page.getByRole("tab", { name: "对话" }).click();
+		const modelFailureFlag = join(appDir, "browser-model-fail");
+		await writeFile(modelFailureFlag, "fail");
+		await startComposerMessage(page, "[fail] controlled failure");
+		await page.getByText("出错", { exact: true }).waitFor();
+		await rm(modelFailureFlag, { force: true });
+		await sendComposerMessage(page, "after failure recovery");
 		await startComposerMessage(page, "[slow] cancel this response");
 		await page.getByText("生成中", { exact: true }).waitFor();
+		await waitForFile(join(appDir, "browser-model-cancel-started"));
 		const duplicate = await page.evaluate(() => fetch("/api/prompt", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -256,19 +299,18 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		assert.equal(duplicate.status, 409);
 		assert.match(duplicate.body, /BUSY/);
 		await page.getByRole("button", { name: "停止" }).click();
+		await waitForFile(join(appDir, "browser-model-cancel-settled"));
 		await page.getByPlaceholder(/写下想法/).waitFor({ state: "visible" });
-		await context.setOffline(true);
-		try {
-			await startComposerMessage(page, "disconnect this response");
-			await page.getByText("出错", { exact: true }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
-		} finally {
-			await context.setOffline(false);
-		}
-		await page.getByPlaceholder(/写下想法/).waitFor({ state: "visible" });
+		await sendComposerMessage(page, "after cancel recovery");
+		await startComposerMessage(page, "[slow] disconnect this response");
+		await page.getByText("生成中", { exact: true }).waitFor();
+		await waitForFile(join(appDir, "browser-model-disconnect-started"));
+		await page.close();
+		await waitForFile(join(appDir, "browser-model-disconnect-settled"));
+		page = await context.newPage();
+		await page.goto(webOrigin, { waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
+		await page.getByLabel("当前知识库").getByText("atlas-notes").waitFor({ timeout: START_TIMEOUT_MS });
 		await sendComposerMessage(page, "after disconnect recovery");
-		await startComposerMessage(page, "[fail] controlled failure");
-		await page.getByText("出错", { exact: true }).waitFor();
-		await sendComposerMessage(page, "after failure recovery");
 
 		// Artifacts: list, preview, download, missing resource prompt, then recover.
 		await page.getByRole("button", { name: /产物 2/ }).click();
@@ -278,6 +320,11 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		await page.getByLabel("下载").click();
 		const download = await downloadPromise;
 		assert.equal(download.suggestedFilename(), "atlas.html");
+		assert.equal(await download.failure(), null);
+		const downloadPath = join(sandbox, "atlas-download.html");
+		await download.saveAs(downloadPath);
+		assert.match(await readFile(downloadPath, "utf8"), /Atlas artifact only/);
+		await page.frameLocator('iframe[title="Atlas HTML"]').getByText("Atlas artifact only", { exact: true }).waitFor();
 		await page.getByRole("button", { name: /Missing HTML/ }).click();
 		await page.getByText("HTML 加载失败", { exact: true }).waitFor();
 		await page.getByRole("button", { name: /Atlas HTML/ }).click();
@@ -364,8 +411,14 @@ async function createArtifacts(appDir: string, conversationId: string, kbPath: s
 }
 
 async function sendComposerMessage(page: Page, message: string): Promise<void> {
+	const responsePromise = page.waitForResponse((response) => {
+		const request = response.request();
+		return new URL(response.url()).pathname === "/api/prompt" && request.method() === "POST";
+	});
 	await startComposerMessage(page, message);
-	await page.getByText("可控的测试回复", { exact: false }).last().waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await page.getByLabel("助手气泡").getByText(`可控的测试回复：${message}`, { exact: true }).last().waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	const response = await responsePromise;
+	assert.equal(await response.finished(), null);
 	await page.getByPlaceholder(/写下想法/).waitFor({ state: "visible" });
 }
 
@@ -375,9 +428,9 @@ async function startComposerMessage(page: Page, message: string): Promise<void> 
 	await page.getByRole("button", { name: "发送" }).click();
 }
 
-async function activeConversationId(page: Page): Promise<string> {
-	const result = await page.evaluate(() => fetch("/api/knowledge-base").then((response) => response.json())) as { data: { active: { conversation: { id: string } } } };
-	return result.data.active.conversation.id;
+async function activeConversationId(page: Page): Promise<string | null> {
+	const result = await page.evaluate(() => fetch("/api/knowledge-base").then((response) => response.json())) as { data: { active: { conversation: { id: string } } | null } };
+	return result.data.active?.conversation.id ?? null;
 }
 
 async function assertBrowserJson(page: Page, path: string, expectedStatus: number, expectedBody: RegExp): Promise<void> {

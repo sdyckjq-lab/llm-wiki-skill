@@ -36,7 +36,23 @@ export async function createConversation(appDir: string, kbPath: string, message
 	await mkdir(sessionDir, { recursive: true });
 	const manager = SessionManager.create(REPO_ROOT, sessionDir);
 	manager.appendMessage({ role: "user", content: [{ type: "text", text: message }], timestamp: Date.now() } as never);
-	manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Fictional fixture reply" }], timestamp: Date.now() } as never);
+	manager.appendMessage({
+		role: "assistant",
+		content: [{ type: "text", text: "Fictional fixture reply" }],
+		api: "browser-fixture-api",
+		provider: "browser-fixture-provider",
+		model: "browser-fixture-model",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "stop",
+		timestamp: Date.now(),
+	} as never);
 	return manager.getSessionId();
 }
 

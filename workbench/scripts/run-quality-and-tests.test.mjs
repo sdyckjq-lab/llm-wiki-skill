@@ -117,6 +117,14 @@ test("failure output removes local paths and token-shaped values", () => {
 	assert.equal(cleaned, "<repo>/private <sandbox>/data <home> <redacted-token> <redacted-token>");
 });
 
+test("failure output can remove dynamically named browser sandboxes", () => {
+	const cleaned = sanitizeOutput(
+		"failed at /tmp/llm-wiki-browser-main-flows-Ab_C12/home/private.txt",
+		{ repoRoot: "/repo", sandbox: /\/[^\s\"'()]*llm-wiki-browser-main-flows-[A-Za-z0-9_-]+/g, home: "/home/person" },
+	);
+	assert.equal(cleaned, "failed at <sandbox>/home/private.txt");
+});
+
 test("timed out commands terminate their process group", { skip: process.platform === "win32" }, async () => {
 	const script = [
 		'import { spawn } from "node:child_process";',

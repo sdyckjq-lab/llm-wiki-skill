@@ -233,9 +233,13 @@ export async function runInvocation(
 }
 
 export function sanitizeOutput(value, { repoRoot = REPO_ROOT, sandbox, home = homedir() }) {
-	return value
+	const sandboxCleaned = sandbox instanceof RegExp
+		? value.replace(sandbox, "<sandbox>")
+		: sandbox
+			? value.replaceAll(sandbox, "<sandbox>")
+			: value;
+	return sandboxCleaned
 		.replaceAll(repoRoot, "<repo>")
-		.replaceAll(sandbox, "<sandbox>")
 		.replaceAll(home, "<home>")
 		.replace(/\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_\-]{12,}\b/g, "<redacted-token>");
 }

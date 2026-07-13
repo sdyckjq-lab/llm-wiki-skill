@@ -11,6 +11,7 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const FAILURE_DIR = path.join(REPO_ROOT, ".tmp/browser-main-flows");
+const BROWSER_SANDBOX_PATH = /(?:[A-Za-z]:)?[\\/][^\s\"'()]*llm-wiki-browser-main-flows-[A-Za-z0-9_-]+/g;
 const TOTAL_TIMEOUT_MS = 4 * 60_000;
 const COMMAND_TIMEOUT_MS = 220_000;
 const environment = {
@@ -61,7 +62,7 @@ try {
 			signal: activeController.signal,
 		});
 		activeController = undefined;
-		output = sanitizeOutput(result.output, { repoRoot: REPO_ROOT, sandbox: "<browser-sandbox>" });
+		output = sanitizeOutput(result.output, { repoRoot: REPO_ROOT, sandbox: BROWSER_SANDBOX_PATH });
 		if (output) process.stdout.write(output.endsWith("\n") ? output : `${output}\n`);
 		if (interrupted) throw new Error(`browser-main-flows interrupted by ${interrupted}`);
 		if (result.timedOut) throw new Error("browser-main-flows command exceeded its time limit");
@@ -73,7 +74,7 @@ try {
 	await mkdir(FAILURE_DIR, { recursive: true });
 	const message = sanitizeOutput(error instanceof Error ? error.stack ?? error.message : String(error), {
 		repoRoot: REPO_ROOT,
-		sandbox: "<browser-sandbox>",
+		sandbox: BROWSER_SANDBOX_PATH,
 	});
 	await writeFile(path.join(FAILURE_DIR, "runner.log"), `${output}\n${message}\n`, "utf8");
 	console.error(message);
