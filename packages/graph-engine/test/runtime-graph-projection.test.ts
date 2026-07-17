@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import { buildAtlasModel, projectGraphInput } from "../src/model/atlas";
 import { buildGraphRendererAdapterData } from "../src/render/adapter";
+import { resolveSelectionForCapabilities } from "../src/select";
+import { summarizeGraphNode } from "../src/summary";
 
 describe("runtime graph input projection", () => {
   it("turns unknown roots and non-array collections into an empty compatible graph", () => {
@@ -151,5 +153,53 @@ describe("runtime graph input projection", () => {
     assert.deepEqual(projection.data.nodes, []);
     assert.deepEqual(projection.data.edges, []);
     assert.deepEqual(projection.regularSearchByNode, []);
+  });
+
+  it("isolates hostile entry fields and keeps the compatible graph safe for every downstream consumer", () => {
+    const rejectsConversion = {
+      valueOf() {
+        throw new Error("conversion rejected");
+      },
+      toString() {
+        throw new Error("conversion rejected");
+      }
+    };
+    const hostileNode = Object.defineProperty({ id: "hostile", community: "c1" }, "label", {
+      enumerable: true,
+      get() {
+        throw new Error("label unavailable");
+      }
+    });
+    const projection = projectGraphInput({
+      nodes: [
+        hostileNode,
+        {
+          id: "safe",
+          label: rejectsConversion,
+          type: rejectsConversion,
+          community: rejectsConversion,
+          source_path: rejectsConversion,
+          content: rejectsConversion,
+          summary: rejectsConversion,
+          x: Symbol("x"),
+          y: rejectsConversion,
+          weight: Symbol("weight")
+        }
+      ],
+      edges: [{
+        id: "hostile-edge",
+        from: "hostile",
+        to: "safe",
+        confidence: rejectsConversion,
+        relation_type: rejectsConversion,
+        weight: Symbol("weight")
+      }]
+    });
+
+    assert.deepEqual(projection.data.nodes.map((node) => node.id), ["hostile", "safe"]);
+    assert.doesNotThrow(() => buildAtlasModel(projection.data));
+    assert.doesNotThrow(() => buildGraphRendererAdapterData(projection.data));
+    assert.deepEqual(resolveSelectionForCapabilities(projection.data, { kind: "node", id: "safe" }, { canAsk: false }).nodeIds, ["safe"]);
+    assert.equal(summarizeGraphNode(projection.data, "safe").kind, "node-summary");
   });
 });

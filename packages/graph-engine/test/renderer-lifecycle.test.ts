@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import GraphologyGraph from "graphology";
 
-import { createGraphEngine, type GraphData, type GraphDiff, type GraphVisibilityState, type SelectionInput } from "../src";
+import { createGraphEngine, projectGraphInput, type GraphData, type GraphDiff, type GraphVisibilityState, type SelectionInput } from "../src";
 import type {
   SigmaGlobalGraphologyGraph,
   SigmaGlobalRendererRuntime,
@@ -801,7 +801,7 @@ describe("graph renderer lifecycle", () => {
     findByText(container, "回全图")?.dispatch("click");
     assert.equal(manager.routeId, "dom-svg-small-fallback");
 
-    manager.setData(largeFallbackGraphData());
+    manager.setData(projectGraphInput(largeFallbackGraphData()));
     assert.equal(manager.routeId, "over-limit-notice");
     assert.equal(findByClass(container, "graph-over-limit-notice").length, 1);
     assert.deepEqual(visibleNodeIds({ root: container as unknown as HTMLElement }), []);
@@ -1745,8 +1745,8 @@ function createSigmaShellRenderer(input: GraphFacadeRouteRendererFactoryInput): 
     isDragging() {
       return false;
     },
-    setData(data, pins) {
-      options = { ...options, data, pins: pins || options.pins };
+    setData(projection, pins) {
+      options = { ...options, ...projection, pins: pins || options.pins };
       renderSigmaShellState();
     },
     setAggregationMarkers(markers) {

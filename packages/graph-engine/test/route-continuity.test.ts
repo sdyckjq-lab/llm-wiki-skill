@@ -1,12 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import type {
-  GraphData,
-  GraphTypeFilters,
-  PinMap,
-  SelectionInput,
-  ThemeId
+import {
+  projectGraphInput,
+  type GraphData,
+  type GraphTypeFilters,
+  type PinMap,
+  type SelectionInput,
+  type ThemeId
 } from "../src";
 import {
   createGraphFacadeFromRenderer,
@@ -102,10 +103,11 @@ describe("graph route state continuity", () => {
       meta: { ...DATA.meta, wiki_title: "Refreshed graph" },
       nodes: DATA.nodes.map((node) => node.id === "a" ? { ...node, label: "Alpha refreshed" } : node)
     };
-    manager.setData(refreshedData);
+    const refreshedProjection = projectGraphInput(refreshedData);
+    manager.setData(refreshedProjection);
 
     assert.equal(manager.routeId, "sigma-global");
-    assert.equal(state.data, refreshedData);
+    assert.equal(state.data, refreshedProjection.data);
     assert.deepEqual(state.focus, { kind: "community", id: "c1" });
     assert.equal(state.sourceCommunityId, "c1");
     assert.deepEqual(state.selection, { kind: "node", id: "a" });
@@ -116,7 +118,7 @@ describe("graph route state continuity", () => {
     assert.deepEqual(state.pins, { "wiki/a.md": { x: 10, y: 20, coordinateSpace: "world" } });
     assert.equal(communityInputs.length, 0);
     assert.deepEqual(sigmaInputs[0].options.selection, null);
-    assert.deepEqual(sigmaRenderers[0].calls.slice(-2), [["focusCommunity", "c1"], ["setData", refreshedData, undefined]]);
+    assert.deepEqual(sigmaRenderers[0].calls.slice(-2), [["focusCommunity", "c1"], ["setData", refreshedProjection.data, undefined]]);
   });
 
   it("makes a disappeared selected object explicitly unavailable after data refresh", () => {
@@ -173,27 +175,27 @@ describe("graph route state continuity", () => {
     manager.focusCommunity("c1");
     manager.select({ kind: "node", id: "a" });
     manager.setTypeFilters({ topic: false, source: true });
-    manager.setData({
+    manager.setData(projectGraphInput({
       ...DATA,
       nodes: DATA.nodes.map((node) => node.id === "a" ? { ...node, label: "Alpha refreshed" } : node)
-    });
+    }));
 
     assert.deepEqual(state.selection, { kind: "node", id: "a" });
     assert.deepEqual(state.focus, { kind: "community", id: "c1" });
 
-    manager.setData({
+    manager.setData(projectGraphInput({
       ...DATA,
       nodes: DATA.nodes.map((node) => node.id === "a" ? { ...node, community: "c2" } : node)
-    });
+    }));
 
     assert.equal(state.selection, null);
     assert.deepEqual(state.focus, { kind: "community", id: "c1" });
 
     manager.select({ kind: "node", id: "b" });
-    manager.setData({
+    manager.setData(projectGraphInput({
       ...DATA,
       nodes: DATA.nodes.filter((node) => node.id !== "b")
-    });
+    }));
 
     assert.equal(state.selection, null);
   });
@@ -226,11 +228,11 @@ describe("graph route state continuity", () => {
     manager.focusCommunity("c1");
     manager.select({ kind: "node", id: "a" });
     assert.equal(manager.sourceCommunityId, "c1");
-    manager.setData({
+    manager.setData(projectGraphInput({
       ...DATA,
       nodes: DATA.nodes.map((node) => ({ ...node, community: "c2" })),
       edges: []
-    });
+    }));
 
     assert.equal(manager.routeId, "sigma-global");
     assert.equal(state.focus, null);
@@ -488,11 +490,11 @@ describe("graph route state continuity", () => {
 
     manager.focusCommunity("c1");
     manager.showTemporaryObject({ kind: "node", nodeId: "b" });
-    manager.setData({
+    manager.setData(projectGraphInput({
       ...DATA,
       nodes: DATA.nodes.filter((node) => node.id !== "b"),
       edges: []
-    });
+    }));
 
     assert.deepEqual(state.focus, { kind: "community", id: "c1" });
     assert.equal(state.temporaryObject, null);
@@ -528,11 +530,11 @@ describe("graph route state continuity", () => {
     });
 
     manager.showTemporaryObject({ kind: "aggregation", aggregationId: "agg", nodeIds: ["a", "b"], communityId: "c1" });
-    manager.setData({
+    manager.setData(projectGraphInput({
       ...DATA,
       nodes: DATA.nodes.filter((node) => node.id !== "b"),
       edges: []
-    });
+    }));
 
     assert.deepEqual(state.temporaryObject, { kind: "aggregation", aggregationId: "agg", nodeIds: ["a"], communityId: "c1" });
     assert.deepEqual(
@@ -786,8 +788,8 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
       calls.push(["isDragging"]);
       return false;
     },
-    setData(data: GraphData, pins?: PinMap) {
-      calls.push(["setData", data, pins]);
+    setData(projection, pins?: PinMap) {
+      calls.push(["setData", projection.data, pins]);
     },
     setAggregationMarkers(markers) {
       calls.push(["setAggregationMarkers", markers]);

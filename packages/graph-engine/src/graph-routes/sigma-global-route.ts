@@ -192,11 +192,10 @@ export function createSigmaGlobalFacadeRenderer(input: GraphFacadeRouteRendererF
     isDragging() {
       return Boolean(renderer?.isDragging());
     },
-    setData(data, pins, regularSearchByNode) {
+    setData(projection, pins) {
       options = applyScopedSearch(clearStaleCommunitySelection({
         ...options,
-        data,
-        regularSearchByNode,
+        ...projection,
         pins: pins || options.pins
       }));
       syncVisibilityState();

@@ -46,9 +46,9 @@ export function projectGraphInput(input: unknown): GraphInputProjection {
 
 function projectGraphInputUnchecked(input: unknown): GraphInputProjection {
   const rawGraph = { ...objectRecord(input) };
-  const rawNodes = Array.isArray(rawGraph.nodes) ? rawGraph.nodes : [];
+  const rawNodes = arrayValues(rawGraph.nodes);
   const nodes = rawNodes.map(projectNode);
-  const rawEdges = Array.isArray(rawGraph.edges) ? rawGraph.edges : [];
+  const rawEdges = arrayValues(rawGraph.edges);
   const edges = rawEdges.map(projectEdge);
   const rawMeta = objectRecord(rawGraph.meta);
   const learning = rawGraph.learning == null ? undefined : projectLearning(rawGraph.learning);
@@ -79,23 +79,46 @@ function projectGraphInputUnchecked(input: unknown): GraphInputProjection {
 
 function projectNode(value: unknown, index: number): GraphNode {
   const raw = objectRecord(value);
-  return {
+  const node = {
     ...raw,
     id: raw.id == null ? `node-${index}` : compatibleString(raw.id, `node-${index}`)
-  } as GraphNode;
+  } as Record<string, unknown>;
+  copyCompatibleStrings(node, raw, [
+    "label",
+    "type",
+    "community",
+    "source_path",
+    "source",
+    "path",
+    "content",
+    "summary",
+    "confidence",
+    "type_confidence"
+  ]);
+  copyCompatibleNumbers(node, raw, ["x", "y", "weight", "score"]);
+  return node as GraphNode;
 }
 
 function projectEdge(value: unknown, index: number): GraphEdge {
   const raw = objectRecord(value);
   const from = endpointId(raw.from != null ? raw.from : raw.source);
   const to = endpointId(raw.to != null ? raw.to : raw.target);
-  return {
+  const edge = {
     ...raw,
     id: raw.id == null ? `edge-${index}` : compatibleString(raw.id, `edge-${index}`),
     from,
     to,
     type: compatibleString(raw.type ?? raw.confidence ?? raw.type_confidence, "UNVERIFIED")
-  } as GraphEdge;
+  } as Record<string, unknown>;
+  copyCompatibleStrings(edge, raw, [
+    "confidence",
+    "type_confidence",
+    "relation_type",
+    "relationship_type",
+    "relation"
+  ]);
+  copyCompatibleNumbers(edge, raw, ["weight"]);
+  return edge as GraphEdge;
 }
 
 function projectLearning(value: unknown): GraphLearning {
@@ -107,33 +130,33 @@ function projectLearning(value: unknown): GraphLearning {
   const globalView = objectRecord(views.global);
   const degraded = objectRecord(raw.degraded);
   const communities = Array.isArray(raw.communities)
-    ? raw.communities.flatMap((community) => projectCommunity(community))
+    ? arrayValues(raw.communities).flatMap((community) => projectCommunity(community))
     : [];
   return {
-    version: presentValue(raw.version, 1),
+    version: compatibleCount(raw.version, 1),
     entry: {
-      recommended_start_node_id: presentValue(entry.recommended_start_node_id, null),
-      recommended_start_reason: presentValue(entry.recommended_start_reason, null),
-      default_mode: presentValue(entry.default_mode, "global")
+      recommended_start_node_id: compatibleNullableString(entry.recommended_start_node_id),
+      recommended_start_reason: compatibleNullableString(entry.recommended_start_reason),
+      default_mode: compatibleString(entry.default_mode, "global")
     },
     views: {
       path: {
         enabled: presentValue(pathView.enabled, false),
-        start_node_id: presentValue(pathView.start_node_id, null),
-        node_ids: Array.isArray(pathView.node_ids) ? pathView.node_ids : [],
+        start_node_id: compatibleNullableString(pathView.start_node_id),
+        node_ids: compatibleStringArray(pathView.node_ids),
         degraded: presentValue(pathView.degraded, true)
       },
       community: {
         enabled: presentValue(communityView.enabled, false),
-        community_id: presentValue(communityView.community_id, null),
-        label: presentValue(communityView.label, null),
-        node_ids: Array.isArray(communityView.node_ids) ? communityView.node_ids : [],
+        community_id: compatibleNullableString(communityView.community_id),
+        label: compatibleNullableString(communityView.label),
+        node_ids: compatibleStringArray(communityView.node_ids),
         is_weak: presentValue(communityView.is_weak, false),
         degraded: presentValue(communityView.degraded, true)
       },
       global: {
         enabled: presentValue(globalView.enabled, true),
-        node_ids: Array.isArray(globalView.node_ids) ? globalView.node_ids : [],
+        node_ids: compatibleStringArray(globalView.node_ids),
         degraded: presentValue(globalView.degraded, false)
       }
     },
@@ -152,7 +175,9 @@ function projectCommunity(value: unknown): Community[] {
     ...raw,
     id: compatibleString(raw.id, ""),
     label: compatibleString(raw.label, compatibleString(raw.id, "")),
-    node_count: compatibleCount(raw.node_count, 0)
+    node_count: compatibleCount(raw.node_count, 0),
+    source_count: compatibleCount(raw.source_count, 0),
+    recommended_start_node_id: compatibleNullableString(raw.recommended_start_node_id)
   } as Community];
 }
 
@@ -207,7 +232,7 @@ function projectInsights(value: unknown): GraphInsights {
 
 function objectEntries(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
-    ? value.filter((entry) => entry != null && typeof entry === "object").map((entry) => ({ ...objectRecord(entry) }))
+    ? arrayValues(value).filter((entry) => entry != null && typeof entry === "object").map((entry) => objectRecord(entry))
     : [];
 }
 
@@ -244,6 +269,14 @@ function nullableString(value: unknown): string | null {
   return value == null || value === "" ? null : compatibleString(value, "");
 }
 
+function compatibleNullableString(value: unknown): string | null {
+  return value == null ? null : compatibleString(value, "") || null;
+}
+
+function compatibleStringArray(value: unknown): string[] {
+  return arrayValues(value).map((item) => compatibleString(item, ""));
+}
+
 function presentValue<T>(value: unknown, fallback: T): T {
   return (value == null ? fallback : value) as T;
 }
@@ -258,5 +291,64 @@ function compatibleString(value: unknown, fallback: string): string {
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {
-  return value != null && typeof value === "object" ? value as Record<string, unknown> : {};
+  if (value == null || typeof value !== "object") return {};
+  const output: Record<string, unknown> = {};
+  try {
+    for (const key of Object.keys(value)) {
+      try {
+        output[key] = (value as Record<string, unknown>)[key];
+      } catch {
+        // A hostile field is omitted while the rest of the object remains usable.
+      }
+    }
+  } catch {
+    return {};
+  }
+  return output;
+}
+
+function arrayValues(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  const output: unknown[] = [];
+  try {
+    for (let index = 0; index < value.length; index += 1) {
+      try {
+        output.push(value[index]);
+      } catch {
+        output.push(undefined);
+      }
+    }
+  } catch {
+    return [];
+  }
+  return output;
+}
+
+function copyCompatibleStrings(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  keys: string[]
+): void {
+  for (const key of keys) {
+    if (source[key] != null) target[key] = compatibleString(source[key], "");
+  }
+}
+
+function copyCompatibleNumbers(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  keys: string[]
+): void {
+  for (const key of keys) {
+    if (source[key] != null) target[key] = compatibleNumericInput(source[key]);
+  }
+}
+
+function compatibleNumericInput(value: unknown): unknown {
+  if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") return value;
+  try {
+    return Number(value);
+  } catch {
+    return undefined;
+  }
 }

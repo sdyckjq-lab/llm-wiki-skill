@@ -136,7 +136,7 @@ describe("GraphFacade", () => {
     assert.equal(createdWith?.options.regularSearchByNode, initial.regularSearchByNode);
 
     const refreshed = projectGraphInput({ nodes: [{ id: "b", label: "Beta", type: "entity" }], edges: [] });
-    manager.setData(refreshed.data, undefined, refreshed.regularSearchByNode);
+    manager.setData(refreshed);
 
     assert.equal(state.data, refreshed.data);
     assert.equal(state.regularSearchByNode, refreshed.regularSearchByNode);
@@ -687,7 +687,7 @@ describe("GraphFacade", () => {
 
     await route.expectTransitionCleared();
 
-    route.manager.setData(largeGraphData(2001, 1, 1));
+    route.manager.setData(projectGraphInput(largeGraphData(2001, 1, 1)));
     route.expect("over-limit-notice", "dom-svg-small-fallback->over-limit-notice");
     route.expectActiveRendererCount(1);
 
@@ -1036,10 +1036,11 @@ describe("GraphFacade", () => {
     });
 
     manager.setSourceCommunityContext("c2");
-    manager.setData(singleCommunityData(), undefined);
+    const projection = projectGraphInput(singleCommunityData());
+    manager.setData(projection);
 
     assert.equal(state.sourceCommunityId, null);
-    assert.deepEqual(renderers[0].calls.slice(-2), [["setSourceCommunityContext", null], ["setData", singleCommunityData(), undefined]]);
+    assert.deepEqual(renderers[0].calls.slice(-2), [["setSourceCommunityContext", null], ["setData", projection.data, undefined, projection.regularSearchByNode]]);
   });
 
   it("notifies the active DOM community route when refreshed data drops the source community", () => {
@@ -1061,7 +1062,7 @@ describe("GraphFacade", () => {
     });
 
     manager.focusCommunity("c2");
-    manager.setData(singleCommunityData(), undefined);
+    manager.setData(projectGraphInput(singleCommunityData()));
 
     assert.equal(state.sourceCommunityId, null);
     assert.equal(manager.routeId, "dom-svg-small-fallback");
@@ -1108,7 +1109,7 @@ describe("GraphFacade", () => {
     const manager = sourceContextManager(state, []);
     manager.setSourceCommunityContext("c2");
     assert.equal(state.sourceCommunityId, "c2");
-    manager.setData(singleCommunityData(), undefined);
+      manager.setData(projectGraphInput(singleCommunityData()));
     assert.equal(state.sourceCommunityId, null);
   });
 
@@ -1250,11 +1251,12 @@ describe("GraphFacade", () => {
     };
 
     assert.equal(manager.routeId, "dom-svg-small-fallback");
-    manager.setData(nextData);
+    const projection = projectGraphInput(nextData);
+    manager.setData(projection);
 
     assert.equal(manager.routeId, "dom-svg-small-fallback");
     assert.equal(smallFallbackRenderers.length, 1);
-    assert.deepEqual(smallFallbackRenderers[0].calls.at(-1), ["setData", nextData, undefined]);
+    assert.deepEqual(smallFallbackRenderers[0].calls.at(-1), ["setData", projection.data, undefined, projection.regularSearchByNode]);
   });
 
   it("keeps a 2000-node graph eligible for Sigma global rendering", () => {
@@ -1441,7 +1443,7 @@ describe("GraphFacade", () => {
     });
 
     assert.equal(manager.routeId, "sigma-global");
-    manager.setData(largeGraphData(2001, 1, 1));
+    manager.setData(projectGraphInput(largeGraphData(2001, 1, 1)));
 
     assert.equal(manager.routeId, "over-limit-notice");
     assert.equal(container.dataset.llmWikiGraphRoute, "over-limit-notice");
@@ -1482,7 +1484,7 @@ describe("GraphFacade", () => {
     });
 
     assert.equal(manager.routeId, "over-limit-notice");
-    manager.setData(largeGraphData(2000, 1, 1));
+    manager.setData(projectGraphInput(largeGraphData(2000, 1, 1)));
 
     assert.equal(manager.routeId, "sigma-global");
     assert.equal(overLimitCount, 1);
@@ -1523,7 +1525,7 @@ describe("GraphFacade", () => {
     });
 
     assert.equal(manager.routeId, "dom-svg-small-fallback");
-    manager.setData(largeGraphData(2001, 1, 1));
+    manager.setData(projectGraphInput(largeGraphData(2001, 1, 1)));
 
     assert.equal(manager.routeId, "over-limit-notice");
     assert.equal(smallFallbackCount, 1);
@@ -1885,10 +1887,8 @@ function createFakeRenderer(): GraphFacadeRenderer & { calls: unknown[][] } {
       calls.push(["isDragging"]);
       return false;
     },
-    setData(data: GraphData, pins?: PinMap, regularSearchByNode?: unknown) {
-      calls.push(regularSearchByNode === undefined
-        ? ["setData", data, pins]
-        : ["setData", data, pins, regularSearchByNode]);
+    setData(projection, pins?: PinMap) {
+      calls.push(["setData", projection.data, pins, projection.regularSearchByNode]);
     },
     setEdgeStyle(style) {
       calls.push(["setEdgeStyle", style]);

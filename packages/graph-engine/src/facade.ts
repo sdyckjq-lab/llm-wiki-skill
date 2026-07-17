@@ -29,7 +29,7 @@ import {
 } from "./summary";
 import type { SigmaGlobalRendererRuntime } from "./render/sigma-global-types";
 import { projectGraphInput } from "./model/atlas";
-import type { RegularSearchNodeProjection } from "./model/atlas";
+import type { GraphInputProjection } from "./model/atlas";
 
 export type GraphFacadeHostMode = "workbench" | "offline" | "standalone";
 
@@ -77,7 +77,7 @@ export function createGraphStandaloneCapabilities(): GraphFacadeCapabilityContra
 export interface GraphFacadeRenderer {
   applyDiff(diff: GraphDiff, options?: { reducedMotion?: boolean; durationMs?: number }): Promise<void>;
   isDragging(): boolean;
-  setData(data: GraphData, pins: GraphEngineOptions["pins"] | undefined, regularSearchByNode: RegularSearchNodeProjection[]): void;
+  setData(projection: GraphInputProjection, pins?: GraphEngineOptions["pins"]): void;
   setEdgeStyle(style: GraphEdgeStyleOptions): void;
   setAggregationMarkers(markers: NonNullable<GraphEngineOptions["aggregationMarkers"]>): void;
   focusNode(path: string): void;
@@ -128,9 +128,7 @@ export interface GraphFacadeRouteManager extends GraphFacadeRenderer {
   retrySigma(): void;
 }
 
-export interface GraphFacadeRouteRendererOptions {
-  data: GraphData;
-  regularSearchByNode: RegularSearchNodeProjection[];
+export interface GraphFacadeRouteRendererOptions extends GraphInputProjection {
   pins: NonNullable<GraphEngineOptions["pins"]>;
   theme: ThemeId;
   edgeStyle?: GraphEdgeStyleOptions;
@@ -176,9 +174,7 @@ interface GraphFacadeContainer {
   dataset: Record<string, string | undefined>;
 }
 
-export interface GraphFacadeState {
-  data: GraphData;
-  regularSearchByNode: RegularSearchNodeProjection[];
+export interface GraphFacadeState extends GraphInputProjection {
   pins: NonNullable<GraphEngineOptions["pins"]>;
   theme?: ThemeId;
   edgeStyle?: GraphEdgeStyleOptions;
@@ -325,8 +321,9 @@ export function createGraphFacadeRouteManager(
       assertActive();
       return currentRenderer().isDragging();
     },
-    setData(data, pins, regularSearchByNode) {
+    setData(projection, pins) {
       assertActive();
+      const { data, regularSearchByNode } = projection;
       state.data = data;
       state.regularSearchByNode = regularSearchByNode;
       if (pins) state.pins = pins;
@@ -366,7 +363,7 @@ export function createGraphFacadeRouteManager(
       clearStaleCommunityReadingSelectionForData(data);
       if (graphExceedsGlobalNodeLimit(state.data)) {
         if (routeId === "over-limit-notice" && active) {
-          currentRenderer().setData(data, pins, regularSearchByNode);
+          currentRenderer().setData(projection, pins);
         } else {
           switchToOverLimitNotice();
         }
@@ -378,7 +375,7 @@ export function createGraphFacadeRouteManager(
       }
       if (sigmaKnownUnavailable) {
         if (routeId === "dom-svg-small-fallback" && active) {
-          currentRenderer().setData(data, pins, regularSearchByNode);
+          currentRenderer().setData(projection, pins);
         } else {
           switchToFallbackRoute();
         }
@@ -388,7 +385,7 @@ export function createGraphFacadeRouteManager(
         switchToGlobalRoute();
         if (routeId === "sigma-global") currentRenderer().resetView();
       }
-      currentRenderer().setData(data, pins, regularSearchByNode);
+      currentRenderer().setData(projection, pins);
     },
     setEdgeStyle(style) {
       assertActive();
@@ -817,6 +814,9 @@ function createDomSvgFacadeRenderer(
   if (input.options.temporaryObject) renderer.showTemporaryObject(input.options.temporaryObject);
   return {
     ...renderer,
+    setData(projection, pins) {
+      renderer.setData(projection.data, pins, projection.regularSearchByNode);
+    },
     setEdgeStyle() {}
   };
 }
@@ -894,8 +894,8 @@ function createOverLimitNoticeRenderer(input: GraphFacadeRouteRendererFactoryInp
     isDragging() {
       return false;
     },
-    setData(data, pins) {
-      options = { ...options, data, pins: pins || options.pins };
+    setData(projection, pins) {
+      options = { ...options, ...projection, pins: pins || options.pins };
       render();
     },
     setEdgeStyle(style) {
@@ -1043,7 +1043,7 @@ export function createGraphFacadeFromRenderer(
         clearedSourceCommunity = true;
       }
       if (clearedSourceCommunity) renderer.setSourceCommunityContext?.(null);
-      renderer.setData(data, pins, projection.regularSearchByNode);
+      renderer.setData(projection, pins);
     },
 
     setEdgeStyle(style): void {
