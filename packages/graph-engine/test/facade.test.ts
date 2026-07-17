@@ -81,6 +81,10 @@ describe("GraphFacade", () => {
     });
 
     assert.deepEqual(engine.select({ kind: "node", id: "node-0" }).nodeIds, ["node-0"]);
+    const collisionSummary = engine.summarizeNode("node-0");
+    assert.equal(collisionSummary.kind, "node-summary");
+    assert.equal(collisionSummary.label, "Real collision");
+    assert.equal(collisionSummary.communityId, "c1");
     assert.equal(engine.summarizeGlobal().nodeCount, 2);
     assert.equal(engine.summarizeCommunity("c1").kind, "community-summary");
     assert.equal(initialNodeReads, 1);

@@ -111,4 +111,45 @@ describe("runtime graph input projection", () => {
     ]);
     assert.deepEqual(model.edges.map((edge: { id: string }) => edge.id), ["edge-0", "Infinity"]);
   });
+
+  it("stays total when unknown numeric values reject conversion", () => {
+    const rejectsConversion = {
+      valueOf() {
+        throw new Error("conversion rejected");
+      },
+      toString() {
+        throw new Error("conversion rejected");
+      }
+    };
+
+    const projection = projectGraphInput({
+      meta: { total_nodes: Symbol("nodes"), total_edges: rejectsConversion },
+      nodes: [{ id: "a", label: "A", type: "entity" }],
+      edges: [],
+      insights: {
+        surprising_connections: [{ from: "a", to: "b", weight: Symbol("weight") }],
+        sparse_communities: [{ id: "c1", density: rejectsConversion }]
+      }
+    });
+
+    assert.equal(projection.data.meta.total_nodes, 1);
+    assert.equal(projection.data.meta.total_edges, 0);
+    assert.equal(projection.data.insights?.surprising_connections[0]?.weight, 0);
+    assert.equal(projection.data.insights?.sparse_communities[0]?.density, 0);
+  });
+
+  it("returns an empty compatible graph when hostile accessors reject inspection", () => {
+    const hostileInput = Object.defineProperty({}, "nodes", {
+      enumerable: true,
+      get() {
+        throw new Error("nodes unavailable");
+      }
+    });
+
+    const projection = projectGraphInput(hostileInput);
+
+    assert.deepEqual(projection.data.nodes, []);
+    assert.deepEqual(projection.data.edges, []);
+    assert.deepEqual(projection.regularSearchByNode, []);
+  });
 });

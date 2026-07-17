@@ -77,7 +77,7 @@ export function createGraphStandaloneCapabilities(): GraphFacadeCapabilityContra
 export interface GraphFacadeRenderer {
   applyDiff(diff: GraphDiff, options?: { reducedMotion?: boolean; durationMs?: number }): Promise<void>;
   isDragging(): boolean;
-  setData(data: GraphData, pins?: GraphEngineOptions["pins"], regularSearchByNode?: RegularSearchNodeProjection[]): void;
+  setData(data: GraphData, pins: GraphEngineOptions["pins"] | undefined, regularSearchByNode: RegularSearchNodeProjection[]): void;
   setEdgeStyle(style: GraphEdgeStyleOptions): void;
   setAggregationMarkers(markers: NonNullable<GraphEngineOptions["aggregationMarkers"]>): void;
   focusNode(path: string): void;
@@ -130,7 +130,7 @@ export interface GraphFacadeRouteManager extends GraphFacadeRenderer {
 
 export interface GraphFacadeRouteRendererOptions {
   data: GraphData;
-  regularSearchByNode?: RegularSearchNodeProjection[];
+  regularSearchByNode: RegularSearchNodeProjection[];
   pins: NonNullable<GraphEngineOptions["pins"]>;
   theme: ThemeId;
   edgeStyle?: GraphEdgeStyleOptions;
@@ -178,7 +178,7 @@ interface GraphFacadeContainer {
 
 export interface GraphFacadeState {
   data: GraphData;
-  regularSearchByNode?: RegularSearchNodeProjection[];
+  regularSearchByNode: RegularSearchNodeProjection[];
   pins: NonNullable<GraphEngineOptions["pins"]>;
   theme?: ThemeId;
   edgeStyle?: GraphEdgeStyleOptions;

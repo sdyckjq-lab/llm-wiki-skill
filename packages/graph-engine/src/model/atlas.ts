@@ -37,6 +37,14 @@ export interface GraphInputProjection {
 }
 
 export function projectGraphInput(input: unknown): GraphInputProjection {
+  try {
+    return projectGraphInputUnchecked(input);
+  } catch {
+    return projectGraphInputUnchecked({});
+  }
+}
+
+function projectGraphInputUnchecked(input: unknown): GraphInputProjection {
   const rawGraph = { ...objectRecord(input) };
   const rawNodes = Array.isArray(rawGraph.nodes) ? rawGraph.nodes : [];
   const nodes = rawNodes.map(projectNode);
@@ -216,13 +224,20 @@ function endpointId(value: unknown): string {
 }
 
 function compatibleCount(value: unknown, fallback: number): number {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+  return finiteNumber(value, fallback);
 }
 
 function compatibleNumber(value: unknown, fallback: number): number {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+  return finiteNumber(value, fallback);
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  try {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function nullableString(value: unknown): string | null {

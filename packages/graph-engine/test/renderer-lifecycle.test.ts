@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import GraphologyGraph from "graphology";
 
-import type { GraphData, GraphDiff, GraphVisibilityState, SelectionInput } from "../src";
+import { createGraphEngine, type GraphData, type GraphDiff, type GraphVisibilityState, type SelectionInput } from "../src";
 import type {
   SigmaGlobalGraphologyGraph,
   SigmaGlobalRendererRuntime,
@@ -18,6 +18,36 @@ import {
 } from "../src/facade";
 
 describe("graph renderer lifecycle", () => {
+  it("projects hostile data through the public engine entry before routing and updates", () => {
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    let initialNodeReads = 0;
+    const initialInput = {
+      meta: { total_nodes: Symbol("nodes") },
+      get nodes() {
+        initialNodeReads += 1;
+        return Array.from({ length: 2001 }, (_, index) => ({ id: `node-${index}`, label: `Node ${index}` }));
+      },
+      edges: "not-an-array"
+    };
+
+    const engine = createGraphEngine(container as unknown as HTMLElement, { data: initialInput });
+
+    assert.equal(initialNodeReads, 1);
+    assert.equal(engine.summarizeGlobal().nodeCount, 2001);
+    assert.equal(findByClass(container, "graph-over-limit-notice-view").length, 1);
+
+    const refreshedInput = {
+      meta: { total_edges: Symbol("edges") },
+      nodes: Array.from({ length: 2001 }, (_, index) => ({ id: `next-${index}`, label: `Next ${index}` })),
+      edges: null
+    };
+    assert.doesNotThrow(() => engine.setData(refreshedInput));
+    assert.equal(engine.summarizeGlobal().nodeCount, 2001);
+
+    engine.destroy();
+  });
+
   it("renders a static over-limit notice without aggregation containers or DOM full graph", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
