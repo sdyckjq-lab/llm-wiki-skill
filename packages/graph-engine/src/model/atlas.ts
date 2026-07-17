@@ -92,6 +92,16 @@ function projectNode(value: unknown, index: number): GraphNode {
     "path",
     "content",
     "summary",
+    "date",
+    "updated_at",
+    "updatedAt",
+    "created_at",
+    "createdAt",
+    "source_title",
+    "source_url",
+    "url",
+    "author",
+    "source_name",
     "confidence",
     "type_confidence"
   ]);

@@ -11,6 +11,7 @@ import type {
 import { createGraphRenderer } from "../src/render";
 import { createSigmaGlobalFacadeRenderer } from "../src/graph-routes/sigma-global-route";
 import { SIGMA_COMMUNITY_RETURN_GLOBAL_TRANSITION_MS } from "../src/render/sigma-global-camera";
+import { renderOfflineReader } from "../src/render/offline-reader";
 import {
   createGraphFacadeRouteManager,
   type GraphFacadeRenderer,
@@ -18,6 +19,48 @@ import {
 } from "../src/facade";
 
 describe("graph renderer lifecycle", () => {
+  it("renders projected node details when date and source metadata reject conversion", () => {
+    const rejectsConversion = {
+      toString() {
+        throw new Error("conversion rejected");
+      }
+    };
+    const projection = projectGraphInput({
+      nodes: [{
+        id: "a",
+        label: "Node A",
+        type: "source",
+        content: "Safe content",
+        date: rejectsConversion,
+        updated_at: rejectsConversion,
+        updatedAt: rejectsConversion,
+        created_at: rejectsConversion,
+        createdAt: rejectsConversion,
+        source_title: rejectsConversion,
+        source_url: rejectsConversion,
+        url: rejectsConversion,
+        author: rejectsConversion,
+        source_name: rejectsConversion
+      }],
+      edges: []
+    });
+    const node = projection.data.nodes[0]!;
+    const ownerDocument = new FakeDocument();
+    const reader = ownerDocument.createElement("div");
+
+    assert.doesNotThrow(() => renderOfflineReader(
+      ownerDocument as unknown as Document,
+      reader as unknown as HTMLElement,
+      {
+        selected: { id: node.id, label: node.label, type: node.type, content: node.content },
+        rawNode: node,
+        onClose: () => {}
+      }
+    ));
+    assert.equal(findByClass(reader, "graph-reader-meta").length, 1);
+    assert.equal(findByClass(reader, "graph-reader-body").length, 1);
+  });
+
   it("projects hostile data through the public engine entry before routing and updates", () => {
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
