@@ -292,7 +292,7 @@ function compatibleString(value: unknown, fallback: string): string {
 
 function objectRecord(value: unknown): Record<string, unknown> {
   if (value == null || typeof value !== "object") return {};
-  const output: Record<string, unknown> = {};
+  const output: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   try {
     for (const key of Object.keys(value)) {
       try {

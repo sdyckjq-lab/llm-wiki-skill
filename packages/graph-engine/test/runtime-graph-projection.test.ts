@@ -155,6 +155,24 @@ describe("runtime graph input projection", () => {
     assert.deepEqual(projection.regularSearchByNode, []);
   });
 
+  it("keeps an enumerable __proto__ field from becoming inherited graph data", () => {
+    const inheritedId = Object.defineProperty({}, "id", {
+      get() {
+        throw new Error("inherited id must not be read");
+      }
+    });
+    const rawNode = Object.create(null) as Record<string, unknown>;
+    rawNode.__proto__ = inheritedId;
+    rawNode.label = "Safe node";
+
+    const projection = projectGraphInput({ nodes: [rawNode], edges: [] });
+
+    assert.equal(projection.data.nodes.length, 1);
+    assert.equal(projection.data.nodes[0]?.id, "node-0");
+    assert.equal(Object.hasOwn(projection.data.nodes[0]!, "__proto__"), true);
+    assert.equal(projection.regularSearchByNode[0]?.haystack, "safe node\n");
+  });
+
   it("isolates hostile entry fields and keeps the compatible graph safe for every downstream consumer", () => {
     const rejectsConversion = {
       valueOf() {
