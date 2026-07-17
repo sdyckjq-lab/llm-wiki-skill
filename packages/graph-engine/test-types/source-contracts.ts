@@ -3,8 +3,10 @@ import {
   buildRenderableGraph,
   createGraphOfflineCapabilities,
   normalizeGraphPinMap,
+  projectGraphInput,
   type GraphData,
   type GraphEngine,
+  type GraphInputProjection,
   type GraphRendererAdapterData,
   type GraphVisibilityState,
   type PinMap,
@@ -27,6 +29,8 @@ const graph: GraphData = {
     { id: "a-b", from: "a", to: "b", type: "EXTRACTED" }
   ]
 };
+const unknownGraph: unknown = graph;
+const inputProjection: GraphInputProjection = projectGraphInput(unknownGraph);
 
 const positions: RenderPositionMap = {
   a: { x: 10, y: 20 },
@@ -49,9 +53,9 @@ const offline = createGraphOfflineCapabilities({
 });
 
 export function consumeSourceContracts(engine: GraphEngine, visibility: GraphVisibilityState): number {
-  engine.setData(graph, pins);
+  engine.setData(unknownGraph, pins);
   engine.setPins(pins);
   void visibility.searchResultIds;
   void offline.capabilities?.persistPins;
-  return renderable.nodes.length + adapter.nodes.length;
+  return renderable.nodes.length + adapter.nodes.length + inputProjection.data.nodes.length;
 }

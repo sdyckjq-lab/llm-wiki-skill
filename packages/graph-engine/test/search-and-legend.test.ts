@@ -7,9 +7,37 @@ import {
   resolveNextGraphSearchFocus,
   resolvePreviousGraphSearchFocus
 } from "../src/render";
+import { projectGraphInput } from "../src/model/atlas";
 import type { GraphNode } from "../src/types";
 
 describe("graph scoped search", () => {
+  it("consumes the pre-trim compatibility projection without changing legacy search results", () => {
+    const projection = projectGraphInput({
+      nodes: [
+        { id: "ordinary-id", label: "Visible title", type: "entity", content: "ordinary content" },
+        { id: "empty-label-id", label: "", type: "entity" },
+        { id: "space-label-id", label: "   ", type: "entity" },
+        { id: "numeric-label-id", label: 0, type: "entity", content: 12345 },
+        { id: "boundary", label: "Boundary", type: "entity", content: `${"a".repeat(499)}Zonly-after-boundary` }
+      ],
+      edges: []
+    });
+    const search = (query: string) => resolveGraphSearchState(
+      projection.data.nodes,
+      query,
+      undefined,
+      projection.regularSearchByNode
+    ).matchIds;
+
+    assert.deepEqual(search("ordinary-id"), []);
+    assert.deepEqual(search("empty-label-id"), ["empty-label-id"]);
+    assert.deepEqual(search("space-label-id"), []);
+    assert.deepEqual(search("numeric-label-id"), ["numeric-label-id"]);
+    assert.deepEqual(search("z"), ["boundary"]);
+    assert.deepEqual(search("only-after-boundary"), []);
+    assert.deepEqual(search("12345"), ["numeric-label-id"]);
+  });
+
   it("matches nodes through the shared search helpers and marks non-matches faded", () => {
     const nodes = searchNodes();
     const state = resolveGraphSearchState(nodes, "attention");

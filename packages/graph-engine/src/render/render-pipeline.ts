@@ -321,7 +321,12 @@ export function createGraphRenderPipeline(
   }
 
   function syncVisibilityState(): void {
-    const searchState = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex);
+    const searchState = resolveGraphSearchState(
+      context.data.nodes,
+      context.searchQuery,
+      context.searchIndex,
+      context.regularSearchByNode
+    );
     context.searchIndex = searchState.searchIndex;
     context.callbacks.onVisibilityStateChange?.({
       searchQuery: searchState.query,

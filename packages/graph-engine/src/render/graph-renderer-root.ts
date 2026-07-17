@@ -41,6 +41,7 @@ import {
 } from "./render-pipeline";
 import { createGraphOverlaysPresenter, type GraphOverlaysPresenter } from "./overlays-presenter";
 import { createDomSvgRendererSurface } from "./renderer-surface";
+import type { RegularSearchNodeProjection } from "../model/atlas";
 
 // 聚焦单个社区时，子集包围盒常很小；用默认 4× fit 会把少量节点放大成糊屏巨卡。
 // 聚焦 fit 限制到适度放大，让节点保持可读、社区居中留白（镜头推进而非贴脸）。
@@ -49,6 +50,7 @@ const FOCUS_FIT_MAX_SCALE = 1.5;
 
 export interface GraphRendererOptions {
   data: GraphData;
+  regularSearchByNode?: RegularSearchNodeProjection[];
   pins?: PinMap;
   theme: ThemeId;
   onNodeOpen?: (nodeId: NodeId) => void;
@@ -79,7 +81,7 @@ export interface GraphRenderer {
   render(next?: RenderNextOptions): void;
   applyDiff(diff: GraphDiff, options?: { reducedMotion?: boolean; durationMs?: number }): Promise<void>;
   isDragging(): boolean;
-  setData(data: GraphData, pins?: PinMap): void;
+  setData(data: GraphData, pins?: PinMap, regularSearchByNode?: RegularSearchNodeProjection[]): void;
   setAggregationMarkers(markers: GraphAggregationMarker[]): void;
   setTheme(theme: ThemeId): void;
   setPins(pins: PinMap): void;
@@ -137,6 +139,7 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
   });
   context = {
     data: options.data,
+    regularSearchByNode: options.regularSearchByNode,
     theme: options.theme,
     destroyed: false,
     simulation: null,
@@ -280,6 +283,7 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
 
   function applyOptionChanges(next: RenderNextOptions): void {
     context.data = next.data || context.data;
+    if (Object.hasOwn(next, "regularSearchByNode")) context.regularSearchByNode = next.regularSearchByNode;
     context.theme = next.theme || context.theme;
     if (Object.hasOwn(next, "typeFilters")) context.typeFilters = next.typeFilters || {};
     if (Object.hasOwn(next, "aggregationMarkers")) context.aggregationMarkers = next.aggregationMarkers || [];
@@ -310,9 +314,9 @@ export function createGraphRenderer(container: HTMLElement, options: GraphRender
     isDragging(): boolean {
       return context.runtimeState.snapshot().activeGesture?.kind === "node-drag";
     },
-    setData(nextData: GraphData, nextPins?: PinMap): void {
+    setData(nextData: GraphData, nextPins?: PinMap, regularSearchByNode?: RegularSearchNodeProjection[]): void {
       controller.clearTransientInteractionForDataRefresh();
-      render({ data: nextData, pins: nextPins ?? context.runtimeState.snapshot().pins });
+      render({ data: nextData, regularSearchByNode, pins: nextPins ?? context.runtimeState.snapshot().pins });
     },
     setAggregationMarkers(markers: GraphAggregationMarker[]): void {
       render({ aggregationMarkers: markers });

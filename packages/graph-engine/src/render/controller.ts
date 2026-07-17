@@ -413,7 +413,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
     if (query !== context.searchQuery) context.searchFocusedNodeId = null;
     context.searchQuery = query;
     delegates.setInteractionDegraded(Boolean(query), { restoreDelayMs: 180 });
-    const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex);
+    const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex, context.regularSearchByNode);
     context.searchIndex = state.searchIndex;
     if (!state.matchIds.includes(context.searchFocusedNodeId || "")) context.searchFocusedNodeId = null;
     context.rendererSurface.setSearchState({
@@ -447,7 +447,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
   }
 
   function focusSearchResult(direction: "next" | "previous"): void {
-    const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex);
+    const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex, context.regularSearchByNode);
     context.searchIndex = state.searchIndex;
     const next = direction === "next"
       ? resolveNextGraphSearchFocus(state.matchIds, context.searchFocusedNodeId)
@@ -471,7 +471,7 @@ export function createGraphController(context: GraphRenderContext, delegates: Gr
   }
 
   function activateSearchResult(): void {
-    const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex);
+    const state = resolveGraphSearchState(context.data.nodes, context.searchQuery, context.searchIndex, context.regularSearchByNode);
     context.searchIndex = state.searchIndex;
     const current = context.searchFocusedNodeId && state.matchIds.includes(context.searchFocusedNodeId)
       ? context.searchFocusedNodeId

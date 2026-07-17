@@ -10,8 +10,10 @@ import {
   diffGraphData,
   normalizeGraphLayoutFile,
   normalizeGraphPinMap,
+  projectGraphInput,
   type GraphData,
   type GraphEngine,
+  type GraphInputProjection,
   type GraphRendererAdapterData,
   type GraphVisibilityState,
   type PinMap,
@@ -28,6 +30,8 @@ const renderable: RenderableGraph = buildRenderableGraph(graph, { pins });
 const adapter: GraphRendererAdapterData = buildGraphRendererAdapterData(graph, { pins });
 const layout = normalizeGraphLayoutFile({ version: 2, pins });
 const diff = diffGraphData(graph, graph);
+const unknownGraph: unknown = graph;
+const inputProjection: GraphInputProjection = projectGraphInput(unknownGraph);
 
 declare const container: HTMLElement;
 declare const capabilities: Parameters<typeof createGraphWorkbenchCapabilities>[0];
@@ -39,4 +43,5 @@ const offline = createGraphOfflineCapabilities();
 const standalone = createGraphStandaloneCapabilities();
 declare const visibility: GraphVisibilityState;
 
-void [renderable, adapter, layout, diff, engine, renderer, staticRenderer, workbench, offline, standalone, visibility];
+engine.setData(unknownGraph);
+void [renderable, adapter, layout, diff, inputProjection, engine, renderer, staticRenderer, workbench, offline, standalone, visibility];

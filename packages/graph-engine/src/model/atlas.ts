@@ -6,7 +6,6 @@ import type {
   GraphLearning,
   GraphNode
 } from "../types";
-import { normalizeLearning } from "./legacy-helpers";
 
 export {
   buildAtlasModel,
@@ -38,7 +37,7 @@ export interface GraphInputProjection {
 }
 
 export function projectGraphInput(input: unknown): GraphInputProjection {
-  const rawGraph = objectRecord(input);
+  const rawGraph = { ...objectRecord(input) };
   const rawNodes = Array.isArray(rawGraph.nodes) ? rawGraph.nodes : [];
   const nodes = rawNodes.map(projectNode);
   const rawEdges = Array.isArray(rawGraph.edges) ? rawGraph.edges : [];
@@ -92,14 +91,50 @@ function projectEdge(value: unknown, index: number): GraphEdge {
 }
 
 function projectLearning(value: unknown): GraphLearning {
-  const normalized = normalizeLearning(value) as GraphLearning;
-  const communities = Array.isArray(normalized.communities)
-    ? normalized.communities.flatMap((community) => projectCommunity(community))
+  const raw = objectRecord(value);
+  const entry = objectRecord(raw.entry);
+  const views = objectRecord(raw.views);
+  const pathView = objectRecord(views.path);
+  const communityView = objectRecord(views.community);
+  const globalView = objectRecord(views.global);
+  const degraded = objectRecord(raw.degraded);
+  const communities = Array.isArray(raw.communities)
+    ? raw.communities.flatMap((community) => projectCommunity(community))
     : [];
   return {
-    ...normalized,
-    communities
-  };
+    version: presentValue(raw.version, 1),
+    entry: {
+      recommended_start_node_id: presentValue(entry.recommended_start_node_id, null),
+      recommended_start_reason: presentValue(entry.recommended_start_reason, null),
+      default_mode: presentValue(entry.default_mode, "global")
+    },
+    views: {
+      path: {
+        enabled: presentValue(pathView.enabled, false),
+        start_node_id: presentValue(pathView.start_node_id, null),
+        node_ids: Array.isArray(pathView.node_ids) ? pathView.node_ids : [],
+        degraded: presentValue(pathView.degraded, true)
+      },
+      community: {
+        enabled: presentValue(communityView.enabled, false),
+        community_id: presentValue(communityView.community_id, null),
+        label: presentValue(communityView.label, null),
+        node_ids: Array.isArray(communityView.node_ids) ? communityView.node_ids : [],
+        is_weak: presentValue(communityView.is_weak, false),
+        degraded: presentValue(communityView.degraded, true)
+      },
+      global: {
+        enabled: presentValue(globalView.enabled, true),
+        node_ids: Array.isArray(globalView.node_ids) ? globalView.node_ids : [],
+        degraded: presentValue(globalView.degraded, false)
+      }
+    },
+    communities,
+    degraded: {
+      path_to_community: presentValue(degraded.path_to_community, true),
+      community_to_global: presentValue(degraded.community_to_global, true)
+    }
+  } as GraphLearning;
 }
 
 function projectCommunity(value: unknown): Community[] {
@@ -192,6 +227,10 @@ function compatibleNumber(value: unknown, fallback: number): number {
 
 function nullableString(value: unknown): string | null {
   return value == null || value === "" ? null : compatibleString(value, "");
+}
+
+function presentValue<T>(value: unknown, fallback: T): T {
+  return (value == null ? fallback : value) as T;
 }
 
 function compatibleString(value: unknown, fallback: string): string {

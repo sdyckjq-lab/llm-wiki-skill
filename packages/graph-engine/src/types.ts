@@ -512,7 +512,7 @@ export interface GraphEngineCapabilities {
 }
 
 export interface GraphEngineOptions {
-  data: GraphData;
+  data: unknown;
   pins?: PinMap;
   theme: ThemeId;
   edgeStyle?: GraphEdgeStyleOptions;
@@ -526,7 +526,7 @@ export interface GraphEngineOptions {
 export interface GraphEngine {
   applyDiff(diff: GraphDiff, options?: { reducedMotion?: boolean; durationMs?: number }): Promise<void>;
   isDragging(): boolean;
-  setData(data: GraphData, pins?: PinMap): void;
+  setData(data: unknown, pins?: PinMap): void;
   setEdgeStyle(style: GraphEdgeStyleOptions): void;
   setAggregationMarkers(markers: GraphAggregationMarker[]): void;
   focusNode(path: WikiPath): void;

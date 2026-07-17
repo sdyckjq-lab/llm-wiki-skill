@@ -8,6 +8,7 @@ import type { GraphRendererSurface } from "./renderer-surface";
 import type { GraphRuntimeState } from "./state";
 import type { GraphToolbarPanelState } from "./toolbar";
 import type { createViewportFrameCommitter } from "./viewport";
+import type { RegularSearchNodeProjection } from "../model/atlas";
 
 export interface PaintedGraphDom {
   contentLayer: HTMLElement | null;
@@ -44,6 +45,7 @@ export interface GraphRendererCallbacks {
 
 export interface GraphRenderContext {
   data: GraphData;
+  regularSearchByNode?: RegularSearchNodeProjection[];
   theme: ThemeId;
   destroyed: boolean;
   simulation: LiveGraphSimulation | null;
