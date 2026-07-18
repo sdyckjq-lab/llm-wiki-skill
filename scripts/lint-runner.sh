@@ -54,7 +54,7 @@ echo ""
 # 定义：wiki/ 下的页面里有 [[X]] 链接（支持 [[X|别名]] 语法），但 wiki/ 任意子目录找不到 X.md
 echo "--- 断链（被链接但不存在的页面） ---"
 _TMP_BROKEN=$(mktemp)
-grep -rohE "\[\[[^]]+\]\]" "$WIKI_DIR" 2>/dev/null | \
+grep -rohE --include='*.md' "\[\[[^]]+\]\]" "$WIKI_DIR" 2>/dev/null | \
   sed -e 's/\[\[//g' -e 's/\]\]//g' -e 's/|.*//' | \
   sort -u | \
   while read -r LINK; do

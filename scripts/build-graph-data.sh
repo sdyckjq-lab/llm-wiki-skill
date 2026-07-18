@@ -327,9 +327,10 @@ else
 fi
 
 INITIAL_VIEW=$(jq \
-  --argjson nodes "$(cat "$TMPDIR/nodes.sorted.json")" \
+  --slurpfile nodes_f "$TMPDIR/nodes.sorted.json" \
   '
-  . as $edges
+  ($nodes_f[0]) as $nodes
+  | . as $edges
   | (
       reduce $edges[] as $e (
         {};
@@ -356,16 +357,19 @@ INSIGHTS_DEGRADED=$(jq '.insights.meta.degraded == true' "$ANALYSIS_JSON")
 mkdir -p "$(dirname "$OUTPUT")"
 OUTPUT_TMP="$TMPDIR/graph-data.final.json"
 
+jq '.insights' "$ANALYSIS_JSON" > "$TMPDIR/insights.json"
+jq '.learning' "$ANALYSIS_JSON" > "$TMPDIR/learning.json"
+
 jq -n \
   --arg build_date "$BUILD_DATE" \
   --arg wiki_title "$WIKI_TITLE" \
   --argjson total_nodes "$NODE_COUNT" \
   --argjson total_edges "$EDGE_COUNT" \
   --argjson initial_view "$INITIAL_VIEW" \
-  --argjson nodes "$(cat "$TMPDIR/nodes.sorted.json")" \
-  --argjson edges "$(cat "$TMPDIR/edges.sorted.json")" \
-  --argjson insights "$(jq '.insights' "$ANALYSIS_JSON")" \
-  --argjson learning "$(jq '.learning' "$ANALYSIS_JSON")" \
+  --slurpfile nodes_f "$TMPDIR/nodes.sorted.json" \
+  --slurpfile edges_f "$TMPDIR/edges.sorted.json" \
+  --slurpfile insights_f "$TMPDIR/insights.json" \
+  --slurpfile learning_f "$TMPDIR/learning.json" \
   --argjson degraded "$DEGRADE" \
   --argjson insights_degraded "$INSIGHTS_DEGRADED" \
   '{
@@ -378,10 +382,10 @@ jq -n \
       degraded: ($degraded == 1),
       insights_degraded: $insights_degraded
     },
-    nodes: $nodes,
-    edges: $edges,
-    insights: $insights,
-    learning: $learning
+    nodes: $nodes_f[0],
+    edges: $edges_f[0],
+    insights: $insights_f[0],
+    learning: $learning_f[0]
   }' > "$OUTPUT_TMP"
 
 mv "$OUTPUT_TMP" "$OUTPUT"
