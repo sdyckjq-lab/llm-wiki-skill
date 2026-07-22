@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, readFile, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -7,7 +6,6 @@ import {
 	GraphRenameApplyDataSchema,
 	GraphRenamePreviewDataSchema,
 	GraphRenameRecoveryDataSchema,
-	type GraphLayout,
 	type GraphRenameApplyData,
 	type GraphRenameApplyBody,
 	type GraphRenameOperationData,
@@ -18,7 +16,6 @@ import {
 
 import type { GraphLayoutFile } from "@llm-wiki/graph-engine";
 
-import { wikiLinkCliPath } from "./repo-root.js";
 import {
 	applyByteRangeReplacements,
 	assertSafeRenamePath,
@@ -37,15 +34,25 @@ import {
 	type GraphRenameJournal,
 	type GraphRenameReceipt,
 	type BlockedRenameJournal,
-	type PreservedEvidence,
 } from "./graph-rename-journal.js";
 import {
-	moveFileNoOverwrite,
+	assertRecoveryBytes,
+	assertRecoveryCurrent,
+	captureRecoveryEvidence,
+	enumerateSourceRenameConflicts,
+	preserveConflictVariants,
+	readOwnedVariant,
+	recomputeRecoveryConflicts,
+	rollbackSourceRename,
+	sourceRenameStateMatches,
+	writeRecoveryFile,
+} from "./graph-rename-recovery.js";
+import { isPendingGraphPublication, isRenamePublished, markGraphRenamePublished } from "./graph-rename-publication.js";
+import { buildRenamePreview as buildPreview, readRenameLayout, runRenameScan } from "./graph-rename-preview.js";
+import {
 	readRegularFile,
-	removeFileNoOverwrite,
-	replaceFileNoOverwrite,
 } from "./graph-rename-safe-io.js";
-import { readGraphData, resumeGraphWatcher, subscribeGraphEvents, suspendGraphWatcher, triggerGraphRebuild } from "./graph.js";
+import { resumeGraphWatcher, subscribeGraphEvents, suspendGraphWatcher, triggerGraphRebuild } from "./graph.js";
 import { assertRegisteredKnowledgeBase } from "./knowledge-bases.js";
 
 const RENAME_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -80,30 +87,6 @@ export interface GraphRenameService {
 	resolveGraphRenameRecovery: (kbPath: string, body: GraphRenameRecoveryBody) => Promise<GraphRenameRecoveryData>;
 	recoverGraphRenameOperations: (kbPath: string) => Promise<{ needsRebuild: boolean }>;
 	triggerPendingGraphRebuild?: (kbPath: string) => Promise<{ status: "started" | "queued" | "failed" }>;
-}
-
-interface RenameScanOccurrence {
-	source_path: string;
-	file_sha256: string;
-	start_byte: number;
-	end_byte: number;
-	raw_link: string;
-	replacement?: string;
-	read_only?: boolean;
-	classification?: string;
-	candidate_paths?: string[];
-	rendered_candidates?: Array<{ candidate_path: string; replacement: string }>;
-}
-
-interface RenameScanReport {
-	file_set_sha256: string;
-	source_sha256: string;
-	source_path: string;
-	target_path: string;
-	validation: { requires_transit?: boolean };
-	editable_occurrences: RenameScanOccurrence[];
-	read_only_occurrences: RenameScanOccurrence[];
-	ambiguous_occurrences: RenameScanOccurrence[];
 }
 
 export function createGraphRenameService(options: GraphRenameServiceOptions = {}): GraphRenameService {
@@ -288,41 +271,10 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		subscribeGraphEvents((event) => {
 			if (event.type !== "graph_updated") return;
 			const context = publicationStores.get(event.kbPath);
-			if (context) void markGraphPublished(event.kbPath, context.store, context.now);
+			if (context) void markGraphRenamePublished(event.kbPath, context.store, context.now);
 		});
 	}
 	return service;
-}
-
-async function markGraphPublished(kbPath: string, store: GraphRenameJournalStore, now: () => Date): Promise<void> {
-	for (const candidate of await store.listForStartup()) {
-			if (candidate.kind !== "journal" || !isPendingGraphPublication(candidate)) continue;
-		let locked = false;
-		try {
-			const record = await store.acquireExisting(candidate.operation_id);
-			locked = true;
-			if (!await isRenamePublished(kbPath, record)) continue;
-			await store.transition(record.operation_id, record.state, { graphRebuild: "succeeded" });
-			await store.compactTerminal({ operationId: record.operation_id, now: now() });
-		} catch (error) {
-			if ((error as { code?: unknown }).code !== "BUSY") throw error;
-		} finally {
-			if (locked) await store.release(candidate.operation_id);
-		}
-	}
-}
-
-async function isRenamePublished(kbPath: string, record: GraphRenameJournal): Promise<boolean> {
-	const graph = await readGraphData(kbPath).catch(() => null);
-	if (!graph || graph.needsBuild) return false;
-	const sourcePaths = new Set(graph.data.nodes.map((node) => String(node.source_path ?? node.path ?? node.id)));
-	return record.state === "rolled_back"
-		? sourcePaths.has(record.source_path) && !sourcePaths.has(record.target_path)
-		: sourcePaths.has(record.target_path) && !sourcePaths.has(record.source_path);
-}
-
-function isPendingGraphPublication(record: GraphRenameJournal): boolean {
-	return (record.state === "committed" || record.state === "rolled_back") && record.graph_rebuild !== "succeeded";
 }
 
 async function inspectJournalContent(kbPath: string, record: GraphRenameJournal): Promise<"original" | "intended" | "mixed" | "blocked"> {
@@ -534,126 +486,6 @@ async function performApply(input: {
 	return operationData(await store.read(body.operation_id) as GraphRenameJournal);
 }
 
-async function rollbackSourceRename(
-	kbPath: string,
-	record: GraphRenameJournal,
-	beforeMove?: () => void | Promise<void>,
-): Promise<{ ok: true } | { ok: false; conflicts: GraphRenameJournal["conflicts"] }> {
-	const source = await assertSafeRenamePath(kbPath, path.join(kbPath, ...record.source_path.split("/")), true);
-	const target = await assertSafeRenamePath(kbPath, path.join(kbPath, ...record.target_path.split("/")), true);
-	const transit = record.transit_path ? await assertSafeRenamePath(kbPath, path.join(kbPath, ...record.transit_path.split("/")), true) : null;
-	const statFile = async (candidate: string | null) => candidate ? lstatExactPath(candidate) : null;
-	const [sourceInfo, targetInfo, transitInfo] = await Promise.all([statFile(source), statFile(target), statFile(transit)]);
-	if ([sourceInfo, targetInfo, transitInfo].some((info) => info && (info.isSymbolicLink() || !info.isFile()))) return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) };
-	if (sourceInfo && !targetInfo && !transitInfo) return { ok: true };
-	const expectedSourceSha256 = record.intended_hashes[record.source_path] ?? record.original_hashes[record.source_path] ?? undefined;
-	if (!sourceInfo && targetInfo && !transitInfo) {
-		try {
-			await moveFileNoOverwrite({ kbRoot: kbPath, sourcePath: target, targetPath: source, expectedSourceSha256: expectedSourceSha256 ?? undefined, beforeFinalOperation: beforeMove });
-		} catch { return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) }; }
-	} else if (!sourceInfo && !targetInfo && transitInfo && transit) {
-		try {
-			await moveFileNoOverwrite({ kbRoot: kbPath, sourcePath: transit, targetPath: source, expectedSourceSha256: expectedSourceSha256 ?? undefined, beforeFinalOperation: beforeMove });
-		} catch { return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) }; }
-	} else {
-		return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) };
-	}
-	await storelessVerifySourceRollback(source, target, transit);
-	return { ok: true };
-}
-
-async function enumerateSourceRenameConflicts(kbPath: string, record: GraphRenameJournal): Promise<GraphRenameJournal["conflicts"]> {
-	const paths = [record.source_path, record.transit_path, record.target_path].filter((value): value is string => Boolean(value));
-	const conflicts: GraphRenameJournal["conflicts"] = [];
-	for (const relative of paths) {
-		const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
-		const info = await lstatExactPath(absolute);
-		if (!info) { conflicts.push({ source_path: relative, current_state: "missing", preserved_variants: [] }); continue; }
-		if (info.isSymbolicLink() || !info.isFile()) { conflicts.push({ source_path: relative, current_state: "missing", preserved_variants: [] }); continue; }
-		const bytes = await readFileExactPath(absolute);
-		conflicts.push(bytes ? { source_path: relative, current_state: "present", current_sha256: sha256Bytes(bytes), preserved_variants: [] } : { source_path: relative, current_state: "missing", preserved_variants: [] });
-	}
-	return conflicts;
-}
-
-function sourceRenameStateMatches(record: GraphRenameJournal, conflicts: GraphRenameJournal["conflicts"]): boolean {
-	const expectedDigest = record.intended_hashes[record.source_path] ?? record.original_hashes[record.source_path];
-	if (!expectedDigest) return false;
-	const byPath = new Map(conflicts.map((conflict) => [conflict.source_path, conflict]));
-	const expectedPresent = record.rename_state === "old" ? record.source_path : record.rename_state === "transit" ? record.transit_path : record.target_path;
-	for (const relative of [record.source_path, record.transit_path, record.target_path].filter((value): value is string => Boolean(value))) {
-		const conflict = byPath.get(relative);
-		if (!conflict) return false;
-		if (relative === expectedPresent) {
-			if (conflict.current_state !== "present" || conflict.current_sha256 !== expectedDigest) return false;
-		} else if (conflict.current_state !== "missing") return false;
-	}
-	return true;
-}
-
-async function storelessVerifySourceRollback(source: string, target: string, transit: string | null): Promise<void> {
-	const sourceInfo = await lstatExactPath(source);
-	if (!sourceInfo || !sourceInfo.isFile() || sourceInfo.isSymbolicLink()) throw new Error("source rollback is unsafe");
-	if (await lstatExactPath(target)) throw new Error("rename target remains after rollback");
-	if (transit && await lstatExactPath(transit)) throw new Error("rename transit remains after rollback");
-}
-
-function buildPreview(input: { resolved: Awaited<ReturnType<typeof resolveKnowledgeBaseRenamePath>>; scan: RenameScanReport; layout: GraphLayoutFile | null; operationId: string; expiresAt: Date }): GraphRenamePreviewData {
-	const editable = input.scan.editable_occurrences;
-	const ambiguous = input.scan.ambiguous_occurrences.filter((item) => item.classification !== "read_only" && !item.read_only);
-	const occurrenceId = (item: RenameScanOccurrence) => `occurrence-${createHash("sha256").update(`${item.source_path}\0${item.file_sha256}\0${item.start_byte}\0${item.end_byte}\0${item.raw_link}`).digest("hex").slice(0, 16)}`;
-	const grouped = new Map<string, GraphRenamePreviewData["editable_files"][number]>();
-	for (const item of editable) {
-		const id = occurrenceId(item);
-		const entry = grouped.get(item.source_path) ?? { source_path: item.source_path, file_sha256: item.file_sha256, occurrences: [], read_only: false };
-		entry.occurrences.push({ occurrence_id: id, source_path: item.source_path, file_sha256: item.file_sha256, start_byte: item.start_byte, end_byte: item.end_byte, raw_link: item.raw_link, ...(item.replacement ? { replacement_raw_link: item.replacement } : {}), resolution_kind: item.replacement ? (item.raw_link.includes("/") || item.raw_link.endsWith(".md") ? "explicit_path" : "unique_basename") : "ambiguous" });
-		grouped.set(item.source_path, entry);
-	}
-	for (const item of ambiguous) {
-		const id = occurrenceId(item);
-		const entry = grouped.get(item.source_path) ?? { source_path: item.source_path, file_sha256: item.file_sha256, occurrences: [], read_only: false };
-		if (!entry.occurrences.some((occurrence) => occurrence.occurrence_id === id)) entry.occurrences.push({ occurrence_id: id, source_path: item.source_path, file_sha256: item.file_sha256, start_byte: item.start_byte, end_byte: item.end_byte, raw_link: item.raw_link, resolution_kind: "ambiguous" });
-		grouped.set(item.source_path, entry);
-	}
-	const readOnly = [...input.scan.read_only_occurrences, ...input.scan.ambiguous_occurrences.filter((item) => item.classification === "read_only" || item.read_only)].map((item) => ({ occurrence_id: occurrenceId(item), source_path: item.source_path, file_sha256: item.file_sha256, start_byte: item.start_byte, end_byte: item.end_byte, raw_link: item.raw_link, resolution_kind: "ambiguous" as const }));
-	const ambiguousChoices = ambiguous.map((item) => ({ occurrence_id: occurrenceId(item), source_path: item.source_path, candidates: (item.rendered_candidates ?? []).map((candidate) => ({ target_path: candidate.candidate_path, replacement_raw_link: candidate.replacement })) }));
-	const layoutChange = { from_key: input.resolved.sourceRelativePath, to_key: input.resolved.targetRelativePath, present: Boolean(input.layout?.pins && Object.hasOwn(input.layout.pins, input.resolved.sourceRelativePath)) };
-	const projection = { operation_id: input.operationId, expires_at: input.expiresAt.toISOString(), source_path: input.resolved.sourceRelativePath, target_path: input.resolved.targetRelativePath, file_set_sha256: input.scan.file_set_sha256, editable_files: [...grouped.values()], read_only_references: readOnly, ambiguous_choices: ambiguousChoices, layout_change: layoutChange };
-	const digestProjection = { ...projection, source_sha256: input.scan.source_sha256, layout: input.layout };
-	const previewDigest = createHash("sha256").update(JSON.stringify(digestProjection)).digest("hex");
-	return { ...projection, preview_digest: previewDigest, equivalent_portable_name: input.resolved.equivalentPortableName, summary: { editable_files: grouped.size, editable_occurrences: editable.length + ambiguous.filter((item) => !editable.some((entry) => occurrenceId(entry) === occurrenceId(item))).length, read_only_occurrences: readOnly.length, ambiguous_occurrences: ambiguous.length } };
-}
-
-async function runRenameScan(kbPath: string, sourcePath: string, newName: string, cliPathOption?: string): Promise<RenameScanReport> {
-	const cliPath = cliPathOption ?? await wikiLinkCliPath();
-	const report = await new Promise<Omit<RenameScanReport, "source_sha256">>((resolve, reject) => {
-		const child = spawn(process.execPath, [cliPath, "rename-scan", kbPath, sourcePath, newName], { shell: false, stdio: ["ignore", "pipe", "pipe"] });
-		const stdout: Buffer[] = [];
-		const stderr: Buffer[] = [];
-		child.stdout.on("data", (chunk: Buffer) => stdout.push(Buffer.from(chunk)));
-		child.stderr.on("data", (chunk: Buffer) => stderr.push(Buffer.from(chunk)));
-		child.once("error", reject);
-		child.once("exit", (code, signal) => {
-			if (code !== 0) return reject(new Error(`rename scan failed: ${signal ?? code}`));
-			try { resolve(JSON.parse(Buffer.concat(stdout).toString("utf8")) as RenameScanReport); } catch { reject(new Error("rename scan returned invalid JSON")); }
-		});
-	});
-	const source = await readRegularFile(kbPath, path.join(kbPath, ...sourcePath.split("/")), false);
-	if (!source) throw new Error("rename source disappeared during scan");
-	return { ...report, source_sha256: sha256Bytes(source) };
-}
-
-async function readRenameLayout(kbPath: string): Promise<GraphLayoutFile | null> {
-	const target = path.join(kbPath, ".wiki-graph-layout.json");
-	const info = await lstatExactPath(target);
-	if (!info) return null;
-	if (!info.isFile() || info.isSymbolicLink()) throw conflictError("layout file is unsafe");
-	const content = await readFile(target, "utf8");
-	const parsed = JSON.parse(content) as GraphLayout;
-	if (parsed.version !== 2 || !parsed.pins || typeof parsed.pins !== "object") throw conflictError("layout file is invalid");
-	return parsed as GraphLayoutFile;
-}
-
 async function pruneRenameOperationData(store: GraphRenameJournalStore, now: () => Date): Promise<void> {
 	await store.pruneExpiredOperationData({ now: now(), receiptRetentionMs: RENAME_RETENTION_MS, evidenceRetentionMs: RENAME_RETENTION_MS });
 }
@@ -772,7 +604,7 @@ async function resolveRecovery(
 						},
 					});
 				} catch (error) {
-					const sourceConflicts = await collectSourceRenameConflicts(kbPath, record);
+					const sourceConflicts = await enumerateSourceRenameConflicts(kbPath, record);
 					sourceConflict = sourceConflicts;
 					throw error;
 				}
@@ -818,155 +650,6 @@ interface RecoveryWrite {
 	relative: string;
 	before: Buffer | null;
 	desired: Buffer | null;
-}
-
-async function assertRecoveryCurrent(kbPath: string, relative: string, expected: GraphRenameJournal["conflicts"][number] | undefined): Promise<void> {
-	const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
-	const info = await lstatExactPath(absolute);
-	if (info && (info.isSymbolicLink() || !info.isFile())) throw new Error("unsafe recovery target");
-	const actual = info ? sha256Bytes(await readFileExactPath(absolute) as Buffer) : null;
-	const expectedHash = expected?.current_state === "present" ? expected.current_sha256 : null;
-	if (actual !== expectedHash) throw new Error("recovery target changed");
-}
-
-async function assertRecoveryBytes(kbPath: string, relative: string, expected: Buffer | null): Promise<void> {
-	const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
-	const actual = await readFileExactPath(absolute);
-	if (expected === null ? actual !== null : !actual?.equals(expected)) throw new Error("recovery write was changed externally");
-}
-
-async function readOwnedVariant(kbPath: string, record: GraphRenameJournal, relative: string, kind: "original" | "intended"): Promise<Buffer | null> {
-	const backup = record.backup_paths[relative];
-	if (kind === "original" && backup) return readOwnedFile(kbPath, backup);
-	if (kind === "intended") {
-		const intended = record.intended_paths[relative];
-		if (intended) return readOwnedFile(kbPath, intended);
-		const stage = record.stage_paths[relative];
-		if (stage) return readOwnedFile(kbPath, stage);
-	}
-	return null;
-}
-
-async function readOwnedFile(kbPath: string, relative: string): Promise<Buffer | null> {
-	const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
-	const info = await lstatExactPath(absolute);
-	if (!info) return null;
-	if (info.isSymbolicLink() || !info.isFile()) throw invalidJournalError("owned recovery file is unsafe");
-	return readFileExactPath(absolute);
-}
-
-async function recomputeRecoveryConflicts(kbPath: string, record: GraphRenameJournal): Promise<{ conflicts: GraphRenameJournal["conflicts"]; blocked: boolean }> {
-	const paths = new Set([
-		...Object.keys(record.original_hashes),
-		...Object.keys(record.intended_hashes),
-		record.source_path,
-		...(record.transit_path ? [record.transit_path] : []),
-		record.target_path,
-	]);
-	const conflicts: GraphRenameJournal["conflicts"] = [];
-	for (const relative of paths) {
-		try {
-			const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
-			const bytes = await readRegularFile(kbPath, absolute, true);
-			if (!bytes) conflicts.push({ source_path: relative, current_state: "missing", preserved_variants: [] });
-			else conflicts.push({ source_path: relative, current_state: "present", current_sha256: sha256Bytes(bytes), preserved_variants: [] });
-		} catch {
-			return { conflicts, blocked: true };
-		}
-	}
-	return { conflicts, blocked: false };
-}
-
-function journalContentPath(record: GraphRenameJournal, relative: string): string {
-	return relative === record.source_path || relative === record.transit_path || relative === record.target_path
-		? record.source_path
-		: relative;
-}
-
-async function collectSourceRenameConflicts(kbPath: string, record: GraphRenameJournal): Promise<GraphRenameJournal["conflicts"]> {
-	return enumerateSourceRenameConflicts(kbPath, record);
-}
-
-async function preserveConflictVariants(
-	kbPath: string,
-	store: GraphRenameJournalStore,
-	record: GraphRenameJournal,
-	conflicts: GraphRenameJournal["conflicts"],
-): Promise<GraphRenameJournal["conflicts"]> {
-	const result: GraphRenameJournal["conflicts"] = [];
-	for (const conflict of conflicts) {
-		const variants = [...conflict.preserved_variants];
-		const contentPath = journalContentPath(record, conflict.source_path);
-		const addVariant = async (
-			kind: "current" | "original" | "intended",
-			bytes: Buffer | null,
-			fallbackPath: string | undefined,
-			digest: string | null | undefined,
-		) => {
-			if (!bytes && !fallbackPath) return;
-			const relativePath = bytes
-				? await store.preserveConflictVariant({ operationId: record.operation_id, kind, sourcePath: conflict.source_path, bytes })
-				: fallbackPath!;
-			const sha256 = bytes ? sha256Bytes(bytes) : digest;
-			if (!sha256 || variants.some((variant) => variant.kind === kind && variant.sha256 === sha256)) return;
-			variants.push({ kind, relative_path: relativePath, sha256 });
-		};
-		const currentBytes = conflict.current_state === "present"
-			? await readRegularFile(kbPath, path.join(kbPath, ...conflict.source_path.split("/")), false)
-			: null;
-		await addVariant("current", currentBytes, undefined, conflict.current_sha256);
-		const originalPath = record.backup_paths[contentPath];
-		const intendedPath = record.intended_paths[contentPath] ?? record.stage_paths[contentPath];
-		const originalBytes = originalPath ? await readOwnedFile(kbPath, originalPath) : null;
-		const intendedBytes = intendedPath ? await readOwnedFile(kbPath, intendedPath) : null;
-		await addVariant("original", originalBytes, undefined, record.original_hashes[contentPath]);
-		await addVariant("intended", intendedBytes, undefined, record.intended_hashes[contentPath]);
-		result.push({ ...conflict, preserved_variants: variants });
-	}
-	return result;
-}
-
-async function captureRecoveryEvidence(
-	kbPath: string,
-	store: GraphRenameJournalStore,
-	record: GraphRenameJournal,
-	conflicts: GraphRenameJournal["conflicts"],
-	action: "finish_commit" | "finish_rollback",
-	nowValue: Date,
-): Promise<{ conflicts: GraphRenameJournal["conflicts"]; evidence: PreservedEvidence[] }> {
-	const chosenKind = action === "finish_commit" ? "intended" : "original";
-	const evidence: PreservedEvidence[] = [];
-	const result: GraphRenameJournal["conflicts"] = [];
-	for (const conflict of conflicts) {
-		const variants = [...conflict.preserved_variants];
-		const contentPath = journalContentPath(record, conflict.source_path);
-		const chosen = await readOwnedVariant(kbPath, record, contentPath, chosenKind);
-		const candidates: Array<["current" | "original" | "intended", Buffer | null]> = [
-			["current", conflict.current_state === "present" ? await readRegularFile(kbPath, path.join(kbPath, ...conflict.source_path.split("/")), false) : null],
-			["original", await readOwnedVariant(kbPath, record, contentPath, "original")],
-			["intended", await readOwnedVariant(kbPath, record, contentPath, "intended")],
-		];
-		for (const [kind, bytes] of candidates) {
-			if (kind === chosenKind || !bytes || (chosen && bytes.equals(chosen))) continue;
-			const relativePath = await store.preserveConflictVariant({ operationId: record.operation_id, kind, sourcePath: conflict.source_path, bytes });
-			const sha256 = sha256Bytes(bytes);
-			if (!variants.some((variant) => variant.kind === kind && variant.sha256 === sha256)) variants.push({ kind, relative_path: relativePath, sha256 });
-			if (!evidence.some((item) => item.relative_path === relativePath)) evidence.push({ relative_path: relativePath, sha256, expires_at: new Date(nowValue.getTime() + RENAME_RETENTION_MS).toISOString() });
-		}
-		result.push({ ...conflict, preserved_variants: variants });
-	}
-	return { conflicts: result, evidence };
-}
-
-
-async function writeRecoveryFile(kbRoot: string, target: string, bytes: Buffer | null, expectedSha256?: string | null): Promise<void> {
-	if (bytes === null) {
-		const current = await readRegularFile(kbRoot, target, true);
-		if (!current) return;
-		await removeFileNoOverwrite({ kbRoot, targetPath: target, expectedSha256: expectedSha256 ?? sha256Bytes(current) });
-		return;
-	}
-	await replaceFileNoOverwrite({ kbRoot, targetPath: target, bytes, expectedSha256 });
 }
 
 function operationData(record: GraphRenameJournal | GraphRenameReceipt): GraphRenameOperationData {
