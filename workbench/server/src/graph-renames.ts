@@ -387,7 +387,7 @@ async function collectRecovery(store: GraphRenameJournalStore, now: () => Date):
 	const blocked = records.find((record): record is BlockedRenameJournal => record.kind === "blocked") ?? null;
 	const journals = records.filter((record): record is GraphRenameJournal => record.kind === "journal");
 	const receipts = records.filter((record): record is GraphRenameReceipt => record.kind === "receipt" && record.retained_evidence.some((item) => new Date(item.expires_at).getTime() > now().getTime()));
-	const primary = journals.find((record) => record.state !== "committed" || record.graph_rebuild !== "succeeded") ?? null;
+	const primary = journals.find((record) => record.state === "prepared" || record.state === "applying" || record.state === "conflicted" || (record.state === "committed" && record.graph_rebuild !== "succeeded")) ?? null;
 	return { primary, receipts, blocked };
 }
 
@@ -436,6 +436,7 @@ async function resolveRecovery(kbPath: string, body: GraphRenameRecoveryBody, st
 		const result = trigger(kbPath);
 		await store.transition(body.operation_id, body.action === "finish_commit" ? "committed" : "rolled_back", { graphRebuild: result.status });
 	} catch { await store.transition(body.operation_id, body.action === "finish_commit" ? "committed" : "rolled_back", { graphRebuild: "failed" }); }
+	if (body.action === "finish_rollback") await store.compactTerminal({ operationId: body.operation_id, now: now() });
 	return recoveryData(await collectRecovery(store, now));
 }
 

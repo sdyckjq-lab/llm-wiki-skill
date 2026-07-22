@@ -374,7 +374,7 @@ function isTerminalState(value: unknown): value is "committed" | "rolled_back" |
 	return value === "committed" || value === "rolled_back" || value === "conflicted";
 }
 function validTransition(from: RenameJournalState, to: RenameJournalState): boolean {
-	return from === to || (from === "prepared" && (to === "applying" || to === "rolled_back")) || (from === "applying" && (to === "committed" || to === "rolled_back" || to === "conflicted"));
+	return from === to || (from === "prepared" && (to === "applying" || to === "rolled_back")) || (from === "applying" && (to === "committed" || to === "rolled_back" || to === "conflicted")) || (from === "conflicted" && (to === "committed" || to === "rolled_back"));
 }
 function receiptAsJournal(receipt: GraphRenameReceipt): GraphRenameJournal {
 	return {
