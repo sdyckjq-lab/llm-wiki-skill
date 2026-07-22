@@ -2,9 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { watch } from "node:fs";
-import { access, lstat, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
 	alignGraphIdentityBySourcePath,
@@ -23,6 +22,7 @@ import type {
 } from "@llm-wiki/workbench-contracts";
 
 import { paginateGraphWarningContext, readGraphWarningContext } from "./graph-warnings.js";
+import { findRepoRoot } from "./repo-root.js";
 
 const GRAPH_BUILD_STOP_TIMEOUT_MS = 1_000;
 const GRAPH_BUILD_ABORT_GRACE_MS = 100;
@@ -369,8 +369,8 @@ export function suspendGraphWatcher(kbPath: string): void {
 	graphWatchController?.suspend(kbPath);
 }
 
-export function resumeGraphWatcher(kbPath: string, options: { trigger?: boolean } = {}): void {
-	graphWatchController?.resume(kbPath, options);
+export function resumeGraphWatcher(kbPath: string, options: { trigger?: boolean; discardPending?: boolean } = {}): GraphBuildStatus | null {
+	return graphWatchController?.resume(kbPath, options) ?? null;
 }
 
 export function shouldIgnoreGraphWatchPath(filename: string | null): boolean {
@@ -490,13 +490,14 @@ export class KnowledgeBaseGraphWatcher {
 		}
 	}
 
-	resume(kbPath: string, options: { trigger?: boolean } = {}): void {
-		if (this.kbPath !== kbPath) return;
+	resume(kbPath: string, options: { trigger?: boolean; discardPending?: boolean } = {}): GraphBuildStatus | null {
+		if (this.kbPath !== kbPath) return null;
 		this.suspendDepth = Math.max(0, this.suspendDepth - 1);
-		if (this.suspendDepth > 0) return;
+		if (this.suspendDepth > 0) return null;
+		if (options.discardPending) this.pendingWhileSuspended = false;
 		const shouldTrigger = options.trigger === true || this.pendingWhileSuspended;
 		this.pendingWhileSuspended = false;
-		if (shouldTrigger) this.triggerNow();
+		return shouldTrigger ? this.triggerNow() : null;
 	}
 
 	private handleEvent(event: WatchEvent): void {
@@ -512,9 +513,9 @@ export class KnowledgeBaseGraphWatcher {
 		}, this.debounceMs);
 	}
 
-	private triggerNow(): void {
-		if (!this.kbPath) return;
-		this.options.triggerRebuild(this.kbPath);
+	private triggerNow(): GraphBuildStatus | null {
+		if (!this.kbPath) return null;
+		return this.options.triggerRebuild(this.kbPath).status;
 	}
 }
 
@@ -572,19 +573,6 @@ function signalGraphBuildTree(child: ChildProcess, signal: NodeJS.Signals): void
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
 	}
-}
-
-async function findRepoRoot(): Promise<string> {
-	let dir = path.dirname(fileURLToPath(import.meta.url));
-	while (true) {
-		const gitPath = path.join(dir, ".git");
-		const info = await stat(gitPath).catch(() => null);
-		if (info) return dir;
-		const parent = path.dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
-	throw new Error("Cannot locate repository root from server module path");
 }
 
 export function graphRebuildFailureMessage(_err: unknown): string {

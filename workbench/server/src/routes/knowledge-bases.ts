@@ -53,8 +53,10 @@ import {
 } from "../knowledge-bases.js";
 import {
 	stopKnowledgeBaseGraphWatcher,
+	triggerGraphRebuild,
 	watchKnowledgeBaseGraph,
 } from "../graph.js";
+import { defaultGraphRenameRouteService } from "./graph-renames.js";
 import {
 	createWiki,
 	InitConflictError,
@@ -89,6 +91,7 @@ export interface KnowledgeBaseRouteService {
 	clearActiveKnowledgeBase: () => Promise<void>;
 	watchKnowledgeBaseGraph: (kbPath: string) => void;
 	stopKnowledgeBaseGraphWatcher: () => void;
+	recoverGraphRenameOperations?: (kbPath: string) => Promise<{ needsRebuild: boolean }>;
 }
 
 export const defaultKnowledgeBaseRouteService: KnowledgeBaseRouteService = {
@@ -132,6 +135,7 @@ export const defaultKnowledgeBaseRouteService: KnowledgeBaseRouteService = {
 	clearActiveKnowledgeBase: clearActive,
 	watchKnowledgeBaseGraph,
 	stopKnowledgeBaseGraphWatcher,
+	recoverGraphRenameOperations: (kbPath) => defaultGraphRenameRouteService.recoverGraphRenameOperations(kbPath),
 };
 
 export function createKnowledgeBaseRoutes(
@@ -267,7 +271,9 @@ export function createKnowledgeBaseRoutes(
 			if (!data.active) {
 				throw new Error("selectKnowledgeBase returned no active context");
 			}
+			const recovery = await service.recoverGraphRenameOperations?.(data.active.kb.path);
 			service.watchKnowledgeBaseGraph(data.active.kb.path);
+			if (recovery?.needsRebuild) triggerGraphRebuild(data.active.kb.path);
 			return jsonOk(c, data);
 		} catch (err) {
 			if (err instanceof HttpContractError) throw err;

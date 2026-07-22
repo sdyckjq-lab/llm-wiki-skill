@@ -24,6 +24,7 @@ import {
 } from "./routes/events.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createGraphRoutes, defaultGraphRouteService, type GraphRouteService } from "./routes/graph.js";
+import { createGraphRenameRoutes, defaultGraphRenameRouteService, type GraphRenameRouteService } from "./routes/graph-renames.js";
 import { createKnowledgeBaseRoutes, defaultKnowledgeBaseRouteService, type KnowledgeBaseRouteService } from "./routes/knowledge-bases.js";
 import { createPageRoutes, defaultPageRouteService, type PageRouteService } from "./routes/pages.js";
 import {
@@ -65,6 +66,8 @@ export interface WorkbenchAppDeps {
 	pageService?: PageRouteService;
 	/** 图谱读取、rebuild 与 layout 读写 route 依赖。 */
 	graphService?: GraphRouteService;
+	/** graph page rename / recovery route dependency. */
+	graphRenameService?: GraphRenameRouteService;
 	/** artifact manifest/list/file route 依赖。 */
 	artifactService?: ArtifactRouteService;
 	/** prompt 启动 + assistant/tool/artifact SSE route 依赖。 */
@@ -134,6 +137,10 @@ export function createApp(deps: WorkbenchAppDeps = {}): Hono {
 	app.route(
 		"/api",
 		createGraphRoutes(deps.graphService ?? defaultGraphRouteService),
+	);
+	app.route(
+		"/api",
+		createGraphRenameRoutes(deps.graphRenameService ?? defaultGraphRenameRouteService),
 	);
 	app.route(
 		"/api",
