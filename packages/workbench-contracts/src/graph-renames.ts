@@ -17,7 +17,7 @@ const PreviewOccurrenceSchema = z.object({
 	raw_link: z.string(),
 	replacement_raw_link: z.string().optional(),
 	resolution_kind: z.enum(["explicit_path", "unique_basename", "ambiguous"]),
-}).strict();
+}).strict().refine((value) => value.end_byte > value.start_byte, { message: "end_byte must be greater than start_byte", path: ["end_byte"] });
 export type GraphRenamePreviewOccurrence = z.infer<typeof PreviewOccurrenceSchema>;
 
 export const GraphRenamePreviewFileSchema = z.object({
@@ -127,6 +127,6 @@ export const GraphRenameRecoveryBodySchema = z.object({
 	observed_conflicts: z.array(z.discriminatedUnion("current_state", [
 		z.object({ source_path: RelativePath, current_state: z.literal("present"), current_sha256: Sha256Schema }).strict(),
 		z.object({ source_path: RelativePath, current_state: z.literal("missing") }).strict(),
-	])).refine((items) => new Set(items.map((item) => `${item.source_path}:${item.current_state}`)).size === items.length, "duplicate observed conflicts"),
+	])).refine((items) => new Set(items.map((item) => item.source_path)).size === items.length, "duplicate observed conflicts"),
 }).strict();
 export type GraphRenameRecoveryBody = z.infer<typeof GraphRenameRecoveryBodySchema>;

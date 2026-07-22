@@ -123,7 +123,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 			const resolutionDigest = computeResolutionDigest(body.resolutions);
 			const existing = await store.read(body.operation_id);
 			if (existing && existing.kind !== "blocked") {
-				const submittedName = /\.md$/i.test(body.new_name) ? body.new_name : `${body.new_name}.md`;
+				const submittedName = /\.md$/i.test(body.new_name) ? `${body.new_name.slice(0, -3)}.md` : `${body.new_name}.md`;
 				if (existing.immutable_digest !== body.preview_digest || existing.resolution_digest !== resolutionDigest || existing.source_path !== body.source_path || existing.target_path.split("/").at(-1) !== submittedName) throw conflictError("operation ID was reused with different inputs");
 				return GraphRenameApplyDataSchema.parse({ outcome: "operation", operation: operationData(existing) });
 			}

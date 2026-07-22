@@ -53,7 +53,6 @@ import {
 } from "../knowledge-bases.js";
 import {
 	stopKnowledgeBaseGraphWatcher,
-	triggerGraphRebuild,
 	watchKnowledgeBaseGraph,
 } from "../graph.js";
 import { defaultGraphRenameRouteService } from "./graph-renames.js";
@@ -92,6 +91,7 @@ export interface KnowledgeBaseRouteService {
 	watchKnowledgeBaseGraph: (kbPath: string) => void;
 	stopKnowledgeBaseGraphWatcher: () => void;
 	recoverGraphRenameOperations?: (kbPath: string) => Promise<{ needsRebuild: boolean }>;
+	triggerPendingGraphRebuild?: (kbPath: string) => Promise<{ status: "started" | "queued" | "failed" }>;
 }
 
 export const defaultKnowledgeBaseRouteService: KnowledgeBaseRouteService = {
@@ -136,6 +136,7 @@ export const defaultKnowledgeBaseRouteService: KnowledgeBaseRouteService = {
 	watchKnowledgeBaseGraph,
 	stopKnowledgeBaseGraphWatcher,
 	recoverGraphRenameOperations: (kbPath) => defaultGraphRenameRouteService.recoverGraphRenameOperations(kbPath),
+	triggerPendingGraphRebuild: (kbPath) => defaultGraphRenameRouteService.triggerPendingGraphRebuild?.(kbPath) ?? Promise.resolve({ status: "failed" as const }),
 };
 
 export function createKnowledgeBaseRoutes(
@@ -273,7 +274,7 @@ export function createKnowledgeBaseRoutes(
 			}
 			const recovery = await service.recoverGraphRenameOperations?.(data.active.kb.path);
 			service.watchKnowledgeBaseGraph(data.active.kb.path);
-			if (recovery?.needsRebuild) triggerGraphRebuild(data.active.kb.path);
+			if (recovery?.needsRebuild) await service.triggerPendingGraphRebuild?.(data.active.kb.path);
 			return jsonOk(c, data);
 		} catch (err) {
 			if (err instanceof HttpContractError) throw err;

@@ -33,6 +33,8 @@ test("preview is read-only and apply renames the page with one rebuild request",
 		assert.deepEqual(await readdir(path.join(kb, "wiki", "topics")), ["renamed.md"]);
 		const retry = await service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.md", preview_digest: preview.preview_digest, resolutions: [], confirmed: true });
 		assert.equal(retry.outcome, "operation"); assert.equal(rebuilds, 1);
+		const uppercaseSuffixRetry = await service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.MD", preview_digest: preview.preview_digest, resolutions: [], confirmed: true });
+		assert.equal(uppercaseSuffixRetry.outcome, "operation"); assert.equal(rebuilds, 1);
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 

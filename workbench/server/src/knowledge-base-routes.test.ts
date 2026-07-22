@@ -74,6 +74,7 @@ interface FakeOptions {
 	active?: ActiveKnowledgeBaseData;
 	registered?: ReadonlySet<string>;
 	forbidden?: ReadonlySet<string>;
+	recoveryNeedsRebuild?: boolean;
 }
 
 function createFakeService(options: FakeOptions = {}) {
@@ -91,6 +92,7 @@ function createFakeService(options: FakeOptions = {}) {
 		created: [] as Array<{ name: string; purpose: string }>,
 		initialized: [] as Array<{ path: string; purpose: string; overwrite: boolean }>,
 		pickedDirectories: 0,
+		events: [] as string[],
 	};
 
 	const assertSelectable = (kbPath: string) => {
@@ -164,6 +166,7 @@ function createFakeService(options: FakeOptions = {}) {
 		selectKnowledgeBase: async (kbPath: string) => {
 			assertSelectable(kbPath);
 			calls.selected.push(kbPath);
+			calls.events.push("selected");
 			active = activeData;
 			return activeData;
 		},
@@ -173,7 +176,18 @@ function createFakeService(options: FakeOptions = {}) {
 		},
 		watchKnowledgeBaseGraph: (kbPath: string) => {
 			calls.watched.push(kbPath);
+			calls.events.push("watched");
 		},
+		...(options.recoveryNeedsRebuild !== undefined ? {
+			recoverGraphRenameOperations: async () => {
+				calls.events.push("recovered");
+				return { needsRebuild: options.recoveryNeedsRebuild! };
+			},
+			triggerPendingGraphRebuild: async () => {
+				calls.events.push("rebuild");
+				return { status: "started" as const };
+			},
+		} : {}),
 		stopKnowledgeBaseGraphWatcher: () => {
 			calls.stopped += 1;
 		},
@@ -275,6 +289,18 @@ test("选择 active KB 只接受 kbPath，验证登记后切换并启动 watcher
 	});
 	assert.equal(oldField.status, 400);
 	assert.equal((await json(oldField)).code, "INVALID_REQUEST");
+});
+
+test("选择 active KB 在 watcher 之后只触发一次待发布图谱重建", async () => {
+	const { service, calls } = createFakeService({ recoveryNeedsRebuild: true });
+	const app = createApp({ knowledgeBaseService: service });
+	const res = await app.request("/api/knowledge-base", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ kbPath: registeredKb.path }),
+	});
+	assert.equal(res.status, 200);
+	assert.deepEqual(calls.events, ["selected", "recovered", "watched", "rebuild"]);
 });
 
 test("选择未登记 KB 返回 KB_NOT_REGISTERED，且不改变 active 或 watcher", async () => {
