@@ -144,12 +144,12 @@ export async function resolveKnowledgeBaseRenamePath(input: {
 	const targetPath = path.join(sourceDirectory, storedName);
 	await assertNoSymlinkPath(kbRealPath, targetPath, true);
 	const targetInfo = await lstat(targetPath).catch(() => null);
-	if (targetInfo && (!targetInfo.isFile() || targetInfo.isSymbolicLink())) throw renameError("FORBIDDEN_PATH", "target is not a regular file");
+	if (targetInfo?.isSymbolicLink()) throw renameError("FORBIDDEN_PATH", "target is a symbolic link");
+	if (targetInfo && !targetInfo.isFile()) throw renameError("CONFLICT", "target is occupied by a non-file entry");
 	const equivalentPortableName = portableKey(sourceRelativePath) === portableKey(targetRelativePath) && sourceRelativePath !== targetRelativePath;
 	const sameResource = targetInfo ? (await realpath(targetPath).catch(() => "")) === (await realpath(sourcePath).catch(() => "!same")) : false;
 	if (targetInfo && !sameResource) throw renameError("CONFLICT", equivalentPortableName ? "equivalent target is occupied" : "target already exists");
 	for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
-		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
 		if (entry.name === path.basename(sourcePath) || (sameResource && entry.name === path.basename(targetPath))) continue;
 		const candidateRelativePath = `${path.posix.dirname(sourceRelativePath)}/${entry.name}`;
 		if (portableKey(candidateRelativePath) === portableKey(targetRelativePath)) throw renameError("CONFLICT", "equivalent target is occupied");

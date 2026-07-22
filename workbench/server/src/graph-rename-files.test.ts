@@ -37,6 +37,14 @@ test("rename path resolution accepts ordinary Unicode and rejects escapes, symli
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("rename path resolution treats a colliding directory entry as occupied", async () => {
+	const { root } = await fixture();
+	try {
+		await mkdir(path.join(root, "wiki", "topics", "ʼn.md"));
+		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "ŉ" }), (error: any) => error.code === "CONFLICT");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("byte replacement checks raw UTF-8 slices and leaves surrounding bytes intact", () => {
 	const original = Buffer.from("中文 😀 [[a]] `[[a]]`\n```\n[[a]]\n```", "utf8");
 	const raw = "[[a]]";
