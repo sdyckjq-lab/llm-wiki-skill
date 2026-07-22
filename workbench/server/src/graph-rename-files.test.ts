@@ -141,6 +141,23 @@ test("commit refuses an external replacement after its first destination check",
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("commit does not overwrite an external replacement after its final check", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-commit-final-race-"));
+	try {
+		const destination = path.join(root, "page.md");
+		await writeFile(destination, "original\n");
+		const staged = await stageRenameFile({ kbRoot: root, operationId: "final-race", destinationPath: destination, bytes: Buffer.from("intended\n") });
+		await assert.rejects(commitStagedRenameFile({
+			kbRoot: root,
+			...staged,
+			destinationPath: destination,
+			expectedDestinationSha256: sha256Bytes(Buffer.from("original\n")),
+			afterFinalCheck: async () => { await writeFile(destination, "external\n"); },
+		} as any));
+		assert.equal(await readFile(destination, "utf8"), "external\n");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("source rename refuses a target that appears after its occupancy check", async () => {
 	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-source-race-"));
 	try {
@@ -154,6 +171,24 @@ test("source rename refuses a target that appears after its occupancy check", as
 			operationId: "source-race",
 			beforeRename: async () => { await writeFile(target, "external\n"); },
 		}));
+		assert.equal(await readFile(source, "utf8"), "source\n");
+		assert.equal(await readFile(target, "utf8"), "external\n");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("source rename does not overwrite a target created after its final check", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-source-final-race-"));
+	try {
+		const source = path.join(root, "old.md");
+		const target = path.join(root, "new.md");
+		await writeFile(source, "source\n");
+		await assert.rejects(renameSourceWithTransit({
+			kbRoot: root,
+			sourcePath: source,
+			targetPath: target,
+			operationId: "source-final-race",
+			afterFinalCheck: async () => { await writeFile(target, "external\n"); },
+		} as any));
 		assert.equal(await readFile(source, "utf8"), "source\n");
 		assert.equal(await readFile(target, "utf8"), "external\n");
 	} finally { await rm(root, { recursive: true, force: true }); }

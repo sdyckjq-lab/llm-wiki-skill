@@ -437,7 +437,8 @@ async function performApply(input: {
 			targetPath: resolved.targetPath,
 			operationId: body.operation_id,
 			transitPath: resolved.equivalentPortableName ? path.join(path.dirname(resolved.sourcePath), `.llm-wiki-rename-${body.operation_id}-0.md`) : undefined,
-				onStep: async (state, transitPath) => {
+			expectedSourceSha256: originals[body.source_path] ?? undefined,
+			onStep: async (state, transitPath) => {
 					await store.transition(body.operation_id, "applying", { renameState: state, ...(transitPath ? { transitPath } : {}), completedSteps: state === "target" ? [...committedPaths, resolved.sourceRelativePath] : committedPaths });
 					if (state === "target") committedPaths.push(resolved.sourceRelativePath);
 					await input.afterSourceRenameStep?.(state);
@@ -665,6 +666,7 @@ async function resolveRecovery(
 						targetPath: path.join(kbPath, ...record.target_path.split("/")),
 						transitPath: record.transit_path ? path.join(kbPath, ...record.transit_path.split("/")) : undefined,
 						operationId: record.operation_id,
+						expectedSourceSha256: record.original_hashes[record.source_path] ?? undefined,
 						onStep: async (renameState, transitPath) => {
 							await store.transition(record.operation_id, "conflicted", { renameState, ...(transitPath ? { transitPath } : {}) });
 						},
