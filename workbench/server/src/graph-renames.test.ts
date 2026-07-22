@@ -366,3 +366,23 @@ test("finish rollback restores the source name after a target rename crash", asy
 		await assert.rejects(readFile(target, "utf8"));
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
+
+test("failed graph rebuild remains visible and can be retried", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "edededed-eded-4ede-8ede-edededededed";
+	try {
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const failed = createGraphRenameService({ triggerRebuild: () => { throw new Error("rebuild failed"); } });
+		const result = await failed.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		assert.equal(result.status, "rebuild_required");
+		assert.equal((result as any).operation.graph_rebuild, "failed");
+		const retried = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		assert.deepEqual(await retried.triggerPendingGraphRebuild?.(kb), { status: "started" });
+		assert.equal((await store.read(operationId) as any).graph_rebuild, "started");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});

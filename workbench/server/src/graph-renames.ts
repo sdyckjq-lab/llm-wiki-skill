@@ -243,10 +243,10 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 					locked = true;
 					try {
 						const result = trigger(realKbPath);
-						await store.transition(record.operation_id, "committed", { graphRebuild: result.status });
+						await store.transition(record.operation_id, record.state, { graphRebuild: result.status });
 						return { status: result.status };
 					} catch {
-						await store.transition(record.operation_id, "committed", { graphRebuild: "failed" });
+						await store.transition(record.operation_id, record.state, { graphRebuild: "failed" });
 						return { status: "failed" as const };
 					}
 				} finally {
