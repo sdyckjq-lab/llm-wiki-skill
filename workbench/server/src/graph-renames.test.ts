@@ -149,6 +149,22 @@ test("an apply cannot extend a server-issued preview beyond its bounded lifetime
 	}
 });
 
+test("prepared failure removes operation-owned files created before manifest update", async () => {
+	const kb = await makeKnowledgeBase();
+	try {
+		const store = new GraphRenameJournalStore(kb);
+		const writeOwnedFile = store.writeOwnedFile.bind(store);
+		store.writeOwnedFile = async (relativePath, bytes, mode) => {
+			if (relativePath.includes("/intended/")) throw new Error("injected intended write failure");
+			return writeOwnedFile(relativePath, bytes, mode);
+		};
+		const service = createGraphRenameService({ journalStore: () => store });
+		const preview = await service.previewGraphRename(kb, "wiki/topics/a.md", "renamed.md");
+		await assert.rejects(service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.md", preview_digest: preview.preview_digest, resolutions: [], confirmed: true }));
+		assert.deepEqual(await readdir(path.join(kb, ".wiki-tmp")).catch(() => [] as string[]), []);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("startup recovery exposes a committed operation whose graph is not published", async () => {
 	const kb = await makeKnowledgeBase();
 	try {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -62,6 +62,40 @@ test("journal validation blocks missing fields, unknown states and mismatched ha
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("journal validation blocks unknown conflict variants and mismatched missing fields", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-conflict-shape-"));
+	try {
+		const operation = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+		const dir = path.join(kb, ".wiki-tmp", "rename-ops", operation);
+		await mkdir(dir, { recursive: true });
+		const base = {
+			kind: "journal", operation_id: operation, immutable_digest: "b".repeat(64), state: "conflicted",
+			source_path: "wiki/topics/a.md", target_path: "wiki/topics/b.md", graph_rebuild: "not_started",
+			created_at: "2026-07-22T00:00:00.000Z", updated_at: "2026-07-22T00:00:00.000Z", rename_state: "old",
+			completed_steps: [], original_hashes: {}, intended_hashes: {}, intended_paths: {}, stage_paths: {}, backup_paths: [], retained_evidence: [],
+		};
+		for (const value of [
+			{ ...base, backup_paths: {}, conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "c".repeat(64), preserved_variants: [{ kind: "unknown", relative_path: "x.bin", sha256: "d".repeat(64) }] }] },
+			{ ...base, backup_paths: {}, conflicts: [{ source_path: "wiki/topics/a.md", current_state: "missing", current_sha256: "c".repeat(64), preserved_variants: [] }] },
+			{ ...base, backup_paths: {}, conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", preserved_variants: [] }] },
+		]) {
+			await writeFile(path.join(dir, "manifest.json"), JSON.stringify(value), "utf8");
+			assert.deepEqual(await new GraphRenameJournalStore(kb).read(operation), { kind: "blocked", operation_id: operation, reason: "invalid_journal" });
+		}
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("journal refuses a replaced wiki temporary root instead of writing outside the knowledge base", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-root-link-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-root-outside-"));
+	try {
+		await symlink(outside, path.join(kb, ".wiki-tmp"));
+		const store = new GraphRenameJournalStore(kb);
+		await assert.rejects(store.acquire({ operationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" }));
+		assert.deepEqual(await readdir(outside), []);
+	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
 test("same operation ID and digest is idempotent after terminal receipt", async () => {
 	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-idempotent-"));
 	try {
@@ -73,5 +107,35 @@ test("same operation ID and digest is idempotent after terminal receipt", async 
 		await store.compactTerminal({ operationId: first.operation_id, now: new Date() });
 		const second = await store.acquire(input);
 		assert.equal(second.state, "rolled_back");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("release does not unlink a lock whose owner content was replaced", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-replacement-"));
+	try {
+		const operationId = "55555555-5555-4555-8555-555555555555";
+		const store = new GraphRenameJournalStore(kb, { serverInstanceId: "server-a" });
+		await store.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), JSON.stringify({
+			operation_id: operationId,
+			immutable_digest: "b".repeat(64),
+			owner_pid: process.pid,
+			server_instance_id: "server-a",
+			created_at: "2026-07-22T00:00:00.000Z",
+		}), "utf8");
+		await store.release(operationId);
+		assert.equal(await readFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), "utf8").then((value) => value.includes('"immutable_digest":"bbbb')), true);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("atomic owned-file writes remove their temporary file after a write failure", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-atomic-write-"));
+	try {
+		const operationId = "66666666-6666-4666-8666-666666666666";
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		await assert.rejects(store.writeOwnedFile(`.wiki-tmp/rename-ops/${operationId}/broken.bin`, {} as Buffer));
+		const entries = await readdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId));
+		assert.equal(entries.some((entry) => entry.endsWith(".tmp")), false);
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });

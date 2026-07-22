@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
-import { mkdir, open, readFile, readdir, rm, rmdir, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, realpath, rm, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
 export type RenameJournalState = "prepared" | "applying" | "committed" | "rolled_back" | "conflicted";
@@ -148,6 +148,7 @@ export class GraphRenameJournalStore {
 
 	async acquire(input: AcquireRenameOperation): Promise<GraphRenameJournal> {
 		if (!safeOperationId(input.operationId)) throw conflictError("operation ID is invalid");
+		await this.assertSafeJournalRoot(true);
 		await mkdir(this.operationsRoot, { recursive: true, mode: 0o700 });
 		await this.pruneExpiredOperationData({ now: this.now(), receiptRetentionMs: RENAME_RETENTION_MS, evidenceRetentionMs: RENAME_RETENTION_MS });
 		const existing = await this.read(input.operationId);
@@ -206,6 +207,7 @@ export class GraphRenameJournalStore {
 
 	async read(operationId: string): Promise<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal | null> {
 		if (!safeOperationId(operationId)) return { kind: "blocked", operation_id: null, reason: "invalid_journal" };
+		try { await this.assertSafeJournalRoot(false); } catch { return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" }; }
 		const directory = path.join(this.operationsRoot, operationId);
 		const content = await readFile(path.join(directory, "manifest.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return null;
@@ -214,7 +216,7 @@ export class GraphRenameJournalStore {
 		if (content === null) return null;
 		try {
 			const value = JSON.parse(content) as Partial<GraphRenameJournal> & Partial<GraphRenameReceipt> & Partial<BlockedRenameJournal>;
-			if (value.kind === "blocked" && (value.reason === "unknown_state" || value.reason === "invalid_journal" || value.reason === "unsafe_current_type")) return value as BlockedRenameJournal;
+			if (value.kind === "blocked" && hasOnlyKeys(value, ["kind", "operation_id", "reason"]) && (value.reason === "unknown_state" || value.reason === "invalid_journal" || value.reason === "unsafe_current_type") && (value.operation_id === null || safeOperationId(value.operation_id))) return value as BlockedRenameJournal;
 			if (value.kind === "journal" && isJournalState(value.state) && typeof value.operation_id === "string" && typeof value.immutable_digest === "string" && safeJournalPaths(value)) return value as GraphRenameJournal;
 			if (value.kind === "receipt" && isTerminalState(value.state) && typeof value.operation_id === "string" && typeof value.immutable_digest === "string" && safeReceiptPaths(value)) return value as GraphRenameReceipt;
 			return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" };
@@ -281,6 +283,7 @@ export class GraphRenameJournalStore {
 	}
 
 	async listForStartup(): Promise<Array<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal>> {
+		await this.assertSafeJournalRoot(false);
 		const entries = await readdir(this.operationsRoot, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return [];
 			throw error;
@@ -296,7 +299,9 @@ export class GraphRenameJournalStore {
 
 	async preserveConflictVariant(input: PreserveConflictInput): Promise<string> {
 		if (!safeOperationId(input.operationId) || !safeRelative(input.sourcePath)) throw conflictError("conflict evidence path is invalid");
+		await this.assertSafeOperationDirectory(input.operationId, true);
 		const directory = path.join(this.operationsRoot, input.operationId, "evidence");
+		await this.assertSafeOwnedPath(path.posix.join(".wiki-tmp", "rename-ops", input.operationId, "evidence"), true);
 		await mkdir(directory, { recursive: true, mode: 0o700 });
 		const digest = createHash("sha256").update(input.bytes).digest("hex");
 		const filename = `${input.kind}-${digest}.bin`;
@@ -307,6 +312,10 @@ export class GraphRenameJournalStore {
 
 	async writeOwnedFile(relativePath: string, bytes: Buffer, mode = 0o600): Promise<string> {
 		if (!safeRelative(relativePath) || !relativePath.startsWith(".wiki-tmp/rename-ops/")) throw conflictError("owned path is invalid");
+		const operationId = relativePath.split("/")[2];
+		if (!operationId || !safeOperationId(operationId)) throw conflictError("owned path is invalid");
+		await this.assertSafeOperationDirectory(operationId, true);
+		await this.assertSafeOwnedPath(relativePath, true);
 		const absolute = path.join(this.kbPath, ...relativePath.split("/"));
 		await mkdir(path.dirname(absolute), { recursive: true, mode: 0o700 });
 		await writeAtomic(absolute, bytes, mode);
@@ -317,6 +326,7 @@ export class GraphRenameJournalStore {
 
 	async writeBlocked(operationId: string, reason: BlockedRenameJournal["reason"]): Promise<void> {
 		if (!safeOperationId(operationId)) throw conflictError("operation ID is invalid");
+		await this.assertSafeOperationDirectory(operationId, true);
 		await mkdir(path.join(this.operationsRoot, operationId), { recursive: true, mode: 0o700 });
 		await writeAtomic(path.join(this.operationsRoot, operationId, "manifest.json"), Buffer.from(`${JSON.stringify({ kind: "blocked", operation_id: operationId, reason })}\n`), 0o600);
 	}
@@ -378,8 +388,15 @@ export class GraphRenameJournalStore {
 		const value = await readFile(lockPath, "utf8").catch(() => null);
 		if (!value) return;
 		try {
-			const lock = JSON.parse(value) as { operation_id?: string; server_instance_id?: string };
-			if (lock.operation_id === operationId && lock.server_instance_id === this.serverInstanceId) await unlink(lockPath);
+			const lock = parseLock(value);
+			if (lock.operation_id !== operationId || lock.server_instance_id !== this.serverInstanceId || lock.owner_pid !== process.pid) return;
+			const record = await this.read(operationId);
+			if (!record || record.kind === "blocked" || record.immutable_digest !== lock.immutable_digest || (record.resolution_digest ?? undefined) !== (lock.resolution_digest ?? undefined)) return;
+			const current = await readFile(lockPath, "utf8").catch(() => null);
+			if (current !== value) return;
+			await unlink(lockPath).catch((error: NodeJS.ErrnoException) => {
+				if (error.code !== "ENOENT") throw error;
+			});
 		} catch {
 			// A malformed lock is never guessed or removed.
 		}
@@ -414,6 +431,8 @@ export class GraphRenameJournalStore {
 	}
 
 	private async writeManifest(value: GraphRenameJournal | GraphRenameReceipt): Promise<void> {
+		await this.assertSafeOperationDirectory(value.operation_id, true);
+		await this.assertSafeOwnedPath(path.posix.join(".wiki-tmp", "rename-ops", value.operation_id, "manifest.json"), true);
 		await mkdir(path.join(this.operationsRoot, value.operation_id), { recursive: true, mode: 0o700 });
 		await writeAtomic(path.join(this.operationsRoot, value.operation_id, "manifest.json"), Buffer.from(`${JSON.stringify(value)}\n`), 0o600);
 	}
@@ -423,19 +442,74 @@ export class GraphRenameJournalStore {
 		if (!value || value.kind !== "journal") throw new Error("rename journal does not exist");
 		return value;
 	}
+
+	private async assertSafeJournalRoot(create: boolean): Promise<void> {
+		const root = await realpath(this.kbPath);
+		let current = root;
+		for (const segment of [".wiki-tmp", "rename-ops"]) {
+			const next = path.join(current, segment);
+			const info = await lstat(next).catch((error: NodeJS.ErrnoException) => {
+				if (error.code === "ENOENT") return null;
+				throw error;
+			});
+			if (!info) {
+				if (!create) return;
+				await mkdir(next, { mode: 0o700 });
+			} else if (info.isSymbolicLink() || !info.isDirectory()) {
+				throw conflictError("rename journal directory is unsafe");
+			}
+			current = next;
+		}
+	}
+
+	private async assertSafeOperationDirectory(operationId: string, create: boolean): Promise<void> {
+		await this.assertSafeJournalRoot(create);
+		const directory = path.join(this.operationsRoot, operationId);
+		const info = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
+			if (error.code === "ENOENT") return null;
+			throw error;
+		});
+		if (!info) {
+			if (create) await mkdir(directory, { mode: 0o700 });
+			return;
+		}
+		if (info.isSymbolicLink() || !info.isDirectory()) throw conflictError("rename operation directory is unsafe");
+	}
+
+	private async assertSafeOwnedPath(relativePath: string, allowMissingLeaf: boolean): Promise<void> {
+		if (!safeRelative(relativePath)) throw conflictError("owned path is invalid");
+		let current = await realpath(this.kbPath);
+		const parts = relativePath.split("/");
+		for (let index = 0; index < parts.length; index += 1) {
+			current = path.join(current, parts[index]!);
+			const info = await lstat(current).catch((error: NodeJS.ErrnoException) => {
+				if (allowMissingLeaf && error.code === "ENOENT") return null;
+				throw error;
+			});
+			if (!info) continue;
+			if (info.isSymbolicLink() || (index < parts.length - 1 && !info.isDirectory())) throw conflictError("owned path is unsafe");
+			if (index === parts.length - 1 && !info.isFile() && !info.isDirectory()) throw conflictError("owned path is unsafe");
+		}
+	}
 }
 
 async function writeAtomic(target: string, bytes: Buffer, mode: number): Promise<void> {
 	const temporary = `${target}.${randomUUID()}.tmp`;
-	const handle = await open(temporary, "wx", mode);
+	let created = false;
+	let handle: Awaited<ReturnType<typeof open>> | undefined;
 	try {
+		handle = await open(temporary, "wx", mode);
+		created = true;
 		await handle.writeFile(bytes);
 		await handle.sync();
-	} finally { await handle.close(); }
-	await import("node:fs/promises").then(({ rename }) => rename(temporary, target)).catch(async (error) => {
-		await unlink(temporary).catch(() => undefined);
+		await handle.close();
+		handle = undefined;
+		await import("node:fs/promises").then(({ rename }) => rename(temporary, target));
+	} catch (error) {
+		await handle?.close().catch(() => undefined);
+		if (created) await unlink(temporary).catch(() => undefined);
 		throw error;
-	});
+	}
 }
 
 async function removeEmptyOwnedFiles(root: string, operationId: string, manifestName: string): Promise<void> {
@@ -456,7 +530,21 @@ function safeOperationId(value: unknown): value is string {
 function safeSha(value: unknown): value is string {
 	return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
+function parseLock(value: string): {
+	operation_id: string;
+	immutable_digest: string;
+	resolution_digest?: string;
+	owner_pid: number;
+	server_instance_id: string;
+	created_at: string;
+} {
+	const parsed = JSON.parse(value) as Record<string, unknown>;
+	const ownerPid = parsed.owner_pid;
+	if (!hasOnlyKeys(parsed, ["operation_id", "immutable_digest", "resolution_digest", "owner_pid", "server_instance_id", "created_at"]) || !safeOperationId(parsed.operation_id) || !safeSha(parsed.immutable_digest) || (parsed.resolution_digest !== undefined && !safeSha(parsed.resolution_digest)) || typeof ownerPid !== "number" || !Number.isInteger(ownerPid) || ownerPid <= 0 || typeof parsed.server_instance_id !== "string" || parsed.server_instance_id.length === 0 || typeof parsed.created_at !== "string" || !Number.isFinite(new Date(parsed.created_at).getTime())) throw new Error("invalid rename lock");
+	return { operation_id: parsed.operation_id, immutable_digest: parsed.immutable_digest, ...(parsed.resolution_digest ? { resolution_digest: parsed.resolution_digest } : {}), owner_pid: ownerPid, server_instance_id: parsed.server_instance_id, created_at: parsed.created_at };
+}
 function safeJournalPaths(value: Partial<GraphRenameJournal>): boolean {
+	if (!hasOnlyKeys(value, ["kind", "operation_id", "immutable_digest", "resolution_digest", "state", "source_path", "target_path", "graph_rebuild", "created_at", "updated_at", "rename_state", "transit_path", "completed_steps", "original_hashes", "intended_hashes", "intended_paths", "stage_paths", "backup_paths", "layout_before", "layout_after", "conflicts", "retained_evidence", "metadata"])) return false;
 	if (typeof value.source_path !== "string" || typeof value.target_path !== "string" || typeof value.created_at !== "string" || typeof value.updated_at !== "string") return false;
 	if (!safeRelative(value.source_path) || !safeRelative(value.target_path)) return false;
 	if (!isRenameFileState(value.rename_state)) return false;
@@ -478,21 +566,28 @@ function safeJournalPaths(value: Partial<GraphRenameJournal>): boolean {
 	if (!Object.keys(value.backup_paths ?? {}).every((key) => originalKeySet.has(key))) return false;
 	if (!Object.keys(value.intended_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
 	if (!Object.keys(value.stage_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
-	return (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && safeSha(item.sha256) && Number.isFinite(new Date(item.expires_at).getTime()));
+	return (value.retained_evidence ?? []).every((item) => safeEvidence(item));
 }
 function safeReceiptPaths(value: Partial<GraphRenameReceipt>): boolean {
-	return safeRelative(value.source_path) && safeRelative(value.target_path) && safeOperationId(value.operation_id) && safeSha(value.immutable_digest) && (value.resolution_digest === undefined || safeSha(value.resolution_digest)) && isRenameFileState(value.rename_state) && isGraphRebuildState(value.graph_rebuild) && Number.isFinite(new Date(value.created_at ?? "").getTime()) && Number.isFinite(new Date(value.updated_at ?? "").getTime()) && isRecord(value.final_hashes) && Object.values(value.final_hashes ?? {}).every((digest) => digest === null || safeSha(digest)) && Array.isArray(value.retained_evidence) && (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && safeSha(item.sha256) && Number.isFinite(new Date(item.expires_at).getTime()));
+	return hasOnlyKeys(value, ["kind", "operation_id", "immutable_digest", "resolution_digest", "state", "source_path", "target_path", "graph_rebuild", "created_at", "updated_at", "retained_evidence", "final_hashes", "rename_state"]) && safeRelative(value.source_path) && safeRelative(value.target_path) && safeOperationId(value.operation_id) && safeSha(value.immutable_digest) && (value.resolution_digest === undefined || safeSha(value.resolution_digest)) && isRenameFileState(value.rename_state) && isGraphRebuildState(value.graph_rebuild) && typeof value.created_at === "string" && typeof value.updated_at === "string" && Number.isFinite(new Date(value.created_at).getTime()) && Number.isFinite(new Date(value.updated_at).getTime()) && isRecord(value.final_hashes) && Object.values(value.final_hashes ?? {}).every((digest) => digest === null || safeSha(digest)) && Array.isArray(value.retained_evidence) && (value.retained_evidence ?? []).every((item) => safeEvidence(item));
 }
 function safeConflict(value: GraphRenameJournal["conflicts"][number]): boolean {
-	if (!safeRelative(value.source_path) || (value.current_state !== "present" && value.current_state !== "missing") || !Array.isArray(value.preserved_variants)) return false;
-	if (value.current_state === "present" && !safeSha(value.current_sha256)) return false;
-	return value.preserved_variants.every((variant) => safeRelative(variant.relative_path) && safeSha(variant.sha256));
+	if (!isRecord(value) || !safeRelative(value.source_path) || (value.current_state !== "present" && value.current_state !== "missing") || !Array.isArray(value.preserved_variants)) return false;
+	if (value.current_state === "present" && (!hasOnlyKeys(value, ["source_path", "current_state", "current_sha256", "preserved_variants"]) || !safeSha(value.current_sha256))) return false;
+	if (value.current_state === "missing" && !hasOnlyKeys(value, ["source_path", "current_state", "preserved_variants"])) return false;
+	return value.preserved_variants.every((variant) => isRecord(variant) && hasOnlyKeys(variant, ["kind", "relative_path", "sha256"]) && (variant.kind === "current" || variant.kind === "original" || variant.kind === "intended") && safeRelative(variant.relative_path) && safeSha(variant.sha256));
+}
+function safeEvidence(value: unknown): value is PreservedEvidence {
+	return isRecord(value) && hasOnlyKeys(value, ["relative_path", "sha256", "expires_at"]) && safeRelative(value.relative_path) && safeSha(value.sha256) && typeof value.expires_at === "string" && Number.isFinite(new Date(value.expires_at).getTime());
 }
 function isGraphRebuildState(value: unknown): value is GraphRebuildState {
 	return value === "not_started" || value === "started" || value === "queued" || value === "failed" || value === "succeeded";
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+function hasOnlyKeys(value: unknown, allowed: string[]): boolean {
+	return isRecord(value) && Object.keys(value).every((key) => allowed.includes(key));
 }
 function isTerminalState(value: unknown): value is "committed" | "rolled_back" | "conflicted" {
 	return value === "committed" || value === "rolled_back" || value === "conflicted";
