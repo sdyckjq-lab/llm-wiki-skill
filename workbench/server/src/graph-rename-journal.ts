@@ -264,7 +264,7 @@ export class GraphRenameJournalStore {
 			created_at: current.created_at,
 			updated_at: input.now.toISOString(),
 			retained_evidence: input.resolvedConflictEvidence ?? current.retained_evidence,
-			final_hashes: { ...current.intended_hashes },
+			final_hashes: { ...(current.state === "rolled_back" ? current.original_hashes : current.intended_hashes) },
 		};
 		await this.writeManifest(receipt);
 		if (receipt.retained_evidence.length === 0) await removeEmptyOwnedFiles(this.operationsRoot, current.operation_id, "manifest.json");

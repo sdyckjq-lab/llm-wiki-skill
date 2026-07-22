@@ -106,7 +106,8 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 			const store = storeFor(kbRealPath);
 			const existing = await store.read(body.operation_id);
 			if (existing && existing.kind !== "blocked") {
-				if (existing.immutable_digest !== body.preview_digest || existing.source_path !== body.source_path) throw conflictError("operation ID was reused with different inputs");
+				const submittedName = /\.md$/i.test(body.new_name) ? body.new_name : `${body.new_name}.md`;
+				if (existing.immutable_digest !== body.preview_digest || existing.source_path !== body.source_path || existing.target_path.split("/").at(-1) !== submittedName) throw conflictError("operation ID was reused with different inputs");
 				return GraphRenameApplyDataSchema.parse({ outcome: "operation", operation: operationData(existing) });
 			}
 			if (new Date(body.expires_at).getTime() <= now().getTime()) return { outcome: "preview_stale", operation_id: body.operation_id, reason: "preview_expired" };
@@ -138,16 +139,24 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 				if (record.kind !== "journal") continue;
 				if (record.state === "prepared") {
 					await store.transition(record.operation_id, "rolled_back", { graphRebuild: "succeeded" });
+					await store.compactTerminal({ operationId: record.operation_id, now: now() });
 				} else if (record.state === "applying") {
 					const state = await inspectJournalContent(kbPath, record);
 					if (state === "intended") {
-						await renameSourceWithTransit({ sourcePath: path.join(kbPath, ...record.source_path.split("/")), targetPath: path.join(kbPath, ...record.target_path.split("/")), operationId: record.operation_id, transitPath: record.transit_path ? path.join(kbPath, ...record.transit_path.split("/")) : undefined });
+						const target = path.join(kbPath, ...record.target_path.split("/"));
+						const targetInfo = await lstat(target).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
+						if (targetInfo) {
+							await store.transition(record.operation_id, "conflicted", { conflicts: (await recomputeRecoveryConflicts(kbPath, record)).conflicts });
+							continue;
+						}
+						await renameSourceWithTransit({ sourcePath: path.join(kbPath, ...record.source_path.split("/")), targetPath: target, operationId: record.operation_id, transitPath: record.transit_path ? path.join(kbPath, ...record.transit_path.split("/")) : undefined });
 						await store.transition(record.operation_id, "committed", { graphRebuild: "not_started" });
 						needsRebuild = true;
 					} else if (state === "original") {
 						await store.transition(record.operation_id, "rolled_back", { graphRebuild: "succeeded" });
+						await store.compactTerminal({ operationId: record.operation_id, now: now() });
 					} else {
-						await store.transition(record.operation_id, "conflicted", { conflicts: [] });
+						await store.transition(record.operation_id, "conflicted", { conflicts: (await recomputeRecoveryConflicts(kbPath, record)).conflicts });
 					}
 				} else if (record.state === "committed" && record.graph_rebuild !== "succeeded") {
 					needsRebuild = true;
@@ -207,7 +216,7 @@ async function performApply(input: {
 	const files = new Map<string, { bytes: Buffer; original: Buffer; replacements: ExactByteReplacement[] }>();
 	for (const file of preview.editable_files) {
 		const absolute = path.join(input.kbPath, ...file.source_path.split("/"));
-		const original = await readFile(absolute);
+		const original = await readFile(absolute).catch(() => { throw staleError("source file disappeared since preview"); });
 		if (sha256Bytes(original) !== file.file_sha256) { await store.release(body.operation_id); throw staleError("source file changed since preview"); }
 		const replacements = file.occurrences.filter((occurrence) => occurrence.replacement_raw_link).map((occurrence) => ({ startByte: occurrence.start_byte, endByte: occurrence.end_byte, rawLink: occurrence.raw_link, replacement: occurrence.replacement_raw_link! }));
 		for (const ambiguous of preview.ambiguous_choices.filter((choice) => choice.source_path === file.source_path)) {
@@ -251,6 +260,7 @@ async function performApply(input: {
 		const staged = await stageRenameFile({ operationId: body.operation_id, destinationPath: source, bytes: entry.bytes, mode: sourceMode });
 		stages[relative] = path.relative(input.kbPath, staged.stagedPath).replaceAll(path.sep, "/");
 		backups[relative] = backupRelative;
+		await store.writePrepared({ operationId: body.operation_id, immutableDigest: body.preview_digest, sourcePath: body.source_path, targetPath: resolved.targetRelativePath, originalHashes: originals, intendedHashes: intended, stagePaths: stages, backupPaths: backups, metadata: { expires_at: body.expires_at } });
 	}
 	if (layoutBytes) {
 		const layoutBackupRelative = path.posix.join(".wiki-tmp", "rename-ops", body.operation_id, "backups", "layout.bak");
@@ -260,6 +270,7 @@ async function performApply(input: {
 		const staged = await stageRenameFile({ operationId: body.operation_id, destinationPath: layoutPath, bytes: layoutBytes });
 		stages[".wiki-graph-layout.json"] = path.relative(input.kbPath, staged.stagedPath).replaceAll(path.sep, "/");
 		backups[".wiki-graph-layout.json"] = layoutBackupRelative;
+		await store.writePrepared({ operationId: body.operation_id, immutableDigest: body.preview_digest, sourcePath: body.source_path, targetPath: resolved.targetRelativePath, originalHashes: originals, intendedHashes: intended, stagePaths: stages, backupPaths: backups, metadata: { expires_at: body.expires_at } });
 	}
 	await store.writePrepared({ operationId: body.operation_id, immutableDigest: body.preview_digest, sourcePath: body.source_path, targetPath: resolved.targetRelativePath, originalHashes: originals, intendedHashes: intended, stagePaths: stages, backupPaths: backups, transitPath: resolved.equivalentPortableName ? path.posix.join(path.posix.dirname(resolved.sourceRelativePath), `.llm-wiki-rename-${body.operation_id}-0.md`) : undefined, metadata: { expires_at: body.expires_at } });
 	await store.transition(body.operation_id, "applying", {});
@@ -462,7 +473,7 @@ async function writeRecoveryFile(target: string, bytes: Buffer): Promise<void> {
 
 function operationData(record: GraphRenameJournal | GraphRenameReceipt): GraphRenameOperationData {
 	const conflicts = record.kind === "journal" ? record.conflicts.map((conflict) => conflict.current_state === "present"
-		? { ...conflict, current_state: "present" as const, current_sha256: conflict.current_sha256 ?? "" }
+		? { ...conflict, current_state: "present" as const, current_sha256: conflict.current_sha256 ?? "0".repeat(64) }
 		: { ...conflict, current_state: "missing" as const }) : [];
 	return { operation_id: record.operation_id, state: record.state, source_path: record.source_path, target_path: record.target_path, graph_rebuild: record.graph_rebuild, conflicts, retained_evidence: record.retained_evidence };
 }
