@@ -109,6 +109,19 @@ test("journal refuses a replaced operation directory instead of following its sy
 	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
+test("journal refuses a replaced manifest file instead of following its symlink", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-manifest-link-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-manifest-outside-"));
+	try {
+		const operationId = "88888888-8888-4888-8888-888888888888";
+		const operationDir = path.join(kb, ".wiki-tmp", "rename-ops", operationId);
+		await mkdir(operationDir, { recursive: true });
+		await writeFile(path.join(outside, "manifest.json"), JSON.stringify({ kind: "blocked", operation_id: operationId, reason: "unknown_state" }), "utf8");
+		await symlink(path.join(outside, "manifest.json"), path.join(operationDir, "manifest.json"));
+		assert.deepEqual(await new GraphRenameJournalStore(kb).read(operationId), { kind: "blocked", operation_id: operationId, reason: "invalid_journal" });
+	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
 test("same operation ID and digest is idempotent after terminal receipt", async () => {
 	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-idempotent-"));
 	try {

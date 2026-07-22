@@ -210,6 +210,7 @@ export class GraphRenameJournalStore {
 		try {
 			await this.assertSafeJournalRoot(false);
 			await this.assertSafeOperationDirectory(operationId, false);
+			await this.assertSafeOwnedPath(path.posix.join(".wiki-tmp", "rename-ops", operationId, "manifest.json"), true);
 		} catch { return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" }; }
 		const directory = path.join(this.operationsRoot, operationId);
 		const content = await readFile(path.join(directory, "manifest.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
