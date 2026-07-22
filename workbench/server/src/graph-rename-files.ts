@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, open, readFile, realpath, rename, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import type { GraphLayoutFile } from "@llm-wiki/graph-engine";
@@ -146,6 +146,12 @@ export async function resolveKnowledgeBaseRenamePath(input: {
 	const equivalentPortableName = portableKey(sourceRelativePath) === portableKey(targetRelativePath) && sourceRelativePath !== targetRelativePath;
 	const sameResource = targetInfo ? (await realpath(targetPath).catch(() => "")) === (await realpath(sourcePath).catch(() => "!same")) : false;
 	if (targetInfo && !sameResource) throw renameError("CONFLICT", equivalentPortableName ? "equivalent target is occupied" : "target already exists");
+	for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
+		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+		if (entry.name === path.basename(sourcePath) || (sameResource && entry.name === path.basename(targetPath))) continue;
+		const candidateRelativePath = `${path.posix.dirname(sourceRelativePath)}/${entry.name}`;
+		if (portableKey(candidateRelativePath) === portableKey(targetRelativePath)) throw renameError("CONFLICT", "equivalent target is occupied");
+	}
 	return { kbRealPath, sourcePath, targetPath, sourceRelativePath, targetRelativePath, sourceDirectory, equivalentPortableName };
 }
 
@@ -216,18 +222,12 @@ export async function commitStagedRenameFile(input: CommitStagedRenameFileInput)
 }
 
 export async function renameSourceWithTransit(input: RenameSourceInput): Promise<string | null> {
-	const sourcePath = await assertSafeRenamePath(input.kbRoot, input.sourcePath, false);
+	const sourcePath = await assertSafeRenamePath(input.kbRoot, input.sourcePath, true);
 	const targetPath = await assertSafeRenamePath(input.kbRoot, input.targetPath, true);
 	if (sourcePath === targetPath) return null;
-	const sourceInfo = await lstat(sourcePath).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return null;
-		throw error;
-	});
+	const sourceInfo = await lstatExactPath(sourcePath);
 	if (sourceInfo && (!sourceInfo.isFile() || sourceInfo.isSymbolicLink())) throw renameError("FORBIDDEN_PATH", "source must be a regular file");
-	const targetInfo = await lstat(targetPath).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return null;
-		throw error;
-	});
+	const targetInfo = await lstatExactPath(targetPath);
 	if (targetInfo && sourceInfo) {
 		const sourceReal = await realpath(sourcePath);
 		const targetReal = await realpath(targetPath);
@@ -235,7 +235,7 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	}
 	if (!sourceInfo) {
 		const transit = input.transitPath ? await assertSafeRenamePath(input.kbRoot, input.transitPath, false) : null;
-		if (transit && await lstat(transit).catch(() => null)) {
+			if (transit && await lstatExactPath(transit)) {
 			if (targetInfo) throw renameError("CONFLICT", "rename target is occupied during transit recovery");
 			await rename(transit, targetPath);
 			await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
@@ -265,20 +265,39 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	}
 	if (!transit) throw new Error("unable to reserve rename transit path");
 	transit = await assertSafeRenamePath(input.kbRoot, transit, true);
-	const transitInfo = await lstat(transit).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return null;
-		throw error;
-	});
+	const transitInfo = await lstatExactPath(transit);
 	if (transitInfo) throw renameError("CONFLICT", "rename transit path is occupied");
-	if (sourcePath !== transit && await lstat(sourcePath).catch(() => null)) {
+	if (sourcePath !== transit && await lstatExactPath(sourcePath)) {
 		await rename(sourcePath, transit);
 		await input.onStep?.("transit", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 	}
-	if (transit !== targetPath && await lstat(transit).catch(() => null)) {
+	if (transit !== targetPath && await lstatExactPath(transit)) {
 		await rename(transit, targetPath);
 		await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 	}
 	return transit;
+}
+
+/** Look up a directory entry by its exact spelling, even on case-insensitive volumes. */
+export async function exactPath(candidate: string): Promise<string | null> {
+	const parent = path.dirname(candidate);
+	const name = path.basename(candidate);
+	const entries = await readdir(parent, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT") return [] as import("node:fs").Dirent[];
+		throw error;
+	});
+	const entry = entries.find((item) => item.name === name);
+	return entry ? path.join(parent, entry.name) : null;
+}
+
+export async function lstatExactPath(candidate: string): Promise<import("node:fs").Stats | null> {
+	const actual = await exactPath(candidate);
+	return actual ? lstat(actual) : null;
+}
+
+export async function readFileExactPath(candidate: string): Promise<Buffer | null> {
+	const actual = await exactPath(candidate);
+	return actual ? readFile(actual) : null;
 }
 
 export async function assertSafeRenamePath(kbRoot: string, candidate: string, allowMissingLeaf: boolean): Promise<string> {

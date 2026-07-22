@@ -31,6 +31,8 @@ test("rename path resolution accepts ordinary Unicode and rejects escapes, symli
 		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "bad/name" }));
 		await symlink(path.join(root, "wiki", "topics", "页面.md"), path.join(root, "wiki", "topics", "link.md"));
 		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/link.md", newName: "new" }));
+		await writeFile(path.join(root, "wiki", "topics", "PAGE.md"), "other\n");
+		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "page" }));
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -56,6 +58,33 @@ test("equivalent source names use a real transit path", async () => {
 		await writeFile(oldPath, "bytes");
 		const transit = await renameSourceWithTransit({ kbRoot: root, sourcePath: oldPath, targetPath: newPath, operationId: "test" });
 		assert.ok(transit); assert.equal(await readFile(newPath, "utf8"), "bytes");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("transit recovery accepts a missing old name and finishes at the target", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-transit-recovery-"));
+	try {
+		const source = path.join(root, "Page.md");
+		const transit = path.join(root, ".llm-wiki-rename-recovery-0.md");
+		const target = path.join(root, "page.md");
+		await writeFile(transit, "bytes");
+		const steps: string[] = [];
+		await renameSourceWithTransit({ kbRoot: root, sourcePath: source, transitPath: transit, targetPath: target, operationId: "recovery", onStep: (state) => { steps.push(state); } });
+		assert.deepEqual(steps, ["target"]);
+		assert.equal(await readFile(target, "utf8"), "bytes");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("target-boundary recovery distinguishes exact old and target names", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-target-recovery-"));
+	try {
+		const source = path.join(root, "Page.md");
+		const transit = path.join(root, ".llm-wiki-rename-target-boundary.md");
+		const target = path.join(root, "page.md");
+		await writeFile(source, "bytes");
+		await (await import("node:fs/promises")).rename(source, transit);
+		await renameSourceWithTransit({ kbRoot: root, sourcePath: source, transitPath: transit, targetPath: target, operationId: "target-recovery" });
+		assert.equal(await readFile(target, "utf8"), "bytes");
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 
