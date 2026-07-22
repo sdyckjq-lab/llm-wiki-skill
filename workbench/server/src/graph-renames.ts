@@ -61,6 +61,7 @@ export interface GraphRenameServiceOptions {
 	journalStore?: (kbPath: string) => GraphRenameJournalStore;
 	beforeFileCommit?: (relativePath: string) => void | Promise<void>;
 	afterFileCommit?: (relativePath: string) => void | Promise<void>;
+	beforeSourceRename?: () => void | Promise<void>;
 	afterSourceRename?: () => void | Promise<void>;
 	afterSourceRenameStep?: (state: "old" | "transit" | "target") => void | Promise<void>;
 	beforeSourceRollback?: () => void | Promise<void>;
@@ -96,6 +97,7 @@ interface RenameScanOccurrence {
 
 interface RenameScanReport {
 	file_set_sha256: string;
+	source_sha256: string;
 	source_path: string;
 	target_path: string;
 	validation: { requires_transit?: boolean };
@@ -155,7 +157,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 					await store.abortPrepared(body.operation_id);
 					return { outcome: "preview_stale", operation_id: body.operation_id, reason: "resolutions_changed" };
 				}
-				return GraphRenameApplyDataSchema.parse({ outcome: "operation", operation: await performApply({ kbPath: resolved.kbRealPath, resolved, preview, body, store, layout, trigger, suspend, resume, now, beforeFileCommit: options.beforeFileCommit, afterFileCommit: options.afterFileCommit, afterSourceRename: options.afterSourceRename, afterSourceRenameStep: options.afterSourceRenameStep, beforeSourceRollback: options.beforeSourceRollback }) });
+				return GraphRenameApplyDataSchema.parse({ outcome: "operation", operation: await performApply({ kbPath: resolved.kbRealPath, resolved, preview, sourceSha256: scan.source_sha256, body, store, layout, trigger, suspend, resume, now, beforeFileCommit: options.beforeFileCommit, afterFileCommit: options.afterFileCommit, beforeSourceRename: options.beforeSourceRename, afterSourceRename: options.afterSourceRename, afterSourceRenameStep: options.afterSourceRenameStep, beforeSourceRollback: options.beforeSourceRollback }) });
 			} catch (error) {
 				const current = await store.read(body.operation_id);
 				if (current?.kind === "journal" && current.state === "prepared") await store.abortPrepared(body.operation_id);
@@ -328,7 +330,10 @@ async function inspectJournalContent(kbPath: string, record: GraphRenameJournal)
 		let intended = true;
 		try {
 			for (const [relative, expected] of Object.entries(record.original_hashes)) {
-				const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
+				const physicalRelative = relative === record.source_path
+					? record.rename_state === "target" ? record.target_path : record.rename_state === "transit" ? record.transit_path ?? record.source_path : record.source_path
+					: relative;
+				const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...physicalRelative.split("/")), true);
 				const info = await lstatExactPath(absolute);
 				if (info && (info.isSymbolicLink() || !info.isFile())) return "blocked";
 				const current = info ? sha256Bytes(await readFileExactPath(absolute) as Buffer) : null;
@@ -347,6 +352,7 @@ async function performApply(input: {
 	kbPath: string;
 	resolved: Awaited<ReturnType<typeof resolveKnowledgeBaseRenamePath>>;
 	preview: GraphRenamePreviewData;
+	sourceSha256: string;
 	body: GraphRenameApplyBody;
 	store: GraphRenameJournalStore;
 	layout: GraphLayoutFile | null;
@@ -356,6 +362,7 @@ async function performApply(input: {
 	now: () => Date;
 	beforeFileCommit?: (relativePath: string) => void | Promise<void>;
 	afterFileCommit?: (relativePath: string) => void | Promise<void>;
+	beforeSourceRename?: () => void | Promise<void>;
 	afterSourceRename?: () => void | Promise<void>;
 	afterSourceRenameStep?: (state: "old" | "transit" | "target") => void | Promise<void>;
 	beforeSourceRollback?: () => void | Promise<void>;
@@ -376,6 +383,11 @@ async function performApply(input: {
 		}
 		const changed = applyByteRangeReplacements(original, replacements);
 		if (!changed.equals(original)) files.set(file.source_path, { bytes: changed, original, replacements });
+	}
+	if (!files.has(resolved.sourceRelativePath)) {
+		const source = await readRegularFile(input.kbPath, resolved.sourcePath, false);
+		if (!source || sha256Bytes(source) !== input.sourceSha256) throw staleError("source page changed since scan");
+		files.set(resolved.sourceRelativePath, { bytes: source, original: source, replacements: [] });
 	}
 	const layoutPath = path.join(input.kbPath, ".wiki-graph-layout.json");
 	const nextLayout = layout ? migrateRenameLayoutKey(layout, resolved.sourceRelativePath, resolved.targetRelativePath) : null;
@@ -437,6 +449,7 @@ async function performApply(input: {
 	};
 	try {
 		for (const [relative, entry] of files) {
+			if (entry.bytes.equals(entry.original)) continue;
 			const absolute = path.join(input.kbPath, ...relative.split("/"));
 			await input.beforeFileCommit?.(relative);
 			await commitStagedRenameFile({ kbRoot: input.kbPath, operationId: body.operation_id, destinationPath: absolute, stagedPath: path.join(input.kbPath, stages[relative]!), sha256: sha256Bytes(entry.bytes), mode: 0o600, expectedDestinationSha256: sha256Bytes(entry.original) });
@@ -449,6 +462,7 @@ async function performApply(input: {
 			await input.afterFileCommit?.(".wiki-graph-layout.json");
 			await persistCompleted(".wiki-graph-layout.json");
 		}
+		await input.beforeSourceRename?.();
 		await renameSourceWithTransit({
 			kbRoot: input.kbPath,
 			sourcePath: resolved.sourcePath,
@@ -473,6 +487,13 @@ async function performApply(input: {
 			if (!sourceRollback.ok) {
 				safeRollback = false;
 				conflicts.push(...sourceRollback.conflicts);
+			}
+		}
+		if (currentJournal?.kind === "journal" && currentJournal.rename_state === "old") {
+			const sourceConflicts = await enumerateSourceRenameConflicts(input.kbPath, currentJournal);
+			if (!sourceRenameStateMatches(currentJournal, sourceConflicts)) {
+				safeRollback = false;
+				conflicts.push(...sourceConflicts);
 			}
 		}
 		for (const relative of [...contentCommittedPaths].reverse()) {
@@ -554,6 +575,21 @@ async function enumerateSourceRenameConflicts(kbPath: string, record: GraphRenam
 	return conflicts;
 }
 
+function sourceRenameStateMatches(record: GraphRenameJournal, conflicts: GraphRenameJournal["conflicts"]): boolean {
+	const expectedDigest = record.intended_hashes[record.source_path] ?? record.original_hashes[record.source_path];
+	if (!expectedDigest) return false;
+	const byPath = new Map(conflicts.map((conflict) => [conflict.source_path, conflict]));
+	const expectedPresent = record.rename_state === "old" ? record.source_path : record.rename_state === "transit" ? record.transit_path : record.target_path;
+	for (const relative of [record.source_path, record.transit_path, record.target_path].filter((value): value is string => Boolean(value))) {
+		const conflict = byPath.get(relative);
+		if (!conflict) return false;
+		if (relative === expectedPresent) {
+			if (conflict.current_state !== "present" || conflict.current_sha256 !== expectedDigest) return false;
+		} else if (conflict.current_state !== "missing") return false;
+	}
+	return true;
+}
+
 async function storelessVerifySourceRollback(source: string, target: string, transit: string | null): Promise<void> {
 	const sourceInfo = await lstatExactPath(source);
 	if (!sourceInfo || !sourceInfo.isFile() || sourceInfo.isSymbolicLink()) throw new Error("source rollback is unsafe");
@@ -582,14 +618,14 @@ function buildPreview(input: { resolved: Awaited<ReturnType<typeof resolveKnowle
 	const ambiguousChoices = ambiguous.map((item) => ({ occurrence_id: occurrenceId(item), source_path: item.source_path, candidates: (item.rendered_candidates ?? []).map((candidate) => ({ target_path: candidate.candidate_path, replacement_raw_link: candidate.replacement })) }));
 	const layoutChange = { from_key: input.resolved.sourceRelativePath, to_key: input.resolved.targetRelativePath, present: Boolean(input.layout?.pins && Object.hasOwn(input.layout.pins, input.resolved.sourceRelativePath)) };
 	const projection = { operation_id: input.operationId, expires_at: input.expiresAt.toISOString(), source_path: input.resolved.sourceRelativePath, target_path: input.resolved.targetRelativePath, file_set_sha256: input.scan.file_set_sha256, editable_files: [...grouped.values()], read_only_references: readOnly, ambiguous_choices: ambiguousChoices, layout_change: layoutChange };
-	const digestProjection = { ...projection, layout: input.layout };
+	const digestProjection = { ...projection, source_sha256: input.scan.source_sha256, layout: input.layout };
 	const previewDigest = createHash("sha256").update(JSON.stringify(digestProjection)).digest("hex");
 	return { ...projection, preview_digest: previewDigest, equivalent_portable_name: input.resolved.equivalentPortableName, summary: { editable_files: grouped.size, editable_occurrences: editable.length + ambiguous.filter((item) => !editable.some((entry) => occurrenceId(entry) === occurrenceId(item))).length, read_only_occurrences: readOnly.length, ambiguous_occurrences: ambiguous.length } };
 }
 
 async function runRenameScan(kbPath: string, sourcePath: string, newName: string, cliPathOption?: string): Promise<RenameScanReport> {
 	const cliPath = cliPathOption ?? await wikiLinkCliPath();
-	return await new Promise((resolve, reject) => {
+	const report = await new Promise<Omit<RenameScanReport, "source_sha256">>((resolve, reject) => {
 		const child = spawn(process.execPath, [cliPath, "rename-scan", kbPath, sourcePath, newName], { shell: false, stdio: ["ignore", "pipe", "pipe"] });
 		const stdout: Buffer[] = [];
 		const stderr: Buffer[] = [];
@@ -601,6 +637,9 @@ async function runRenameScan(kbPath: string, sourcePath: string, newName: string
 			try { resolve(JSON.parse(Buffer.concat(stdout).toString("utf8")) as RenameScanReport); } catch { reject(new Error("rename scan returned invalid JSON")); }
 		});
 	});
+	const source = await readRegularFile(kbPath, path.join(kbPath, ...sourcePath.split("/")), false);
+	if (!source) throw new Error("rename source disappeared during scan");
+	return { ...report, source_sha256: sha256Bytes(source) };
 }
 
 async function readRenameLayout(kbPath: string): Promise<GraphLayoutFile | null> {

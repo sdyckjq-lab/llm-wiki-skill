@@ -62,6 +62,43 @@ test("rename rewrites a deterministic bare link to the canonical full page path"
 	}
 });
 
+test("a source page without rewritten links is backed up and a late external edit becomes a conflict", async () => {
+	const kb = await makeKnowledgeBase();
+	try {
+		const sourcePath = path.join(kb, "wiki", "topics", "a.md");
+		const original = Buffer.from("# A without links\n");
+		await writeFile(sourcePath, original);
+		const service = createGraphRenameService({
+			beforeSourceRename: async () => { await writeFile(sourcePath, "external after preparation\n"); },
+			triggerRebuild: () => ({ ok: true, status: "started" }),
+		});
+		const preview = await service.previewGraphRename(kb, "wiki/topics/a.md", "renamed.md");
+		assert.equal(preview.editable_files.length, 0);
+		const result = await service.applyGraphRename(kb, {
+			operation_id: preview.operation_id,
+			expires_at: preview.expires_at,
+			source_path: preview.source_path,
+			new_name: "renamed.md",
+			preview_digest: preview.preview_digest,
+			resolutions: [],
+			confirmed: true,
+		});
+		assert.equal(result.outcome, "operation");
+		assert.equal((result as any).operation.state, "conflicted");
+		assert.equal(await readFile(sourcePath, "utf8"), "external after preparation\n");
+		await assert.rejects(readFile(path.join(kb, "wiki", "topics", "renamed.md")));
+		const record = await new GraphRenameJournalStore(kb).read(preview.operation_id) as any;
+		const originalHash = createHash("sha256").update(original).digest("hex");
+		assert.equal(record.original_hashes[preview.source_path], originalHash);
+		assert.equal(record.intended_hashes[preview.source_path], originalHash);
+		assert.ok(record.backup_paths[preview.source_path]);
+		assert.ok(record.intended_paths[preview.source_path]);
+		assert.deepEqual(record.conflicts[0].preserved_variants.map((variant: any) => variant.kind).sort(), ["current", "intended", "original"]);
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
 test("the same operation ID rejects a retry with different ambiguity resolutions", async () => {
 	const kb = await makeKnowledgeBase();
 	try {
