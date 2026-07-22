@@ -51,3 +51,36 @@ test("real child exits at both transit rename boundaries and a fresh service rec
 		}
 	}
 });
+
+test("fresh child processes can refresh finish and idempotently repeat a conflicted recovery", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-conflict-recovery-"));
+	const metadata = path.join(os.tmpdir(), `llm-wiki-rename-conflict-recovery-${process.pid}-${Date.now()}.json`);
+	try {
+		await mkdir(path.join(kb, "wiki", "topics"), { recursive: true });
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		await writeFile(source, "original\n");
+		const service = createGraphRenameService({
+			beforeSourceRename: async () => { await writeFile(source, "external\n"); },
+			triggerRebuild: () => ({ ok: true, status: "started" }),
+		});
+		const preview = await service.previewGraphRename(kb, "wiki/topics/a.md", "renamed.md");
+		const conflicted = await service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.md", preview_digest: preview.preview_digest, resolutions: [], confirmed: true });
+		assert.equal((conflicted as any).operation.state, "conflicted");
+		await writeFile(metadata, JSON.stringify({ operation_id: preview.operation_id }), "utf8");
+		const child = path.resolve("workbench/server/test/graph-rename-crash-child.ts");
+		await execFileAsync(process.execPath, ["--import", "tsx", child, kb, metadata, "recovery-refresh"]);
+		const refreshed = JSON.parse(await readFile(metadata, "utf8")) as { observed_conflicts: unknown[] };
+		assert.equal(refreshed.observed_conflicts.length >= 2, true);
+		await execFileAsync(process.execPath, ["--import", "tsx", child, kb, metadata, "recovery-finish"]);
+		const finished = JSON.parse(await readFile(metadata, "utf8")) as { result: unknown };
+		assert.equal((finished.result as any).status, "rebuild_required");
+		assert.equal((finished.result as any).operation.state, "rolled_back");
+		assert.equal(await readFile(source, "utf8"), "original\n");
+		await execFileAsync(process.execPath, ["--import", "tsx", child, kb, metadata, "recovery-finish"]);
+		const repeated = JSON.parse(await readFile(metadata, "utf8")) as { result: unknown };
+		assert.deepEqual(repeated.result, finished.result);
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+		await rm(metadata, { force: true });
+	}
+});
