@@ -4079,6 +4079,227 @@
     box-shadow: var(--shadow-lg);
   }
 
+  .graph-rename-dialog {
+    width: min(720px, calc(100vw - 24px));
+    max-width: 720px;
+    max-height: min(820px, calc(100dvh - 24px));
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .graph-rename-step {
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 2px;
+  }
+
+  .graph-rename-step h3,
+  .graph-rename-step h4,
+  .graph-rename-step p {
+    margin: 0;
+  }
+
+  .graph-rename-step h3 {
+    margin-bottom: 12px;
+    font-size: 15px;
+    font-weight: 720;
+  }
+
+  .graph-rename-choice-list,
+  .graph-rename-ambiguity,
+  .graph-rename-recovery-action {
+    display: grid;
+    gap: 8px;
+    margin: 0 0 16px;
+  }
+
+  .graph-rename-choice-list label,
+  .graph-rename-ambiguity label,
+  .graph-rename-recovery-action label,
+  .graph-rename-confirmation {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 9px;
+    border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-surface) 88%, var(--app-bg));
+    padding: 10px 11px;
+  }
+
+  .graph-rename-choice-list code,
+  .graph-rename-ambiguity code,
+  .graph-rename-conflict-heading code,
+  .graph-rename-variants code,
+  .graph-rename-retained-evidence code,
+  .graph-rename-source-path code,
+  .graph-rename-path-change code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .graph-rename-field,
+  .graph-rename-source-path {
+    display: grid;
+    gap: 7px;
+    margin-bottom: 12px;
+  }
+
+  .graph-rename-field > span,
+  .graph-rename-source-path > span {
+    color: var(--app-muted);
+    font-size: 12px;
+    font-weight: 680;
+  }
+
+  .graph-rename-error,
+  .graph-rename-stale,
+  .graph-rename-blocked,
+  .graph-rename-readonly,
+  .graph-rename-rebuild {
+    border: 1px solid color-mix(in srgb, var(--app-danger) 42%, var(--app-border));
+    border-left-width: 4px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-danger) 8%, var(--app-surface));
+    padding: 10px 12px;
+  }
+
+  .graph-rename-error {
+    margin-bottom: 12px;
+    color: var(--app-danger);
+    font-size: 12px;
+  }
+
+  .graph-rename-path-change {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    background: var(--app-bg);
+    padding: 10px;
+  }
+
+  .graph-rename-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 14px;
+  }
+
+  .graph-rename-summary span {
+    border-radius: 999px;
+    background: var(--app-accent-soft);
+    padding: 4px 8px;
+    color: var(--app-accent-deep);
+    font-size: 11px;
+    font-weight: 680;
+  }
+
+  .graph-rename-impact-block,
+  .graph-rename-ambiguity,
+  .graph-rename-conflicts,
+  .graph-rename-retained-evidence {
+    margin-bottom: 14px;
+  }
+
+  .graph-rename-impact-block ul,
+  .graph-rename-conflicts,
+  .graph-rename-variants,
+  .graph-rename-retained-evidence ul {
+    display: grid;
+    gap: 7px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .graph-rename-impact-block li,
+  .graph-rename-conflicts > li,
+  .graph-rename-retained-evidence li {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid var(--app-border);
+    border-radius: 9px;
+    padding: 8px 10px;
+  }
+
+  .graph-rename-layout-note {
+    margin-bottom: 14px !important;
+    border-radius: 9px;
+    background: var(--app-accent-soft);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .graph-rename-ambiguity legend,
+  .graph-rename-recovery-action legend {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .graph-rename-confirmation {
+    margin-bottom: 16px;
+  }
+
+  .graph-rename-conflict-heading,
+  .graph-rename-variants li {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 7px;
+  }
+
+  .graph-rename-conflict-heading span,
+  .graph-rename-variants span,
+  .graph-rename-retained-evidence span {
+    color: var(--app-muted);
+    font-size: 11px;
+  }
+
+  .graph-rename-terminal,
+  .graph-rename-recovery,
+  .graph-rename-rebuild {
+    display: grid;
+    gap: 12px;
+  }
+
+  @media (max-width: 420px) {
+    .graph-rename-dialog {
+      width: calc(100vw - 12px);
+      max-width: none;
+      max-height: calc(100dvh - 12px);
+      padding: 14px;
+    }
+
+    .graph-rename-path-change {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .graph-rename-path-change > span {
+      transform: rotate(90deg);
+      justify-self: start;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .graph-rename-dialog,
+    .graph-rename-dialog * {
+      animation: none !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   .form-field {
     width: 100%;
     border: 1px solid var(--app-border);
