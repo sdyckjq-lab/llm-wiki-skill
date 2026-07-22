@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -218,6 +219,37 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		const currentHash = (await import("node:crypto")).createHash("sha256").update(changed).digest("hex");
 		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: currentHash }] });
 		assert.equal(finished.status, "rebuild_required"); assert.equal((finished as any).operation.state, "rolled_back"); assert.deepEqual(await readFile(source), original);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("recovery retains current and unchosen original evidence before finishing commit", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd";
+	const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const original = await readFile(source);
+		const current = Buffer.from("external-current\n");
+		const intended = Buffer.from("intended-new\n");
+		await writeFile(source, current);
+		const store = new GraphRenameJournalStore(kb);
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/a.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/a.bin`;
+		await store.acquire({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writeOwnedFile(backupPath, original);
+		await store.writeOwnedFile(intendedPath, intended);
+		await store.writePrepared({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) }, backupPaths: { "wiki/topics/a.md": backupPath }, intendedPaths: { "wiki/topics/a.md": intendedPath } });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current), preserved_variants: [] }] });
+		await store.release(operationId);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current) }] });
+		assert.equal(result.status, "rebuild_required");
+		const evidence = (result as any).operation.retained_evidence as Array<{ relative_path: string; sha256: string }>;
+		assert.equal(evidence.length, 2);
+		const evidenceBytes = await Promise.all(evidence.map((item) => readFile(path.join(kb, ...item.relative_path.split("/")))));
+		assert.deepEqual(evidenceBytes.map((bytes) => bytes.toString()).sort(), [original.toString(), current.toString()].sort());
+		assert.deepEqual(await readFile(path.join(kb, "wiki", "topics", "renamed.md")), intended);
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 

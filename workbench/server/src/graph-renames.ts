@@ -623,7 +623,7 @@ async function resolveRecovery(
 				const desired = desiredHashes[relative] ? await readOwnedVariant(kbPath, record, relative, body.action === "finish_commit" ? "intended" : "original") : null;
 				if (desiredHashes[relative] && !desired) throw invalidJournalError("recovery variant is missing");
 				const currentEntry = current.conflicts.find((conflict) => conflict.source_path === relative);
-				const before = currentEntry?.current_state === "present" ? await readFile(path.join(kbPath, ...relative.split("/"))) : null;
+				const before = currentEntry?.current_state === "present" ? await readFileExactPath(path.join(kbPath, ...relative.split("/"))) : null;
 				if ((before === null && desired === null) || (before && desired && before.equals(desired))) continue;
 				if (desired) {
 					const destination = path.join(kbPath, ...relative.split("/"));
@@ -636,7 +636,7 @@ async function resolveRecovery(
 				const staged = stagedRecovery.get(relative);
 				const currentEntry = current.conflicts.find((conflict) => conflict.source_path === relative);
 				const desired = desiredHashes[relative] ? staged?.desired ?? await readOwnedVariant(kbPath, record, relative, body.action === "finish_commit" ? "intended" : "original") : null;
-				const before = currentEntry?.current_state === "present" ? await readFile(path.join(kbPath, ...relative.split("/"))) : null;
+				const before = currentEntry?.current_state === "present" ? await readFileExactPath(path.join(kbPath, ...relative.split("/"))) : null;
 				if ((before === null && desired === null) || (before && desired && before.equals(desired))) continue;
 				await options.beforeRecoveryCommit?.(relative);
 				await assertRecoveryCurrent(kbPath, relative, currentEntry);
@@ -724,14 +724,22 @@ async function assertRecoveryBytes(kbPath: string, relative: string, expected: B
 
 async function readOwnedVariant(kbPath: string, record: GraphRenameJournal, relative: string, kind: "original" | "intended"): Promise<Buffer | null> {
 	const backup = record.backup_paths[relative];
-	if (kind === "original" && backup) return readFile(path.join(kbPath, ...backup.split("/"))).catch(() => null);
+	if (kind === "original" && backup) return readOwnedFile(kbPath, backup);
 	if (kind === "intended") {
 		const intended = record.intended_paths[relative];
-		if (intended) return readFile(path.join(kbPath, ...intended.split("/"))).catch(() => null);
+		if (intended) return readOwnedFile(kbPath, intended);
 		const stage = record.stage_paths[relative];
-		if (stage) return readFile(path.join(kbPath, ...stage.split("/"))).catch(() => null);
+		if (stage) return readOwnedFile(kbPath, stage);
 	}
 	return null;
+}
+
+async function readOwnedFile(kbPath: string, relative: string): Promise<Buffer | null> {
+	const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
+	const info = await lstatExactPath(absolute);
+	if (!info) return null;
+	if (info.isSymbolicLink() || !info.isFile()) throw invalidJournalError("owned recovery file is unsafe");
+	return readFileExactPath(absolute);
 }
 
 async function recomputeRecoveryConflicts(kbPath: string, record: GraphRenameJournal): Promise<{ conflicts: GraphRenameJournal["conflicts"]; blocked: boolean }> {
@@ -771,13 +779,13 @@ async function preserveConflictVariants(
 			variants.push({ kind, relative_path: relativePath, sha256 });
 		};
 		const currentBytes = conflict.current_state === "present"
-			? await readFile(path.join(kbPath, ...conflict.source_path.split("/"))).catch(() => null)
+			? await readFileExactPath(path.join(kbPath, ...conflict.source_path.split("/")))
 			: null;
 		await addVariant("current", currentBytes, undefined, conflict.current_sha256);
 		const originalPath = record.backup_paths[conflict.source_path];
 		const intendedPath = record.intended_paths[conflict.source_path] ?? record.stage_paths[conflict.source_path];
-		const originalBytes = originalPath ? await readFile(path.join(kbPath, ...originalPath.split("/"))).catch(() => null) : null;
-		const intendedBytes = intendedPath ? await readFile(path.join(kbPath, ...intendedPath.split("/"))).catch(() => null) : null;
+		const originalBytes = originalPath ? await readOwnedFile(kbPath, originalPath) : null;
+		const intendedBytes = intendedPath ? await readOwnedFile(kbPath, intendedPath) : null;
 		await addVariant("original", originalBytes, undefined, record.original_hashes[conflict.source_path]);
 		await addVariant("intended", intendedBytes, undefined, record.intended_hashes[conflict.source_path]);
 		result.push({ ...conflict, preserved_variants: variants });
@@ -800,7 +808,7 @@ async function captureRecoveryEvidence(
 		const variants = [...conflict.preserved_variants];
 		const chosen = await readOwnedVariant(kbPath, record, conflict.source_path, chosenKind);
 		const candidates: Array<["current" | "original" | "intended", Buffer | null]> = [
-			["current", conflict.current_state === "present" ? await readFile(path.join(kbPath, ...conflict.source_path.split("/"))).catch(() => null) : null],
+			["current", conflict.current_state === "present" ? await readFileExactPath(path.join(kbPath, ...conflict.source_path.split("/"))) : null],
 			["original", await readOwnedVariant(kbPath, record, conflict.source_path, "original")],
 			["intended", await readOwnedVariant(kbPath, record, conflict.source_path, "intended")],
 		];
