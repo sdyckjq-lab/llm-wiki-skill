@@ -240,6 +240,31 @@ test("startup recovery restores the old source name even when content stayed ori
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("startup recovery stops when the intended source changes after content inspection", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "efefefef-efef-4efe-8efe-efefefefefef";
+	const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const original = await readFile(source);
+		const intended = Buffer.from("intended-source\n");
+		await writeFile(source, intended);
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) } });
+		await store.transition(operationId, "applying", {});
+		await store.release(operationId);
+		const service = createGraphRenameService({
+			afterStartupContentInspect: async () => { await writeFile(source, "late-startup-external\n"); },
+		});
+		await service.recoverGraphRenameOperations(kb);
+		const recovery = await service.getGraphRenameRecovery(kb);
+		assert.equal(recovery.status, "required");
+		assert.equal(await readFile(source, "utf8"), "late-startup-external\n");
+		await assert.rejects(readFile(path.join(kb, "wiki", "topics", "renamed.md"), "utf8"));
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("recovery requires the complete fresh conflict set before restoring original bytes", async () => {
 	const kb = await makeKnowledgeBase();
 	try {

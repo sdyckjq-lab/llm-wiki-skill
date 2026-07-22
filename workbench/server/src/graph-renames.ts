@@ -58,6 +58,7 @@ export interface GraphRenameServiceOptions {
 	afterSourceRename?: () => void | Promise<void>;
 	afterSourceRenameStep?: (state: "old" | "transit" | "target") => void | Promise<void>;
 	beforeSourceRollback?: () => void | Promise<void>;
+	afterStartupContentInspect?: (operationId: string) => void | Promise<void>;
 	beforeRecoveryCommit?: (relativePath: string) => void | Promise<void>;
 	afterRecoveryCheck?: (relativePath: string) => void | Promise<void>;
 	afterRecoveryCommit?: (relativePath: string) => void | Promise<void>;
@@ -185,7 +186,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 						await store.writeBlocked(record.operation_id, "unsafe_current_type");
 						continue;
 					}
-					if (state === "intended") {
+						if (state === "intended") {
 						const target = path.join(realKbPath, ...record.target_path.split("/"));
 						const source = path.join(realKbPath, ...record.source_path.split("/"));
 						const sourceInfo = await lstatExactPath(source);
@@ -200,16 +201,24 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 							await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(realKbPath, store, record, conflicts.conflicts) });
 							continue;
 						}
-						await renameSourceWithTransit({
-							kbRoot: realKbPath,
-							sourcePath: source,
-							targetPath: target,
-							operationId: record.operation_id,
-							transitPath: record.transit_path ? path.join(realKbPath, ...record.transit_path.split("/")) : undefined,
-							onStep: async (renameState, transitPath) => {
-								await store.transition(record.operation_id, "applying", { renameState, ...(transitPath ? { transitPath } : {}) });
-							},
-						});
+						await options.afterStartupContentInspect?.(record.operation_id);
+						try {
+							await renameSourceWithTransit({
+								kbRoot: realKbPath,
+								sourcePath: source,
+								targetPath: target,
+								operationId: record.operation_id,
+								transitPath: record.transit_path ? path.join(realKbPath, ...record.transit_path.split("/")) : undefined,
+								expectedSourceSha256: record.intended_hashes[record.source_path] ?? undefined,
+								onStep: async (renameState, transitPath) => {
+									await store.transition(record.operation_id, "applying", { renameState, ...(transitPath ? { transitPath } : {}) });
+								},
+							});
+						} catch {
+							const conflicts = await recomputeRecoveryConflicts(realKbPath, record);
+							await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(realKbPath, store, record, conflicts.conflicts) });
+							continue;
+						}
 						await store.transition(record.operation_id, "committed", { renameState: "target", graphRebuild: "not_started" });
 						needsRebuild = true;
 					} else if (state === "original") {
