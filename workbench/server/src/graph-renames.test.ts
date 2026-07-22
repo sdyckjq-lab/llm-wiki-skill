@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -140,6 +140,25 @@ test("startup recovery exposes a committed operation whose graph is not publishe
 		await service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.md", preview_digest: preview.preview_digest, resolutions: [], confirmed: true });
 		const recovery = await service.getGraphRenameRecovery(kb);
 		assert.equal(recovery.status, "rebuild_required");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("startup recovery accepts a target rename recorded immediately before commit", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "88888888-8888-4888-8888-888888888888";
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "8".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "8".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", { renameState: "target" });
+		await rename(source, target);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const recovered = await service.recoverGraphRenameOperations(kb);
+		assert.equal(recovered.needsRebuild, true);
+		assert.equal((await store.read(operationId) as any).state, "committed");
+		assert.equal(await readFile(target, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 

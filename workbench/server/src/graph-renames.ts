@@ -163,15 +163,22 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 					const state = await inspectJournalContent(realKbPath, record);
 					if (state === "intended") {
 						const target = path.join(realKbPath, ...record.target_path.split("/"));
+						const source = path.join(realKbPath, ...record.source_path.split("/"));
+						const sourceInfo = await lstat(source).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
 						const targetInfo = await lstat(target).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
-						if (targetInfo) {
+						if (record.rename_state === "target" && targetInfo && !sourceInfo) {
+							await store.transition(record.operation_id, "committed", { renameState: "target", graphRebuild: "not_started" });
+							needsRebuild = true;
+							continue;
+						}
+						if (targetInfo && record.rename_state !== "transit") {
 							const conflicts = await recomputeRecoveryConflicts(realKbPath, record);
 							await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(realKbPath, store, record, conflicts.conflicts) });
 							continue;
 						}
 						await renameSourceWithTransit({
 							kbRoot: realKbPath,
-							sourcePath: path.join(realKbPath, ...record.source_path.split("/")),
+							sourcePath: source,
 							targetPath: target,
 							operationId: record.operation_id,
 							transitPath: record.transit_path ? path.join(realKbPath, ...record.transit_path.split("/")) : undefined,
