@@ -56,15 +56,12 @@ export async function enumerateSourceRenameConflicts(kbPath: string, record: Gra
 			conflicts.push(bytes
 				? { source_path: relative, current_state: "present", current_sha256: sha256Bytes(bytes), preserved_variants: [] }
 				: { source_path: relative, current_state: "missing", preserved_variants: [] });
-		} catch {
-			conflicts.push({ source_path: relative, current_state: "missing", preserved_variants: [] });
-		}
+		} catch { throw Object.assign(new Error("source rename path has an unsafe current type"), { code: "UNSAFE_CURRENT_TYPE" as const }); }
 	}
 	return conflicts;
 }
 
-export function sourceRenameStateMatches(record: GraphRenameJournal, conflicts: GraphRenameJournal["conflicts"]): boolean {
-	const expectedDigest = record.intended_hashes[record.source_path] ?? record.original_hashes[record.source_path];
+export function sourceRenameStateMatches(record: GraphRenameJournal, conflicts: GraphRenameJournal["conflicts"], expectedDigest = record.intended_hashes[record.source_path] ?? record.original_hashes[record.source_path]): boolean {
 	if (!expectedDigest) return false;
 	const byPath = new Map(conflicts.map((conflict) => [conflict.source_path, conflict]));
 	const expectedPresent = record.rename_state === "old" ? record.source_path : record.rename_state === "transit" ? record.transit_path : record.target_path;

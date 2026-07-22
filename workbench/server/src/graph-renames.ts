@@ -178,6 +178,15 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 						continue;
 					}
 						if (state === "intended") {
+						const intendedSourceDigest = record.intended_hashes[record.source_path];
+						if (intendedSourceDigest) {
+							const authoritative = await recomputeRecoveryConflicts(realKbPath, record);
+							if (authoritative.blocked) { await store.writeBlocked(record.operation_id, "unsafe_current_type"); continue; }
+							if (!sourceRenameStateMatches(record, authoritative.conflicts, intendedSourceDigest)) {
+								await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(realKbPath, store, record, authoritative.conflicts) });
+								continue;
+							}
+						}
 						const target = path.join(realKbPath, ...record.target_path.split("/"));
 						const source = path.join(realKbPath, ...record.source_path.split("/"));
 						const sourceInfo = await lstatExactPath(source);
@@ -213,6 +222,15 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 						await store.transition(record.operation_id, "committed", { renameState: "target", graphRebuild: "not_started" });
 						needsRebuild = true;
 					} else if (state === "original") {
+						const originalSourceDigest = record.original_hashes[record.source_path];
+						if (originalSourceDigest) {
+							const authoritative = await recomputeRecoveryConflicts(realKbPath, record);
+							if (authoritative.blocked) { await store.writeBlocked(record.operation_id, "unsafe_current_type"); continue; }
+							if (!sourceRenameStateMatches(record, authoritative.conflicts, originalSourceDigest)) {
+								await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(realKbPath, store, record, authoritative.conflicts) });
+								continue;
+							}
+						}
 						if (record.rename_state !== "old") {
 							const sourceRollback = await rollbackSourceRename(realKbPath, record);
 							if (!sourceRollback.ok) {

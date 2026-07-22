@@ -670,6 +670,8 @@ function safeJournalPaths(value: Partial<GraphRenameJournal>, operationId: strin
 	if (!Object.keys(value.backup_paths ?? {}).every((key) => originalKeySet.has(key))) return false;
 	if (!Object.keys(value.intended_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
 	if (!Object.keys(value.stage_paths ?? {}).every((key) => intendedKeySet.has(key) && Object.hasOwn(value.backup_paths ?? {}, key) && Object.hasOwn(value.intended_paths ?? {}, key))) return false;
+	if (value.state !== "prepared" && !originalKeys.every((key) => value.original_hashes?.[key] === null || Object.hasOwn(value.backup_paths ?? {}, key))) return false;
+	if (value.state !== "prepared" && !intendedKeys.every((key) => value.intended_hashes?.[key] === null || Object.hasOwn(value.intended_paths ?? {}, key))) return false;
 	if (new Set(value.completed_steps ?? []).size !== (value.completed_steps ?? []).length) return false;
 	if (!(value.completed_steps ?? []).every((step) => originalKeySet.has(step) || step === value.source_path)) return false;
 	if (value.state === "prepared" && (value.rename_state !== "old" || value.graph_rebuild !== "not_started" || (value.completed_steps ?? []).length !== 0 || (value.conflicts ?? []).length !== 0 || (value.retained_evidence ?? []).length !== 0)) return false;

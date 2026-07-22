@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,15 @@ test("rename journal creates one lock and durable state transitions", async () =
 		const first = await store.acquire({ operationId: "11111111-1111-4111-8111-111111111111", immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
 		assert.equal(first.state, "prepared");
 		await assert.rejects(store.acquire({ operationId: "22222222-2222-4222-8222-222222222222", immutableDigest: "b".repeat(64), sourcePath: "wiki/topics/c.md", targetPath: "wiki/topics/d.md" }), (error: any) => error.code === "BUSY");
-		await store.writePrepared({ operationId: first.operation_id, immutableDigest: first.immutable_digest, sourcePath: first.source_path, targetPath: first.target_path, originalHashes: { "wiki/topics/a.md": "c".repeat(64) }, intendedHashes: { "wiki/topics/a.md": "d".repeat(64) } });
+		const original = Buffer.from("original\n");
+		const intended = Buffer.from("intended\n");
+		const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+		const backupPath = `.wiki-tmp/rename-ops/${first.operation_id}/backups/source.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${first.operation_id}/intended/source.bin`;
+		await store.writePrepared({ operationId: first.operation_id, immutableDigest: first.immutable_digest, sourcePath: first.source_path, targetPath: first.target_path, originalHashes: { "wiki/topics/a.md": hash(original) }, intendedHashes: { "wiki/topics/a.md": hash(intended) } });
+		await store.writeOwnedFile(backupPath, original);
+		await store.writeOwnedFile(intendedPath, intended);
+		await store.writePrepared({ operationId: first.operation_id, immutableDigest: first.immutable_digest, sourcePath: first.source_path, targetPath: first.target_path, originalHashes: { "wiki/topics/a.md": hash(original) }, intendedHashes: { "wiki/topics/a.md": hash(intended) }, backupPaths: { "wiki/topics/a.md": backupPath }, intendedPaths: { "wiki/topics/a.md": intendedPath } });
 		await store.transition(first.operation_id, "applying", {});
 		await store.transition(first.operation_id, "committed", { renameState: "target", graphRebuild: "succeeded" });
 		const receipt = await store.compactTerminal({ operationId: first.operation_id, now: new Date("2026-08-01T00:00:00.000Z") });
@@ -51,6 +60,7 @@ test("journal validation blocks missing fields, unknown states and mismatched ha
 			intended_paths: {}, stage_paths: {}, backup_paths: {}, conflicts: [], retained_evidence: [],
 		};
 		for (const [, value] of [
+			["missing-durable-variants", base],
 			["missing-completed-steps", { ...base, completed_steps: undefined }],
 			["unknown-rebuild-state", { ...base, graph_rebuild: "later" }],
 			["mismatched-hash-sets", { ...base, intended_hashes: { "wiki/topics/other.md": "c".repeat(64) } }],

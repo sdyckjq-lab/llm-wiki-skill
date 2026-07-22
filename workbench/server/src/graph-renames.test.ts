@@ -273,8 +273,16 @@ test("startup recovery restores the old source name even when content stayed ori
 		await rename(source, target);
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
-		const unchangedHash = createHash("sha256").update("unchanged\n").digest("hex");
-		await store.writePrepared({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/unchanged.md": unchangedHash }, intendedHashes: { "wiki/topics/unchanged.md": "3".repeat(64) } });
+		const unchangedBytes = Buffer.from("unchanged\n");
+		const intendedUnchanged = Buffer.from("intended unchanged\n");
+		const unchangedHash = createHash("sha256").update(unchangedBytes).digest("hex");
+		const intendedHash = createHash("sha256").update(intendedUnchanged).digest("hex");
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/unchanged.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/unchanged.bin`;
+		await store.writePrepared({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/unchanged.md": unchangedHash }, intendedHashes: { "wiki/topics/unchanged.md": intendedHash } });
+		await store.writeOwnedFile(backupPath, unchangedBytes);
+		await store.writeOwnedFile(intendedPath, intendedUnchanged);
+		await store.writePrepared({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/unchanged.md": unchangedHash }, intendedHashes: { "wiki/topics/unchanged.md": intendedHash }, backupPaths: { "wiki/topics/unchanged.md": backupPath }, intendedPaths: { "wiki/topics/unchanged.md": intendedPath } });
 		await store.transition(operationId, "applying", { renameState: "target" });
 		await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
@@ -282,6 +290,35 @@ test("startup recovery restores the old source name even when content stayed ori
 		assert.equal(result.needsRebuild, false);
 		assert.equal(await readFile(source, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
 		await assert.rejects(readFile(target, "utf8"));
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("startup recovery keeps an external target conflict when source content is still original", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "13131313-1313-4131-8131-131313131313";
+	const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		const original = await readFile(source);
+		const intended = Buffer.from("intended after link rewrite\n");
+		await writeFile(target, "external target\n");
+		const store = new GraphRenameJournalStore(kb);
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/source.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/source.bin`;
+		await store.acquire({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) } });
+		await store.writeOwnedFile(backupPath, original);
+		await store.writeOwnedFile(intendedPath, intended);
+		await store.writePrepared({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) }, backupPaths: { "wiki/topics/a.md": backupPath }, intendedPaths: { "wiki/topics/a.md": intendedPath } });
+		await store.transition(operationId, "applying", {});
+		await store.release(operationId);
+		const service = createGraphRenameService();
+		assert.deepEqual(await service.recoverGraphRenameOperations(kb), { needsRebuild: false });
+		const recovery = await service.getGraphRenameRecovery(kb);
+		assert.equal(recovery.status, "required");
+		assert.equal(await readFile(source, "utf8"), original.toString("utf8"));
+		assert.equal(await readFile(target, "utf8"), "external target\n");
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
@@ -297,6 +334,11 @@ test("startup recovery stops when the intended source changes after content insp
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.writePrepared({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) } });
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/source.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/source.bin`;
+		await store.writeOwnedFile(backupPath, original);
+		await store.writeOwnedFile(intendedPath, intended);
+		await store.writePrepared({ operationId, immutableDigest: "e".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) }, backupPaths: { "wiki/topics/a.md": backupPath }, intendedPaths: { "wiki/topics/a.md": intendedPath } });
 		await store.transition(operationId, "applying", {});
 		await store.release(operationId);
 		const service = createGraphRenameService({
@@ -320,9 +362,12 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		const operationId = "55555555-5555-4555-8555-555555555555";
 		const digest = "f".repeat(64);
 		const backupRelative = `.wiki-tmp/rename-ops/${operationId}/backups/a.bak`;
+		const intendedRelative = `.wiki-tmp/rename-ops/${operationId}/intended/a.bin`;
+		const intended = Buffer.from("intended\n");
 		await store.acquire({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.writeOwnedFile(backupRelative, original);
-		await store.writePrepared({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": createHash("sha256").update(original).digest("hex") }, intendedHashes: { "wiki/topics/a.md": "1".repeat(64) }, backupPaths: { "wiki/topics/a.md": backupRelative } });
+		await store.writeOwnedFile(intendedRelative, intended);
+		await store.writePrepared({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": createHash("sha256").update(original).digest("hex") }, intendedHashes: { "wiki/topics/a.md": createHash("sha256").update(intended).digest("hex") }, backupPaths: { "wiki/topics/a.md": backupRelative }, intendedPaths: { "wiki/topics/a.md": intendedRelative } });
 		await store.transition(operationId, "applying", {}); await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "2".repeat(64), preserved_variants: [] }] }); await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		const stale = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "3".repeat(64) }] });
@@ -456,7 +501,9 @@ test("recovery deletion preserves a file changed after its final check", async (
 		await writeFile(source, current);
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
-		await store.writePrepared({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": null }, intendedHashes: { "wiki/topics/a.md": sha(current) } });
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/source.bin`;
+		await store.writeOwnedFile(intendedPath, current);
+		await store.writePrepared({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": null }, intendedHashes: { "wiki/topics/a.md": sha(current) }, intendedPaths: { "wiki/topics/a.md": intendedPath } });
 		await store.transition(operationId, "applying", {});
 		await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current), preserved_variants: [] }] });
 		await store.release(operationId);
@@ -477,7 +524,7 @@ test("recovery uses the same knowledge-base lock as apply", async () => {
 	try {
 		const owner = new GraphRenameJournalStore(kb, { serverInstanceId: "owner", isProcessAlive: () => true });
 		await owner.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
-		await owner.writePrepared({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": "b".repeat(64) }, intendedHashes: { "wiki/topics/a.md": "c".repeat(64) } });
+		await owner.writePrepared({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await owner.transition(operationId, "applying", {});
 		await owner.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "d".repeat(64), preserved_variants: [] }] });
 		const service = createGraphRenameService({
