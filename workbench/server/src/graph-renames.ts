@@ -604,6 +604,8 @@ async function resolveRecovery(
 		const captured = await captureRecoveryEvidence(kbPath, store, record, current.conflicts, body.action, now());
 		const desiredHashes = body.action === "finish_commit" ? record.intended_hashes : record.original_hashes;
 		const applied: RecoveryWrite[] = [];
+		let sourceChanged = false;
+		let sourceConflict: GraphRenameJournal["conflicts"][number] | undefined;
 		const stagedRecovery = new Map<string, { stagedPath: string; desired: Buffer; before: Buffer | null; expected: string | null }>();
 		try {
 			for (const relative of Object.keys(desiredHashes)) {
@@ -636,6 +638,26 @@ async function resolveRecovery(
 				await options.afterRecoveryCommit?.(relative);
 			}
 			for (const entry of applied) await assertRecoveryBytes(kbPath, entry.relative, entry.desired);
+			if (body.action === "finish_commit") {
+				await renameSourceWithTransit({
+					kbRoot: kbPath,
+					sourcePath: path.join(kbPath, ...record.source_path.split("/")),
+					targetPath: path.join(kbPath, ...record.target_path.split("/")),
+					transitPath: record.transit_path ? path.join(kbPath, ...record.transit_path.split("/")) : undefined,
+					operationId: record.operation_id,
+					onStep: async (renameState, transitPath) => {
+						await store.transition(record.operation_id, "conflicted", { renameState, ...(transitPath ? { transitPath } : {}) });
+					},
+				});
+				sourceChanged = record.rename_state !== "target";
+			} else {
+				const restored = await rollbackSourceRename(kbPath, record);
+				if (!restored.ok) {
+					sourceConflict = restored.conflict;
+					throw new Error("source rename recovery is conflicted");
+				}
+				sourceChanged = record.rename_state !== "old";
+			}
 		} catch {
 			for (const staged of stagedRecovery.values()) await unlink(staged.stagedPath).catch(() => undefined);
 			for (const entry of [...applied].reverse()) {
@@ -646,13 +668,15 @@ async function resolveRecovery(
 					// Preserve an unknown external version; it is reported by the next conflict scan.
 				}
 			}
+			if (sourceChanged) await rollbackSourceRename(kbPath, record).catch(() => undefined);
 			const refreshed = await recomputeRecoveryConflicts(kbPath, record);
-			await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(kbPath, store, record, refreshed.conflicts) });
+			const conflicts = sourceConflict ? [sourceConflict, ...refreshed.conflicts] : refreshed.conflicts;
+			await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(kbPath, store, record, conflicts) });
 			return recoveryData(await collectRecovery(store, now));
 		}
 
 		const nextState = body.action === "finish_commit" ? "committed" : "rolled_back";
-		await store.transition(body.operation_id, nextState, { graphRebuild: "not_started", conflicts: captured.conflicts, retainedEvidence: captured.evidence });
+		await store.transition(body.operation_id, nextState, { renameState: body.action === "finish_commit" ? "target" : "old", graphRebuild: "not_started", conflicts: captured.conflicts, retainedEvidence: captured.evidence });
 		try {
 			const result = trigger(kbPath);
 			await store.transition(body.operation_id, nextState, { graphRebuild: result.status });

@@ -97,6 +97,19 @@ test("a commit-boundary failure rolls back already written markdown", async () =
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("a failure after source rename restores the old name and removes transit", async () => {
+	const kb = await makeKnowledgeBase();
+	try {
+		const service = createGraphRenameService({ afterSourceRename: () => { throw new Error("injected source failure"); }, triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const preview = await service.previewGraphRename(kb, "wiki/topics/a.md", "renamed.md");
+		const result = await service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.md", preview_digest: preview.preview_digest, resolutions: [], confirmed: true });
+		assert.equal(result.outcome, "operation");
+		assert.equal((result as any).operation.state, "rolled_back");
+		assert.equal(await readFile(path.join(kb, "wiki", "topics", "a.md"), "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
+		assert.deepEqual(await readdir(path.join(kb, "wiki", "topics")), ["a.md"]);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("changing a scanned file invalidates the complete preview before any write", async () => {
 	const kb = await makeKnowledgeBase();
 	try {
@@ -154,6 +167,7 @@ test("startup recovery accepts a target rename recorded immediately before commi
 		await store.writePrepared({ operationId, immutableDigest: "8".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.transition(operationId, "applying", { renameState: "target" });
 		await rename(source, target);
+		await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		const recovered = await service.recoverGraphRenameOperations(kb);
 		assert.equal(recovered.needsRebuild, true);
@@ -182,7 +196,7 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		assert.equal(stale.status, "required"); assert.deepEqual(await readFile(source), changed);
 		const currentHash = (await import("node:crypto")).createHash("sha256").update(changed).digest("hex");
 		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: currentHash }] });
-		assert.equal(finished.status, "clear"); assert.deepEqual(await readFile(source), original);
+		assert.equal(finished.status, "rebuild_required"); assert.equal((finished as any).operation.state, "rolled_back"); assert.deepEqual(await readFile(source), original);
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
@@ -277,4 +291,25 @@ test("recovery uses the same knowledge-base lock as apply", async () => {
 	} finally {
 		await rm(kb, { recursive: true, force: true });
 	}
+});
+
+test("finish rollback restores the source name after a target rename crash", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "99999999-9999-4999-8999-999999999999";
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		await rename(source, target);
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", transitPath: "wiki/topics/.llm-wiki-rename-crash.md" });
+		await store.transition(operationId, "applying", { renameState: "target" });
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		assert.equal(result.status, "rebuild_required");
+		assert.equal(await readFile(source, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
+		await assert.rejects(readFile(target, "utf8"));
+	} finally { await rm(kb, { recursive: true, force: true }); }
 });
