@@ -6,9 +6,11 @@ import test from "node:test";
 
 import {
 	applyByteRangeReplacements,
+	commitStagedRenameFile,
 	migrateRenameLayoutKey,
 	renameSourceWithTransit,
 	resolveKnowledgeBaseRenamePath,
+	stageRenameFile,
 } from "./graph-rename-files.js";
 
 async function fixture() {
@@ -52,7 +54,57 @@ test("equivalent source names use a real transit path", async () => {
 	try {
 		const oldPath = path.join(root, "Page.md"); const newPath = path.join(root, "page.md");
 		await writeFile(oldPath, "bytes");
-		const transit = await renameSourceWithTransit({ sourcePath: oldPath, targetPath: newPath, operationId: "test" });
+		const transit = await renameSourceWithTransit({ kbRoot: root, sourcePath: oldPath, targetPath: newPath, operationId: "test" });
 		assert.ok(transit); assert.equal(await readFile(newPath, "utf8"), "bytes");
 	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("staging and commit reject destinations outside the registered knowledge base", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-boundary-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-outside-"));
+	try {
+		await assert.rejects(stageRenameFile({
+			kbRoot: root,
+			operationId: "boundary",
+			destinationPath: path.join(outside, "page.md"),
+			bytes: Buffer.from("bytes"),
+		}));
+		const staged = await stageRenameFile({
+			kbRoot: root,
+			operationId: "boundary",
+			destinationPath: path.join(root, "page.md"),
+			bytes: Buffer.from("bytes"),
+		});
+		await assert.rejects(commitStagedRenameFile({
+			kbRoot: root,
+			...staged,
+			destinationPath: path.join(outside, "page.md"),
+		}));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+		await rm(outside, { recursive: true, force: true });
+	}
+});
+
+test("transit rename rejects an unsafe transit path and a symlink source", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-transit-boundary-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-transit-outside-"));
+	try {
+		const source = path.join(root, "Page.md");
+		const target = path.join(root, "page.md");
+		await writeFile(source, "bytes");
+		await assert.rejects(renameSourceWithTransit({
+			kbRoot: root,
+			sourcePath: source,
+			targetPath: target,
+			transitPath: path.join(outside, "transit.md"),
+			operationId: "boundary",
+		}));
+		await rm(source);
+		await symlink(path.join(outside, "external.md"), source);
+		await assert.rejects(renameSourceWithTransit({ kbRoot: root, sourcePath: source, targetPath: target, operationId: "boundary" }));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+		await rm(outside, { recursive: true, force: true });
+	}
 });

@@ -5,6 +5,8 @@ import path from "node:path";
 
 import type { GraphLayoutFile } from "@llm-wiki/graph-engine";
 
+import type { RenameFileState } from "./graph-rename-journal.js";
+
 const require = createRequire(import.meta.url);
 const { loadUnicode17CaseFolder } = require("../../../scripts/lib/unicode-case-folding.js") as {
 	loadUnicode17CaseFolder: () => (value: string) => string;
@@ -32,6 +34,7 @@ export interface ExactByteReplacement {
 }
 
 export interface StageRenameFileInput {
+	kbRoot: string;
 	operationId: string;
 	destinationPath: string;
 	bytes: Buffer;
@@ -47,14 +50,17 @@ export interface StagedRenameFile {
 }
 
 export interface CommitStagedRenameFileInput extends StagedRenameFile {
+	kbRoot: string;
 	expectedDestinationSha256?: string | null;
 }
 
 export interface RenameSourceInput {
+	kbRoot: string;
 	sourcePath: string;
 	targetPath: string;
 	operationId: string;
 	transitPath?: string;
+	onStep?: (state: RenameFileState, transitPath?: string) => void | Promise<void>;
 }
 
 export function sha256Bytes(bytes: Buffer): string {
@@ -163,16 +169,15 @@ export function applyByteRangeReplacements(original: Buffer, replacements: Exact
 }
 
 export async function stageRenameFile(input: StageRenameFileInput): Promise<StagedRenameFile> {
-	const destinationDirectory = path.dirname(input.destinationPath);
-	const destinationDirectoryReal = await realpath(destinationDirectory);
-	if (destinationDirectoryReal !== destinationDirectory) throw renameError("FORBIDDEN_PATH", "destination directory is symbolic");
+	const destinationPath = await assertSafeRenamePath(input.kbRoot, input.destinationPath, true);
+	const destinationDirectory = path.dirname(destinationPath);
 	await mkdir(destinationDirectory, { recursive: false }).catch((error: NodeJS.ErrnoException) => {
 		if (error.code !== "EEXIST") throw error;
 	});
 	const mode = input.mode ?? 0o600;
 	let stagedPath = "";
 	for (let attempt = 0; attempt < 20; attempt += 1) {
-		stagedPath = path.join(destinationDirectory, `.${path.basename(input.destinationPath)}.${input.operationId}.${attempt}.${randomUUID()}.stage`);
+		stagedPath = path.join(destinationDirectory, `.${path.basename(destinationPath)}.${input.operationId}.${attempt}.${randomUUID()}.stage`);
 		try {
 			const handle = await open(stagedPath, "wx", mode);
 			try {
@@ -184,7 +189,7 @@ export async function stageRenameFile(input: StageRenameFileInput): Promise<Stag
 			await chmod(stagedPath, mode & 0o7777);
 			const readBack = await readFile(stagedPath);
 			if (!readBack.equals(input.bytes)) throw new Error("staged bytes failed read-back verification");
-			return { operationId: input.operationId, destinationPath: input.destinationPath, stagedPath, sha256: sha256Bytes(input.bytes), mode };
+			return { operationId: input.operationId, destinationPath, stagedPath, sha256: sha256Bytes(input.bytes), mode };
 		} catch (error) {
 			await unlink(stagedPath).catch(() => undefined);
 			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
@@ -194,30 +199,63 @@ export async function stageRenameFile(input: StageRenameFileInput): Promise<Stag
 }
 
 export async function commitStagedRenameFile(input: CommitStagedRenameFileInput): Promise<void> {
-	const staged = await readFile(input.stagedPath);
+	const destinationPath = await assertSafeRenamePath(input.kbRoot, input.destinationPath, true);
+	const stagedPath = await assertSafeRenamePath(input.kbRoot, input.stagedPath, false);
+	const staged = await readFile(stagedPath);
 	if (sha256Bytes(staged) !== input.sha256) throw new Error("staged file hash mismatch");
-	const current = await lstat(input.destinationPath).catch((error: NodeJS.ErrnoException) => {
+	const current = await lstat(destinationPath).catch((error: NodeJS.ErrnoException) => {
 		if (error.code === "ENOENT") return null;
 		throw error;
 	});
 	if (current?.isSymbolicLink() || (current && !current.isFile())) throw renameError("FORBIDDEN_PATH", "destination is not a regular file");
 	if (input.expectedDestinationSha256 !== undefined) {
-		const currentHash = current ? sha256Bytes(await readFile(input.destinationPath)) : null;
+		const currentHash = current ? sha256Bytes(await readFile(destinationPath)) : null;
 		if (currentHash !== input.expectedDestinationSha256) throw new Error("destination changed since staging");
 	}
-	await rename(input.stagedPath, input.destinationPath);
+	await rename(stagedPath, destinationPath);
 }
 
 export async function renameSourceWithTransit(input: RenameSourceInput): Promise<string | null> {
-	if (input.sourcePath === input.targetPath) return null;
-	const sourceRelative = path.basename(input.sourcePath);
-	const targetRelative = path.basename(input.targetPath);
+	const sourcePath = await assertSafeRenamePath(input.kbRoot, input.sourcePath, false);
+	const targetPath = await assertSafeRenamePath(input.kbRoot, input.targetPath, true);
+	if (sourcePath === targetPath) return null;
+	const sourceInfo = await lstat(sourcePath).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT") return null;
+		throw error;
+	});
+	if (sourceInfo && (!sourceInfo.isFile() || sourceInfo.isSymbolicLink())) throw renameError("FORBIDDEN_PATH", "source must be a regular file");
+	const targetInfo = await lstat(targetPath).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT") return null;
+		throw error;
+	});
+	if (targetInfo && sourceInfo) {
+		const sourceReal = await realpath(sourcePath);
+		const targetReal = await realpath(targetPath);
+		if (sourceReal !== targetReal) throw renameError("CONFLICT", "rename target is occupied");
+	}
+	if (!sourceInfo) {
+		const transit = input.transitPath ? await assertSafeRenamePath(input.kbRoot, input.transitPath, false) : null;
+		if (transit && await lstat(transit).catch(() => null)) {
+			if (targetInfo) throw renameError("CONFLICT", "rename target is occupied during transit recovery");
+			await rename(transit, targetPath);
+			await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
+			return path.relative(input.kbRoot, transit).replaceAll(path.sep, "/");
+		}
+		if (targetInfo) {
+			await input.onStep?.("target");
+			return null;
+		}
+		throw renameError("CONFLICT", "source and transit files are both missing");
+	}
+	const sourceRelative = path.basename(sourcePath);
+	const targetRelative = path.basename(targetPath);
 	const useTransit = portableKey(sourceRelative) === portableKey(targetRelative);
 	if (!useTransit) {
-		await rename(input.sourcePath, input.targetPath);
+		await rename(sourcePath, targetPath);
+		await input.onStep?.("target");
 		return null;
 	}
-	const directory = path.dirname(input.sourcePath);
+	const directory = path.dirname(sourcePath);
 	let transit = input.transitPath;
 	if (!transit) {
 		for (let counter = 0; counter < 100; counter += 1) {
@@ -226,9 +264,37 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 		}
 	}
 	if (!transit) throw new Error("unable to reserve rename transit path");
-	if (input.sourcePath !== transit && await lstat(input.sourcePath).catch(() => null)) await rename(input.sourcePath, transit);
-	if (transit !== input.targetPath && await lstat(transit).catch(() => null)) await rename(transit, input.targetPath);
+	transit = await assertSafeRenamePath(input.kbRoot, transit, true);
+	const transitInfo = await lstat(transit).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT") return null;
+		throw error;
+	});
+	if (transitInfo) throw renameError("CONFLICT", "rename transit path is occupied");
+	if (sourcePath !== transit && await lstat(sourcePath).catch(() => null)) {
+		await rename(sourcePath, transit);
+		await input.onStep?.("transit", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
+	}
+	if (transit !== targetPath && await lstat(transit).catch(() => null)) {
+		await rename(transit, targetPath);
+		await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
+	}
 	return transit;
+}
+
+export async function assertSafeRenamePath(kbRoot: string, candidate: string, allowMissingLeaf: boolean): Promise<string> {
+	const root = await realpath(kbRoot).catch(() => { throw renameError("FORBIDDEN_PATH", "knowledge base is unavailable"); });
+	const rootInput = path.resolve(kbRoot);
+	const candidateInput = path.resolve(candidate);
+	const relativeToInputRoot = path.relative(rootInput, candidateInput);
+	const absolute = isWithin(rootInput, candidateInput)
+		? path.join(root, relativeToInputRoot)
+		: candidateInput;
+	if (!isWithin(root, absolute)) throw renameError("FORBIDDEN_PATH", "rename path escapes knowledge base");
+	await assertNoSymlinkPath(root, absolute, allowMissingLeaf);
+	const parent = path.dirname(absolute);
+	const parentReal = await realpath(parent).catch(() => { throw renameError("FORBIDDEN_PATH", "rename parent is unavailable"); });
+	if (!isWithin(root, parentReal) || parentReal !== parent) throw renameError("FORBIDDEN_PATH", "rename parent is symbolic");
+	return absolute;
 }
 
 export function migrateRenameLayoutKey(layout: GraphLayoutFile, fromKey: string, toKey: string): GraphLayoutFile {

@@ -178,17 +178,7 @@ function sanitizeUnavailableSummary(summary) {
   return safe;
 }
 
-function basenameWithoutMarkdown(relativePath) {
-  return path.posix.basename(relativePath, ".md");
-}
-
 function replacementTargetForOccurrence(occurrence, targetPath) {
-  if (occurrence.link_kind === "attachment_wikilink") {
-    return targetPath;
-  }
-  if (!occurrence.page_target.includes("/") && !occurrence.page_target.endsWith(".md")) {
-    return basenameWithoutMarkdown(targetPath);
-  }
   return targetPath;
 }
 

@@ -1,9 +1,10 @@
 import { randomUUID, createHash } from "node:crypto";
-import { mkdir, open, readFile, readdir, rm, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rm, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
 export type RenameJournalState = "prepared" | "applying" | "committed" | "rolled_back" | "conflicted";
 export type GraphRebuildState = "not_started" | "started" | "queued" | "failed" | "succeeded";
+export type RenameFileState = "old" | "transit" | "target";
 
 export interface PreservedEvidence {
 	relative_path: string;
@@ -15,16 +16,19 @@ export interface GraphRenameJournal {
 	kind: "journal";
 	operation_id: string;
 	immutable_digest: string;
+	resolution_digest?: string;
 	state: RenameJournalState;
 	source_path: string;
 	target_path: string;
 	graph_rebuild: GraphRebuildState;
 	created_at: string;
 	updated_at: string;
+	rename_state: RenameFileState;
 	transit_path?: string;
 	completed_steps: string[];
 	original_hashes: Record<string, string | null>;
 	intended_hashes: Record<string, string | null>;
+	intended_paths: Record<string, string>;
 	stage_paths: Record<string, string>;
 	backup_paths: Record<string, string>;
 	layout_before?: string;
@@ -43,6 +47,7 @@ export interface GraphRenameReceipt {
 	kind: "receipt";
 	operation_id: string;
 	immutable_digest: string;
+	resolution_digest?: string;
 	state: "committed" | "rolled_back" | "conflicted";
 	source_path: string;
 	target_path: string;
@@ -51,6 +56,7 @@ export interface GraphRenameReceipt {
 	updated_at: string;
 	retained_evidence: PreservedEvidence[];
 	final_hashes: Record<string, string | null>;
+	rename_state: RenameFileState;
 }
 
 export interface BlockedRenameJournal {
@@ -64,6 +70,7 @@ export interface AcquireRenameOperation {
 	immutableDigest: string;
 	sourcePath: string;
 	targetPath: string;
+	resolutionDigest?: string;
 	createdAt?: Date;
 }
 
@@ -77,6 +84,8 @@ export interface PreparedRenameJournal {
 	intendedHashes?: Record<string, string | null>;
 	stagePaths?: Record<string, string>;
 	backupPaths?: Record<string, string>;
+	intendedPaths?: Record<string, string>;
+	renameState?: RenameFileState;
 	layoutBefore?: string;
 	layoutAfter?: string;
 	metadata?: Record<string, unknown>;
@@ -90,6 +99,8 @@ export interface JournalPatch {
 	intendedHashes?: Record<string, string | null>;
 	stagePaths?: Record<string, string>;
 	backupPaths?: Record<string, string>;
+	intendedPaths?: Record<string, string>;
+	renameState?: RenameFileState;
 	layoutBefore?: string;
 	layoutAfter?: string;
 	conflicts?: GraphRenameJournal["conflicts"];
@@ -130,11 +141,12 @@ export class GraphRenameJournalStore {
 	}
 
 	async acquire(input: AcquireRenameOperation): Promise<GraphRenameJournal> {
+		if (!safeOperationId(input.operationId)) throw conflictError("operation ID is invalid");
 		await mkdir(this.operationsRoot, { recursive: true, mode: 0o700 });
 		const existing = await this.read(input.operationId);
 		if (existing) {
 			if (existing.kind === "blocked") throw busyError("recovery is blocked");
-			if (existing.immutable_digest !== input.immutableDigest || existing.source_path !== input.sourcePath || existing.target_path !== input.targetPath) throw conflictError("operation ID was reused with different inputs");
+			if (existing.immutable_digest !== input.immutableDigest || existing.source_path !== input.sourcePath || existing.target_path !== input.targetPath || (input.resolutionDigest !== undefined && existing.resolution_digest !== input.resolutionDigest)) throw conflictError("operation ID was reused with different inputs");
 			return existing.kind === "journal" ? existing : receiptAsJournal(existing);
 		}
 		for (const record of await this.listForStartup()) {
@@ -149,15 +161,18 @@ export class GraphRenameJournalStore {
 			kind: "journal",
 			operation_id: input.operationId,
 			immutable_digest: input.immutableDigest,
+			...(input.resolutionDigest ? { resolution_digest: input.resolutionDigest } : {}),
 			state: "prepared",
 			source_path: input.sourcePath,
 			target_path: input.targetPath,
 			graph_rebuild: "not_started",
+			rename_state: "old",
 			created_at: created,
 			updated_at: created,
 			completed_steps: [],
 			original_hashes: {},
 			intended_hashes: {},
+			intended_paths: {},
 			stage_paths: {},
 			backup_paths: {},
 			conflicts: [],
@@ -167,7 +182,23 @@ export class GraphRenameJournalStore {
 		return journal;
 	}
 
+	/** Acquire the same per-knowledge-base lock for recovery of an existing journal. */
+	async acquireExisting(operationId: string): Promise<GraphRenameJournal> {
+		if (!safeOperationId(operationId)) throw conflictError("operation ID is invalid");
+		const record = await this.read(operationId);
+		if (!record || record.kind !== "journal") throw conflictError("rename journal is unavailable");
+		await this.acquireLock({
+			operationId: record.operation_id,
+			immutableDigest: record.immutable_digest,
+			sourcePath: record.source_path,
+			targetPath: record.target_path,
+			...(record.resolution_digest ? { resolutionDigest: record.resolution_digest } : {}),
+		});
+		return record;
+	}
+
 	async read(operationId: string): Promise<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal | null> {
+		if (!safeOperationId(operationId)) return { kind: "blocked", operation_id: null, reason: "invalid_journal" };
 		const directory = path.join(this.operationsRoot, operationId);
 		const content = await readFile(path.join(directory, "manifest.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return null;
@@ -192,8 +223,10 @@ export class GraphRenameJournalStore {
 			transit_path: input.transitPath,
 			original_hashes: input.originalHashes ?? {},
 			intended_hashes: input.intendedHashes ?? {},
+			intended_paths: input.intendedPaths ?? {},
 			stage_paths: input.stagePaths ?? {},
 			backup_paths: input.backupPaths ?? {},
+			rename_state: input.renameState ?? current.rename_state,
 			layout_before: input.layoutBefore,
 			layout_after: input.layoutAfter,
 			metadata: input.metadata,
@@ -215,6 +248,8 @@ export class GraphRenameJournalStore {
 			...(patch.intendedHashes ? { intended_hashes: { ...patch.intendedHashes } } : {}),
 			...(patch.stagePaths ? { stage_paths: { ...patch.stagePaths } } : {}),
 			...(patch.backupPaths ? { backup_paths: { ...patch.backupPaths } } : {}),
+			...(patch.intendedPaths ? { intended_paths: { ...patch.intendedPaths } } : {}),
+			...(patch.renameState ? { rename_state: patch.renameState } : {}),
 			...(patch.layoutBefore !== undefined ? { layout_before: patch.layoutBefore } : {}),
 			...(patch.layoutAfter !== undefined ? { layout_after: patch.layoutAfter } : {}),
 			...(patch.conflicts ? { conflicts: patch.conflicts } : {}),
@@ -222,6 +257,19 @@ export class GraphRenameJournalStore {
 			...(patch.metadata ? { metadata: { ...patch.metadata } } : {}),
 		};
 		await this.writeManifest(next);
+	}
+
+	/** Remove an operation that failed before any final file commit. */
+	async abortPrepared(operationId: string): Promise<void> {
+		const current = await this.readRequiredJournal(operationId);
+		if (current.state !== "prepared") return;
+		for (const stage of Object.values(current.stage_paths)) await unlink(path.join(this.kbPath, stage)).catch(() => undefined);
+		for (const backup of Object.values(current.backup_paths)) await unlink(path.join(this.kbPath, backup)).catch(() => undefined);
+		for (const intended of Object.values(current.intended_paths)) await unlink(path.join(this.kbPath, intended)).catch(() => undefined);
+		await this.release(operationId);
+		await rm(path.join(this.operationsRoot, operationId), { recursive: true, force: true });
+		const remaining = await readdir(this.operationsRoot).catch(() => [] as string[]);
+		if (remaining.length === 0) await rmdir(this.operationsRoot).catch(() => undefined);
 	}
 
 	async listForStartup(): Promise<Array<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal>> {
@@ -239,6 +287,7 @@ export class GraphRenameJournalStore {
 	}
 
 	async preserveConflictVariant(input: PreserveConflictInput): Promise<string> {
+		if (!safeOperationId(input.operationId) || !safeRelative(input.sourcePath)) throw conflictError("conflict evidence path is invalid");
 		const directory = path.join(this.operationsRoot, input.operationId, "evidence");
 		await mkdir(directory, { recursive: true, mode: 0o700 });
 		const digest = createHash("sha256").update(input.bytes).digest("hex");
@@ -253,10 +302,12 @@ export class GraphRenameJournalStore {
 		if (!isTerminalState(current.state)) throw new Error("cannot compact non-terminal journal");
 		for (const stage of Object.values(current.stage_paths)) await unlink(path.join(this.kbPath, stage)).catch(() => undefined);
 		for (const backup of Object.values(current.backup_paths)) await unlink(path.join(this.kbPath, backup)).catch(() => undefined);
+		for (const intended of Object.values(current.intended_paths)) await unlink(path.join(this.kbPath, intended)).catch(() => undefined);
 		const receipt: GraphRenameReceipt = {
 			kind: "receipt",
 			operation_id: current.operation_id,
 			immutable_digest: current.immutable_digest,
+			...(current.resolution_digest ? { resolution_digest: current.resolution_digest } : {}),
 			state: current.state,
 			source_path: current.source_path,
 			target_path: current.target_path,
@@ -265,6 +316,7 @@ export class GraphRenameJournalStore {
 			updated_at: input.now.toISOString(),
 			retained_evidence: input.resolvedConflictEvidence ?? current.retained_evidence,
 			final_hashes: { ...(current.state === "rolled_back" ? current.original_hashes : current.intended_hashes) },
+			rename_state: current.rename_state,
 		};
 		await this.writeManifest(receipt);
 		if (receipt.retained_evidence.length === 0) await removeEmptyOwnedFiles(this.operationsRoot, current.operation_id, "manifest.json");
@@ -292,8 +344,8 @@ export class GraphRenameJournalStore {
 		const value = await readFile(lockPath, "utf8").catch(() => null);
 		if (!value) return;
 		try {
-			const lock = JSON.parse(value) as { operation_id?: string };
-			if (lock.operation_id === operationId) await unlink(lockPath);
+			const lock = JSON.parse(value) as { operation_id?: string; server_instance_id?: string };
+			if (lock.operation_id === operationId && lock.server_instance_id === this.serverInstanceId) await unlink(lockPath);
 		} catch {
 			// A malformed lock is never guessed or removed.
 		}
@@ -305,15 +357,15 @@ export class GraphRenameJournalStore {
 			try {
 				const handle = await open(lockPath, "wx", 0o600);
 				try {
-					await handle.writeFile(JSON.stringify({ operation_id: input.operationId, immutable_digest: input.immutableDigest, owner_pid: process.pid, server_instance_id: this.serverInstanceId, created_at: this.now().toISOString() }));
+					await handle.writeFile(JSON.stringify({ operation_id: input.operationId, immutable_digest: input.immutableDigest, ...(input.resolutionDigest ? { resolution_digest: input.resolutionDigest } : {}), owner_pid: process.pid, server_instance_id: this.serverInstanceId, created_at: this.now().toISOString() }));
 					await handle.sync();
 				} finally { await handle.close(); }
 				return;
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-				const lock = await readFile(lockPath, "utf8").then((text) => JSON.parse(text) as { owner_pid?: number; operation_id?: string }).catch(() => null);
+				const lock = await readFile(lockPath, "utf8").then((text) => JSON.parse(text) as { owner_pid?: number; operation_id?: string; server_instance_id?: string }).catch(() => null);
 				if (!lock) throw busyError("rename lock is malformed");
-				if (lock.operation_id === input.operationId) {
+				if (lock.operation_id === input.operationId && lock.server_instance_id === this.serverInstanceId && lock.owner_pid === process.pid) {
 					const existing = await this.read(input.operationId);
 					if (existing && existing.kind !== "blocked") return;
 				}
@@ -362,13 +414,32 @@ function isJournalState(value: unknown): value is RenameJournalState {
 function safeRelative(value: unknown): value is string {
 	return typeof value === "string" && value.length > 0 && !value.startsWith("/") && !value.includes("\\") && !value.split("/").some((part) => !part || part === "." || part === "..");
 }
+function safeOperationId(value: unknown): value is string {
+	return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function safeSha(value: unknown): value is string {
+	return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
 function safeJournalPaths(value: Partial<GraphRenameJournal>): boolean {
 	if (!safeRelative(value.source_path) || !safeRelative(value.target_path)) return false;
-	for (const item of [value.transit_path, ...Object.keys(value.original_hashes ?? {}), ...Object.keys(value.intended_hashes ?? {}), ...Object.keys(value.stage_paths ?? {}), ...Object.keys(value.backup_paths ?? {})]) if (item !== undefined && !safeRelative(item)) return false;
-	return (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && Number.isFinite(new Date(item.expires_at).getTime()));
+	if (!isRenameFileState(value.rename_state)) return false;
+	if (!safeOperationId(value.operation_id) || !safeSha(value.immutable_digest) || (value.resolution_digest !== undefined && !safeSha(value.resolution_digest))) return false;
+	for (const item of [value.transit_path, ...Object.keys(value.original_hashes ?? {}), ...Object.keys(value.intended_hashes ?? {}), ...Object.keys(value.intended_paths ?? {}), ...Object.keys(value.stage_paths ?? {}), ...Object.keys(value.backup_paths ?? {})]) if (item !== undefined && !safeRelative(item)) return false;
+	if (!Object.entries(value.original_hashes ?? {}).every(([key, digest]) => safeRelative(key) && (digest === null || safeSha(digest)))) return false;
+	if (!Object.entries(value.intended_hashes ?? {}).every(([key, digest]) => safeRelative(key) && (digest === null || safeSha(digest)))) return false;
+	if (!Object.entries(value.intended_paths ?? {}).every(([key, relative]) => safeRelative(key) && safeRelative(relative))) return false;
+	if (!Object.entries(value.stage_paths ?? {}).every(([key, relative]) => safeRelative(key) && safeRelative(relative))) return false;
+	if (!Object.entries(value.backup_paths ?? {}).every(([key, relative]) => safeRelative(key) && safeRelative(relative))) return false;
+	if (!(value.conflicts ?? []).every((conflict) => safeConflict(conflict))) return false;
+	return (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && safeSha(item.sha256) && Number.isFinite(new Date(item.expires_at).getTime()));
 }
 function safeReceiptPaths(value: Partial<GraphRenameReceipt>): boolean {
-	return safeRelative(value.source_path) && safeRelative(value.target_path) && (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && Number.isFinite(new Date(item.expires_at).getTime()));
+	return safeRelative(value.source_path) && safeRelative(value.target_path) && safeOperationId(value.operation_id) && safeSha(value.immutable_digest) && (value.resolution_digest === undefined || safeSha(value.resolution_digest)) && isRenameFileState(value.rename_state) && Object.values(value.final_hashes ?? {}).every((digest) => digest === null || safeSha(digest)) && (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && safeSha(item.sha256) && Number.isFinite(new Date(item.expires_at).getTime()));
+}
+function safeConflict(value: GraphRenameJournal["conflicts"][number]): boolean {
+	if (!safeRelative(value.source_path)) return false;
+	if (value.current_state === "present" && !safeSha(value.current_sha256)) return false;
+	return value.preserved_variants.every((variant) => safeRelative(variant.relative_path) && safeSha(variant.sha256));
 }
 function isTerminalState(value: unknown): value is "committed" | "rolled_back" | "conflicted" {
 	return value === "committed" || value === "rolled_back" || value === "conflicted";
@@ -379,10 +450,15 @@ function validTransition(from: RenameJournalState, to: RenameJournalState): bool
 function receiptAsJournal(receipt: GraphRenameReceipt): GraphRenameJournal {
 	return {
 		kind: "journal", operation_id: receipt.operation_id, immutable_digest: receipt.immutable_digest, state: receipt.state,
+		...(receipt.resolution_digest ? { resolution_digest: receipt.resolution_digest } : {}),
 		source_path: receipt.source_path, target_path: receipt.target_path, graph_rebuild: receipt.graph_rebuild,
-		created_at: receipt.created_at, updated_at: receipt.updated_at, completed_steps: [], original_hashes: {},
-		intended_hashes: receipt.final_hashes, stage_paths: {}, backup_paths: {}, conflicts: [], retained_evidence: receipt.retained_evidence,
+		created_at: receipt.created_at, updated_at: receipt.updated_at, rename_state: receipt.rename_state, completed_steps: [], original_hashes: {},
+		intended_hashes: receipt.final_hashes, stage_paths: {}, backup_paths: {}, intended_paths: {}, conflicts: [], retained_evidence: receipt.retained_evidence,
 	};
+}
+
+function isRenameFileState(value: unknown): value is RenameFileState {
+	return value === "old" || value === "transit" || value === "target";
 }
 
 function busyError(message: string): Error & { code: "BUSY" } { return Object.assign(new Error(message), { code: "BUSY" as const }); }
