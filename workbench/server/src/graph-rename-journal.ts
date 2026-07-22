@@ -207,7 +207,10 @@ export class GraphRenameJournalStore {
 
 	async read(operationId: string): Promise<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal | null> {
 		if (!safeOperationId(operationId)) return { kind: "blocked", operation_id: null, reason: "invalid_journal" };
-		try { await this.assertSafeJournalRoot(false); } catch { return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" }; }
+		try {
+			await this.assertSafeJournalRoot(false);
+			await this.assertSafeOperationDirectory(operationId, false);
+		} catch { return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" }; }
 		const directory = path.join(this.operationsRoot, operationId);
 		const content = await readFile(path.join(directory, "manifest.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return null;
@@ -359,9 +362,18 @@ export class GraphRenameJournalStore {
 
 	async removeOwnedWorkingCopies(operationId: string): Promise<void> {
 		const current = await this.readRequiredJournal(operationId);
-		for (const stage of Object.values(current.stage_paths)) await unlink(path.join(this.kbPath, stage)).catch(() => undefined);
-		for (const backup of Object.values(current.backup_paths)) await unlink(path.join(this.kbPath, backup)).catch(() => undefined);
-		for (const intended of Object.values(current.intended_paths)) await unlink(path.join(this.kbPath, intended)).catch(() => undefined);
+		for (const stage of Object.values(current.stage_paths)) {
+			await this.assertSafeOwnedPath(stage, true);
+			await unlink(path.join(this.kbPath, stage)).catch(() => undefined);
+		}
+		for (const backup of Object.values(current.backup_paths)) {
+			await this.assertSafeOwnedPath(backup, true);
+			await unlink(path.join(this.kbPath, backup)).catch(() => undefined);
+		}
+		for (const intended of Object.values(current.intended_paths)) {
+			await this.assertSafeOwnedPath(intended, true);
+			await unlink(path.join(this.kbPath, intended)).catch(() => undefined);
+		}
 	}
 
 	async pruneExpiredOperationData(input: { now: Date; receiptRetentionMs: number; evidenceRetentionMs: number }): Promise<string[]> {
@@ -373,10 +385,14 @@ export class GraphRenameJournalStore {
 				const expiresAt = new Date(item.expires_at).getTime();
 				return Number.isFinite(expiresAt) && input.now.getTime() < expiresAt && input.now.getTime() < terminalAt + input.evidenceRetentionMs;
 			});
-			for (const item of record.retained_evidence.filter((item) => !evidence.includes(item))) await unlink(path.join(this.kbPath, item.relative_path)).catch(() => undefined);
-			if (evidence.length !== record.retained_evidence.length) await this.writeManifest({ ...record, retained_evidence: evidence });
-			if (evidence.length === 0 && input.now.getTime() >= terminalAt + input.receiptRetentionMs) {
-				await rm(path.join(this.operationsRoot, record.operation_id), { recursive: true, force: true });
+		for (const item of record.retained_evidence.filter((item) => !evidence.includes(item))) {
+			await this.assertSafeOwnedPath(item.relative_path, true);
+			await unlink(path.join(this.kbPath, item.relative_path)).catch(() => undefined);
+		}
+		if (evidence.length !== record.retained_evidence.length) await this.writeManifest({ ...record, retained_evidence: evidence });
+		if (evidence.length === 0 && input.now.getTime() >= terminalAt + input.receiptRetentionMs) {
+			await this.assertSafeOperationDirectory(record.operation_id, false);
+			await rm(path.join(this.operationsRoot, record.operation_id), { recursive: true, force: true });
 				removed.push(record.operation_id);
 			}
 		}

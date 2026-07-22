@@ -96,6 +96,19 @@ test("journal refuses a replaced wiki temporary root instead of writing outside 
 	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
+test("journal refuses a replaced operation directory instead of following its symlink", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-operation-link-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-operation-outside-"));
+	try {
+		const operationId = "77777777-7777-4777-8777-777777777777";
+		const operationsRoot = path.join(kb, ".wiki-tmp", "rename-ops");
+		await mkdir(operationsRoot, { recursive: true });
+		await writeFile(path.join(outside, "manifest.json"), JSON.stringify({ kind: "blocked", operation_id: operationId, reason: "unknown_state" }), "utf8");
+		await symlink(outside, path.join(operationsRoot, operationId));
+		assert.deepEqual(await new GraphRenameJournalStore(kb).read(operationId), { kind: "blocked", operation_id: operationId, reason: "invalid_journal" });
+	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
 test("same operation ID and digest is idempotent after terminal receipt", async () => {
 	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-idempotent-"));
 	try {
