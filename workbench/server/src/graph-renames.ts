@@ -227,7 +227,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 					}
 				} else if (isPendingGraphPublication(record)) {
 					if (await isRenamePublished(realKbPath, record)) {
-						await store.transition(record.operation_id, "committed", { graphRebuild: "succeeded" });
+						await store.transition(record.operation_id, record.state, { graphRebuild: "succeeded" });
 						await store.compactTerminal({ operationId: record.operation_id, now: now() });
 					} else {
 						needsRebuild = true;
@@ -283,7 +283,7 @@ async function markGraphPublished(kbPath: string, store: GraphRenameJournalStore
 			const record = await store.acquireExisting(candidate.operation_id);
 			locked = true;
 			if (!await isRenamePublished(kbPath, record)) continue;
-			await store.transition(record.operation_id, "committed", { graphRebuild: "succeeded" });
+			await store.transition(record.operation_id, record.state, { graphRebuild: "succeeded" });
 			await store.compactTerminal({ operationId: record.operation_id, now: new Date() });
 		} catch (error) {
 			if ((error as { code?: unknown }).code !== "BUSY") throw error;
@@ -658,16 +658,24 @@ async function resolveRecovery(
 			}
 			for (const entry of applied) await assertRecoveryBytes(kbPath, entry.relative, entry.desired);
 			if (body.action === "finish_commit") {
-				await renameSourceWithTransit({
-					kbRoot: kbPath,
-					sourcePath: path.join(kbPath, ...record.source_path.split("/")),
-					targetPath: path.join(kbPath, ...record.target_path.split("/")),
-					transitPath: record.transit_path ? path.join(kbPath, ...record.transit_path.split("/")) : undefined,
-					operationId: record.operation_id,
-					onStep: async (renameState, transitPath) => {
-						await store.transition(record.operation_id, "conflicted", { renameState, ...(transitPath ? { transitPath } : {}) });
-					},
-				});
+				try {
+					await renameSourceWithTransit({
+						kbRoot: kbPath,
+						sourcePath: path.join(kbPath, ...record.source_path.split("/")),
+						targetPath: path.join(kbPath, ...record.target_path.split("/")),
+						transitPath: record.transit_path ? path.join(kbPath, ...record.transit_path.split("/")) : undefined,
+						operationId: record.operation_id,
+						onStep: async (renameState, transitPath) => {
+							await store.transition(record.operation_id, "conflicted", { renameState, ...(transitPath ? { transitPath } : {}) });
+						},
+					});
+				} catch (error) {
+					const sourceConflicts = await collectSourceRenameConflicts(kbPath, record);
+					sourceConflict = sourceConflicts.find((conflict) => conflict.source_path === record.target_path)
+						?? sourceConflicts.find((conflict) => conflict.source_path === record.transit_path)
+						?? sourceConflicts[0];
+					throw error;
+				}
 				sourceChanged = record.rename_state !== "target";
 			} else {
 				const restored = await rollbackSourceRename(kbPath, record);
@@ -761,6 +769,20 @@ async function recomputeRecoveryConflicts(kbPath: string, record: GraphRenameJou
 		else conflicts.push({ source_path: relative, current_state: "present", current_sha256: sha256Bytes(await readFileExactPath(absolute) as Buffer), preserved_variants: [] });
 	}
 	return { conflicts, blocked: false };
+}
+
+async function collectSourceRenameConflicts(kbPath: string, record: GraphRenameJournal): Promise<GraphRenameJournal["conflicts"]> {
+	const paths = [record.source_path, record.transit_path, record.target_path].filter((value): value is string => Boolean(value));
+	const conflicts: GraphRenameJournal["conflicts"] = [];
+	for (const relative of paths) {
+		const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
+		const info = await lstatExactPath(absolute);
+		if (!info) continue;
+		if (info.isSymbolicLink() || !info.isFile()) continue;
+		const bytes = await readFileExactPath(absolute);
+		if (bytes) conflicts.push({ source_path: relative, current_state: "present", current_sha256: sha256Bytes(bytes), preserved_variants: [] });
+	}
+	return conflicts;
 }
 
 async function preserveConflictVariants(

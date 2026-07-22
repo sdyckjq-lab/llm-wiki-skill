@@ -7,6 +7,7 @@ import test from "node:test";
 
 import { createGraphRenameService } from "./graph-renames.js";
 import { GraphRenameJournalStore } from "./graph-rename-journal.js";
+import { publishGraphRebuildResult } from "./graph.js";
 
 async function makeKnowledgeBase() {
 	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-renames-"));
@@ -392,6 +393,25 @@ test("finish rollback restores the source name after a target rename crash", asy
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("finish commit reports an occupied target name as a source conflict", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "34343434-3434-4434-8434-343434343434";
+	try {
+		await writeFile(path.join(kb, "wiki", "topics", "renamed.md"), "external-target\n");
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "3".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "3".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", { renameState: "old" });
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
+		assert.equal(result.status, "required");
+		const conflicts = (result as any).operation.conflicts as Array<{ source_path: string; current_state: string; current_sha256?: string }>;
+		assert.equal(conflicts.some((conflict) => conflict.source_path === "wiki/topics/renamed.md" && conflict.current_state === "present" && conflict.current_sha256), true);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("failed graph rebuild remains visible and can be retried", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "edededed-eded-4ede-8ede-edededededed";
@@ -408,6 +428,40 @@ test("failed graph rebuild remains visible and can be retried", async () => {
 		assert.equal((result as any).operation.graph_rebuild, "failed");
 		const retried = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		assert.deepEqual(await retried.triggerPendingGraphRebuild?.(kb), { status: "started" });
+		assert.equal((await store.read(operationId) as any).state, "rolled_back");
 		assert.equal((await store.read(operationId) as any).graph_rebuild, "started");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("published rollback keeps rolled_back state while marking graph publication", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "56565656-5656-4565-8565-565656565656";
+	try {
+		await mkdir(path.join(kb, "wiki"), { recursive: true });
+		const graph = {
+			meta: { build_date: "2026-07-22T00:00:00.000Z", wiki_title: "Test", total_nodes: 1, total_edges: 0 },
+			nodes: [{ id: "wiki/topics/a.md", source_path: "wiki/topics/a.md", label: "A", type: "topic" }],
+			edges: [],
+		};
+		await writeFile(path.join(kb, "wiki", "graph-data.json"), JSON.stringify(graph));
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "rolled_back", { graphRebuild: "started" });
+		await store.release(operationId);
+		const service = createGraphRenameService({ journalStore: () => store });
+		await service.getGraphRenameRecovery(kb);
+		await publishGraphRebuildResult({
+			kbPath: kb,
+			previous: null,
+			next: graph,
+			rebuiltAt: "2026-07-22T00:00:01.000Z",
+			warningState: { summary: null, details_status: "unavailable", details_unavailable_reason: "legacy_without_summary", engine_groups: [] },
+		});
+		await service.recoverGraphRenameOperations(kb);
+		const record = await store.read(operationId) as any;
+		assert.equal(record.state, "rolled_back");
+		assert.equal(record.graph_rebuild, "succeeded");
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
