@@ -212,6 +212,7 @@ export async function stageRenameFile(input: StageRenameFileInput): Promise<Stag
 export async function commitStagedRenameFile(input: CommitStagedRenameFileInput): Promise<void> {
 	const destinationPath = await assertSafeRenamePath(input.kbRoot, input.destinationPath, true);
 	const stagedPath = await assertSafeRenamePath(input.kbRoot, input.stagedPath, false);
+	const destinationParent = await captureParentBoundary(input.kbRoot, destinationPath);
 	const staged = await readFile(stagedPath);
 	if (sha256Bytes(staged) !== input.sha256) throw new Error("staged file hash mismatch");
 	const current = await lstat(destinationPath).catch((error: NodeJS.ErrnoException) => {
@@ -230,6 +231,7 @@ export async function commitStagedRenameFile(input: CommitStagedRenameFileInput)
 	const finalHash = finalCurrent ? sha256Bytes(await readFile(destinationPath)) : null;
 	if (input.expectedDestinationSha256 !== undefined && finalHash !== input.expectedDestinationSha256) throw new Error("destination changed before commit");
 	await input.afterFinalCheck?.();
+	await assertParentBoundary(input.kbRoot, destinationPath, destinationParent);
 	if (!finalCurrent) {
 		await linkNoReplace(stagedPath, destinationPath);
 		await unlink(stagedPath);
@@ -255,6 +257,8 @@ export async function commitStagedRenameFile(input: CommitStagedRenameFileInput)
 export async function renameSourceWithTransit(input: RenameSourceInput): Promise<string | null> {
 	const sourcePath = await assertSafeRenamePath(input.kbRoot, input.sourcePath, true);
 	const targetPath = await assertSafeRenamePath(input.kbRoot, input.targetPath, true);
+	const sourceParent = await captureParentBoundary(input.kbRoot, sourcePath);
+	const targetParent = await captureParentBoundary(input.kbRoot, targetPath);
 	if (sourcePath === targetPath) return null;
 	let sourceInfo = await lstatExactPath(sourcePath);
 	if (sourceInfo && (!sourceInfo.isFile() || sourceInfo.isSymbolicLink())) throw renameError("FORBIDDEN_PATH", "source must be a regular file");
@@ -307,6 +311,8 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 		await input.beforeRename?.("source", "target");
 		if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during commit");
 		await input.afterFinalCheck?.("source", "target");
+		await assertParentBoundary(input.kbRoot, sourcePath, sourceParent);
+		await assertParentBoundary(input.kbRoot, targetPath, targetParent);
 		await linkNoReplace(sourcePath, targetPath);
 		if (input.expectedSourceSha256 && sha256Bytes(await readFile(targetPath)) !== input.expectedSourceSha256) {
 			await unlink(targetPath);
@@ -326,12 +332,15 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	}
 	if (!transit) throw new Error("unable to reserve rename transit path");
 	transit = await assertSafeRenamePath(input.kbRoot, transit, true);
+	const transitParent = await captureParentBoundary(input.kbRoot, transit);
 	const generatedTransitInfo = await lstatExactPath(transit);
 	if (generatedTransitInfo) throw renameError("CONFLICT", "rename transit path is occupied");
 	if (sourcePath !== transit && await lstatExactPath(sourcePath)) {
 		await input.beforeRename?.("source", "transit");
 		if (await lstatExactPath(transit)) throw renameError("CONFLICT", "rename transit appeared during commit");
 		await input.afterFinalCheck?.("source", "transit");
+		await assertParentBoundary(input.kbRoot, sourcePath, sourceParent);
+		await assertParentBoundary(input.kbRoot, transit, transitParent);
 		await linkNoReplace(sourcePath, transit);
 		if (input.expectedSourceSha256 && sha256Bytes(await readFile(transit)) !== input.expectedSourceSha256) {
 			await unlink(transit);
@@ -344,6 +353,8 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 		await input.beforeRename?.("transit", "target");
 		if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during commit");
 		await input.afterFinalCheck?.("transit", "target");
+		await assertParentBoundary(input.kbRoot, transit, transitParent);
+		await assertParentBoundary(input.kbRoot, targetPath, targetParent);
 		await linkNoReplace(transit, targetPath);
 		if (input.expectedSourceSha256 && sha256Bytes(await readFile(targetPath)) !== input.expectedSourceSha256) {
 			await unlink(targetPath);
@@ -371,6 +382,31 @@ async function restoreNoReplace(source: string, destination: string): Promise<vo
 
 function sameFileIdentity(left: import("node:fs").Stats, right: import("node:fs").Stats): boolean {
 	return left.dev === right.dev && left.ino === right.ino;
+}
+
+interface ParentBoundary {
+	path: string;
+	realPath: string;
+	dev: number;
+	ino: number;
+}
+
+async function captureParentBoundary(root: string, candidate: string): Promise<ParentBoundary> {
+	const parent = path.dirname(candidate);
+	const rootReal = await realpath(root).catch(() => { throw renameError("FORBIDDEN_PATH", "knowledge base is unavailable"); });
+	const realPath = await realpath(parent).catch(() => { throw renameError("FORBIDDEN_PATH", "rename parent is unavailable"); });
+	if (!isWithin(rootReal, realPath) || realPath !== parent) throw renameError("FORBIDDEN_PATH", "rename parent is symbolic");
+	const info = await lstat(parent);
+	if (!info.isDirectory() || info.isSymbolicLink()) throw renameError("FORBIDDEN_PATH", "rename parent is unsafe");
+	return { path: parent, realPath, dev: info.dev, ino: info.ino };
+}
+
+async function assertParentBoundary(root: string, candidate: string, expected: ParentBoundary): Promise<void> {
+	const parent = path.dirname(candidate);
+	const rootReal = await realpath(root).catch(() => { throw renameError("FORBIDDEN_PATH", "knowledge base is unavailable"); });
+	const realPath = await realpath(parent).catch(() => { throw renameError("FORBIDDEN_PATH", "rename parent is unavailable"); });
+	const info = await lstat(parent).catch(() => null);
+	if (!info || !info.isDirectory() || info.isSymbolicLink() || parent !== expected.path || realPath !== expected.realPath || info.dev !== expected.dev || info.ino !== expected.ino || !isWithin(rootReal, realPath)) throw renameError("FORBIDDEN_PATH", "rename parent changed during commit");
 }
 
 /** Look up a directory entry by its exact spelling, even on case-insensitive volumes. */

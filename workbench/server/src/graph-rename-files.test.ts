@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, symlink, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, symlink, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -156,6 +156,25 @@ test("commit does not overwrite an external replacement after its final check", 
 		} as any));
 		assert.equal(await readFile(destination, "utf8"), "external\n");
 	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("commit refuses a parent directory replaced by a symlink after its final check", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-parent-race-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-parent-outside-"));
+	try {
+		const parent = path.join(root, "wiki");
+		const moved = path.join(root, "wiki-moved");
+		const destination = path.join(parent, "page.md");
+		await mkdir(parent);
+		const staged = await stageRenameFile({ kbRoot: root, operationId: "parent-race", destinationPath: destination, bytes: Buffer.from("intended\n") });
+		await assert.rejects(commitStagedRenameFile({
+			kbRoot: root,
+			...staged,
+			destinationPath: destination,
+			afterFinalCheck: async () => { await rename(parent, moved); await symlink(outside, parent); },
+		} as any));
+		assert.deepEqual(await readdir(outside).catch(() => [] as string[]), []);
+	} finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
 test("source rename refuses a target that appears after its occupancy check", async () => {
