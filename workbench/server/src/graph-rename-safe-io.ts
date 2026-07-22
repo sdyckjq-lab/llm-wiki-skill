@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import { chmod, link, lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 
@@ -143,9 +144,17 @@ export async function readRegularFile(kbRoot: string, candidate: string, allowMi
 	const boundary = await captureParentBoundary(kbRoot, safe);
 	const actual = await exactPath(safe);
 	if (!actual) return null;
-	const info = await lstat(actual);
-	if (!info.isFile() || info.isSymbolicLink()) throw safeIoError("file is not a regular file");
-	const bytes = await readFile(actual);
+	const handle = await open(actual, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+	let info: import("node:fs").Stats;
+	let afterRead: import("node:fs").Stats;
+	let bytes: Buffer;
+	try {
+		info = await handle.stat();
+		if (!info.isFile()) throw safeIoError("file is not a regular file");
+		bytes = await handle.readFile();
+		afterRead = await handle.stat();
+	} finally { await handle.close(); }
+	if (afterRead.dev !== info.dev || afterRead.ino !== info.ino || afterRead.size !== info.size) throw safeIoError("file changed during read");
 	await assertParentBoundary(kbRoot, safe, boundary);
 	const after = await lstatExactPath(safe);
 	if (!after || after.dev !== info.dev || after.ino !== info.ino || !after.isFile() || after.isSymbolicLink()) throw safeIoError("file changed during read");

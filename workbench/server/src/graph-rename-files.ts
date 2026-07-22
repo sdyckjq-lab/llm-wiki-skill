@@ -9,7 +9,6 @@ import type { RenameFileState } from "./graph-rename-journal.js";
 import {
 	assertSafePath,
 	commitPreparedFileNoOverwrite,
-	exactPath,
 	lstatExactPath,
 	moveFileNoOverwrite,
 	readRegularFile,
@@ -280,7 +279,8 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 			return path.relative(input.kbRoot, providedTransit).replaceAll(path.sep, "/");
 		}
 		if (targetInfo) {
-			if (input.expectedSourceSha256 && sha256Bytes(await readFile(targetPath)) !== input.expectedSourceSha256) throw renameError("CONFLICT", "rename target does not match source");
+			const targetBytes = await readRegularFile(input.kbRoot, targetPath, false);
+			if (!targetBytes || (input.expectedSourceSha256 && sha256Bytes(targetBytes) !== input.expectedSourceSha256)) throw renameError("CONFLICT", "rename target does not match source");
 			await input.onStep?.("target");
 			return null;
 		}
@@ -340,11 +340,6 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 
 function sameFileIdentity(left: import("node:fs").Stats, right: import("node:fs").Stats): boolean {
 	return left.dev === right.dev && left.ino === right.ino;
-}
-
-export async function readFileExactPath(candidate: string): Promise<Buffer | null> {
-	const actual = await exactPath(candidate);
-	return actual ? readFile(actual) : null;
 }
 
 export async function assertSafeRenamePath(kbRoot: string, candidate: string, allowMissingLeaf: boolean): Promise<string> {

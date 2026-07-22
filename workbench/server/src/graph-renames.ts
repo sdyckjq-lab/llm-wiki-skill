@@ -23,7 +23,6 @@ import {
 	lstatExactPath,
 	migrateRenameLayoutKey,
 	renameSourceWithTransit,
-	readFileExactPath,
 	resolveKnowledgeBaseRenamePath,
 	sha256Bytes,
 	stageRenameFile,
@@ -306,7 +305,8 @@ async function inspectJournalContent(kbPath: string, record: GraphRenameJournal)
 				const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...physicalRelative.split("/")), true);
 				const info = await lstatExactPath(absolute);
 				if (info && (info.isSymbolicLink() || !info.isFile())) return "blocked";
-				const current = info ? sha256Bytes(await readFileExactPath(absolute) as Buffer) : null;
+				const currentBytes = info ? await readRegularFile(kbPath, absolute, false) : null;
+				const current = currentBytes ? sha256Bytes(currentBytes) : null;
 				if (current !== expected) original = false;
 				if (current !== record.intended_hashes[relative]) intended = false;
 			}
