@@ -37,6 +37,31 @@ test("malformed journal is reported as blocked and is never guessed", async () =
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("journal validation blocks missing fields, unknown states and mismatched hash sets", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-shape-"));
+	try {
+		const operation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+		const dir = path.join(kb, ".wiki-tmp", "rename-ops", operation);
+		await mkdir(dir, { recursive: true });
+		const base = {
+			kind: "journal", operation_id: operation, immutable_digest: "a".repeat(64), state: "applying",
+			source_path: "wiki/topics/a.md", target_path: "wiki/topics/b.md", graph_rebuild: "not_started",
+			created_at: "2026-07-22T00:00:00.000Z", updated_at: "2026-07-22T00:00:00.000Z", rename_state: "old",
+			completed_steps: [], original_hashes: { "wiki/topics/a.md": "b".repeat(64) }, intended_hashes: { "wiki/topics/a.md": "c".repeat(64) },
+			intended_paths: {}, stage_paths: {}, backup_paths: {}, conflicts: [], retained_evidence: [],
+		};
+		for (const [, value] of [
+			["missing-completed-steps", { ...base, completed_steps: undefined }],
+			["unknown-rebuild-state", { ...base, graph_rebuild: "later" }],
+			["mismatched-hash-sets", { ...base, intended_hashes: { "wiki/topics/other.md": "c".repeat(64) } }],
+			["non-string-time", { ...base, created_at: 123 }],
+		]) {
+			await writeFile(path.join(dir, "manifest.json"), JSON.stringify(value), "utf8");
+			assert.deepEqual(await new GraphRenameJournalStore(kb).read(operation), { kind: "blocked", operation_id: operation, reason: "invalid_journal" });
+		}
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("same operation ID and digest is idempotent after terminal receipt", async () => {
 	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-idempotent-"));
 	try {
