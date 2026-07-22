@@ -211,6 +211,14 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 						await store.transition(record.operation_id, "committed", { renameState: "target", graphRebuild: "not_started" });
 						needsRebuild = true;
 					} else if (state === "original") {
+						if (record.rename_state !== "old") {
+							const sourceRollback = await rollbackSourceRename(realKbPath, record);
+							if (!sourceRollback.ok) {
+								const conflicts = await preserveConflictVariants(realKbPath, store, record, [sourceRollback.conflict]);
+								await store.transition(record.operation_id, "conflicted", { conflicts });
+								continue;
+							}
+						}
 						await store.transition(record.operation_id, "rolled_back", { graphRebuild: "succeeded" });
 						await store.compactTerminal({ operationId: record.operation_id, now: now() });
 					} else {

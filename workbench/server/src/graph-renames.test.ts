@@ -200,6 +200,29 @@ test("startup recovery accepts a target rename recorded immediately before commi
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("startup recovery restores the old source name even when content stayed original", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "12121212-1212-4121-8121-121212121212";
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		const unchanged = path.join(kb, "wiki", "topics", "unchanged.md");
+		await writeFile(unchanged, "unchanged\n");
+		await rename(source, target);
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		const unchangedHash = createHash("sha256").update("unchanged\n").digest("hex");
+		await store.writePrepared({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/unchanged.md": unchangedHash }, intendedHashes: { "wiki/topics/unchanged.md": "3".repeat(64) } });
+		await store.transition(operationId, "applying", { renameState: "target" });
+		await store.release(operationId);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const result = await service.recoverGraphRenameOperations(kb);
+		assert.equal(result.needsRebuild, false);
+		assert.equal(await readFile(source, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
+		await assert.rejects(readFile(target, "utf8"));
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("recovery requires the complete fresh conflict set before restoring original bytes", async () => {
 	const kb = await makeKnowledgeBase();
 	try {

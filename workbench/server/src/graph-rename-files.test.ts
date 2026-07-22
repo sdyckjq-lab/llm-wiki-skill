@@ -10,6 +10,7 @@ import {
 	migrateRenameLayoutKey,
 	renameSourceWithTransit,
 	resolveKnowledgeBaseRenamePath,
+	sha256Bytes,
 	stageRenameFile,
 } from "./graph-rename-files.js";
 
@@ -113,6 +114,41 @@ test("staging and commit reject destinations outside the registered knowledge ba
 		await rm(root, { recursive: true, force: true });
 		await rm(outside, { recursive: true, force: true });
 	}
+});
+
+test("commit refuses an external replacement after its first destination check", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-commit-race-"));
+	try {
+		const destination = path.join(root, "page.md");
+		await writeFile(destination, "original\n");
+		const staged = await stageRenameFile({ kbRoot: root, operationId: "race", destinationPath: destination, bytes: Buffer.from("intended\n") });
+		await assert.rejects(commitStagedRenameFile({
+			kbRoot: root,
+			...staged,
+			destinationPath: destination,
+			expectedDestinationSha256: sha256Bytes(Buffer.from("original\n")),
+			beforeRename: async () => { await writeFile(destination, "external\n"); },
+		} as any));
+		assert.equal(await readFile(destination, "utf8"), "external\n");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("source rename refuses a target that appears after its occupancy check", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-rename-source-race-"));
+	try {
+		const source = path.join(root, "old.md");
+		const target = path.join(root, "new.md");
+		await writeFile(source, "source\n");
+		await assert.rejects(renameSourceWithTransit({
+			kbRoot: root,
+			sourcePath: source,
+			targetPath: target,
+			operationId: "source-race",
+			beforeRename: async () => { await writeFile(target, "external\n"); },
+		}));
+		assert.equal(await readFile(source, "utf8"), "source\n");
+		assert.equal(await readFile(target, "utf8"), "external\n");
+	} finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("transit rename rejects an unsafe transit path and a symlink source", async () => {

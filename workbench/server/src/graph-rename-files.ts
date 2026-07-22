@@ -52,6 +52,7 @@ export interface StagedRenameFile {
 export interface CommitStagedRenameFileInput extends StagedRenameFile {
 	kbRoot: string;
 	expectedDestinationSha256?: string | null;
+	beforeRename?: () => void | Promise<void>;
 }
 
 export interface RenameSourceInput {
@@ -61,6 +62,7 @@ export interface RenameSourceInput {
 	operationId: string;
 	transitPath?: string;
 	onStep?: (state: RenameFileState, transitPath?: string) => void | Promise<void>;
+	beforeRename?: (from: "source" | "transit", to: "transit" | "target") => void | Promise<void>;
 }
 
 export function sha256Bytes(bytes: Buffer): string {
@@ -218,6 +220,16 @@ export async function commitStagedRenameFile(input: CommitStagedRenameFileInput)
 		const currentHash = current ? sha256Bytes(await readFile(destinationPath)) : null;
 		if (currentHash !== input.expectedDestinationSha256) throw new Error("destination changed since staging");
 	}
+	await input.beforeRename?.();
+	const finalCurrent = await lstat(destinationPath).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT") return null;
+		throw error;
+	});
+	if (finalCurrent?.isSymbolicLink() || (finalCurrent && !finalCurrent.isFile())) throw renameError("FORBIDDEN_PATH", "destination is not a regular file");
+	if (input.expectedDestinationSha256 !== undefined) {
+		const finalHash = finalCurrent ? sha256Bytes(await readFile(destinationPath)) : null;
+		if (finalHash !== input.expectedDestinationSha256) throw new Error("destination changed before commit");
+	}
 	await rename(stagedPath, destinationPath);
 }
 
@@ -235,8 +247,10 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	}
 	if (!sourceInfo) {
 		const transit = input.transitPath ? await assertSafeRenamePath(input.kbRoot, input.transitPath, false) : null;
-			if (transit && await lstatExactPath(transit)) {
+		if (transit && await lstatExactPath(transit)) {
 			if (targetInfo) throw renameError("CONFLICT", "rename target is occupied during transit recovery");
+			await input.beforeRename?.("transit", "target");
+			if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during transit recovery");
 			await rename(transit, targetPath);
 			await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 			return path.relative(input.kbRoot, transit).replaceAll(path.sep, "/");
@@ -251,6 +265,8 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	const targetRelative = path.basename(targetPath);
 	const useTransit = portableKey(sourceRelative) === portableKey(targetRelative);
 	if (!useTransit) {
+		await input.beforeRename?.("source", "target");
+		if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during commit");
 		await rename(sourcePath, targetPath);
 		await input.onStep?.("target");
 		return null;
@@ -268,10 +284,14 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	const transitInfo = await lstatExactPath(transit);
 	if (transitInfo) throw renameError("CONFLICT", "rename transit path is occupied");
 	if (sourcePath !== transit && await lstatExactPath(sourcePath)) {
+		await input.beforeRename?.("source", "transit");
+		if (await lstatExactPath(transit)) throw renameError("CONFLICT", "rename transit appeared during commit");
 		await rename(sourcePath, transit);
 		await input.onStep?.("transit", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 	}
 	if (transit !== targetPath && await lstatExactPath(transit)) {
+		await input.beforeRename?.("transit", "target");
+		if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during commit");
 		await rename(transit, targetPath);
 		await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 	}
