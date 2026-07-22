@@ -156,6 +156,27 @@ test("startup recovery exposes a committed operation whose graph is not publishe
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("startup recovery prunes expired retained evidence before exposing receipts", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "abababab-abab-4aba-8aba-abababababab";
+	const now = new Date("2026-07-22T00:00:00.000Z");
+	try {
+		const store = new GraphRenameJournalStore(kb, { now: () => now });
+		const digest = "a".repeat(64);
+		await store.acquire({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "rolled_back", { graphRebuild: "succeeded" });
+		const evidencePath = await store.preserveConflictVariant({ operationId, kind: "current", sourcePath: "wiki/topics/a.md", bytes: Buffer.from("external\n") });
+		await store.compactTerminal({ operationId, now, resolvedConflictEvidence: [{ relative_path: evidencePath, sha256: digest, expires_at: "2026-07-21T00:00:00.000Z" }] });
+		await store.release(operationId);
+		const service = createGraphRenameService({ now: () => now, journalStore: () => store });
+		await service.recoverGraphRenameOperations(kb);
+		await assert.rejects(readFile(path.join(kb, ...evidencePath.split("/"))));
+		const receipt = await store.read(operationId) as any;
+		assert.deepEqual(receipt.retained_evidence, []);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("startup recovery accepts a target rename recorded immediately before commit", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "88888888-8888-4888-8888-888888888888";

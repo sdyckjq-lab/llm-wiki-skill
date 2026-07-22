@@ -478,7 +478,6 @@ function safeJournalPaths(value: Partial<GraphRenameJournal>): boolean {
 	if (!Object.keys(value.backup_paths ?? {}).every((key) => originalKeySet.has(key))) return false;
 	if (!Object.keys(value.intended_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
 	if (!Object.keys(value.stage_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
-	if (new Set(value.completed_steps ?? []).size !== (value.completed_steps ?? []).length) return false;
 	return (value.retained_evidence ?? []).every((item) => safeRelative(item.relative_path) && safeSha(item.sha256) && Number.isFinite(new Date(item.expires_at).getTime()));
 }
 function safeReceiptPaths(value: Partial<GraphRenameReceipt>): boolean {

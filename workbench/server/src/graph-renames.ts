@@ -157,15 +157,18 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		},
 		getGraphRenameRecovery: async (kbPath) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
-			return recoveryData(await collectRecovery(trackedStoreFor(realKbPath), now));
+			const store = trackedStoreFor(realKbPath);
+			await pruneRenameOperationData(store, now);
+			return recoveryData(await collectRecovery(store, now));
 		},
 		resolveGraphRenameRecovery: async (kbPath, body) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
 			return resolveRecovery(realKbPath, body, trackedStoreFor(realKbPath), now, trigger, options);
 		},
-		recoverGraphRenameOperations: async (kbPath) => {
+			recoverGraphRenameOperations: async (kbPath) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
 			const store = trackedStoreFor(realKbPath);
+			await pruneRenameOperationData(store, now);
 			let needsRebuild = false;
 			for (const candidate of await store.listForStartup()) {
 				if (candidate.kind !== "journal") continue;
@@ -231,6 +234,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		triggerPendingGraphRebuild: async (kbPath) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
 			const store = trackedStoreFor(realKbPath);
+			await pruneRenameOperationData(store, now);
 			for (const candidate of await store.listForStartup()) {
 			if (candidate.kind !== "journal" || !isPendingGraphPublication(candidate)) continue;
 				let locked = false;
@@ -459,7 +463,10 @@ async function performApply(input: {
 			await store.transition(body.operation_id, "rolled_back", { renameState: "old", graphRebuild: "succeeded", conflicts: [] });
 			await store.compactTerminal({ operationId: body.operation_id, now: input.now() });
 		}
-		else await store.transition(body.operation_id, "conflicted", { conflicts: await preserveConflictVariants(input.kbPath, store, await store.read(body.operation_id) as GraphRenameJournal, conflicts) });
+		else {
+			const failedRecord = await store.read(body.operation_id);
+			await store.transition(body.operation_id, "conflicted", { conflicts: await preserveConflictVariants(input.kbPath, store, failedRecord as GraphRenameJournal, conflicts) });
+		}
 		await store.release(body.operation_id);
 		return operationData(await store.read(body.operation_id) as GraphRenameJournal);
 	} finally {
@@ -558,6 +565,10 @@ async function readRenameLayout(kbPath: string): Promise<GraphLayoutFile | null>
 	const parsed = JSON.parse(content) as GraphLayout;
 	if (parsed.version !== 2 || !parsed.pins || typeof parsed.pins !== "object") throw conflictError("layout file is invalid");
 	return parsed as GraphLayoutFile;
+}
+
+async function pruneRenameOperationData(store: GraphRenameJournalStore, now: () => Date): Promise<void> {
+	await store.pruneExpiredOperationData({ now: now(), receiptRetentionMs: RENAME_RETENTION_MS, evidenceRetentionMs: RENAME_RETENTION_MS });
 }
 
 async function collectRecovery(store: GraphRenameJournalStore, now: () => Date): Promise<{ primary: GraphRenameJournal | GraphRenameReceipt | null; receipts: GraphRenameReceipt[]; blocked: BlockedRenameJournal | null }> {
