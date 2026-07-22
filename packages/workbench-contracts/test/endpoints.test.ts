@@ -185,6 +185,13 @@ test("graph warning pages are a read-only migrated JSON endpoint", () => {
 	assert.equal(endpoint?.safety, "read-only");
 });
 
+test("graph rename endpoints expose the intended read/write safety split", () => {
+	assert.equal(findEndpoint("POST", "/api/graph/renames/preview")?.safety, "read-only");
+	assert.equal(findEndpoint("POST", "/api/graph/renames/apply")?.safety, "state-changing");
+	assert.equal(findEndpoint("GET", "/api/graph/renames/recovery")?.safety, "read-only");
+	assert.equal(findEndpoint("POST", "/api/graph/renames/recovery")?.safety, "state-changing");
+});
+
 test("config / models / auth 已迁移为 migrated-json，并保持安全分类", () => {
 	const cases = [
 		{ method: "GET", path: "/api/config", safety: "read-only" },
