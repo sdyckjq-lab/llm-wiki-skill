@@ -17,6 +17,12 @@ async function makeKnowledgeBase() {
 	return root;
 }
 
+function observedConflicts(result: unknown): Array<{ source_path: string; current_state: "present"; current_sha256: string } | { source_path: string; current_state: "missing" }> {
+	return ((result as any).operation.conflicts as Array<{ source_path: string; current_state: "present" | "missing"; current_sha256?: string }>).map((conflict) => conflict.current_state === "present"
+		? { source_path: conflict.source_path, current_state: "present", current_sha256: conflict.current_sha256! }
+		: { source_path: conflict.source_path, current_state: "missing" });
+}
+
 test("preview is read-only and apply renames the page with one rebuild request", async () => {
 	const kb = await makeKnowledgeBase();
 	try {
@@ -322,8 +328,7 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		const stale = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "3".repeat(64) }] });
 		assert.equal(stale.status, "required"); assert.deepEqual(await readFile(source), changed);
-		const currentHash = (await import("node:crypto")).createHash("sha256").update(changed).digest("hex");
-		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: currentHash }] });
+		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(stale) });
 		assert.equal(finished.status, "rebuild_required"); assert.equal((finished as any).operation.state, "rolled_back"); assert.deepEqual(await readFile(source), original);
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
@@ -349,7 +354,8 @@ test("recovery retains current and unchosen original evidence before finishing c
 		await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current), preserved_variants: [] }] });
 		await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
-		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current) }] });
+		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: observedConflicts(refreshed) });
 		assert.equal(result.status, "rebuild_required");
 		const evidence = (result as any).operation.retained_evidence as Array<{ relative_path: string; sha256: string }>;
 		assert.equal(evidence.length, 2);
@@ -418,15 +424,11 @@ test("recovery rolls back its own earlier writes when a later file changes", asy
 				}
 			},
 		});
-		const currentFirstHash = (await import("node:crypto")).createHash("sha256").update(await readFile(first)).digest("hex");
-		const currentSecondHash = (await import("node:crypto")).createHash("sha256").update(await readFile(second)).digest("hex");
+		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
 		const result = await service.resolveGraphRenameRecovery(kb, {
 			operation_id: operationId,
 			action: "finish_commit",
-			observed_conflicts: [
-				{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: currentFirstHash },
-				{ source_path: "wiki/topics/b.md", current_state: "present", current_sha256: currentSecondHash },
-			],
+			observed_conflicts: observedConflicts(refreshed),
 		});
 		assert.equal(result.status, "required");
 		assert.equal(await readFile(first, "utf8"), "first-external\n");
@@ -454,7 +456,8 @@ test("recovery deletion preserves a file changed after its final check", async (
 			afterRecoveryCheck: async () => { await writeFile(source, "late-external\n"); },
 			triggerRebuild: () => ({ ok: true, status: "started" }),
 		});
-		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current) }] });
+		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(refreshed) });
 		assert.equal(result.status, "required");
 		assert.equal(await readFile(source, "utf8"), "late-external\n");
 	} finally { await rm(kb, { recursive: true, force: true }); }
@@ -496,7 +499,8 @@ test("finish rollback restores the source name after a target rename crash", asy
 		await store.transition(operationId, "conflicted", { conflicts: [] });
 		await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
-		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(refreshed) });
 		assert.equal(result.status, "rebuild_required");
 		assert.equal(await readFile(source, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
 		await assert.rejects(readFile(target, "utf8"));
@@ -520,7 +524,8 @@ test("finish rollback preserves a source file created after the rollback check",
 			beforeSourceRollback: async () => { await writeFile(source, "external-source\n"); },
 			triggerRebuild: () => ({ ok: true, status: "started" }),
 		});
-		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(refreshed) });
 		assert.equal(result.status, "required");
 		assert.equal(await readFile(source, "utf8"), "external-source\n");
 		assert.equal(await readFile(target, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
@@ -574,6 +579,93 @@ test("finish commit reports an occupied target name as a source conflict", async
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("a complete source-name conflict set can finish commit and the retry is idempotent", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "45454545-4545-4545-8545-454545454545";
+	const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+	try {
+		const sourceRelative = "wiki/topics/a.md";
+		const targetRelative = "wiki/topics/renamed.md";
+		const transitRelative = `wiki/topics/.llm-wiki-rename-${operationId}-0.md`;
+		const source = path.join(kb, ...sourceRelative.split("/"));
+		const target = path.join(kb, ...targetRelative.split("/"));
+		const transit = path.join(kb, ...transitRelative.split("/"));
+		const original = await readFile(source);
+		const intended = Buffer.from("intended source bytes\n");
+		const externalTarget = Buffer.from("external target bytes\n");
+		await rename(source, transit);
+		await writeFile(transit, intended);
+		await writeFile(target, externalTarget);
+		const store = new GraphRenameJournalStore(kb);
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/source.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/source.bin`;
+		await store.acquire({ operationId, immutableDigest: "4".repeat(64), sourcePath: sourceRelative, targetPath: targetRelative });
+		await store.writePrepared({
+			operationId,
+			immutableDigest: "4".repeat(64),
+			sourcePath: sourceRelative,
+			targetPath: targetRelative,
+			transitPath: transitRelative,
+			originalHashes: { [sourceRelative]: sha(original) },
+			intendedHashes: { [sourceRelative]: sha(intended) },
+		});
+		await store.writeOwnedFile(backupPath, original);
+		await store.writeOwnedFile(intendedPath, intended);
+		await store.writePrepared({
+			operationId,
+			immutableDigest: "4".repeat(64),
+			sourcePath: sourceRelative,
+			targetPath: targetRelative,
+			transitPath: transitRelative,
+			originalHashes: { [sourceRelative]: sha(original) },
+			intendedHashes: { [sourceRelative]: sha(intended) },
+			backupPaths: { [sourceRelative]: backupPath },
+			intendedPaths: { [sourceRelative]: intendedPath },
+		});
+		await store.transition(operationId, "applying", { renameState: "transit" });
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
+		assert.equal(refreshed.status, "required");
+		const observed = observedConflicts(refreshed);
+		assert.deepEqual(observed.map((item: any) => `${item.source_path}:${item.current_state}`).sort(), [
+			`${sourceRelative}:missing`,
+			`${targetRelative}:present`,
+			`${transitRelative}:present`,
+		].sort());
+		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: observed });
+		assert.equal(finished.status, "rebuild_required");
+		assert.equal((finished as any).operation.state, "committed");
+		assert.deepEqual(await readFile(target), intended);
+		await assert.rejects(readFile(source));
+		await assert.rejects(readFile(transit));
+		const retry = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: observed });
+		assert.deepEqual(retry, finished);
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
+test("recovery blocks when any source-name path is a directory", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "46464646-4646-4646-8646-464646464646";
+	try {
+		await mkdir(path.join(kb, "wiki", "topics", "renamed.md"));
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "6".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "6".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const service = createGraphRenameService();
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
+		assert.deepEqual(result, { status: "blocked", reason: "unsafe_current_type", operation_id: operationId, retained_evidence_receipts: [] });
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
 test("failed graph rebuild remains visible and can be retried", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "edededed-eded-4ede-8ede-edededededed";
@@ -585,7 +677,8 @@ test("failed graph rebuild remains visible and can be retried", async () => {
 		await store.transition(operationId, "conflicted", { conflicts: [] });
 		await store.release(operationId);
 		const failed = createGraphRenameService({ triggerRebuild: () => { throw new Error("rebuild failed"); } });
-		const result = await failed.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const refreshed = await failed.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		const result = await failed.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(refreshed) });
 		assert.equal(result.status, "rebuild_required");
 		assert.equal((result as any).operation.graph_rebuild, "failed");
 		const retried = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });

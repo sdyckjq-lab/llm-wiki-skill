@@ -685,6 +685,7 @@ async function resolveRecovery(
 	const record = await store.read(body.operation_id);
 	if (!record || record.kind === "blocked") return GraphRenameRecoveryDataSchema.parse({ status: "blocked", reason: "invalid_journal", operation_id: body.operation_id, retained_evidence_receipts: [] });
 	if (record.kind === "receipt") return recoveryData(await collectRecovery(store, now));
+	if (record.state === "committed" || record.state === "rolled_back") return recoveryData(await collectRecovery(store, now));
 	let lockHeld = false;
 	try {
 		await store.acquireExisting(body.operation_id);
@@ -701,29 +702,49 @@ async function resolveRecovery(
 		const captured = await captureRecoveryEvidence(kbPath, store, record, current.conflicts, body.action, now());
 		const desiredHashes = body.action === "finish_commit" ? record.intended_hashes : record.original_hashes;
 		const applied: RecoveryWrite[] = [];
-		let sourceChanged = false;
 		let sourceConflict: GraphRenameJournal["conflicts"] = [];
+		const plans: Array<{ relative: string; desired: Buffer | null; before: Buffer | null; current: GraphRenameJournal["conflicts"][number]; sourceName: boolean }> = [];
 		const stagedRecovery = new Map<string, { stagedPath: string; desired: Buffer; before: Buffer | null; expected: string | null }>();
 		try {
 			for (const relative of Object.keys(desiredHashes)) {
+				if (relative === record.source_path) continue;
 				const desired = desiredHashes[relative] ? await readOwnedVariant(kbPath, record, relative, body.action === "finish_commit" ? "intended" : "original") : null;
 				if (desiredHashes[relative] && !desired) throw invalidJournalError("recovery variant is missing");
 				const currentEntry = current.conflicts.find((conflict) => conflict.source_path === relative);
-				const before = currentEntry?.current_state === "present" ? await readFileExactPath(path.join(kbPath, ...relative.split("/"))) : null;
-				if ((before === null && desired === null) || (before && desired && before.equals(desired))) continue;
-				if (desired) {
-					const destination = path.join(kbPath, ...relative.split("/"));
-					const mode = currentEntry?.current_state === "present" ? (await lstat(destination)).mode & 0o7777 : 0o600;
-					const staged = await stageRenameFile({ kbRoot: kbPath, operationId: record.operation_id, destinationPath: destination, bytes: desired, mode });
-					stagedRecovery.set(relative, { stagedPath: staged.stagedPath, desired, before, expected: currentEntry?.current_state === "present" ? currentEntry.current_sha256! : null });
+				if (!currentEntry) throw invalidJournalError("recovery conflict set is incomplete");
+				const before = currentEntry.current_state === "present" ? await readRegularFile(kbPath, path.join(kbPath, ...relative.split("/")), false) : null;
+				plans.push({ relative, desired, before, current: currentEntry, sourceName: false });
+			}
+			const sourceDigest = desiredHashes[record.source_path];
+			if (sourceDigest !== undefined) {
+				const sourceDesired = sourceDigest ? await readOwnedVariant(kbPath, record, record.source_path, body.action === "finish_commit" ? "intended" : "original") : null;
+				if (sourceDigest && !sourceDesired) throw invalidJournalError("source recovery variant is missing");
+				const finalName = body.action === "finish_commit" ? record.target_path : record.source_path;
+				const sourceNames = [finalName, record.source_path, record.transit_path, record.target_path].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+				for (const relative of sourceNames) {
+					const currentEntry = current.conflicts.find((conflict) => conflict.source_path === relative);
+					if (!currentEntry) throw invalidJournalError("source-name conflict set is incomplete");
+					const before = currentEntry.current_state === "present" ? await readRegularFile(kbPath, path.join(kbPath, ...relative.split("/")), false) : null;
+					plans.push({ relative, desired: relative === finalName ? sourceDesired : null, before, current: currentEntry, sourceName: true });
 				}
 			}
-			for (const relative of Object.keys(desiredHashes)) {
+			for (const plan of plans) {
+				if ((plan.before === null && plan.desired === null) || (plan.before && plan.desired && plan.before.equals(plan.desired))) continue;
+				if (!plan.desired) continue;
+				const destination = path.join(kbPath, ...plan.relative.split("/"));
+				const mode = plan.current.current_state === "present" ? (await lstat(destination)).mode & 0o7777 : 0o600;
+				const staged = await stageRenameFile({ kbRoot: kbPath, operationId: record.operation_id, destinationPath: destination, bytes: plan.desired, mode });
+				stagedRecovery.set(plan.relative, { stagedPath: staged.stagedPath, desired: plan.desired, before: plan.before, expected: plan.current.current_state === "present" ? plan.current.current_sha256! : null });
+			}
+			let sourceRollbackBoundaryCalled = false;
+			for (const plan of plans) {
+				const { relative, desired, before, current: currentEntry } = plan;
 				const staged = stagedRecovery.get(relative);
-				const currentEntry = current.conflicts.find((conflict) => conflict.source_path === relative);
-				const desired = desiredHashes[relative] ? staged?.desired ?? await readOwnedVariant(kbPath, record, relative, body.action === "finish_commit" ? "intended" : "original") : null;
-				const before = currentEntry?.current_state === "present" ? await readFileExactPath(path.join(kbPath, ...relative.split("/"))) : null;
 				if ((before === null && desired === null) || (before && desired && before.equals(desired))) continue;
+				if (plan.sourceName && body.action === "finish_rollback" && !sourceRollbackBoundaryCalled) {
+					sourceRollbackBoundaryCalled = true;
+					await options.beforeSourceRollback?.();
+				}
 				await options.beforeRecoveryCommit?.(relative);
 				await assertRecoveryCurrent(kbPath, relative, currentEntry);
 				await options.afterRecoveryCheck?.(relative);
@@ -736,7 +757,7 @@ async function resolveRecovery(
 				await options.afterRecoveryCommit?.(relative);
 			}
 			for (const entry of applied) await assertRecoveryBytes(kbPath, entry.relative, entry.desired);
-			if (body.action === "finish_commit") {
+			if (sourceDigest === undefined && body.action === "finish_commit") {
 				try {
 					await renameSourceWithTransit({
 						kbRoot: kbPath,
@@ -754,14 +775,12 @@ async function resolveRecovery(
 					sourceConflict = sourceConflicts;
 					throw error;
 				}
-				sourceChanged = record.rename_state !== "target";
-			} else {
+			} else if (sourceDigest === undefined) {
 				const restored = await rollbackSourceRename(kbPath, record, options.beforeSourceRollback);
 				if (!restored.ok) {
 					sourceConflict = restored.conflicts;
 					throw new Error("source rename recovery is conflicted");
 				}
-				sourceChanged = record.rename_state !== "old";
 			}
 		} catch {
 			for (const staged of stagedRecovery.values()) await unlink(staged.stagedPath).catch(() => undefined);
@@ -773,7 +792,6 @@ async function resolveRecovery(
 					// Preserve an unknown external version; it is reported by the next conflict scan.
 				}
 			}
-			if (sourceChanged) await rollbackSourceRename(kbPath, record).catch(() => undefined);
 			const refreshed = await recomputeRecoveryConflicts(kbPath, record);
 			const conflicts = sourceConflict.length > 0 ? [...sourceConflict, ...refreshed.conflicts] : refreshed.conflicts;
 			await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(kbPath, store, record, conflicts) });
@@ -837,16 +855,31 @@ async function readOwnedFile(kbPath: string, relative: string): Promise<Buffer |
 }
 
 async function recomputeRecoveryConflicts(kbPath: string, record: GraphRenameJournal): Promise<{ conflicts: GraphRenameJournal["conflicts"]; blocked: boolean }> {
-	const paths = new Set([...Object.keys(record.original_hashes), ...Object.keys(record.intended_hashes)]);
+	const paths = new Set([
+		...Object.keys(record.original_hashes),
+		...Object.keys(record.intended_hashes),
+		record.source_path,
+		...(record.transit_path ? [record.transit_path] : []),
+		record.target_path,
+	]);
 	const conflicts: GraphRenameJournal["conflicts"] = [];
 	for (const relative of paths) {
-		const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
-		const info = await lstatExactPath(absolute);
-		if (info && (info.isSymbolicLink() || !info.isFile())) return { conflicts, blocked: true };
-		if (!info) conflicts.push({ source_path: relative, current_state: "missing", preserved_variants: [] });
-		else conflicts.push({ source_path: relative, current_state: "present", current_sha256: sha256Bytes(await readFileExactPath(absolute) as Buffer), preserved_variants: [] });
+		try {
+			const absolute = await assertSafeRenamePath(kbPath, path.join(kbPath, ...relative.split("/")), true);
+			const bytes = await readRegularFile(kbPath, absolute, true);
+			if (!bytes) conflicts.push({ source_path: relative, current_state: "missing", preserved_variants: [] });
+			else conflicts.push({ source_path: relative, current_state: "present", current_sha256: sha256Bytes(bytes), preserved_variants: [] });
+		} catch {
+			return { conflicts, blocked: true };
+		}
 	}
 	return { conflicts, blocked: false };
+}
+
+function journalContentPath(record: GraphRenameJournal, relative: string): string {
+	return relative === record.source_path || relative === record.transit_path || relative === record.target_path
+		? record.source_path
+		: relative;
 }
 
 async function collectSourceRenameConflicts(kbPath: string, record: GraphRenameJournal): Promise<GraphRenameJournal["conflicts"]> {
@@ -862,6 +895,7 @@ async function preserveConflictVariants(
 	const result: GraphRenameJournal["conflicts"] = [];
 	for (const conflict of conflicts) {
 		const variants = [...conflict.preserved_variants];
+		const contentPath = journalContentPath(record, conflict.source_path);
 		const addVariant = async (
 			kind: "current" | "original" | "intended",
 			bytes: Buffer | null,
@@ -877,15 +911,15 @@ async function preserveConflictVariants(
 			variants.push({ kind, relative_path: relativePath, sha256 });
 		};
 		const currentBytes = conflict.current_state === "present"
-			? await readFileExactPath(path.join(kbPath, ...conflict.source_path.split("/")))
+			? await readRegularFile(kbPath, path.join(kbPath, ...conflict.source_path.split("/")), false)
 			: null;
 		await addVariant("current", currentBytes, undefined, conflict.current_sha256);
-		const originalPath = record.backup_paths[conflict.source_path];
-		const intendedPath = record.intended_paths[conflict.source_path] ?? record.stage_paths[conflict.source_path];
+		const originalPath = record.backup_paths[contentPath];
+		const intendedPath = record.intended_paths[contentPath] ?? record.stage_paths[contentPath];
 		const originalBytes = originalPath ? await readOwnedFile(kbPath, originalPath) : null;
 		const intendedBytes = intendedPath ? await readOwnedFile(kbPath, intendedPath) : null;
-		await addVariant("original", originalBytes, undefined, record.original_hashes[conflict.source_path]);
-		await addVariant("intended", intendedBytes, undefined, record.intended_hashes[conflict.source_path]);
+		await addVariant("original", originalBytes, undefined, record.original_hashes[contentPath]);
+		await addVariant("intended", intendedBytes, undefined, record.intended_hashes[contentPath]);
 		result.push({ ...conflict, preserved_variants: variants });
 	}
 	return result;
@@ -904,11 +938,12 @@ async function captureRecoveryEvidence(
 	const result: GraphRenameJournal["conflicts"] = [];
 	for (const conflict of conflicts) {
 		const variants = [...conflict.preserved_variants];
-		const chosen = await readOwnedVariant(kbPath, record, conflict.source_path, chosenKind);
+		const contentPath = journalContentPath(record, conflict.source_path);
+		const chosen = await readOwnedVariant(kbPath, record, contentPath, chosenKind);
 		const candidates: Array<["current" | "original" | "intended", Buffer | null]> = [
-			["current", conflict.current_state === "present" ? await readFileExactPath(path.join(kbPath, ...conflict.source_path.split("/"))) : null],
-			["original", await readOwnedVariant(kbPath, record, conflict.source_path, "original")],
-			["intended", await readOwnedVariant(kbPath, record, conflict.source_path, "intended")],
+			["current", conflict.current_state === "present" ? await readRegularFile(kbPath, path.join(kbPath, ...conflict.source_path.split("/")), false) : null],
+			["original", await readOwnedVariant(kbPath, record, contentPath, "original")],
+			["intended", await readOwnedVariant(kbPath, record, contentPath, "intended")],
 		];
 		for (const [kind, bytes] of candidates) {
 			if (kind === chosenKind || !bytes || (chosen && bytes.equals(chosen))) continue;
