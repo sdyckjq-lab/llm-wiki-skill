@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -107,6 +107,31 @@ test("journal refuses a replaced operation directory instead of following its sy
 		await symlink(outside, path.join(operationsRoot, operationId));
 		assert.deepEqual(await new GraphRenameJournalStore(kb).read(operationId), { kind: "blocked", operation_id: operationId, reason: "invalid_journal" });
 	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
+test("owned journal writes refuse an operation parent replaced at the final write boundary", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-write-parent-kb-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-write-parent-outside-"));
+	const operationId = "71717171-7171-4171-8171-717171717171";
+	try {
+		const operationDirectory = path.join(kb, ".wiki-tmp", "rename-ops", operationId);
+		const movedDirectory = `${operationDirectory}-moved`;
+		let replaced = false;
+		const store = new GraphRenameJournalStore(kb, {
+			beforeOwnedFileFinalOperation: async (relativePath) => {
+				if (replaced || !relativePath.endsWith(".bak")) return;
+				replaced = true;
+				await rename(operationDirectory, movedDirectory);
+				await symlink(outside, operationDirectory);
+			},
+		});
+		await store.acquire({ operationId, immutableDigest: "7".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		await assert.rejects(store.writeOwnedFile(`.wiki-tmp/rename-ops/${operationId}/backups/a.bak`, Buffer.from("original\n")));
+		assert.deepEqual(await readdir(outside), []);
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+		await rm(outside, { recursive: true, force: true });
+	}
 });
 
 test("journal refuses a replaced manifest file instead of following its symlink", async () => {

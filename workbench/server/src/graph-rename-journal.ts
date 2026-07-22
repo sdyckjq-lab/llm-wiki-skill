@@ -1,6 +1,15 @@
-import { randomUUID, createHash } from "node:crypto";
-import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rmdir, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, readdir, rmdir } from "node:fs/promises";
 import path from "node:path";
+
+import {
+	assertSafePath,
+	ensureSafeDirectory,
+	readRegularFile,
+	removeFileNoOverwrite,
+	replaceFileNoOverwrite,
+	sha256Bytes,
+} from "./graph-rename-safe-io.js";
 
 export type RenameJournalState = "prepared" | "applying" | "committed" | "rolled_back" | "conflicted";
 export type GraphRebuildState = "not_started" | "started" | "queued" | "failed" | "succeeded";
@@ -120,6 +129,7 @@ export interface GraphRenameJournalStoreOptions {
 	now?: () => Date;
 	serverInstanceId?: string;
 	isProcessAlive?: (pid: number) => boolean | "unknown" | Promise<boolean | "unknown">;
+	beforeOwnedFileFinalOperation?: (relativePath: string) => void | Promise<void>;
 }
 
 export interface PendingRebuildStatus {
@@ -132,6 +142,7 @@ export class GraphRenameJournalStore {
 	private readonly now: () => Date;
 	private readonly serverInstanceId: string;
 	private readonly isProcessAlive: (pid: number) => boolean | "unknown" | Promise<boolean | "unknown">;
+	private readonly beforeOwnedFileFinalOperation?: (relativePath: string) => void | Promise<void>;
 	private readonly heldLockTexts = new Map<string, string>();
 
 	constructor(readonly kbPath: string, options: GraphRenameJournalStoreOptions = {}) {
@@ -145,12 +156,13 @@ export class GraphRenameJournalStore {
 			}
 		};
 		this.isProcessAlive = options.isProcessAlive ?? defaultProcessProbe;
+		this.beforeOwnedFileFinalOperation = options.beforeOwnedFileFinalOperation;
 	}
 
 	async acquire(input: AcquireRenameOperation): Promise<GraphRenameJournal> {
 		if (!safeOperationId(input.operationId)) throw conflictError("operation ID is invalid");
 		await this.assertSafeJournalRoot(true);
-		await mkdir(this.operationsRoot, { recursive: true, mode: 0o700 });
+		await ensureSafeDirectory(this.kbPath, this.operationsRoot);
 		await this.pruneExpiredOperationData({ now: this.now(), receiptRetentionMs: RENAME_RETENTION_MS, evidenceRetentionMs: RENAME_RETENTION_MS });
 		const existing = await this.read(input.operationId);
 		if (existing) {
@@ -208,12 +220,17 @@ export class GraphRenameJournalStore {
 
 	async read(operationId: string): Promise<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal | null> {
 		if (!safeOperationId(operationId)) return { kind: "blocked", operation_id: null, reason: "invalid_journal" };
+		const directory = path.join(this.operationsRoot, operationId);
 		try {
 			await this.assertSafeJournalRoot(false);
 			await this.assertSafeOperationDirectory(operationId, false);
+			const directoryInfo = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
+				if (error.code === "ENOENT") return null;
+				throw error;
+			});
+			if (!directoryInfo) return null;
 			await this.assertSafeOwnedPath(path.posix.join(".wiki-tmp", "rename-ops", operationId, "manifest.json"), true);
 		} catch { return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" }; }
-		const directory = path.join(this.operationsRoot, operationId);
 		const manifestPath = path.join(directory, "manifest.json");
 		const manifestInfo = await lstat(manifestPath).catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return null;
@@ -221,10 +238,10 @@ export class GraphRenameJournalStore {
 		});
 		if (manifestInfo === null) return null;
 		if (manifestInfo.isSymbolicLink() || !manifestInfo.isFile()) return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" };
-		const content = await readFile(manifestPath, "utf8").catch(() => null);
-		if (content === null) return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" };
+		const contentBytes = await readRegularFile(this.kbPath, manifestPath, false).catch(() => null);
+		if (contentBytes === null) return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" };
 		try {
-			const value = JSON.parse(content) as Partial<GraphRenameJournal> & Partial<GraphRenameReceipt> & Partial<BlockedRenameJournal>;
+			const value = JSON.parse(contentBytes.toString("utf8")) as Partial<GraphRenameJournal> & Partial<GraphRenameReceipt> & Partial<BlockedRenameJournal>;
 			if (value.operation_id !== operationId) return { kind: "blocked", operation_id: operationId, reason: "invalid_journal" };
 			if (value.kind === "blocked" && hasOnlyKeys(value, ["kind", "operation_id", "reason"]) && (value.reason === "unknown_state" || value.reason === "invalid_journal" || value.reason === "unsafe_current_type")) return value as BlockedRenameJournal;
 			if (value.kind === "journal" && isJournalState(value.state) && typeof value.immutable_digest === "string" && safeJournalPaths(value, operationId)) {
@@ -315,13 +332,22 @@ export class GraphRenameJournalStore {
 		if (!safeOperationId(input.operationId) || !safeRelative(input.sourcePath)) throw conflictError("conflict evidence path is invalid");
 		await this.assertSafeOperationDirectory(input.operationId, true);
 		const directory = path.join(this.operationsRoot, input.operationId, "evidence");
-		await this.assertSafeOwnedPath(path.posix.join(".wiki-tmp", "rename-ops", input.operationId, "evidence"), true);
-		await mkdir(directory, { recursive: true, mode: 0o700 });
-		const digest = createHash("sha256").update(input.bytes).digest("hex");
+		await ensureSafeDirectory(this.kbPath, directory);
+		const digest = sha256Bytes(input.bytes);
 		const filename = `${input.kind}-${digest}.bin`;
 		const absolute = path.join(directory, filename);
-		await writeAtomic(absolute, input.bytes, 0o600);
-		return path.posix.join(".wiki-tmp", "rename-ops", input.operationId, "evidence", filename);
+		const relative = path.posix.join(".wiki-tmp", "rename-ops", input.operationId, "evidence", filename);
+		const current = await readRegularFile(this.kbPath, absolute, true);
+		if (current && !current.equals(input.bytes)) throw conflictError("conflict evidence changed");
+		if (!current) await replaceFileNoOverwrite({
+			kbRoot: this.kbPath,
+			targetPath: absolute,
+			bytes: input.bytes,
+			expectedSha256: null,
+			mode: 0o600,
+			beforeFinalOperation: () => this.beforeOwnedFileFinalOperation?.(relative),
+		});
+		return relative;
 	}
 
 	async writeOwnedFile(relativePath: string, bytes: Buffer, mode = 0o600): Promise<string> {
@@ -329,11 +355,19 @@ export class GraphRenameJournalStore {
 		const operationId = relativePath.split("/")[2];
 		if (!operationId || !safeOperationId(operationId)) throw conflictError("owned path is invalid");
 		await this.assertSafeOperationDirectory(operationId, true);
-		await this.assertSafeOwnedPath(relativePath, true);
 		const absolute = path.join(this.kbPath, ...relativePath.split("/"));
-		await mkdir(path.dirname(absolute), { recursive: true, mode: 0o700 });
-		await writeAtomic(absolute, bytes, mode);
-		const readBack = await readFile(absolute);
+		await ensureSafeDirectory(this.kbPath, path.dirname(absolute));
+		const current = await readRegularFile(this.kbPath, absolute, true);
+		await replaceFileNoOverwrite({
+			kbRoot: this.kbPath,
+			targetPath: absolute,
+			bytes,
+			expectedSha256: current ? sha256Bytes(current) : null,
+			mode,
+			beforeFinalOperation: () => this.beforeOwnedFileFinalOperation?.(relativePath),
+		});
+		const readBack = await readRegularFile(this.kbPath, absolute, false);
+		if (!readBack) throw new Error("owned bytes disappeared after write");
 		if (!readBack.equals(bytes)) throw new Error("owned bytes failed read-back verification");
 		await this.recordOwnedPathIfKnown(operationId, relativePath, readBack);
 		return relativePath;
@@ -342,8 +376,17 @@ export class GraphRenameJournalStore {
 	async writeBlocked(operationId: string, reason: BlockedRenameJournal["reason"]): Promise<void> {
 		if (!safeOperationId(operationId)) throw conflictError("operation ID is invalid");
 		await this.assertSafeOperationDirectory(operationId, true);
-		await mkdir(path.join(this.operationsRoot, operationId), { recursive: true, mode: 0o700 });
-		await writeAtomic(path.join(this.operationsRoot, operationId, "manifest.json"), Buffer.from(`${JSON.stringify({ kind: "blocked", operation_id: operationId, reason })}\n`), 0o600);
+		const target = path.join(this.operationsRoot, operationId, "manifest.json");
+		const relative = path.posix.join(".wiki-tmp", "rename-ops", operationId, "manifest.json");
+		const current = await readRegularFile(this.kbPath, target, true);
+		await replaceFileNoOverwrite({
+			kbRoot: this.kbPath,
+			targetPath: target,
+			bytes: Buffer.from(`${JSON.stringify({ kind: "blocked", operation_id: operationId, reason })}\n`),
+			expectedSha256: current ? sha256Bytes(current) : null,
+			mode: 0o600,
+			beforeFinalOperation: () => this.beforeOwnedFileFinalOperation?.(relative),
+		});
 	}
 
 	async compactTerminal(input: { operationId: string; resolvedConflictEvidence?: PreservedEvidence[]; now: Date }): Promise<GraphRenameReceipt> {
@@ -404,7 +447,9 @@ export class GraphRenameJournalStore {
 		try {
 			const lock = parseLock(expected);
 			if (lock.operation_id !== operationId || lock.server_instance_id !== this.serverInstanceId || lock.owner_pid !== process.pid) return;
-			await removeExactFile(lockPath, expected);
+			const current = await readRegularFile(this.kbPath, lockPath, true);
+			if (!current || current.toString("utf8") !== expected) return;
+			await removeFileNoOverwrite({ kbRoot: this.kbPath, targetPath: lockPath, expectedSha256: sha256Bytes(current) });
 		} catch {
 			// A malformed lock is never guessed or removed.
 		} finally {
@@ -417,16 +462,13 @@ export class GraphRenameJournalStore {
 		for (;;) {
 			try {
 				const lockText = JSON.stringify({ operation_id: input.operationId, immutable_digest: input.immutableDigest, ...(input.resolutionDigest ? { resolution_digest: input.resolutionDigest } : {}), owner_pid: process.pid, server_instance_id: this.serverInstanceId, created_at: this.now().toISOString() });
-				const handle = await open(lockPath, "wx", 0o600);
-				try {
-					await handle.writeFile(lockText);
-					await handle.sync();
-				} finally { await handle.close(); }
+				await replaceFileNoOverwrite({ kbRoot: this.kbPath, targetPath: lockPath, bytes: Buffer.from(lockText), expectedSha256: null, mode: 0o600 });
 				this.heldLockTexts.set(input.operationId, lockText);
 				return;
 			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-				const lockText = await readFile(lockPath, "utf8").catch(() => null);
+				if ((error as NodeJS.ErrnoException).code !== "CONFLICT") throw error;
+				const lockBytes = await readRegularFile(this.kbPath, lockPath, true).catch(() => null);
+				const lockText = lockBytes?.toString("utf8") ?? null;
 				let lock: ReturnType<typeof parseLock>;
 				try { lock = lockText ? parseLock(lockText) : (() => { throw new Error("missing lock"); })(); }
 				catch { throw busyError("rename lock is malformed"); }
@@ -440,7 +482,9 @@ export class GraphRenameJournalStore {
 				}
 				const alive = await this.isProcessAlive(lock.owner_pid);
 				if (alive !== false) throw busyError("another rename is in progress");
-				if (!lockText || !(await removeExactFile(lockPath, lockText))) throw busyError("another rename is in progress");
+				if (!lockBytes) throw busyError("another rename is in progress");
+				try { await removeFileNoOverwrite({ kbRoot: this.kbPath, targetPath: lockPath, expectedSha256: sha256Bytes(lockBytes) }); }
+				catch { throw busyError("another rename is in progress"); }
 			}
 		}
 	}
@@ -449,9 +493,17 @@ export class GraphRenameJournalStore {
 		const valid = value.kind === "journal" ? safeJournalPaths(value, value.operation_id) : safeReceiptPaths(value, value.operation_id);
 		if (!valid) throw conflictError("rename manifest is invalid");
 		await this.assertSafeOperationDirectory(value.operation_id, true);
-		await this.assertSafeOwnedPath(path.posix.join(".wiki-tmp", "rename-ops", value.operation_id, "manifest.json"), true);
-		await mkdir(path.join(this.operationsRoot, value.operation_id), { recursive: true, mode: 0o700 });
-		await writeAtomic(path.join(this.operationsRoot, value.operation_id, "manifest.json"), Buffer.from(`${JSON.stringify(value)}\n`), 0o600);
+		const target = path.join(this.operationsRoot, value.operation_id, "manifest.json");
+		const relative = path.posix.join(".wiki-tmp", "rename-ops", value.operation_id, "manifest.json");
+		const current = await readRegularFile(this.kbPath, target, true);
+		await replaceFileNoOverwrite({
+			kbRoot: this.kbPath,
+			targetPath: target,
+			bytes: Buffer.from(`${JSON.stringify(value)}\n`),
+			expectedSha256: current ? sha256Bytes(current) : null,
+			mode: 0o600,
+			beforeFinalOperation: () => this.beforeOwnedFileFinalOperation?.(relative),
+		});
 	}
 
 	private async readRequiredJournal(operationId: string): Promise<GraphRenameJournal> {
@@ -461,52 +513,37 @@ export class GraphRenameJournalStore {
 	}
 
 	private async assertSafeJournalRoot(create: boolean): Promise<void> {
-		const root = await realpath(this.kbPath);
-		let current = root;
-		for (const segment of [".wiki-tmp", "rename-ops"]) {
-			const next = path.join(current, segment);
-			const info = await lstat(next).catch((error: NodeJS.ErrnoException) => {
-				if (error.code === "ENOENT") return null;
-				throw error;
-			});
-			if (!info) {
-				if (!create) return;
-				await mkdir(next, { mode: 0o700 });
-			} else if (info.isSymbolicLink() || !info.isDirectory()) {
-				throw conflictError("rename journal directory is unsafe");
-			}
-			current = next;
+		if (create) {
+			await ensureSafeDirectory(this.kbPath, this.operationsRoot);
+			return;
 		}
+		const safe = await assertSafePath(this.kbPath, this.operationsRoot, true);
+		const info = await lstat(safe).catch((error: NodeJS.ErrnoException) => {
+			if (error.code === "ENOENT") return null;
+			throw error;
+		});
+		if (info && (info.isSymbolicLink() || !info.isDirectory())) throw conflictError("rename journal directory is unsafe");
 	}
 
 	private async assertSafeOperationDirectory(operationId: string, create: boolean): Promise<void> {
 		await this.assertSafeJournalRoot(create);
 		const directory = path.join(this.operationsRoot, operationId);
+		if (create) {
+			await ensureSafeDirectory(this.kbPath, directory);
+			return;
+		}
+		await assertSafePath(this.kbPath, directory, true);
 		const info = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return null;
 			throw error;
 		});
-		if (!info) {
-			if (create) await mkdir(directory, { mode: 0o700 });
-			return;
-		}
+		if (!info) return;
 		if (info.isSymbolicLink() || !info.isDirectory()) throw conflictError("rename operation directory is unsafe");
 	}
 
 	private async assertSafeOwnedPath(relativePath: string, allowMissingLeaf: boolean): Promise<void> {
 		if (!safeRelative(relativePath)) throw conflictError("owned path is invalid");
-		let current = await realpath(this.kbPath);
-		const parts = relativePath.split("/");
-		for (let index = 0; index < parts.length; index += 1) {
-			current = path.join(current, parts[index]!);
-			const info = await lstat(current).catch((error: NodeJS.ErrnoException) => {
-				if (allowMissingLeaf && error.code === "ENOENT") return null;
-				throw error;
-			});
-			if (!info) continue;
-			if (info.isSymbolicLink() || (index < parts.length - 1 && !info.isDirectory())) throw conflictError("owned path is unsafe");
-			if (index === parts.length - 1 && !info.isFile() && !info.isDirectory()) throw conflictError("owned path is unsafe");
-		}
+		await assertSafePath(this.kbPath, path.join(this.kbPath, ...relativePath.split("/")), allowMissingLeaf);
 	}
 
 	private async assertSafeOwnedFilePath(relativePath: string): Promise<void> {
@@ -538,7 +575,7 @@ export class GraphRenameJournalStore {
 		const parsed = parseOperationDataPath(relativePath, operationId);
 		if (!parsed) return;
 		const expected = parsed.directory === "backups" ? current.original_hashes[parsed.key] : current.intended_hashes[parsed.key];
-		if (!expected || createHash("sha256").update(bytes).digest("hex") !== expected) return;
+		if (!expected || sha256Bytes(bytes) !== expected) return;
 		await this.writeManifest({
 			...current,
 			...(parsed.directory === "backups"
@@ -552,13 +589,10 @@ export class GraphRenameJournalStore {
 		if (!expectedSha256 || !safeSha(expectedSha256)) throw conflictError("owned file digest is invalid");
 		await this.assertSafeOwnedFilePath(relativePath);
 		const absolute = path.join(this.kbPath, ...relativePath.split("/"));
-		const content = await readFile(absolute).catch((error: NodeJS.ErrnoException) => {
-			if (error.code === "ENOENT") return null;
-			throw error;
-		});
+		const content = await readRegularFile(this.kbPath, absolute, true);
 		if (content === null) return;
-		if (createHash("sha256").update(content).digest("hex") !== expectedSha256) throw conflictError("owned file changed before cleanup");
-		if (!(await removeExactFile(absolute, content))) throw conflictError("owned file changed during cleanup");
+		if (sha256Bytes(content) !== expectedSha256) throw conflictError("owned file changed before cleanup");
+		await removeFileNoOverwrite({ kbRoot: this.kbPath, targetPath: absolute, expectedSha256 });
 	}
 
 	private async removeKnownEmptyDataDirectories(operationId: string): Promise<void> {
@@ -567,72 +601,11 @@ export class GraphRenameJournalStore {
 
 	private async removeManifestAndEmptyOperationDirectory(operationId: string): Promise<void> {
 		const manifestPath = path.join(this.operationsRoot, operationId, "manifest.json");
-		const manifest = await readFile(manifestPath).catch((error: NodeJS.ErrnoException) => {
-			if (error.code === "ENOENT") return null;
-			throw error;
-		});
-		if (manifest !== null && !(await removeExactFile(manifestPath, manifest))) throw conflictError("manifest changed during cleanup");
+		const manifest = await readRegularFile(this.kbPath, manifestPath, true);
+		if (manifest !== null) await removeFileNoOverwrite({ kbRoot: this.kbPath, targetPath: manifestPath, expectedSha256: sha256Bytes(manifest) });
 		await this.removeKnownEmptyDataDirectories(operationId);
 		await rmdir(path.join(this.operationsRoot, operationId)).catch(() => undefined);
 	}
-}
-
-async function writeAtomic(target: string, bytes: Buffer, mode: number): Promise<void> {
-	const temporary = `${target}.${randomUUID()}.tmp`;
-	let created = false;
-	let handle: Awaited<ReturnType<typeof open>> | undefined;
-	try {
-		handle = await open(temporary, "wx", mode);
-		created = true;
-		await handle.writeFile(bytes);
-		await handle.sync();
-		await handle.close();
-		handle = undefined;
-		await import("node:fs/promises").then(({ rename }) => rename(temporary, target));
-	} catch (error) {
-		await handle?.close().catch(() => undefined);
-		if (created) await unlink(temporary).catch(() => undefined);
-		throw error;
-	}
-}
-
-async function removeExactFile(target: string, expected: string | Buffer): Promise<boolean> {
-	const info = await lstat(target).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return null;
-		throw error;
-	});
-	if (!info) return true;
-	if (info.isSymbolicLink() || !info.isFile()) return false;
-	const before = await readFile(target, typeof expected === "string" ? "utf8" : undefined);
-	if (!sameContent(before, expected)) return false;
-	const guard = `${target}.${randomUUID()}.remove`;
-	try {
-		await rename(target, guard);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
-		throw error;
-	}
-	const guardedInfo = await lstat(guard).catch(() => null);
-	const guarded = guardedInfo?.isFile() && !guardedInfo.isSymbolicLink()
-		? await readFile(guard, typeof expected === "string" ? "utf8" : undefined)
-		: null;
-	if (guarded !== null && sameContent(guarded, expected)) {
-		await unlink(guard);
-		return true;
-	}
-	try {
-		await link(guard, target);
-		await unlink(guard);
-	} catch {
-		// Keep the guarded bytes when a concurrent writer already recreated the path.
-	}
-	return false;
-}
-
-function sameContent(actual: string | Buffer, expected: string | Buffer): boolean {
-	return typeof actual === "string" && typeof expected === "string"
-		? actual === expected
-		: Buffer.isBuffer(actual) && Buffer.isBuffer(expected) && actual.equals(expected);
 }
 
 function isJournalState(value: unknown): value is RenameJournalState {

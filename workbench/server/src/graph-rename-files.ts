@@ -1,11 +1,23 @@
 import { createRequire } from "node:module";
-import { createHash, randomUUID } from "node:crypto";
-import { chmod, lstat, link, mkdir, open, readFile, readdir, realpath, rename, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, lstat, mkdir, open, readFile, readdir, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import type { GraphLayoutFile } from "@llm-wiki/graph-engine";
 
 import type { RenameFileState } from "./graph-rename-journal.js";
+import {
+	assertSafePath,
+	commitPreparedFileNoOverwrite,
+	exactPath,
+	lstatExactPath,
+	moveFileNoOverwrite,
+	readRegularFile,
+	removeFileNoOverwrite,
+	sha256Bytes,
+} from "./graph-rename-safe-io.js";
+
+export { exactPath, lstatExactPath, sha256Bytes } from "./graph-rename-safe-io.js";
 
 const require = createRequire(import.meta.url);
 const { loadUnicode17CaseFolder } = require("../../../scripts/lib/unicode-case-folding.js") as {
@@ -66,10 +78,6 @@ export interface RenameSourceInput {
 	beforeRename?: (from: "source" | "transit", to: "transit" | "target") => void | Promise<void>;
 	afterFinalCheck?: (from: "source" | "transit", to: "transit" | "target") => void | Promise<void>;
 	expectedSourceSha256?: string;
-}
-
-export function sha256Bytes(bytes: Buffer): string {
-	return createHash("sha256").update(bytes).digest("hex");
 }
 
 function isWithin(root: string, candidate: string): boolean {
@@ -210,55 +218,20 @@ export async function stageRenameFile(input: StageRenameFileInput): Promise<Stag
 }
 
 export async function commitStagedRenameFile(input: CommitStagedRenameFileInput): Promise<void> {
-	const destinationPath = await assertSafeRenamePath(input.kbRoot, input.destinationPath, true);
-	const stagedPath = await assertSafeRenamePath(input.kbRoot, input.stagedPath, false);
-	const destinationParent = await captureParentBoundary(input.kbRoot, destinationPath);
-	const staged = await readFile(stagedPath);
-	if (sha256Bytes(staged) !== input.sha256) throw new Error("staged file hash mismatch");
-	const current = await lstat(destinationPath).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return null;
-		throw error;
+	await commitPreparedFileNoOverwrite({
+		kbRoot: input.kbRoot,
+		targetPath: input.destinationPath,
+		preparedPath: input.stagedPath,
+		intendedSha256: input.sha256,
+		expectedSha256: input.expectedDestinationSha256,
+		beforeFinalOperation: input.beforeRename,
+		afterFinalCheck: input.afterFinalCheck,
 	});
-	if (current?.isSymbolicLink() || (current && !current.isFile())) throw renameError("FORBIDDEN_PATH", "destination is not a regular file");
-	const observedHash = current ? sha256Bytes(await readFile(destinationPath)) : null;
-	if (input.expectedDestinationSha256 !== undefined && observedHash !== input.expectedDestinationSha256) throw new Error("destination changed since staging");
-	await input.beforeRename?.();
-	const finalCurrent = await lstat(destinationPath).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return null;
-		throw error;
-	});
-	if (finalCurrent?.isSymbolicLink() || (finalCurrent && !finalCurrent.isFile())) throw renameError("FORBIDDEN_PATH", "destination is not a regular file");
-	const finalHash = finalCurrent ? sha256Bytes(await readFile(destinationPath)) : null;
-	if (input.expectedDestinationSha256 !== undefined && finalHash !== input.expectedDestinationSha256) throw new Error("destination changed before commit");
-	await input.afterFinalCheck?.();
-	await assertParentBoundary(input.kbRoot, destinationPath, destinationParent);
-	if (!finalCurrent) {
-		await linkNoReplace(stagedPath, destinationPath);
-		await unlink(stagedPath);
-		return;
-	}
-	const guardPath = await assertSafeRenamePath(input.kbRoot, `${stagedPath}.current-${randomUUID()}`, true);
-	await rename(destinationPath, guardPath);
-	const guardedHash = sha256Bytes(await readFile(guardPath));
-	const expected = input.expectedDestinationSha256 ?? observedHash;
-	if (guardedHash !== expected) {
-		await restoreNoReplace(guardPath, destinationPath);
-		throw new Error("destination changed before commit");
-	}
-	try {
-		await linkNoReplace(stagedPath, destinationPath);
-	} catch (error) {
-		throw error;
-	}
-	await unlink(stagedPath);
-	await unlink(guardPath);
 }
 
 export async function renameSourceWithTransit(input: RenameSourceInput): Promise<string | null> {
 	const sourcePath = await assertSafeRenamePath(input.kbRoot, input.sourcePath, true);
 	const targetPath = await assertSafeRenamePath(input.kbRoot, input.targetPath, true);
-	const sourceParent = await captureParentBoundary(input.kbRoot, sourcePath);
-	const targetParent = await captureParentBoundary(input.kbRoot, targetPath);
 	if (sourcePath === targetPath) return null;
 	let sourceInfo = await lstatExactPath(sourcePath);
 	if (sourceInfo && (!sourceInfo.isFile() || sourceInfo.isSymbolicLink())) throw renameError("FORBIDDEN_PATH", "source must be a regular file");
@@ -271,12 +244,16 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	const providedTransit = input.transitPath ? await assertSafeRenamePath(input.kbRoot, input.transitPath, true) : null;
 	const transitInfo = providedTransit ? await lstatExactPath(providedTransit) : null;
 	if (sourceInfo && targetInfo && sameFileIdentity(sourceInfo, targetInfo)) {
-		await unlink(sourcePath);
+		const bytes = await readRegularFile(input.kbRoot, sourcePath, false);
+		if (!bytes) throw renameError("CONFLICT", "rename source disappeared");
+		await removeFileNoOverwrite({ kbRoot: input.kbRoot, targetPath: sourcePath, expectedSha256: input.expectedSourceSha256 ?? sha256Bytes(bytes) });
 		await input.onStep?.("target");
 		return null;
 	}
 	if (sourceInfo && transitInfo && sameFileIdentity(sourceInfo, transitInfo)) {
-		await unlink(sourcePath);
+		const bytes = await readRegularFile(input.kbRoot, sourcePath, false);
+		if (!bytes) throw renameError("CONFLICT", "rename source disappeared");
+		await removeFileNoOverwrite({ kbRoot: input.kbRoot, targetPath: sourcePath, expectedSha256: input.expectedSourceSha256 ?? sha256Bytes(bytes) });
 		sourceInfo = null;
 		await input.onStep?.("transit", path.relative(input.kbRoot, providedTransit!).replaceAll(path.sep, "/"));
 	}
@@ -285,15 +262,20 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 		if (providedTransit && currentTransit) {
 			if (targetInfo && !sameFileIdentity(currentTransit, targetInfo)) throw renameError("CONFLICT", "rename target is occupied during transit recovery");
 			if (targetInfo && sameFileIdentity(currentTransit, targetInfo)) {
-				await unlink(providedTransit);
+				const bytes = await readRegularFile(input.kbRoot, providedTransit, false);
+				if (!bytes) throw renameError("CONFLICT", "rename transit disappeared");
+				await removeFileNoOverwrite({ kbRoot: input.kbRoot, targetPath: providedTransit, expectedSha256: input.expectedSourceSha256 ?? sha256Bytes(bytes) });
 				await input.onStep?.("target");
 				return path.relative(input.kbRoot, providedTransit).replaceAll(path.sep, "/");
 			}
-			await input.beforeRename?.("transit", "target");
-			if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during transit recovery");
-			await input.afterFinalCheck?.("transit", "target");
-			await linkNoReplace(providedTransit, targetPath);
-			await unlink(providedTransit);
+			await moveFileNoOverwrite({
+				kbRoot: input.kbRoot,
+				sourcePath: providedTransit,
+				targetPath,
+				expectedSourceSha256: input.expectedSourceSha256,
+				beforeFinalOperation: () => input.beforeRename?.("transit", "target"),
+				afterFinalCheck: () => input.afterFinalCheck?.("transit", "target"),
+			});
 			await input.onStep?.("target", path.relative(input.kbRoot, providedTransit).replaceAll(path.sep, "/"));
 			return path.relative(input.kbRoot, providedTransit).replaceAll(path.sep, "/");
 		}
@@ -308,17 +290,14 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	const targetRelative = path.basename(targetPath);
 	const useTransit = portableKey(sourceRelative) === portableKey(targetRelative);
 	if (!useTransit) {
-		await input.beforeRename?.("source", "target");
-		if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during commit");
-		await input.afterFinalCheck?.("source", "target");
-		await assertParentBoundary(input.kbRoot, sourcePath, sourceParent);
-		await assertParentBoundary(input.kbRoot, targetPath, targetParent);
-		await linkNoReplace(sourcePath, targetPath);
-		if (input.expectedSourceSha256 && sha256Bytes(await readFile(targetPath)) !== input.expectedSourceSha256) {
-			await unlink(targetPath);
-			throw renameError("CONFLICT", "source changed before commit");
-		}
-		await unlink(sourcePath);
+		await moveFileNoOverwrite({
+			kbRoot: input.kbRoot,
+			sourcePath,
+			targetPath,
+			expectedSourceSha256: input.expectedSourceSha256,
+			beforeFinalOperation: () => input.beforeRename?.("source", "target"),
+			afterFinalCheck: () => input.afterFinalCheck?.("source", "target"),
+		});
 		await input.onStep?.("target");
 		return null;
 	}
@@ -332,98 +311,35 @@ export async function renameSourceWithTransit(input: RenameSourceInput): Promise
 	}
 	if (!transit) throw new Error("unable to reserve rename transit path");
 	transit = await assertSafeRenamePath(input.kbRoot, transit, true);
-	const transitParent = await captureParentBoundary(input.kbRoot, transit);
 	const generatedTransitInfo = await lstatExactPath(transit);
 	if (generatedTransitInfo) throw renameError("CONFLICT", "rename transit path is occupied");
 	if (sourcePath !== transit && await lstatExactPath(sourcePath)) {
-		await input.beforeRename?.("source", "transit");
-		if (await lstatExactPath(transit)) throw renameError("CONFLICT", "rename transit appeared during commit");
-		await input.afterFinalCheck?.("source", "transit");
-		await assertParentBoundary(input.kbRoot, sourcePath, sourceParent);
-		await assertParentBoundary(input.kbRoot, transit, transitParent);
-		await linkNoReplace(sourcePath, transit);
-		if (input.expectedSourceSha256 && sha256Bytes(await readFile(transit)) !== input.expectedSourceSha256) {
-			await unlink(transit);
-			throw renameError("CONFLICT", "source changed before transit");
-		}
-		await unlink(sourcePath);
+		await moveFileNoOverwrite({
+			kbRoot: input.kbRoot,
+			sourcePath,
+			targetPath: transit,
+			expectedSourceSha256: input.expectedSourceSha256,
+			beforeFinalOperation: () => input.beforeRename?.("source", "transit"),
+			afterFinalCheck: () => input.afterFinalCheck?.("source", "transit"),
+		});
 		await input.onStep?.("transit", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 	}
 	if (transit !== targetPath && await lstatExactPath(transit)) {
-		await input.beforeRename?.("transit", "target");
-		if (await lstatExactPath(targetPath)) throw renameError("CONFLICT", "rename target appeared during commit");
-		await input.afterFinalCheck?.("transit", "target");
-		await assertParentBoundary(input.kbRoot, transit, transitParent);
-		await assertParentBoundary(input.kbRoot, targetPath, targetParent);
-		await linkNoReplace(transit, targetPath);
-		if (input.expectedSourceSha256 && sha256Bytes(await readFile(targetPath)) !== input.expectedSourceSha256) {
-			await unlink(targetPath);
-			throw renameError("CONFLICT", "source changed before target");
-		}
-		await unlink(transit);
+		await moveFileNoOverwrite({
+			kbRoot: input.kbRoot,
+			sourcePath: transit,
+			targetPath,
+			expectedSourceSha256: input.expectedSourceSha256,
+			beforeFinalOperation: () => input.beforeRename?.("transit", "target"),
+			afterFinalCheck: () => input.afterFinalCheck?.("transit", "target"),
+		});
 		await input.onStep?.("target", path.relative(input.kbRoot, transit).replaceAll(path.sep, "/"));
 	}
 	return transit;
 }
 
-async function linkNoReplace(source: string, destination: string): Promise<void> {
-	try {
-		await link(source, destination);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "EEXIST") throw renameError("CONFLICT", "rename destination appeared during commit");
-		throw error;
-	}
-}
-
-async function restoreNoReplace(source: string, destination: string): Promise<void> {
-	await linkNoReplace(source, destination);
-	await unlink(source);
-}
-
 function sameFileIdentity(left: import("node:fs").Stats, right: import("node:fs").Stats): boolean {
 	return left.dev === right.dev && left.ino === right.ino;
-}
-
-interface ParentBoundary {
-	path: string;
-	realPath: string;
-	dev: number;
-	ino: number;
-}
-
-async function captureParentBoundary(root: string, candidate: string): Promise<ParentBoundary> {
-	const parent = path.dirname(candidate);
-	const rootReal = await realpath(root).catch(() => { throw renameError("FORBIDDEN_PATH", "knowledge base is unavailable"); });
-	const realPath = await realpath(parent).catch(() => { throw renameError("FORBIDDEN_PATH", "rename parent is unavailable"); });
-	if (!isWithin(rootReal, realPath) || realPath !== parent) throw renameError("FORBIDDEN_PATH", "rename parent is symbolic");
-	const info = await lstat(parent);
-	if (!info.isDirectory() || info.isSymbolicLink()) throw renameError("FORBIDDEN_PATH", "rename parent is unsafe");
-	return { path: parent, realPath, dev: info.dev, ino: info.ino };
-}
-
-async function assertParentBoundary(root: string, candidate: string, expected: ParentBoundary): Promise<void> {
-	const parent = path.dirname(candidate);
-	const rootReal = await realpath(root).catch(() => { throw renameError("FORBIDDEN_PATH", "knowledge base is unavailable"); });
-	const realPath = await realpath(parent).catch(() => { throw renameError("FORBIDDEN_PATH", "rename parent is unavailable"); });
-	const info = await lstat(parent).catch(() => null);
-	if (!info || !info.isDirectory() || info.isSymbolicLink() || parent !== expected.path || realPath !== expected.realPath || info.dev !== expected.dev || info.ino !== expected.ino || !isWithin(rootReal, realPath)) throw renameError("FORBIDDEN_PATH", "rename parent changed during commit");
-}
-
-/** Look up a directory entry by its exact spelling, even on case-insensitive volumes. */
-export async function exactPath(candidate: string): Promise<string | null> {
-	const parent = path.dirname(candidate);
-	const name = path.basename(candidate);
-	const entries = await readdir(parent, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
-		if (error.code === "ENOENT") return [] as import("node:fs").Dirent[];
-		throw error;
-	});
-	const entry = entries.find((item) => item.name === name);
-	return entry ? path.join(parent, entry.name) : null;
-}
-
-export async function lstatExactPath(candidate: string): Promise<import("node:fs").Stats | null> {
-	const actual = await exactPath(candidate);
-	return actual ? lstat(actual) : null;
 }
 
 export async function readFileExactPath(candidate: string): Promise<Buffer | null> {
@@ -432,19 +348,7 @@ export async function readFileExactPath(candidate: string): Promise<Buffer | nul
 }
 
 export async function assertSafeRenamePath(kbRoot: string, candidate: string, allowMissingLeaf: boolean): Promise<string> {
-	const root = await realpath(kbRoot).catch(() => { throw renameError("FORBIDDEN_PATH", "knowledge base is unavailable"); });
-	const rootInput = path.resolve(kbRoot);
-	const candidateInput = path.resolve(candidate);
-	const relativeToInputRoot = path.relative(rootInput, candidateInput);
-	const absolute = isWithin(rootInput, candidateInput)
-		? path.join(root, relativeToInputRoot)
-		: candidateInput;
-	if (!isWithin(root, absolute)) throw renameError("FORBIDDEN_PATH", "rename path escapes knowledge base");
-	await assertNoSymlinkPath(root, absolute, allowMissingLeaf);
-	const parent = path.dirname(absolute);
-	const parentReal = await realpath(parent).catch(() => { throw renameError("FORBIDDEN_PATH", "rename parent is unavailable"); });
-	if (!isWithin(root, parentReal) || parentReal !== parent) throw renameError("FORBIDDEN_PATH", "rename parent is symbolic");
-	return absolute;
+	return assertSafePath(kbRoot, candidate, allowMissingLeaf);
 }
 
 export function migrateRenameLayoutKey(layout: GraphLayoutFile, fromKey: string, toKey: string): GraphLayoutFile {

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, link, open, readFile, realpath, rename, unlink } from "node:fs/promises";
+import { lstat, readFile, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -39,6 +39,12 @@ import {
 	type BlockedRenameJournal,
 	type PreservedEvidence,
 } from "./graph-rename-journal.js";
+import {
+	moveFileNoOverwrite,
+	readRegularFile,
+	removeFileNoOverwrite,
+	replaceFileNoOverwrite,
+} from "./graph-rename-safe-io.js";
 import { readGraphData, resumeGraphWatcher, subscribeGraphEvents, suspendGraphWatcher, triggerGraphRebuild } from "./graph.js";
 import { assertRegisteredKnowledgeBase } from "./knowledge-bases.js";
 
@@ -518,27 +524,20 @@ async function rollbackSourceRename(
 	const [sourceInfo, targetInfo, transitInfo] = await Promise.all([statFile(source), statFile(target), statFile(transit)]);
 	if ([sourceInfo, targetInfo, transitInfo].some((info) => info && (info.isSymbolicLink() || !info.isFile()))) return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) };
 	if (sourceInfo && !targetInfo && !transitInfo) return { ok: true };
+	const expectedSourceSha256 = record.intended_hashes[record.source_path] ?? record.original_hashes[record.source_path] ?? undefined;
 	if (!sourceInfo && targetInfo && !transitInfo) {
-		await beforeMove?.();
-		try { await moveFileNoReplace(target, source); } catch { return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) }; }
+		try {
+			await moveFileNoOverwrite({ kbRoot: kbPath, sourcePath: target, targetPath: source, expectedSourceSha256: expectedSourceSha256 ?? undefined, beforeFinalOperation: beforeMove });
+		} catch { return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) }; }
 	} else if (!sourceInfo && !targetInfo && transitInfo && transit) {
-		await beforeMove?.();
-		try { await moveFileNoReplace(transit, source); } catch { return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) }; }
+		try {
+			await moveFileNoOverwrite({ kbRoot: kbPath, sourcePath: transit, targetPath: source, expectedSourceSha256: expectedSourceSha256 ?? undefined, beforeFinalOperation: beforeMove });
+		} catch { return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) }; }
 	} else {
 		return { ok: false, conflicts: await enumerateSourceRenameConflicts(kbPath, record) };
 	}
 	await storelessVerifySourceRollback(source, target, transit);
 	return { ok: true };
-}
-
-async function moveFileNoReplace(from: string, to: string): Promise<void> {
-	try {
-		await link(from, to);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "EEXIST") throw conflictError("rename source appeared during rollback");
-		throw error;
-	}
-	await unlink(from);
 }
 
 async function enumerateSourceRenameConflicts(kbPath: string, record: GraphRenameJournal): Promise<GraphRenameJournal["conflicts"]> {
@@ -886,72 +885,13 @@ async function captureRecoveryEvidence(
 
 
 async function writeRecoveryFile(kbRoot: string, target: string, bytes: Buffer | null, expectedSha256?: string | null): Promise<void> {
-	const safeTarget = await assertSafeRenamePath(kbRoot, target, true);
-	const current = await lstatExactPath(safeTarget);
-	const currentBytes = current?.isFile() ? await readFileExactPath(safeTarget) : null;
-	if (current && (!current.isFile() || current.isSymbolicLink())) throw new Error("recovery target is unsafe");
-	const currentHash = currentBytes ? sha256Bytes(currentBytes) : null;
-	if (expectedSha256 !== undefined && currentHash !== expectedSha256) throw new Error("recovery target changed");
 	if (bytes === null) {
+		const current = await readRegularFile(kbRoot, target, true);
 		if (!current) return;
-		const guard = `${safeTarget}.recovery-delete-${randomUUID()}`;
-		await rename(safeTarget, guard);
-		const guarded = await readFile(guard);
-		if (sha256Bytes(guarded) !== (expectedSha256 ?? currentHash)) {
-			await restoreNoReplacePath(guard, safeTarget);
-			throw new Error("recovery target changed");
-		}
-		if (await lstatExactPath(safeTarget)) {
-			await restoreNoReplacePath(guard, safeTarget).catch(() => undefined);
-			throw new Error("recovery target changed");
-		}
-		await unlink(guard);
+		await removeFileNoOverwrite({ kbRoot, targetPath: target, expectedSha256: expectedSha256 ?? sha256Bytes(current) });
 		return;
 	}
-	const temporary = `${safeTarget}.recovery-${randomUUID()}.tmp`;
-	const handle = await open(temporary, "wx", 0o600);
-	try {
-		await handle.writeFile(bytes);
-		await handle.sync();
-	} finally { await handle.close(); }
-	try {
-		const readBack = await readFile(temporary);
-		if (!readBack.equals(bytes)) throw new Error("recovery bytes failed read-back verification");
-		const finalInfo = await lstatExactPath(safeTarget);
-		const finalBytes = finalInfo?.isFile() ? await readFileExactPath(safeTarget) : null;
-		if (finalInfo && (!finalInfo.isFile() || finalInfo.isSymbolicLink()) || (expectedSha256 !== undefined && (finalBytes ? sha256Bytes(finalBytes) : null) !== expectedSha256)) throw new Error("recovery target changed");
-		if (!finalInfo) {
-			await linkNoReplacePath(temporary, safeTarget);
-			await unlink(temporary);
-			return;
-		}
-		const guard = `${safeTarget}.recovery-current-${randomUUID()}`;
-		await rename(safeTarget, guard);
-		const guarded = await readFile(guard);
-		if (sha256Bytes(guarded) !== (expectedSha256 ?? currentHash)) {
-			await restoreNoReplacePath(guard, safeTarget);
-			throw new Error("recovery target changed");
-		}
-		await linkNoReplacePath(temporary, safeTarget);
-		await unlink(temporary);
-		await unlink(guard);
-	} catch (error) {
-		await unlink(temporary).catch(() => undefined);
-		throw error;
-	}
-}
-
-async function linkNoReplacePath(source: string, destination: string): Promise<void> {
-	try { await link(source, destination); }
-	catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "EEXIST") throw conflictError("recovery target appeared during commit");
-		throw error;
-	}
-}
-
-async function restoreNoReplacePath(source: string, destination: string): Promise<void> {
-	await linkNoReplacePath(source, destination);
-	await unlink(source);
+	await replaceFileNoOverwrite({ kbRoot, targetPath: target, bytes, expectedSha256 });
 }
 
 function operationData(record: GraphRenameJournal | GraphRenameReceipt): GraphRenameOperationData {
