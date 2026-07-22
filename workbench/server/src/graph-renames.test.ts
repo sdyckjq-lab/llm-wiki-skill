@@ -409,6 +409,58 @@ test("finish rollback restores the source name after a target rename crash", asy
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("finish rollback preserves a source file created after the rollback check", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "abababab-abab-4aba-8aba-abababababab";
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		await rename(source, target);
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "b".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "b".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", { renameState: "target" });
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const service = createGraphRenameService({
+			beforeSourceRollback: async () => { await writeFile(source, "external-source\n"); },
+			triggerRebuild: () => ({ ok: true, status: "started" }),
+		});
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		assert.equal(result.status, "required");
+		assert.equal(await readFile(source, "utf8"), "external-source\n");
+		assert.equal(await readFile(target, "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("finish rollback reports every old transit and target name conflict", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd";
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		const transit = path.join(kb, "wiki", "topics", ".llm-wiki-rename-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd.md");
+		await rm(source);
+		await writeFile(target, "target-current\n");
+		await writeFile(transit, "transit-current\n");
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", transitPath: "wiki/topics/.llm-wiki-rename-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd.md" });
+		await store.transition(operationId, "applying", { renameState: "target" });
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [] });
+		assert.equal(result.status, "required");
+		const conflicts = (result as any).operation.conflicts as Array<{ source_path: string; current_state: string }>;
+		assert.deepEqual(conflicts.map((conflict) => `${conflict.source_path}:${conflict.current_state}`).sort(), [
+			"wiki/topics/.llm-wiki-rename-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd.md:present",
+			"wiki/topics/a.md:missing",
+			"wiki/topics/renamed.md:present",
+		]);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("finish commit reports an occupied target name as a source conflict", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "34343434-3434-4434-8434-343434343434";
