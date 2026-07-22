@@ -136,6 +136,125 @@ test("same operation ID and digest is idempotent after terminal receipt", async 
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("same operation ID requires resolution digest presence and value to match", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-resolution-strict-"));
+	try {
+		const store = new GraphRenameJournalStore(kb);
+		const input = { operationId: "99999999-9999-4999-8999-999999999999", immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md", resolutionDigest: "b".repeat(64) };
+		await store.acquire(input);
+		await assert.rejects(store.acquire({ ...input, resolutionDigest: undefined }), (error: any) => error.code === "CONFLICT");
+		await assert.rejects(store.acquire({ ...input, resolutionDigest: "c".repeat(64) }), (error: any) => error.code === "CONFLICT");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("journal rejects a manifest whose operation ID does not match its directory", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-operation-id-"));
+	try {
+		const operationId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+		const other = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+		const dir = path.join(kb, ".wiki-tmp", "rename-ops", operationId);
+		await mkdir(dir, { recursive: true });
+		await writeFile(path.join(dir, "manifest.json"), JSON.stringify({ kind: "blocked", operation_id: other, reason: "unknown_state" }), "utf8");
+		assert.deepEqual(await new GraphRenameJournalStore(kb).read(operationId), { kind: "blocked", operation_id: operationId, reason: "invalid_journal" });
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("journal reports a manifest directory as blocked instead of throwing EISDIR", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-manifest-dir-"));
+	try {
+		const operationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+		await mkdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "manifest.json"), { recursive: true });
+		assert.deepEqual(await new GraphRenameJournalStore(kb).read(operationId), { kind: "blocked", operation_id: operationId, reason: "invalid_journal" });
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("journal rejects every operation data path that is not owned by the operation", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-owned-path-"));
+	try {
+		const operationId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+		const dir = path.join(kb, ".wiki-tmp", "rename-ops", operationId);
+		await mkdir(dir, { recursive: true });
+		const digest = "a".repeat(64);
+		const base = {
+			kind: "journal", operation_id: operationId, immutable_digest: digest, state: "applying",
+			source_path: "wiki/topics/a.md", target_path: "wiki/topics/b.md", graph_rebuild: "not_started",
+			created_at: "2026-07-22T00:00:00.000Z", updated_at: "2026-07-22T00:00:00.000Z", rename_state: "old",
+			completed_steps: [], original_hashes: { "wiki/topics/a.md": digest }, intended_hashes: { "wiki/topics/a.md": digest },
+			intended_paths: {}, stage_paths: {}, backup_paths: {}, conflicts: [], retained_evidence: [],
+		};
+		for (const value of [
+			{ ...base, intended_paths: { "wiki/topics/a.md": "wiki/topics/user.md" } },
+			{ ...base, backup_paths: { "wiki/topics/a.md": "wiki/topics/user.md" } },
+			{ ...base, stage_paths: { "wiki/topics/a.md": "wiki/topics/user.md" } },
+			{ ...base, conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: digest, preserved_variants: [{ kind: "current", relative_path: "wiki/topics/user.md", sha256: digest }] }] },
+			{ ...base, retained_evidence: [{ relative_path: "wiki/topics/user.md", sha256: digest, expires_at: "2026-08-21T00:00:00.000Z" }] },
+		]) {
+			await writeFile(path.join(dir, "manifest.json"), JSON.stringify(value), "utf8");
+			assert.deepEqual(await new GraphRenameJournalStore(kb).read(operationId), { kind: "blocked", operation_id: operationId, reason: "invalid_journal" });
+		}
+		await mkdir(path.join(kb, "wiki", "topics"), { recursive: true });
+		await writeFile(path.join(kb, "wiki", "topics", "user.md"), "user-owned\n", "utf8");
+		await new GraphRenameJournalStore(kb).pruneExpiredOperationData({ now: new Date("2027-01-01T00:00:00.000Z"), receiptRetentionMs: 1, evidenceRetentionMs: 1 });
+		assert.equal(await readFile(path.join(kb, "wiki", "topics", "user.md"), "utf8"), "user-owned\n");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("prepared cleanup preserves an owned path whose bytes were externally replaced", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-cleanup-replaced-"));
+	try {
+		const operationId = "34343434-3434-4343-8343-343434343434";
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "3".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/wiki%2Ftopics%2Fa.md.bak`;
+		const original = Buffer.from("original\n");
+		await store.writeOwnedFile(backupPath, original);
+		await store.writePrepared({
+			operationId, immutableDigest: "3".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md",
+			originalHashes: { "wiki/topics/a.md": "25718360e05d3c2d0963d1381e9dd4dae5fca789244ee4b9f861adcc0cc96218" },
+			intendedHashes: { "wiki/topics/a.md": "25718360e05d3c2d0963d1381e9dd4dae5fca789244ee4b9f861adcc0cc96218" },
+			backupPaths: { "wiki/topics/a.md": backupPath },
+		});
+		await writeFile(path.join(kb, ...backupPath.split("/")), "external\n", "utf8");
+		await assert.rejects(store.abortPrepared(operationId));
+		assert.equal(await readFile(path.join(kb, ...backupPath.split("/")), "utf8"), "external\n");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("stale malformed locks are not deleted solely because their PID is dead", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-malformed-"));
+	try {
+		await mkdir(path.join(kb, ".wiki-tmp", "rename-ops"), { recursive: true });
+		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), JSON.stringify({ owner_pid: 999999 }), "utf8");
+		await assert.rejects(new GraphRenameJournalStore(kb, { isProcessAlive: () => false }).acquire({ operationId: "ffffffff-ffff-4fff-8fff-ffffffffffff", immutableDigest: "f".repeat(64), sourcePath: "wiki/topics/c.md", targetPath: "wiki/topics/d.md" }), (error: any) => error.code === "BUSY");
+		assert.equal(await readFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), "utf8"), JSON.stringify({ owner_pid: 999999 }));
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("release preserves a replacement lock whose creation time changed", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-created-at-"));
+	try {
+		const operationId = "12121212-1212-4121-8121-121212121212";
+		const store = new GraphRenameJournalStore(kb, { serverInstanceId: "server-a" });
+		await store.acquire({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), JSON.stringify({ operation_id: operationId, immutable_digest: "1".repeat(64), owner_pid: process.pid, server_instance_id: "server-a", created_at: "2099-01-01T00:00:00.000Z" }), "utf8");
+		await store.release(operationId);
+		assert.equal(await readFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), "utf8").then((value) => value.includes("2099-01-01")), true);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("the lock holder refuses to adopt a replacement lock with a changed creation time", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-reacquire-created-at-"));
+	try {
+		const operationId = "56565656-5656-4565-8565-565656565656";
+		const store = new GraphRenameJournalStore(kb, { serverInstanceId: "server-a" });
+		await store.acquire({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		const replacement = JSON.stringify({ operation_id: operationId, immutable_digest: "5".repeat(64), owner_pid: process.pid, server_instance_id: "server-a", created_at: "2099-01-01T00:00:00.000Z" });
+		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), replacement, "utf8");
+		await assert.rejects(store.acquireExisting(operationId), (error: any) => error.code === "BUSY");
+		assert.equal(await readFile(path.join(kb, ".wiki-tmp", "rename-ops", "active.lock"), "utf8"), replacement);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("release does not unlink a lock whose owner content was replaced", async () => {
 	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-replacement-"));
 	try {

@@ -183,11 +183,13 @@ test("startup recovery prunes expired retained evidence before exposing receipts
 	try {
 		const store = new GraphRenameJournalStore(kb, { now: () => now });
 		const digest = "a".repeat(64);
+		const evidenceBytes = Buffer.from("external\n");
+		const evidenceDigest = createHash("sha256").update(evidenceBytes).digest("hex");
 		await store.acquire({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.transition(operationId, "applying", {});
 		await store.transition(operationId, "rolled_back", { graphRebuild: "succeeded" });
-		const evidencePath = await store.preserveConflictVariant({ operationId, kind: "current", sourcePath: "wiki/topics/a.md", bytes: Buffer.from("external\n") });
-		await store.compactTerminal({ operationId, now, resolvedConflictEvidence: [{ relative_path: evidencePath, sha256: digest, expires_at: "2026-07-21T00:00:00.000Z" }] });
+		const evidencePath = await store.preserveConflictVariant({ operationId, kind: "current", sourcePath: "wiki/topics/a.md", bytes: evidenceBytes });
+		await store.compactTerminal({ operationId, now, resolvedConflictEvidence: [{ relative_path: evidencePath, sha256: evidenceDigest, expires_at: "2026-07-21T00:00:00.000Z" }] });
 		await store.release(operationId);
 		const service = createGraphRenameService({ now: () => now, journalStore: () => store });
 		await service.recoverGraphRenameOperations(kb);
@@ -278,7 +280,7 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		await mkdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups"), { recursive: true });
 		await writeFile(path.join(kb, ...backupRelative.split("/")), original);
 		await store.acquire({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
-		await store.writePrepared({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": "0".repeat(64) }, intendedHashes: { "wiki/topics/a.md": "1".repeat(64) }, backupPaths: { "wiki/topics/a.md": backupRelative } });
+		await store.writePrepared({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": createHash("sha256").update(original).digest("hex") }, intendedHashes: { "wiki/topics/a.md": "1".repeat(64) }, backupPaths: { "wiki/topics/a.md": backupRelative } });
 		await store.transition(operationId, "applying", {}); await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "2".repeat(64), preserved_variants: [] }] }); await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		const stale = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "3".repeat(64) }] });
@@ -328,11 +330,19 @@ test("recovery rolls back its own earlier writes when a later file changes", asy
 		const second = path.join(kb, "wiki", "topics", "b.md");
 		const firstOriginal = Buffer.from("first-original\n");
 		const secondOriginal = Buffer.from("second-external\n");
+		const secondBackup = Buffer.from("second-original\n");
+		const firstIntended = Buffer.from("first-intended\n");
+		const secondIntended = Buffer.from("second-intended\n");
+		const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 		await writeFile(first, "first-external\n");
 		await writeFile(second, secondOriginal);
 		await mkdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups"), { recursive: true });
 		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups", "first.bak"), firstOriginal);
-		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups", "second.bak"), Buffer.from("second-original\n"));
+		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups", "second.bak"), secondBackup);
+		const firstStage = `wiki/topics/.a.md.${operationId}.0.11111111-1111-4111-8111-111111111111.stage`;
+		const secondStage = `wiki/topics/.b.md.${operationId}.0.22222222-2222-4222-8222-222222222222.stage`;
+		await writeFile(path.join(kb, ...firstStage.split("/")), firstIntended);
+		await writeFile(path.join(kb, ...secondStage.split("/")), secondIntended);
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.writePrepared({
@@ -340,19 +350,17 @@ test("recovery rolls back its own earlier writes when a later file changes", asy
 			immutableDigest: "a".repeat(64),
 			sourcePath: "wiki/topics/a.md",
 			targetPath: "wiki/topics/renamed.md",
-			originalHashes: { "wiki/topics/a.md": "b".repeat(64), "wiki/topics/b.md": "c".repeat(64) },
-			intendedHashes: { "wiki/topics/a.md": "d".repeat(64), "wiki/topics/b.md": "e".repeat(64) },
+			originalHashes: { "wiki/topics/a.md": sha(firstOriginal), "wiki/topics/b.md": sha(secondBackup) },
+			intendedHashes: { "wiki/topics/a.md": sha(firstIntended), "wiki/topics/b.md": sha(secondIntended) },
 			backupPaths: {
 				"wiki/topics/a.md": `.wiki-tmp/rename-ops/${operationId}/backups/first.bak`,
 				"wiki/topics/b.md": `.wiki-tmp/rename-ops/${operationId}/backups/second.bak`,
 			},
 			stagePaths: {
-				"wiki/topics/a.md": `.wiki-tmp/rename-ops/${operationId}/intended-first`,
-				"wiki/topics/b.md": `.wiki-tmp/rename-ops/${operationId}/intended-second`,
+				"wiki/topics/a.md": firstStage,
+				"wiki/topics/b.md": secondStage,
 			},
 		});
-		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "intended-first"), Buffer.from("first-intended\n"));
-		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "intended-second"), Buffer.from("second-intended\n"));
 		await store.transition(operationId, "applying", {});
 		const firstHash = (await import("node:crypto")).createHash("sha256").update(await readFile(first)).digest("hex");
 		const secondHash = (await import("node:crypto")).createHash("sha256").update(await readFile(second)).digest("hex");
@@ -446,7 +454,7 @@ test("finish rollback restores the source name after a target rename crash", asy
 		await rename(source, target);
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
-		await store.writePrepared({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", transitPath: "wiki/topics/.llm-wiki-rename-crash.md" });
+		await store.writePrepared({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", transitPath: `wiki/topics/.llm-wiki-rename-${operationId}-0.md` });
 		await store.transition(operationId, "applying", { renameState: "target" });
 		await store.transition(operationId, "conflicted", { conflicts: [] });
 		await store.release(operationId);
@@ -488,13 +496,13 @@ test("finish rollback reports every old transit and target name conflict", async
 	try {
 		const source = path.join(kb, "wiki", "topics", "a.md");
 		const target = path.join(kb, "wiki", "topics", "renamed.md");
-		const transit = path.join(kb, "wiki", "topics", ".llm-wiki-rename-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd.md");
+		const transit = path.join(kb, "wiki", "topics", `.llm-wiki-rename-${operationId}-0.md`);
 		await rm(source);
 		await writeFile(target, "target-current\n");
 		await writeFile(transit, "transit-current\n");
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
-		await store.writePrepared({ operationId, immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", transitPath: "wiki/topics/.llm-wiki-rename-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd.md" });
+		await store.writePrepared({ operationId, immutableDigest: "c".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", transitPath: `wiki/topics/.llm-wiki-rename-${operationId}-0.md` });
 		await store.transition(operationId, "applying", { renameState: "target" });
 		await store.transition(operationId, "conflicted", { conflicts: [] });
 		await store.release(operationId);
@@ -503,7 +511,7 @@ test("finish rollback reports every old transit and target name conflict", async
 		assert.equal(result.status, "required");
 		const conflicts = (result as any).operation.conflicts as Array<{ source_path: string; current_state: string }>;
 		assert.deepEqual(conflicts.map((conflict) => `${conflict.source_path}:${conflict.current_state}`).sort(), [
-			"wiki/topics/.llm-wiki-rename-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd.md:present",
+			`wiki/topics/.llm-wiki-rename-${operationId}-0.md:present`,
 			"wiki/topics/a.md:missing",
 			"wiki/topics/renamed.md:present",
 		]);
