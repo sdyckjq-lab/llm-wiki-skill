@@ -15,7 +15,7 @@ test("rename journal creates one lock and durable state transitions", async () =
 		await assert.rejects(store.acquire({ operationId: "22222222-2222-4222-8222-222222222222", immutableDigest: "b".repeat(64), sourcePath: "wiki/topics/c.md", targetPath: "wiki/topics/d.md" }), (error: any) => error.code === "BUSY");
 		await store.writePrepared({ operationId: first.operation_id, immutableDigest: first.immutable_digest, sourcePath: first.source_path, targetPath: first.target_path, originalHashes: { "wiki/topics/a.md": "c".repeat(64) }, intendedHashes: { "wiki/topics/a.md": "d".repeat(64) } });
 		await store.transition(first.operation_id, "applying", {});
-		await store.transition(first.operation_id, "committed", { graphRebuild: "succeeded" });
+		await store.transition(first.operation_id, "committed", { renameState: "target", graphRebuild: "succeeded" });
 		const receipt = await store.compactTerminal({ operationId: first.operation_id, now: new Date("2026-08-01T00:00:00.000Z") });
 		assert.equal(receipt.kind, "receipt");
 		assert.equal((await store.read(first.operation_id))?.kind, "receipt");
@@ -60,6 +60,45 @@ test("journal validation blocks missing fields, unknown states and mismatched ha
 			assert.deepEqual(await new GraphRenameJournalStore(kb).read(operation), { kind: "blocked", operation_id: operation, reason: "invalid_journal" });
 		}
 	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("journal validation rejects impossible prepared state combinations", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-prepared-invariants-"));
+	try {
+		const operation = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
+		const dir = path.join(kb, ".wiki-tmp", "rename-ops", operation);
+		await mkdir(dir, { recursive: true });
+		const base = {
+			kind: "journal", operation_id: operation, immutable_digest: "a".repeat(64), state: "prepared",
+			source_path: "wiki/topics/a.md", target_path: "wiki/topics/b.md", graph_rebuild: "not_started",
+			created_at: "2026-07-22T00:00:00.000Z", updated_at: "2026-07-22T00:00:00.000Z", rename_state: "old",
+			completed_steps: [], original_hashes: {}, intended_hashes: {}, intended_paths: {}, stage_paths: {}, backup_paths: {}, conflicts: [], retained_evidence: [],
+		};
+		for (const value of [
+			{ ...base, rename_state: "target" },
+			{ ...base, graph_rebuild: "started" },
+			{ ...base, completed_steps: ["wiki/topics/a.md"] },
+			{ ...base, conflicts: [{ source_path: "wiki/topics/a.md", current_state: "missing", preserved_variants: [] }] },
+			{ ...base, retained_evidence: [{ relative_path: `.wiki-tmp/rename-ops/${operation}/evidence/current-${"b".repeat(64)}.bin`, sha256: "b".repeat(64), expires_at: "2026-08-21T00:00:00.000Z" }] },
+		]) {
+			await writeFile(path.join(dir, "manifest.json"), JSON.stringify(value), "utf8");
+			assert.deepEqual(await new GraphRenameJournalStore(kb).read(operation), { kind: "blocked", operation_id: operation, reason: "invalid_journal" });
+		}
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("startup listing blocks symlink and non-directory operation entries", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-startup-entries-"));
+	const outside = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-startup-entries-outside-"));
+	try {
+		const root = path.join(kb, ".wiki-tmp", "rename-ops");
+		await mkdir(root, { recursive: true });
+		await symlink(outside, path.join(root, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+		assert.deepEqual(await new GraphRenameJournalStore(kb).listForStartup(), [{ kind: "blocked", operation_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", reason: "invalid_journal" }]);
+		await rm(path.join(root, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+		await writeFile(path.join(root, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"), "not a directory\n");
+		assert.deepEqual(await new GraphRenameJournalStore(kb).listForStartup(), [{ kind: "blocked", operation_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", reason: "invalid_journal" }]);
+	} finally { await rm(kb, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
 test("journal validation blocks unknown conflict variants and mismatched missing fields", async () => {

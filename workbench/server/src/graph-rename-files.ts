@@ -109,14 +109,14 @@ function targetName(newName: string): string {
 	}
 	const withoutOneSuffix = /\.md$/i.test(newName) ? newName.slice(0, -3) : newName;
 	const storedName = `${withoutOneSuffix}.md`;
-	const stem = storedName.slice(0, -3);
+	const deviceStem = withoutOneSuffix.split(".", 1)[0] ?? "";
 	if (!withoutOneSuffix || withoutOneSuffix === "." || withoutOneSuffix === "..") throw renameError("INVALID_REQUEST", "target name is empty");
 	if (CONTROL_OR_UNSAFE.test(storedName)) throw renameError("INVALID_REQUEST", "target name contains an illegal character");
 	if (/[ .]$/.test(withoutOneSuffix)) throw renameError("INVALID_REQUEST", "target name cannot end with dot or space");
 	if (/[#|^]/.test(storedName) || storedName.includes("[[") || storedName.includes("]]" ) || storedName.includes("%%")) {
 		throw renameError("INVALID_REQUEST", "target name breaks wikilink syntax");
 	}
-	if (RESERVED_STEM.test(stem)) throw renameError("INVALID_REQUEST", "target name is reserved on Windows");
+	if (RESERVED_STEM.test(deviceStem)) throw renameError("INVALID_REQUEST", "target name is reserved on Windows");
 	return storedName;
 }
 

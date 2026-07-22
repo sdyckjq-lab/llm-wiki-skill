@@ -49,7 +49,7 @@ import { readGraphData, resumeGraphWatcher, subscribeGraphEvents, suspendGraphWa
 import { assertRegisteredKnowledgeBase } from "./knowledge-bases.js";
 
 const RENAME_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const publicationStores = new Map<string, GraphRenameJournalStore>();
+const publicationStores = new Map<string, { store: GraphRenameJournalStore; now: () => Date }>();
 let publicationListenerInstalled = false;
 
 export interface GraphRenameServiceOptions {
@@ -111,7 +111,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 	const storeFor = options.journalStore ?? ((kbPath: string) => new GraphRenameJournalStore(kbPath, { now }));
 	const trackedStoreFor = (kbPath: string) => {
 		const store = storeFor(kbPath);
-		publicationStores.set(kbPath, store);
+		publicationStores.set(kbPath, { store, now });
 		return store;
 	};
 	const trigger = options.triggerRebuild ?? ((kbPath: string) => triggerGraphRebuild(kbPath));
@@ -186,7 +186,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 				const record = await store.acquireExisting(candidate.operation_id);
 				try {
 				if (record.state === "prepared") {
-					await store.transition(record.operation_id, "rolled_back", { graphRebuild: "succeeded" });
+					await store.transition(record.operation_id, "rolled_back", { renameState: "old", graphRebuild: "succeeded" });
 					await store.compactTerminal({ operationId: record.operation_id, now: now() });
 				} else if (record.state === "applying") {
 					const state = await inspectJournalContent(realKbPath, record);
@@ -238,7 +238,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 								continue;
 							}
 						}
-						await store.transition(record.operation_id, "rolled_back", { graphRebuild: "succeeded" });
+						await store.transition(record.operation_id, "rolled_back", { renameState: "old", graphRebuild: "succeeded" });
 						await store.compactTerminal({ operationId: record.operation_id, now: now() });
 					} else {
 						const conflicts = await recomputeRecoveryConflicts(realKbPath, record);
@@ -287,14 +287,14 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		publicationListenerInstalled = true;
 		subscribeGraphEvents((event) => {
 			if (event.type !== "graph_updated") return;
-			const store = publicationStores.get(event.kbPath);
-			if (store) void markGraphPublished(event.kbPath, store, event.rebuiltAt);
+			const context = publicationStores.get(event.kbPath);
+			if (context) void markGraphPublished(event.kbPath, context.store, context.now);
 		});
 	}
 	return service;
 }
 
-async function markGraphPublished(kbPath: string, store: GraphRenameJournalStore, _rebuiltAt: string): Promise<void> {
+async function markGraphPublished(kbPath: string, store: GraphRenameJournalStore, now: () => Date): Promise<void> {
 	for (const candidate of await store.listForStartup()) {
 			if (candidate.kind !== "journal" || !isPendingGraphPublication(candidate)) continue;
 		let locked = false;
@@ -303,7 +303,7 @@ async function markGraphPublished(kbPath: string, store: GraphRenameJournalStore
 			locked = true;
 			if (!await isRenamePublished(kbPath, record)) continue;
 			await store.transition(record.operation_id, record.state, { graphRebuild: "succeeded" });
-			await store.compactTerminal({ operationId: record.operation_id, now: new Date() });
+			await store.compactTerminal({ operationId: record.operation_id, now: now() });
 		} catch (error) {
 			if ((error as { code?: unknown }).code !== "BUSY") throw error;
 		} finally {
@@ -471,8 +471,9 @@ async function performApply(input: {
 			transitPath: resolved.equivalentPortableName ? path.join(path.dirname(resolved.sourcePath), `.llm-wiki-rename-${body.operation_id}-0.md`) : undefined,
 			expectedSourceSha256: intended[body.source_path] ?? undefined,
 			onStep: async (state, transitPath) => {
-					await store.transition(body.operation_id, "applying", { renameState: state, ...(transitPath ? { transitPath } : {}), completedSteps: state === "target" ? [...committedPaths, resolved.sourceRelativePath] : committedPaths });
-					if (state === "target") committedPaths.push(resolved.sourceRelativePath);
+					const completedSteps = state === "target" && !committedPaths.includes(resolved.sourceRelativePath) ? [...committedPaths, resolved.sourceRelativePath] : committedPaths;
+					await store.transition(body.operation_id, "applying", { renameState: state, ...(transitPath ? { transitPath } : {}), completedSteps });
+					if (state === "target" && !committedPaths.includes(resolved.sourceRelativePath)) committedPaths.push(resolved.sourceRelativePath);
 					await input.afterSourceRenameStep?.(state);
 				},
 		});

@@ -314,16 +314,25 @@ export class GraphRenameJournalStore {
 	}
 
 	async listForStartup(): Promise<Array<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal>> {
-		await this.assertSafeJournalRoot(false);
+		try { await this.assertSafeJournalRoot(false); }
+		catch { return [{ kind: "blocked", operation_id: null, reason: "invalid_journal" }]; }
 		const entries = await readdir(this.operationsRoot, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return [];
 			throw error;
 		});
 		const result: Array<GraphRenameJournal | GraphRenameReceipt | BlockedRenameJournal> = [];
 		for (const entry of entries) {
-			if (!entry.isDirectory() || entry.name === "active.lock") continue;
+			if (entry.name === "active.lock") {
+				if (!entry.isFile() || entry.isSymbolicLink()) result.push({ kind: "blocked", operation_id: null, reason: "invalid_journal" });
+				continue;
+			}
+			if (!entry.isDirectory() || entry.isSymbolicLink()) {
+				result.push({ kind: "blocked", operation_id: safeOperationId(entry.name) ? entry.name : null, reason: "invalid_journal" });
+				continue;
+			}
 			const record = await this.read(entry.name);
 			if (record) result.push(record);
+			else result.push({ kind: "blocked", operation_id: safeOperationId(entry.name) ? entry.name : null, reason: "invalid_journal" });
 		}
 		return result;
 	}
@@ -655,16 +664,23 @@ function safeJournalPaths(value: Partial<GraphRenameJournal>, operationId: strin
 	if (!(value.conflicts ?? []).every((conflict) => safeConflict(conflict, operationId))) return false;
 	const originalKeys = Object.keys(value.original_hashes ?? {}).sort();
 	const intendedKeys = Object.keys(value.intended_hashes ?? {}).sort();
-	if (value.state !== "prepared" && JSON.stringify(originalKeys) !== JSON.stringify(intendedKeys)) return false;
+	if (JSON.stringify(originalKeys) !== JSON.stringify(intendedKeys)) return false;
 	const originalKeySet = new Set(originalKeys);
 	const intendedKeySet = new Set(intendedKeys);
 	if (!Object.keys(value.backup_paths ?? {}).every((key) => originalKeySet.has(key))) return false;
 	if (!Object.keys(value.intended_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
-	if (!Object.keys(value.stage_paths ?? {}).every((key) => intendedKeySet.has(key))) return false;
+	if (!Object.keys(value.stage_paths ?? {}).every((key) => intendedKeySet.has(key) && Object.hasOwn(value.backup_paths ?? {}, key) && Object.hasOwn(value.intended_paths ?? {}, key))) return false;
+	if (new Set(value.completed_steps ?? []).size !== (value.completed_steps ?? []).length) return false;
+	if (!(value.completed_steps ?? []).every((step) => originalKeySet.has(step) || step === value.source_path)) return false;
+	if (value.state === "prepared" && (value.rename_state !== "old" || value.graph_rebuild !== "not_started" || (value.completed_steps ?? []).length !== 0 || (value.conflicts ?? []).length !== 0 || (value.retained_evidence ?? []).length !== 0)) return false;
+	if (value.state === "applying" && (value.graph_rebuild !== "not_started" || (value.conflicts ?? []).length !== 0 || (value.retained_evidence ?? []).length !== 0)) return false;
+	if (value.state === "conflicted" && value.graph_rebuild !== "not_started") return false;
+	if (value.state === "committed" && value.rename_state !== "target") return false;
+	if (value.state === "rolled_back" && value.rename_state !== "old") return false;
 	return (value.retained_evidence ?? []).every((item) => safeEvidence(item, operationId));
 }
 function safeReceiptPaths(value: Partial<GraphRenameReceipt>, operationId: string): boolean {
-	return hasOnlyKeys(value, ["kind", "operation_id", "immutable_digest", "resolution_digest", "state", "source_path", "target_path", "graph_rebuild", "created_at", "updated_at", "retained_evidence", "final_hashes", "rename_state"]) && value.operation_id === operationId && safeRelative(value.source_path) && safeRelative(value.target_path) && path.posix.dirname(value.source_path) === path.posix.dirname(value.target_path) && safeOperationId(value.operation_id) && safeSha(value.immutable_digest) && (value.resolution_digest === undefined || safeSha(value.resolution_digest)) && isRenameFileState(value.rename_state) && isGraphRebuildState(value.graph_rebuild) && typeof value.created_at === "string" && typeof value.updated_at === "string" && Number.isFinite(new Date(value.created_at).getTime()) && Number.isFinite(new Date(value.updated_at).getTime()) && isRecord(value.final_hashes) && Object.entries(value.final_hashes ?? {}).every(([key, digest]) => safeRelative(key) && (digest === null || safeSha(digest))) && Array.isArray(value.retained_evidence) && (value.retained_evidence ?? []).every((item) => safeEvidence(item, operationId));
+	return hasOnlyKeys(value, ["kind", "operation_id", "immutable_digest", "resolution_digest", "state", "source_path", "target_path", "graph_rebuild", "created_at", "updated_at", "retained_evidence", "final_hashes", "rename_state"]) && value.operation_id === operationId && safeRelative(value.source_path) && safeRelative(value.target_path) && path.posix.dirname(value.source_path) === path.posix.dirname(value.target_path) && safeOperationId(value.operation_id) && safeSha(value.immutable_digest) && (value.resolution_digest === undefined || safeSha(value.resolution_digest)) && isRenameFileState(value.rename_state) && isGraphRebuildState(value.graph_rebuild) && typeof value.created_at === "string" && typeof value.updated_at === "string" && Number.isFinite(new Date(value.created_at).getTime()) && Number.isFinite(new Date(value.updated_at).getTime()) && isRecord(value.final_hashes) && Object.entries(value.final_hashes ?? {}).every(([key, digest]) => safeRelative(key) && (digest === null || safeSha(digest))) && Array.isArray(value.retained_evidence) && (value.retained_evidence ?? []).every((item) => safeEvidence(item, operationId)) && (value.state !== "committed" || value.rename_state === "target") && (value.state !== "rolled_back" || value.rename_state === "old");
 }
 function safeConflict(value: GraphRenameJournal["conflicts"][number], operationId: string): boolean {
 	if (!isRecord(value) || !safeRelative(value.source_path) || (value.current_state !== "present" && value.current_state !== "missing") || !Array.isArray(value.preserved_variants)) return false;

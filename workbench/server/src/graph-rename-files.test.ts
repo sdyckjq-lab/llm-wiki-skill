@@ -45,6 +45,16 @@ test("rename path resolution treats a colliding directory entry as occupied", as
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("rename path resolution rejects Windows device stems before the first dot", async () => {
+	const { root } = await fixture();
+	try {
+		for (const newName of ["CON.txt", "LPT1.note", "AUX.foo"]) {
+			await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName }), (error: any) => error.code === "INVALID_REQUEST");
+		}
+		assert.equal((await resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "中文.说明" })).targetRelativePath, "wiki/topics/中文.说明.md");
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("byte replacement checks raw UTF-8 slices and leaves surrounding bytes intact", () => {
 	const original = Buffer.from("中文 😀 [[a]] `[[a]]`\n```\n[[a]]\n```", "utf8");
 	const raw = "[[a]]";

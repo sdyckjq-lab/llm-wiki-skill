@@ -320,9 +320,8 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		const operationId = "55555555-5555-4555-8555-555555555555";
 		const digest = "f".repeat(64);
 		const backupRelative = `.wiki-tmp/rename-ops/${operationId}/backups/a.bak`;
-		await mkdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups"), { recursive: true });
-		await writeFile(path.join(kb, ...backupRelative.split("/")), original);
 		await store.acquire({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writeOwnedFile(backupRelative, original);
 		await store.writePrepared({ operationId, immutableDigest: digest, sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": createHash("sha256").update(original).digest("hex") }, intendedHashes: { "wiki/topics/a.md": "1".repeat(64) }, backupPaths: { "wiki/topics/a.md": backupRelative } });
 		await store.transition(operationId, "applying", {}); await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "2".repeat(64), preserved_variants: [] }] }); await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
@@ -379,15 +378,20 @@ test("recovery rolls back its own earlier writes when a later file changes", asy
 		const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 		await writeFile(first, "first-external\n");
 		await writeFile(second, secondOriginal);
-		await mkdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups"), { recursive: true });
-		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups", "first.bak"), firstOriginal);
-		await writeFile(path.join(kb, ".wiki-tmp", "rename-ops", operationId, "backups", "second.bak"), secondBackup);
 		const firstStage = `wiki/topics/.a.md.${operationId}.0.11111111-1111-4111-8111-111111111111.stage`;
 		const secondStage = `wiki/topics/.b.md.${operationId}.0.22222222-2222-4222-8222-222222222222.stage`;
 		await writeFile(path.join(kb, ...firstStage.split("/")), firstIntended);
 		await writeFile(path.join(kb, ...secondStage.split("/")), secondIntended);
 		const store = new GraphRenameJournalStore(kb);
 		await store.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		const firstBackup = `.wiki-tmp/rename-ops/${operationId}/backups/first.bak`;
+		const secondBackupPath = `.wiki-tmp/rename-ops/${operationId}/backups/second.bak`;
+		const firstIntendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/first.bin`;
+		const secondIntendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/second.bin`;
+		await store.writeOwnedFile(firstBackup, firstOriginal);
+		await store.writeOwnedFile(secondBackupPath, secondBackup);
+		await store.writeOwnedFile(firstIntendedPath, firstIntended);
+		await store.writeOwnedFile(secondIntendedPath, secondIntended);
 		await store.writePrepared({
 			operationId,
 			immutableDigest: "a".repeat(64),
@@ -396,8 +400,12 @@ test("recovery rolls back its own earlier writes when a later file changes", asy
 			originalHashes: { "wiki/topics/a.md": sha(firstOriginal), "wiki/topics/b.md": sha(secondBackup) },
 			intendedHashes: { "wiki/topics/a.md": sha(firstIntended), "wiki/topics/b.md": sha(secondIntended) },
 			backupPaths: {
-				"wiki/topics/a.md": `.wiki-tmp/rename-ops/${operationId}/backups/first.bak`,
-				"wiki/topics/b.md": `.wiki-tmp/rename-ops/${operationId}/backups/second.bak`,
+				"wiki/topics/a.md": firstBackup,
+				"wiki/topics/b.md": secondBackupPath,
+			},
+			intendedPaths: {
+				"wiki/topics/a.md": firstIntendedPath,
+				"wiki/topics/b.md": secondIntendedPath,
 			},
 			stagePaths: {
 				"wiki/topics/a.md": firstStage,
@@ -691,6 +699,7 @@ test("failed graph rebuild remains visible and can be retried", async () => {
 test("published rollback keeps rolled_back state while marking graph publication", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "56565656-5656-4565-8565-565656565656";
+	const fixedNow = new Date("2031-04-05T06:07:08.000Z");
 	try {
 		await mkdir(path.join(kb, "wiki"), { recursive: true });
 		const graph = {
@@ -699,13 +708,13 @@ test("published rollback keeps rolled_back state while marking graph publication
 			edges: [],
 		};
 		await writeFile(path.join(kb, "wiki", "graph-data.json"), JSON.stringify(graph));
-		const store = new GraphRenameJournalStore(kb);
+		const store = new GraphRenameJournalStore(kb, { now: () => fixedNow });
 		await store.acquire({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.writePrepared({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
 		await store.transition(operationId, "applying", {});
 		await store.transition(operationId, "rolled_back", { graphRebuild: "started" });
 		await store.release(operationId);
-		const service = createGraphRenameService({ journalStore: () => store });
+		const service = createGraphRenameService({ journalStore: () => store, now: () => fixedNow });
 		await service.getGraphRenameRecovery(kb);
 		await publishGraphRebuildResult({
 			kbPath: kb,
@@ -718,5 +727,6 @@ test("published rollback keeps rolled_back state while marking graph publication
 		const record = await store.read(operationId) as any;
 		assert.equal(record.state, "rolled_back");
 		assert.equal(record.graph_rebuild, "succeeded");
+		assert.equal(record.updated_at, fixedNow.toISOString());
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
