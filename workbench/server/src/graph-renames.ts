@@ -35,7 +35,7 @@ import {
 	type GraphRenameReceipt,
 	type BlockedRenameJournal,
 } from "./graph-rename-journal.js";
-import { resumeGraphWatcher, suspendGraphWatcher, triggerGraphRebuild } from "./graph.js";
+import { readGraphData, resumeGraphWatcher, subscribeGraphEvents, suspendGraphWatcher, triggerGraphRebuild } from "./graph.js";
 import { assertRegisteredKnowledgeBase } from "./knowledge-bases.js";
 
 const RENAME_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -156,7 +156,23 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 			return { needsRebuild };
 		},
 	};
+	subscribeGraphEvents((event) => {
+		if (event.type !== "graph_updated") return;
+		void markGraphPublished(event.kbPath, storeFor(event.kbPath), event.rebuiltAt);
+	});
 	return service;
+}
+
+async function markGraphPublished(kbPath: string, store: GraphRenameJournalStore, _rebuiltAt: string): Promise<void> {
+	for (const record of await store.listForStartup()) {
+		if (record.kind !== "journal" || record.state !== "committed" || record.graph_rebuild === "succeeded") continue;
+		const graph = await readGraphData(kbPath).catch(() => null);
+		if (!graph || graph.needsBuild) continue;
+		const sourcePaths = new Set(graph.data.nodes.map((node) => String(node.source_path ?? node.path ?? node.id)));
+		if (!sourcePaths.has(record.target_path) || sourcePaths.has(record.source_path)) continue;
+		await store.transition(record.operation_id, "committed", { graphRebuild: "succeeded" });
+		await store.compactTerminal({ operationId: record.operation_id, now: new Date() });
+	}
 }
 
 async function inspectJournalContent(kbPath: string, record: GraphRenameJournal): Promise<"original" | "intended" | "mixed"> {
@@ -321,8 +337,10 @@ function buildPreview(input: { resolved: Awaited<ReturnType<typeof resolveKnowle
 	}
 	const readOnly = [...input.scan.read_only_occurrences, ...input.scan.ambiguous_occurrences.filter((item) => item.classification === "read_only" || item.read_only)].map((item) => ({ occurrence_id: occurrenceId(item), source_path: item.source_path, file_sha256: item.file_sha256, start_byte: item.start_byte, end_byte: item.end_byte, raw_link: item.raw_link, resolution_kind: "ambiguous" as const }));
 	const ambiguousChoices = ambiguous.map((item) => ({ occurrence_id: occurrenceId(item), source_path: item.source_path, candidates: (item.rendered_candidates ?? []).map((candidate) => ({ target_path: candidate.candidate_path, replacement_raw_link: candidate.replacement })) }));
-	const projection = { operation_id: input.operationId, expires_at: input.expiresAt.toISOString(), source_path: input.resolved.sourceRelativePath, target_path: input.resolved.targetRelativePath, file_set_sha256: input.scan.file_set_sha256, editable_files: [...grouped.values()], read_only_references: readOnly, ambiguous_choices: ambiguousChoices, layout_change: { from_key: input.resolved.sourceRelativePath, to_key: input.resolved.targetRelativePath, present: Boolean(input.layout?.pins && Object.hasOwn(input.layout.pins, input.resolved.sourceRelativePath)) } };
-	const previewDigest = createHash("sha256").update(JSON.stringify(projection)).digest("hex");
+	const layoutChange = { from_key: input.resolved.sourceRelativePath, to_key: input.resolved.targetRelativePath, present: Boolean(input.layout?.pins && Object.hasOwn(input.layout.pins, input.resolved.sourceRelativePath)) };
+	const projection = { operation_id: input.operationId, expires_at: input.expiresAt.toISOString(), source_path: input.resolved.sourceRelativePath, target_path: input.resolved.targetRelativePath, file_set_sha256: input.scan.file_set_sha256, editable_files: [...grouped.values()], read_only_references: readOnly, ambiguous_choices: ambiguousChoices, layout_change: layoutChange };
+	const digestProjection = { ...projection, layout: input.layout };
+	const previewDigest = createHash("sha256").update(JSON.stringify(digestProjection)).digest("hex");
 	return { ...projection, preview_digest: previewDigest, equivalent_portable_name: input.resolved.equivalentPortableName, summary: { editable_files: grouped.size, editable_occurrences: editable.length + ambiguous.filter((item) => !editable.some((entry) => occurrenceId(entry) === occurrenceId(item))).length, read_only_occurrences: readOnly.length, ambiguous_occurrences: ambiguous.length } };
 }
 
