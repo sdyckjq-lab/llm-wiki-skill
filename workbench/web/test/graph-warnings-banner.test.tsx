@@ -355,6 +355,34 @@ describe("GraphWarningsBanner", () => {
 		assert.deepEqual(calls, [[sourcePage.groups[0], sourcePage.candidate_sets[0]]]);
 	});
 
+	it("passes only formal editable pages from a mixed ambiguity candidate set", async () => {
+		const sourcePage = page("warning-mixed", "ambiguous_wikilink", "candidate-mixed", "raw/reference.md", null);
+		sourcePage.candidate_sets[0] = {
+			...sourcePage.candidate_sets[0]!,
+			candidate_count: 3,
+			candidates: [
+				"wiki/topics/candidate-mixed.md",
+				"raw/candidate-mixed.md",
+				"wiki/archive/candidate-mixed.md",
+			],
+		};
+		const calls: unknown[] = [];
+		render(<GraphWarningsBanner
+			warningState={warningState}
+			loadPage={async () => sourcePage}
+			onResolveWarning={(group, candidates) => calls.push([group, candidates])}
+		/>);
+		await click(screen.getByRole("button", { name: "查看详情" }));
+		await waitFor(() => assert.notEqual(screen.queryByRole("button", { name: "解决此告警" }), null));
+		await click(screen.getByRole("button", { name: "解决此告警" }));
+
+		assert.deepEqual(calls, [[sourcePage.groups[0], {
+			...sourcePage.candidate_sets[0],
+			candidate_count: 1,
+			candidates: ["wiki/topics/candidate-mixed.md"],
+		}]]);
+	});
+
 	it("announces loading and supports retry after a page error", async () => {
 		let attempts = 0;
 		render(<GraphWarningsBanner

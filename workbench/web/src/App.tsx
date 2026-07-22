@@ -13,6 +13,8 @@ import { BatchDigestPanel, type BatchDigestJob } from "@/components/BatchDigestP
 import { AppearancePanel } from "@/components/AppearancePanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { GraphPanel } from "@/components/GraphPanel";
+import { GraphRenameDialog } from "@/components/GraphRenameDialog";
+import { GraphRenameEvidenceNotice } from "@/components/GraphRenameEvidenceNotice";
 import { MainViewTabs, type MainView } from "@/components/MainViewTabs";
 import { RightDrawer } from "@/components/RightDrawer";
 import { SearchPanel } from "@/components/SearchPanel";
@@ -27,6 +29,9 @@ import {
 	type KnowledgeBaseInfo,
 	type ModelRef,
 	type PageRef,
+	type GraphRenameRecoveryData,
+	type GraphWarningPublicCandidateSetContract,
+	type GraphWarningPublicGroupContract,
 	type UIMessage,
 } from "@llm-wiki/workbench-contracts";
 import { listArtifacts } from "@/lib/api/artifacts";
@@ -39,9 +44,11 @@ import {
 import { subscribeGraphEvents, toEngineGraphDiff } from "@/lib/api/events";
 import {
 	getGraphData,
+	rebuildGraph,
 	type GraphAuthoritySnapshot,
 	type GraphBuildError,
 } from "@/lib/api/graph";
+import { getGraphRenameRecovery } from "@/lib/api/graph-renames";
 import {
 	getActiveContext,
 	listKnowledgeBases,
@@ -87,11 +94,19 @@ import {
 	clampDrawerWidthForViewport,
 	sidebarLayoutWidth,
 } from "@/lib/drawer-layout";
+import { useGraphRenameRecovery } from "@/lib/use-graph-rename-recovery";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "llm-wiki-agent-sidebar-collapsed";
 const DRAWER_WIDTH_STORAGE_KEY = "llm-wiki-agent-drawer-width";
 const MAIN_VIEW_STORAGE_KEY = "llm-wiki-agent-main-view";
 const SEARCH_REF_LIMIT = 5000;
+
+interface RenameDialogDescriptor {
+	kbPath: string;
+	sourcePath?: string;
+	candidatePaths?: string[];
+	recovery?: GraphRenameRecoveryData;
+}
 
 function getSidebarLayoutWidth(collapsed: boolean): number {
 	if (typeof window === "undefined") return 0;
@@ -176,11 +191,18 @@ function App() {
 	const [graphVisibilityState, setGraphVisibilityState] = useState<GraphVisibilityState | null>(null);
 	const [graphTemporaryObject, setGraphTemporaryObject] = useState<GraphSummaryObjectRef | null>(null);
 	const [selectionCommand, setSelectionCommand] = useState<GraphSelectionCommand | undefined>();
+	const [renameDialog, setRenameDialog] = useState<RenameDialogDescriptor | null>(null);
 	const [mainView, setMainView] = useState<MainView>(() => {
 		if (typeof window === "undefined") return "chat";
 		return window.localStorage.getItem(MAIN_VIEW_STORAGE_KEY) === "graph" ? "graph" : "chat";
 	});
 	const mainViewRef = useRef(mainView);
+	const graphRenameRecovery = useGraphRenameRecovery({
+		kbPath: active?.kb.path ?? null,
+		getRecovery: getGraphRenameRecovery,
+	});
+	const renameRecoveryStatus = graphRenameRecovery.status;
+	const recheckGraphRenameRecovery = graphRenameRecovery.recheck;
 	const drawerRef = useRef<DrawerState>(closedDrawer());
 	const activeConversationId = active?.conversation.id ?? null;
 	const graphPageReadRequestRef = useRef<(request: NonNullable<ActiveMapReadingWorkflowPlan["pageReadRequest"]>) => void>(() => {});
@@ -270,6 +292,24 @@ function App() {
 	}, [mainView]);
 
 	useEffect(() => {
+		const kbPath = active?.kb.path;
+		const recovery = renameRecoveryStatus;
+		if (!kbPath) {
+			setRenameDialog(null);
+			return;
+		}
+		if (!recovery) {
+			setRenameDialog((current) => current && current.kbPath !== kbPath ? null : current);
+			return;
+		}
+		if (recovery.status === "clear") {
+			setRenameDialog((current) => current?.recovery?.status === "rebuild_required" ? null : current);
+			return;
+		}
+		setRenameDialog({ kbPath, recovery });
+	}, [active?.kb.path, renameRecoveryStatus]);
+
+	useEffect(() => {
 		if (!active?.kb.path) return;
 		const kbPath = active.kb.path;
 		let authorityReadId = 0;
@@ -309,10 +349,12 @@ function App() {
 					setGraphRefreshToken((token) => token + 1);
 					setPendingGraphDiff(toEngineGraphDiff(event.diff));
 					if (mainViewRef.current !== "graph" && event.diff) setGraphHasPendingUpdate(true);
+					void recheckGraphRenameRecovery();
 					return;
 				}
 				setSidebarError(event.message);
 				setGraphBuildError({ ...event, kbPath });
+				void recheckGraphRenameRecovery();
 			},
 			onProtocolError(error) {
 				authorityReadId += 1;
@@ -324,7 +366,7 @@ function App() {
 			authorityReadId += 1;
 			close();
 		};
-	}, [active?.kb.path]);
+	}, [active?.kb.path, recheckGraphRenameRecovery]);
 
 	useEffect(() => {
 		if (mainView === "graph") setGraphHasPendingUpdate(false);
@@ -521,6 +563,21 @@ function App() {
 	const handleGraphReaderAction = (actionId: GraphReaderActionId) => {
 		runGraphReaderAction(actionId);
 	};
+
+	const handleResolveGraphWarning = useCallback((
+		_group: GraphWarningPublicGroupContract,
+		candidateSet: GraphWarningPublicCandidateSetContract,
+	) => {
+		const kbPath = active?.kb.path;
+		if (!kbPath || graphRenameRecovery.renameBlocked || renameDialog) return;
+		setRenameDialog({ kbPath, candidatePaths: candidateSet.candidates });
+	}, [active?.kb.path, graphRenameRecovery.renameBlocked, renameDialog]);
+
+	const handleRenameGraphPage = useCallback((sourcePath: string) => {
+		const kbPath = active?.kb.path;
+		if (!kbPath || graphRenameRecovery.renameBlocked || renameDialog) return;
+		setRenameDialog({ kbPath, sourcePath });
+	}, [active?.kb.path, graphRenameRecovery.renameBlocked, renameDialog]);
 
 	const handleCloseDrawer = useCallback((reason: "button" | "escape") => {
 		runDrawerClose(reason);
@@ -837,6 +894,9 @@ function App() {
 	const drawerOpen = drawer.mode !== "closed";
 	const graphDrawerOverlay = mainView === "graph" && isGraphInteractionDrawer(drawer) && !drawerFullscreen;
 	const appBodyStyle = { "--drawer-width": `${drawerWidth}px` } as CSSProperties;
+	const renameEntriesEnabled = Boolean(active?.kb.path)
+		&& !graphRenameRecovery.renameBlocked
+		&& renameDialog === null;
 
 	return (
 		<TooltipProvider delayDuration={200}>
@@ -929,6 +989,7 @@ function App() {
 									refreshToken={graphRefreshToken}
 									authoritativeSnapshot={graphAuthoritySnapshot}
 									onDiffConsumed={() => setPendingGraphDiff(null)}
+									onResolveWarning={renameEntriesEnabled ? handleResolveGraphWarning : undefined}
 									drawerFullscreen={drawerFullscreen}
 								/>
 							)}
@@ -943,6 +1004,7 @@ function App() {
 						onOpenPage={handleOpenPage}
 						onWikiLinkSeen={handleWikiLinkSeen}
 						onGraphReaderAction={handleGraphReaderAction}
+						onRenameGraphPage={renameEntriesEnabled ? handleRenameGraphPage : undefined}
 						onGraphSummaryCommand={handleGraphSummaryCommand}
 						onGraphSummaryNodeSelect={handleGraphSummaryNodeSelect}
 						onGraphSummaryNodePreview={handleGraphSummaryNodePreview}
@@ -959,6 +1021,30 @@ function App() {
 						onClose={handleCloseDrawer}
 					/>
 				</div>
+				<GraphRenameEvidenceNotice
+					receipts={graphRenameRecovery.visibleReceipts}
+					onDismiss={graphRenameRecovery.dismissReceipt}
+				/>
+				{renameDialog && (
+					<GraphRenameDialog
+						open
+						kbPath={renameDialog.kbPath}
+						sourcePath={renameDialog.sourcePath}
+						candidatePaths={renameDialog.candidatePaths}
+						recovery={renameDialog.recovery}
+						onOpenChange={(nextOpen) => {
+							if (!nextOpen) setRenameDialog(null);
+						}}
+						onRecoveryChange={graphRenameRecovery.acceptRecovery}
+						onOperationTerminal={() => {
+							setRenameDialog(null);
+							void graphRenameRecovery.recheck();
+						}}
+						onRetryGraph={async () => {
+							await rebuildGraph(renameDialog.kbPath);
+						}}
+					/>
+				)}
 				<SettingsPanel
 					open={settingsOpen}
 					onOpenChange={setSettingsOpen}

@@ -16,6 +16,17 @@ describe("GraphPanel Paper shell", () => {
 		globalThis.fetch = originalFetch;
 	});
 
+	it("keeps rename and recovery surfaces readable at narrow widths and reduced motion", () => {
+		const css = readFileSync(resolve(import.meta.dirname, "../src/index.css"), "utf8");
+
+		assert.match(css, /\.graph-rename-dialog[\s\S]*width:\s*min\(720px, calc\(100vw - 24px\)\)/);
+		assert.match(css, /\.graph-rename-step[\s\S]*overflow-x:\s*hidden/);
+		assert.match(css, /\.graph-rename-choice-list code[\s\S]*overflow-wrap:\s*anywhere/);
+		assert.match(css, /\.graph-rename-error,[\s\S]*border-left-width:\s*4px/);
+		assert.match(css, /@media \(max-width:\s*420px\)[\s\S]*\.graph-rename-dialog[\s\S]*width:\s*calc\(100vw - 12px\)/);
+		assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*\.graph-rename-dialog[\s\S]*animation:\s*none/);
+	});
+
 	it("renders the graph shell toolbar without adding app-level graph overlays", async () => {
 		mockGraphFetch();
 

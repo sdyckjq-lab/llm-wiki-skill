@@ -341,6 +341,34 @@ describe("GraphRenameDialog", () => {
 		assert.equal(retries, 1);
 	});
 
+	it("moves a conflicted apply directly into the complete non-dismissible recovery state", async () => {
+		const openChanges: boolean[] = [];
+		const preview = { ...previewFixture, ambiguous_choices: [] };
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				onOpenChange={(open) => openChanges.push(open)}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => ({ outcome: "operation", operation: conflictedOperation }),
+				}}
+			/>,
+		);
+
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("需要处理改名冲突"), null));
+		assert.match(screen.getByRole("dialog", { name: "安全改名" }).textContent ?? "", /当前冲突\.md.*已删除\.md/);
+		await pressKey(document, "Escape");
+		assert.deepEqual(openChanges, []);
+	});
+
 	it("refreshes the complete conflict set before resolution and shows retained evidence after success", async () => {
 		const refreshed = {
 			...requiredRecovery,
@@ -474,6 +502,26 @@ describe("GraphRenameDialog", () => {
 		await click(screen.getByRole("button", { name: "确认并改名" }));
 		await pressKey(document, "Escape");
 		assert.deepEqual(openChanges, []);
+	});
+
+	it("returns focus to the deliberate entry after ordinary cancellation", async () => {
+		const openChanges: boolean[] = [];
+		const entry = document.createElement("button");
+		entry.textContent = "打开安全改名";
+		document.body.append(entry);
+		entry.focus();
+		const { unmount } = render(<GraphRenameDialog
+			open
+			kbPath={kbPath}
+			sourcePath={previewFixture.source_path}
+			onOpenChange={(nextOpen) => openChanges.push(nextOpen)}
+			api={unusedApi}
+		/>);
+		assert.notEqual(screen.queryByRole("dialog", { name: "安全改名" }), null);
+		await click(screen.getByRole("button", { name: "取消" }));
+		assert.deepEqual(openChanges, [false]);
+		unmount();
+		assert.equal(document.activeElement, entry);
 	});
 });
 

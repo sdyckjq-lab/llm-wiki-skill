@@ -75,7 +75,6 @@ export function GraphRenameDialog({
 			? `${props.recovery.operation_id ?? "none"}:${props.recovery.reason}`
 			: props.recovery?.operation.operation_id ?? "none";
 	const identity = [
-		props.open ? "open" : "closed",
 		props.sourcePath ?? "warning",
 		props.candidatePaths?.join("\0") ?? "",
 		props.recovery?.status ?? "rename",
@@ -111,6 +110,11 @@ function GraphRenameDialogState({
 	const [recoveryAction, setRecoveryAction] = useState<"finish_commit" | "finish_rollback" | null>(null);
 	const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
 	const applyInFlightRef = useRef(false);
+	const returnFocusRef = useRef<HTMLElement | null>(
+		typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+			? document.activeElement
+			: null,
+	);
 
 	const filenameError = mode === "edit-name" ? validateRenameFilename(newName) : null;
 	const previewReady = preview !== null
@@ -157,11 +161,28 @@ function GraphRenameDialogState({
 				return;
 			}
 			setOperation(result.operation);
+			if (result.operation.state === "conflicted") {
+				const recoveryData: GraphRenameRecoveryData = {
+					status: "required",
+					operation: result.operation,
+					retained_evidence_receipts: [],
+				};
+				setActiveRecovery(recoveryData);
+				_onRecoveryChange?.(recoveryData);
+				setRecoveryAction(null);
+				setMode("recovery-required");
+				return;
+			}
 			if (result.operation.state === "committed" && result.operation.graph_rebuild === "succeeded") {
 				setMode("committed");
 				return;
 			}
 			if (result.operation.state === "committed") {
+				_onRecoveryChange?.({
+					status: "rebuild_required",
+					operation: result.operation,
+					retained_evidence_receipts: [],
+				});
 				setMode("rebuild-required");
 				return;
 			}
@@ -221,12 +242,16 @@ function GraphRenameDialogState({
 	};
 
 	const dismissible = !["applying", "recovery-required", "recovery-resolving"].includes(mode);
+	const requestOpenChange = (nextOpen: boolean) => {
+		if (!nextOpen && !dismissible) return;
+		onOpenChange(nextOpen);
+		if (!nextOpen) {
+			queueMicrotask(() => returnFocusRef.current?.focus());
+		}
+	};
 
 	return (
-		<Dialog open={open} onOpenChange={(nextOpen) => {
-			if (!nextOpen && !dismissible) return;
-			onOpenChange(nextOpen);
-		}}>
+		<Dialog open={open} onOpenChange={requestOpenChange}>
 			<DialogContent className="dialog-surface graph-rename-dialog" showCloseButton={false}>
 				<DialogHeader>
 					<DialogTitle>安全改名</DialogTitle>
@@ -253,7 +278,7 @@ function GraphRenameDialogState({
 							))}
 						</div>
 						<DialogFooter>
-							<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+							<Button type="button" variant="outline" onClick={() => requestOpenChange(false)}>取消</Button>
 							<Button
 								type="button"
 								disabled={!selectedSource}
@@ -281,7 +306,7 @@ function GraphRenameDialogState({
 						</label>
 						{(filenameError || error) && <p role="alert" className="graph-rename-error">{filenameError ?? error}</p>}
 						<DialogFooter>
-							<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+							<Button type="button" variant="outline" onClick={() => requestOpenChange(false)}>取消</Button>
 							<Button type="button" disabled={Boolean(filenameError)} onClick={() => void loadPreview()}>生成预览</Button>
 						</DialogFooter>
 					</section>
@@ -357,7 +382,7 @@ function GraphRenameDialogState({
 						<DialogFooter>
 							<Button type="button" onClick={() => {
 								_onOperationTerminal?.();
-								onOpenChange(false);
+								requestOpenChange(false);
 							}}>完成</Button>
 						</DialogFooter>
 					</section>
@@ -366,7 +391,7 @@ function GraphRenameDialogState({
 						<h3>预览已失效</h3>
 						<p role="alert">{error ?? "知识库内容已经变化，请重新生成预览。"}</p>
 						<DialogFooter>
-							<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+							<Button type="button" variant="outline" onClick={() => requestOpenChange(false)}>取消</Button>
 							<Button type="button" onClick={() => void loadPreview()}>重新生成预览</Button>
 						</DialogFooter>
 					</section>
@@ -385,7 +410,7 @@ function GraphRenameDialogState({
 						<p>{blockedRecoveryMessage(activeRecovery.reason)}</p>
 						<p>系统没有改写任何文件。请保留知识库现状并检查操作记录。</p>
 						<DialogFooter>
-							<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>知道了</Button>
+							<Button type="button" variant="outline" onClick={() => requestOpenChange(false)}>知道了</Button>
 						</DialogFooter>
 					</section>
 				) : mode === "recovery-terminal" && activeRecovery?.status === "clear" ? (
@@ -395,7 +420,7 @@ function GraphRenameDialogState({
 						<DialogFooter>
 							<Button type="button" onClick={() => {
 								_onOperationTerminal?.();
-								onOpenChange(false);
+								requestOpenChange(false);
 							}}>完成</Button>
 						</DialogFooter>
 					</section>
@@ -468,7 +493,7 @@ function GraphRenameDialogState({
 							<span>我已核对完整预览，并确认执行安全改名</span>
 						</label>
 						<DialogFooter>
-							<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+							<Button type="button" variant="outline" onClick={() => requestOpenChange(false)}>取消</Button>
 							<Button type="button" disabled={!previewReady || !confirmed} onClick={() => void applyPreview()}>确认并改名</Button>
 						</DialogFooter>
 					</section>

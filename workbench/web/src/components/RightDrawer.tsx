@@ -32,6 +32,7 @@ interface Props {
 	onOpenPage: (path: string) => void;
 	onWikiLinkSeen: (path: string) => void;
 	onGraphReaderAction: (actionId: GraphReaderActionId) => void;
+	onRenameGraphPage?: (sourcePath: string) => void;
 	onGraphSummaryCommand?: (command: GraphSummaryCommand) => void;
 	onGraphSummaryNodeSelect?: (nodeId: string) => void;
 	onGraphSummaryNodePreview?: (nodeId: string | null) => void;
@@ -71,6 +72,7 @@ export function RightDrawer({
 	onOpenPage,
 	onWikiLinkSeen,
 	onGraphReaderAction,
+	onRenameGraphPage,
 	onGraphSummaryCommand = () => {},
 	onGraphSummaryNodeSelect = () => {},
 	onGraphSummaryNodePreview = () => {},
@@ -251,6 +253,7 @@ export function RightDrawer({
 						onOpenPage={onOpenPage}
 						onWikiLinkSeen={onWikiLinkSeen}
 						onAction={onGraphReaderAction}
+						onRenamePage={onRenameGraphPage}
 					/>
 				)}
 				{drawer.mode === "graph-selection" && (

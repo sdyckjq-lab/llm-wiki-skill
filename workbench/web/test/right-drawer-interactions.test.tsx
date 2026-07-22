@@ -5,9 +5,9 @@ import { fireEvent } from "@testing-library/react";
 
 import { RightDrawer } from "../src/components/RightDrawer";
 import { SearchPanel } from "../src/components/SearchPanel";
-import { artifactDrawer, graphCommunitySummaryDrawer, graphNodeSummaryDrawer, graphSelectionDrawer, wikiDrawer, type DrawerState } from "../src/lib/drawer-state";
+import { artifactDrawer, graphCommunitySummaryDrawer, graphNodeSummaryDrawer, graphReaderDrawer, graphSelectionDrawer, wikiDrawer, type DrawerState } from "../src/lib/drawer-state";
 import type { ArtifactManifest } from "@llm-wiki/workbench-contracts";
-import type { GraphCommunitySummaryPayload, GraphNodeSummaryPayload, GraphSummaryCommand, Selection } from "@llm-wiki/graph-engine";
+import type { GraphCommunitySummaryPayload, GraphNodeSummaryPayload, GraphOpenPagePayload, GraphSummaryCommand, Selection } from "@llm-wiki/graph-engine";
 import { click, pressKey, render, screen } from "./render";
 
 describe("RightDrawer interactions", () => {
@@ -127,6 +127,21 @@ describe("RightDrawer interactions", () => {
 		await click(screen.getByRole("button", { name: "+邻居" }));
 
 		assert.deepEqual(commands, [{ kind: "select-neighbors", nodeId: "alpha-node", label: "+邻居" }]);
+	});
+
+	it("offers safe rename only for a formal graph page without changing reader action IDs", async () => {
+		const renamed: string[] = [];
+		const { rerender } = renderDrawer(graphReaderDrawer(graphReaderFixture("wiki/topics/正式页面.md"), { content: "正文" }), {
+			onRenameGraphPage: (path) => renamed.push(path),
+		});
+
+		await click(screen.getByRole("button", { name: "安全改名" }));
+		assert.deepEqual(renamed, ["wiki/topics/正式页面.md"]);
+
+		rerender(drawerElement(graphReaderDrawer(graphReaderFixture("wiki/archive/只读页面.md"), { content: "正文" }), {
+			onRenameGraphPage: (path) => renamed.push(path),
+		}));
+		assert.equal(screen.queryByRole("button", { name: "安全改名" }), null);
 	});
 
 	it("dispatches source-community node summary return from the title area", async () => {
@@ -400,6 +415,7 @@ function drawerElement(drawer: DrawerState, props: Partial<RightDrawerProps> = {
 			onOpenPage={noopString}
 			onWikiLinkSeen={noopString}
 			onGraphReaderAction={noopString}
+			onRenameGraphPage={props.onRenameGraphPage}
 			onGraphSummaryCommand={props.onGraphSummaryCommand ?? noop}
 			onGraphSummaryNodeSelect={props.onGraphSummaryNodeSelect ?? noopString}
 			onGraphSummaryNodePreview={props.onGraphSummaryNodePreview ?? noopPreviewNode}
@@ -416,6 +432,21 @@ function drawerElement(drawer: DrawerState, props: Partial<RightDrawerProps> = {
 }
 
 type RightDrawerProps = React.ComponentProps<typeof RightDrawer>;
+
+function graphReaderFixture(sourcePath: string): GraphOpenPagePayload {
+	return {
+		path: sourcePath,
+		node: {
+			id: sourcePath,
+			title: "正式页面",
+			type: "topic",
+			typeLabel: "主题",
+			sourcePath,
+			community: "community-1",
+			isolated: false,
+		},
+	};
+}
 
 function stubPointerCapture(element: Element) {
 	Object.defineProperties(element, {

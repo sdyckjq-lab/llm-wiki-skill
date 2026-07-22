@@ -4273,6 +4273,94 @@
     gap: 12px;
   }
 
+  .graph-rename-evidence-notice {
+    position: fixed;
+    top: 74px;
+    right: 16px;
+    z-index: 44;
+    display: grid;
+    width: min(440px, calc(100vw - 32px));
+    max-height: calc(100dvh - 92px);
+    gap: 10px;
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--app-accent) 48%, var(--app-border));
+    border-left-width: 4px;
+    border-radius: 13px;
+    background: color-mix(in srgb, var(--app-surface) 96%, var(--app-accent-soft));
+    padding: 12px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .graph-rename-evidence-notice header p,
+  .graph-rename-evidence-notice article,
+  .graph-rename-evidence-notice ul {
+    margin: 0;
+  }
+
+  .graph-rename-evidence-notice header p {
+    margin-top: 3px;
+    color: var(--app-muted);
+    font-size: 11px;
+  }
+
+  .graph-rename-evidence-notice article {
+    min-width: 0;
+    border-top: 1px solid var(--app-border);
+    padding-top: 9px;
+  }
+
+  .graph-rename-evidence-operation {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+  }
+
+  .graph-rename-evidence-operation span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .graph-rename-evidence-operation button {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 999px;
+    color: var(--app-muted);
+  }
+
+  .graph-rename-evidence-operation svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .graph-rename-evidence-notice ul {
+    display: grid;
+    gap: 7px;
+    margin-top: 8px;
+    padding: 0;
+    list-style: none;
+  }
+
+  .graph-rename-evidence-notice li {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+    border-radius: 8px;
+    background: var(--app-bg);
+    padding: 8px;
+    font-size: 10px;
+  }
+
+  .graph-rename-evidence-notice code,
+  .graph-rename-evidence-notice span {
+    overflow-wrap: anywhere;
+  }
+
   @media (max-width: 420px) {
     .graph-rename-dialog {
       width: calc(100vw - 12px);
@@ -4288,6 +4376,13 @@
     .graph-rename-path-change > span {
       transform: rotate(90deg);
       justify-self: start;
+    }
+
+    .graph-rename-evidence-notice {
+      top: 66px;
+      right: 6px;
+      width: calc(100vw - 12px);
+      max-height: calc(100dvh - 72px);
     }
   }
 

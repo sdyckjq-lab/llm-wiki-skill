@@ -258,8 +258,11 @@ function GraphWarningsBannerContent({
 						const candidateSet = group.candidate_set_id
 							? candidateSetById.get(group.candidate_set_id)
 							: undefined;
+						const editableCandidateSet = candidateSet
+							? editableResolutionCandidates(group, candidateSet)
+							: null;
 						const canResolve = Boolean(
-							onResolveWarning && candidateSet && isEditableResolution(group, candidateSet),
+							onResolveWarning && editableCandidateSet,
 						);
 						const showCandidateSet = Boolean(
 							candidateSet && firstWarningIdByCandidateSet.get(candidateSet.candidate_set_id) === group.warning_id,
@@ -284,8 +287,8 @@ function GraphWarningsBannerContent({
 										</li>
 									))}
 								</ul>
-								{canResolve && candidateSet && (
-									<button type="button" className="graph-warning-resolve" onClick={() => onResolveWarning?.(group, candidateSet)}>
+								{canResolve && editableCandidateSet && (
+									<button type="button" className="graph-warning-resolve" onClick={() => onResolveWarning?.(group, editableCandidateSet)}>
 										解决此告警
 									</button>
 								)}
@@ -303,16 +306,16 @@ function GraphWarningsBannerContent({
 	);
 }
 
-function isEditableResolution(
+function editableResolutionCandidates(
 	group: GraphWarningPublicGroupContract,
 	candidateSet: GraphWarningPublicCandidateSetContract,
-): boolean {
-	if (group.code !== "ambiguous_wikilink" && group.code !== "portable_path_collision") return false;
-	if (candidateSet.candidates.length === 0) return false;
-	if (group.occurrences.some((occurrence) => occurrence.read_only)) return false;
-	return candidateSet.candidates.every((candidate) => (
+): GraphWarningPublicCandidateSetContract | null {
+	if (group.code !== "ambiguous_wikilink" && group.code !== "portable_path_collision") return null;
+	const candidates = candidateSet.candidates.filter((candidate) => (
 		/^wiki\/(entities|topics|sources|comparisons|synthesis|queries)\/.+\.md$/.test(candidate)
 	));
+	if (candidates.length === 0) return null;
+	return { ...candidateSet, candidate_count: candidates.length, candidates };
 }
 
 function migrationWarningText(warning: GraphMigrationWarningContract): string {
