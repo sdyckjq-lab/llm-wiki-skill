@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, link, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import { lstat, link, open, readFile, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -59,6 +59,7 @@ export interface GraphRenameServiceOptions {
 	afterSourceRenameStep?: (state: "old" | "transit" | "target") => void | Promise<void>;
 	beforeSourceRollback?: () => void | Promise<void>;
 	beforeRecoveryCommit?: (relativePath: string) => void | Promise<void>;
+	afterRecoveryCheck?: (relativePath: string) => void | Promise<void>;
 	afterRecoveryCommit?: (relativePath: string) => void | Promise<void>;
 }
 
@@ -678,10 +679,11 @@ async function resolveRecovery(
 				if ((before === null && desired === null) || (before && desired && before.equals(desired))) continue;
 				await options.beforeRecoveryCommit?.(relative);
 				await assertRecoveryCurrent(kbPath, relative, currentEntry);
+				await options.afterRecoveryCheck?.(relative);
 				if (staged) {
 					await commitStagedRenameFile({ kbRoot: kbPath, operationId: record.operation_id, destinationPath: path.join(kbPath, ...relative.split("/")), stagedPath: staged.stagedPath, sha256: sha256Bytes(staged.desired), mode: 0o600, expectedDestinationSha256: staged.expected });
 				} else {
-					await writeRecoveryFile(kbPath, path.join(kbPath, ...relative.split("/")), desired);
+					await writeRecoveryFile(kbPath, path.join(kbPath, ...relative.split("/")), desired, currentEntry?.current_state === "present" ? currentEntry.current_sha256 : null);
 				}
 				applied.push({ relative, before, desired });
 				await options.afterRecoveryCommit?.(relative);
@@ -719,7 +721,7 @@ async function resolveRecovery(
 			for (const entry of [...applied].reverse()) {
 				try {
 					await assertRecoveryBytes(kbPath, entry.relative, entry.desired);
-					await writeRecoveryFile(kbPath, path.join(kbPath, ...entry.relative.split("/")), entry.before);
+					await writeRecoveryFile(kbPath, path.join(kbPath, ...entry.relative.split("/")), entry.before, entry.desired ? sha256Bytes(entry.desired) : null);
 				} catch {
 					// Preserve an unknown external version; it is reported by the next conflict scan.
 				}
@@ -874,20 +876,73 @@ async function captureRecoveryEvidence(
 }
 
 
-async function writeRecoveryFile(kbRoot: string, target: string, bytes: Buffer | null): Promise<void> {
+async function writeRecoveryFile(kbRoot: string, target: string, bytes: Buffer | null, expectedSha256?: string | null): Promise<void> {
 	const safeTarget = await assertSafeRenamePath(kbRoot, target, true);
+	const current = await lstatExactPath(safeTarget);
+	const currentBytes = current?.isFile() ? await readFileExactPath(safeTarget) : null;
+	if (current && (!current.isFile() || current.isSymbolicLink())) throw new Error("recovery target is unsafe");
+	const currentHash = currentBytes ? sha256Bytes(currentBytes) : null;
+	if (expectedSha256 !== undefined && currentHash !== expectedSha256) throw new Error("recovery target changed");
 	if (bytes === null) {
-		await (await import("node:fs/promises")).unlink(safeTarget).catch((error: NodeJS.ErrnoException) => {
-			if (error.code !== "ENOENT") throw error;
-		});
+		if (!current) return;
+		const guard = `${safeTarget}.recovery-delete-${randomUUID()}`;
+		await rename(safeTarget, guard);
+		const guarded = await readFile(guard);
+		if (sha256Bytes(guarded) !== (expectedSha256 ?? currentHash)) {
+			await restoreNoReplacePath(guard, safeTarget);
+			throw new Error("recovery target changed");
+		}
+		if (await lstatExactPath(safeTarget)) {
+			await restoreNoReplacePath(guard, safeTarget).catch(() => undefined);
+			throw new Error("recovery target changed");
+		}
+		await unlink(guard);
 		return;
 	}
 	const temporary = `${safeTarget}.recovery-${randomUUID()}.tmp`;
-	await writeFile(temporary, bytes, { mode: 0o600 });
-	await (await import("node:fs/promises")).rename(temporary, safeTarget).catch(async (error) => {
-		await (await import("node:fs/promises")).unlink(temporary).catch(() => undefined);
+	const handle = await open(temporary, "wx", 0o600);
+	try {
+		await handle.writeFile(bytes);
+		await handle.sync();
+	} finally { await handle.close(); }
+	try {
+		const readBack = await readFile(temporary);
+		if (!readBack.equals(bytes)) throw new Error("recovery bytes failed read-back verification");
+		const finalInfo = await lstatExactPath(safeTarget);
+		const finalBytes = finalInfo?.isFile() ? await readFileExactPath(safeTarget) : null;
+		if (finalInfo && (!finalInfo.isFile() || finalInfo.isSymbolicLink()) || (expectedSha256 !== undefined && (finalBytes ? sha256Bytes(finalBytes) : null) !== expectedSha256)) throw new Error("recovery target changed");
+		if (!finalInfo) {
+			await linkNoReplacePath(temporary, safeTarget);
+			await unlink(temporary);
+			return;
+		}
+		const guard = `${safeTarget}.recovery-current-${randomUUID()}`;
+		await rename(safeTarget, guard);
+		const guarded = await readFile(guard);
+		if (sha256Bytes(guarded) !== (expectedSha256 ?? currentHash)) {
+			await restoreNoReplacePath(guard, safeTarget);
+			throw new Error("recovery target changed");
+		}
+		await linkNoReplacePath(temporary, safeTarget);
+		await unlink(temporary);
+		await unlink(guard);
+	} catch (error) {
+		await unlink(temporary).catch(() => undefined);
 		throw error;
-	});
+	}
+}
+
+async function linkNoReplacePath(source: string, destination: string): Promise<void> {
+	try { await link(source, destination); }
+	catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") throw conflictError("recovery target appeared during commit");
+		throw error;
+	}
+}
+
+async function restoreNoReplacePath(source: string, destination: string): Promise<void> {
+	await linkNoReplacePath(source, destination);
+	await unlink(source);
 }
 
 function operationData(record: GraphRenameJournal | GraphRenameReceipt): GraphRenameOperationData {

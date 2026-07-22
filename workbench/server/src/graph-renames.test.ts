@@ -366,6 +366,30 @@ test("recovery rolls back its own earlier writes when a later file changes", asy
 	}
 });
 
+test("recovery deletion preserves a file changed after its final check", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "dededede-dede-4ded-8ded-dededededede";
+	const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const current = await readFile(source);
+		await writeFile(source, current);
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": null }, intendedHashes: { "wiki/topics/a.md": sha(current) } });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current), preserved_variants: [] }] });
+		await store.release(operationId);
+		const service = createGraphRenameService({
+			afterRecoveryCheck: async () => { await writeFile(source, "late-external\n"); },
+			triggerRebuild: () => ({ ok: true, status: "started" }),
+		});
+		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current) }] });
+		assert.equal(result.status, "required");
+		assert.equal(await readFile(source, "utf8"), "late-external\n");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("recovery uses the same knowledge-base lock as apply", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "77777777-7777-4777-8777-777777777777";
