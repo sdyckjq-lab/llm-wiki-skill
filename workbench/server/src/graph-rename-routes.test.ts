@@ -39,6 +39,42 @@ test("rename route rejects query/body knowledge-base disagreement", async () => 
 	assert.equal(response.status, 404);
 });
 
+test("rename recovery route passes duplicate observations to the service for a complete refresh", async () => {
+	const observedBodies: unknown[] = [];
+	const renameService = service();
+	const refreshedOperation = {
+		...operation,
+		state: "conflicted" as const,
+		graph_rebuild: "not_started" as const,
+		conflicts: [{
+			source_path: preview.source_path,
+			current_state: "missing" as const,
+			preserved_variants: [],
+		}],
+	};
+	renameService.resolveGraphRenameRecovery = async (_kbPath, body) => {
+		observedBodies.push(body);
+		return { status: "required", operation: refreshedOperation, retained_evidence_receipts: [] };
+	};
+	const duplicate = { source_path: preview.source_path, current_state: "present", current_sha256: "c".repeat(64) } as const;
+	const app = createApp({ graphRenameService: renameService });
+	const response = await app.request("/api/graph/renames/recovery", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			kbPath: KB,
+			operation_id: preview.operation_id,
+			action: "finish_rollback",
+			observed_conflicts: [duplicate, duplicate],
+		}),
+	});
+
+	assert.equal(response.status, 200);
+	assert.equal(observedBodies.length, 1);
+	assert.deepEqual((observedBodies[0] as any).observed_conflicts, [duplicate, duplicate]);
+	assert.deepEqual((await response.json() as any).data.operation.conflicts, refreshedOperation.conflicts);
+});
+
 test("rename preview route enforces the shared portable filename syntax", async () => {
 	const previewNames: string[] = [];
 	const renameService = service();

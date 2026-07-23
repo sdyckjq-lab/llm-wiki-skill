@@ -62,7 +62,7 @@ test("rename recovery contracts keep status, conflict and evidence discriminants
 	}).success, true);
 });
 
-test("rename recovery rejects duplicate paths and impossible preview byte ranges", () => {
+test("rename recovery accepts duplicate observations for authoritative server refresh", () => {
 	assert.equal(GraphRenameRecoveryDataSchema.safeParse({ status: "clear", retained_evidence_receipts: [] }).success, true);
 	const recoveryBody = {
 		operation_id: uuid,
@@ -73,7 +73,10 @@ test("rename recovery rejects duplicate paths and impossible preview byte ranges
 		],
 	};
 	// The request schema is exercised through the exported body contract by the route layer.
-	assert.equal(GraphRenameRecoveryBodySchema.safeParse(recoveryBody).success, false);
+	assert.equal(GraphRenameRecoveryBodySchema.safeParse(recoveryBody).success, true);
+});
+
+test("rename preview rejects impossible byte ranges", () => {
 	const preview = {
 		operation_id: uuid, expires_at: iso, preview_digest: sha, source_path: "wiki/topics/a.md", target_path: "wiki/topics/b.md", equivalent_portable_name: false, file_set_sha256: sha,
 		editable_files: [{ source_path: "wiki/topics/a.md", file_sha256: sha, occurrences: [{ occurrence_id: "o", source_path: "wiki/topics/a.md", file_sha256: sha, start_byte: 4, end_byte: 4, raw_link: "[[a]]", resolution_kind: "ambiguous" }] }],

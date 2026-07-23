@@ -328,8 +328,8 @@ function GraphRenameDialogState({
 						<p>请核对当前完整冲突集合。确认前不会覆盖或删除任何外部内容。</p>
 						{recoveryMessage && <p role="alert" className="graph-rename-error">{recoveryMessage}</p>}
 						<ul className="graph-rename-conflicts">
-							{activeRecovery.operation.conflicts.map((conflict) => (
-								<li key={conflict.source_path}>
+							{activeRecovery.operation.conflicts.map((conflict, index) => (
+								<li key={`${conflict.source_path}:${index}`}>
 									<div className="graph-rename-conflict-heading">
 										<code>{conflict.source_path}</code>
 										<span>{conflict.current_state === "present" ? "当前文件存在" : "已被外部删除"}</span>

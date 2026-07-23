@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
 import { fireEvent } from "@testing-library/react";
+import type { GraphRenameRecoveryBody } from "@llm-wiki/workbench-contracts";
 
 import { GraphRenameDialog } from "../src/components/GraphRenameDialog";
 import { changeText, click, pressKey, render, screen, waitFor } from "./render";
@@ -568,6 +569,51 @@ describe("GraphRenameDialog", () => {
 		await waitFor(() => assert.notEqual(screen.queryByText("恢复处理完成"), null));
 		assert.match(dialog.textContent ?? "", /evidence\/current-1\.md/);
 		assert.match(dialog.textContent ?? "", /2026-08-21T00:00:00\.000Z/);
+	});
+
+	it("replaces duplicate displayed observations with the server's refreshed complete set", async () => {
+		const duplicateRecovery = {
+			...requiredRecovery,
+			operation: {
+				...conflictedOperation,
+				conflicts: [conflictedOperation.conflicts[0]!, conflictedOperation.conflicts[0]!],
+			},
+		};
+		const refreshed = {
+			...requiredRecovery,
+			operation: {
+				...conflictedOperation,
+				conflicts: [{
+					source_path: "wiki/topics/服务端最新冲突.md",
+					current_state: "missing" as const,
+					preserved_variants: [],
+				}],
+			},
+		};
+		let observedRequest: GraphRenameRecoveryBody | undefined;
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				recovery={duplicateRecovery}
+				onOpenChange={() => {}}
+				api={{
+					...unusedApi,
+					resolveGraphRenameRecovery: async (_path, request) => {
+						observedRequest = request;
+						return refreshed;
+					},
+				}}
+			/>,
+		);
+
+		await click(screen.getByRole("radio", { name: "恢复原状" }));
+		await click(screen.getByRole("button", { name: "确认恢复" }));
+		await waitFor(() => assert.match(screen.getByRole("dialog", { name: "安全改名" }).textContent ?? "", /服务端最新冲突\.md/));
+		assert.equal(screen.queryByText("wiki/synthesis/当前冲突.md"), null);
+		assert.ok(observedRequest);
+		assert.equal(observedRequest.observed_conflicts.length, 2);
+		assert.deepEqual(observedRequest.observed_conflicts[0], observedRequest.observed_conflicts[1]);
 	});
 
 	it("shows unsafe or invalid recovery as blocked with no destructive action", () => {

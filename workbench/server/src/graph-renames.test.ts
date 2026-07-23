@@ -385,6 +385,11 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		const stale = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "3".repeat(64) }] });
 		assert.equal(stale.status, "required"); assert.deepEqual(await readFile(source), changed);
+		const currentObserved = observedConflicts(stale);
+		const duplicate = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: [currentObserved[0]!, currentObserved[0]!] });
+		assert.equal(duplicate.status, "required");
+		assert.deepEqual(observedConflicts(duplicate), currentObserved);
+		assert.deepEqual(await readFile(source), changed);
 		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(stale) });
 		assert.equal(finished.status, "rebuild_required"); assert.equal((finished as any).operation.state, "rolled_back"); assert.deepEqual(await readFile(source), original);
 	} finally { await rm(kb, { recursive: true, force: true }); }

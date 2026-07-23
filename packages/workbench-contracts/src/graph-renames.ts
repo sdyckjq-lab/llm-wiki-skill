@@ -144,6 +144,6 @@ export const GraphRenameRecoveryBodySchema = z.object({
 	observed_conflicts: z.array(z.discriminatedUnion("current_state", [
 		z.object({ source_path: RelativePath, current_state: z.literal("present"), current_sha256: Sha256Schema }).strict(),
 		z.object({ source_path: RelativePath, current_state: z.literal("missing") }).strict(),
-	])).refine((items) => new Set(items.map((item) => item.source_path)).size === items.length, "duplicate observed conflicts"),
+	])),
 }).strict();
 export type GraphRenameRecoveryBody = z.infer<typeof GraphRenameRecoveryBodySchema>;
