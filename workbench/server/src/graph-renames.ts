@@ -546,8 +546,16 @@ async function resolveRecovery(
 		const expected = current.conflicts.map((conflict) => `${conflict.source_path}\0${conflict.current_state}\0${conflict.current_sha256 ?? ""}`).sort();
 		const observed = body.observed_conflicts.map((conflict) => `${conflict.source_path}\0${conflict.current_state}\0${"current_sha256" in conflict ? conflict.current_sha256 : ""}`).sort();
 		if (expected.length !== observed.length || expected.some((value, index) => value !== observed[index])) {
-			await store.transition(record.operation_id, "conflicted", { conflicts: await preserveConflictVariants(kbPath, store, record, current.conflicts) });
-			return recoveryData(await collectRecovery(store, now));
+			const conflicts = current.conflicts.map((conflict) => ({
+				...conflict,
+				preserved_variants: record.conflicts.find((stored) => stored.source_path === conflict.source_path)?.preserved_variants ?? [],
+			}));
+			const { receipts } = await collectRecovery(store, now);
+			return GraphRenameRecoveryDataSchema.parse({
+				status: "required",
+				operation: operationData({ ...record, conflicts }),
+				retained_evidence_receipts: receipts.map((receipt) => ({ operation_id: receipt.operation_id, retained_evidence: receipt.retained_evidence })),
+			});
 		}
 
 		const captured = await captureRecoveryEvidence(kbPath, store, record, current.conflicts, body.action, now());

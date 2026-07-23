@@ -23,6 +23,25 @@ function observedConflicts(result: unknown): Array<{ source_path: string; curren
 		: { source_path: conflict.source_path, current_state: "missing" });
 }
 
+async function summarizeDirectory(root: string): Promise<Record<string, string>> {
+	const summary: Record<string, string> = {};
+	const visit = async (directory: string, parent = "") => {
+		const entries = await readdir(directory, { withFileTypes: true });
+		for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+			const relative = parent ? `${parent}/${entry.name}` : entry.name;
+			const absolute = path.join(directory, entry.name);
+			if (entry.isDirectory()) {
+				summary[`${relative}/`] = "directory";
+				await visit(absolute, relative);
+			} else {
+				summary[relative] = createHash("sha256").update(await readFile(absolute)).digest("hex");
+			}
+		}
+	};
+	await visit(root);
+	return summary;
+}
+
 test("preview is read-only and apply renames the page with one rebuild request", async () => {
 	const kb = await makeKnowledgeBase();
 	try {
@@ -393,6 +412,93 @@ test("recovery requires the complete fresh conflict set before restoring origina
 		const finished = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_rollback", observed_conflicts: observedConflicts(stale) });
 		assert.equal(finished.status, "rebuild_required"); assert.equal((finished as any).operation.state, "rolled_back"); assert.deepEqual(await readFile(source), original);
 	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("mismatched recovery conflict sets return current state with zero persistent side effects", async () => {
+	const kb = await makeKnowledgeBase();
+	const now = new Date("2026-07-20T00:00:00.000Z");
+	const operationId = "66666666-6666-4666-8666-666666666666";
+	const receiptOperationId = "11111111-1111-4111-8111-111111111111";
+	const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+	try {
+		const source = path.join(kb, "wiki", "topics", "a.md");
+		const original = await readFile(source);
+		const current = Buffer.from("external-current\n");
+		const intended = Buffer.from("intended\n");
+		await writeFile(source, current);
+		const store = new GraphRenameJournalStore(kb, { now: () => now });
+
+		await store.acquire({ operationId: receiptOperationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/old.md", targetPath: "wiki/topics/done.md" });
+		await store.transition(receiptOperationId, "applying", {});
+		await store.transition(receiptOperationId, "rolled_back", { graphRebuild: "succeeded" });
+		const receiptBytes = Buffer.from("retained receipt evidence\n");
+		const receiptEvidencePath = await store.preserveConflictVariant({ operationId: receiptOperationId, kind: "current", sourcePath: "wiki/topics/old.md", bytes: receiptBytes });
+		await store.compactTerminal({
+			operationId: receiptOperationId,
+			now,
+			resolvedConflictEvidence: [{ relative_path: receiptEvidencePath, sha256: sha(receiptBytes), expires_at: "2026-08-19T00:00:00.000Z" }],
+		});
+		await store.release(receiptOperationId);
+
+		const backupPath = `.wiki-tmp/rename-ops/${operationId}/backups/a.bak`;
+		const intendedPath = `.wiki-tmp/rename-ops/${operationId}/intended/a.bin`;
+		const stagePath = `wiki/topics/.a.md.${operationId}.0.22222222-2222-4222-8222-222222222222.stage`;
+		await store.acquire({ operationId, immutableDigest: "6".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writeOwnedFile(backupPath, original);
+		await store.writeOwnedFile(intendedPath, intended);
+		await mkdir(path.dirname(path.join(kb, ...stagePath.split("/"))), { recursive: true });
+		await writeFile(path.join(kb, ...stagePath.split("/")), intended);
+		await store.writePrepared({
+			operationId,
+			immutableDigest: "6".repeat(64),
+			sourcePath: "wiki/topics/a.md",
+			targetPath: "wiki/topics/renamed.md",
+			originalHashes: { "wiki/topics/a.md": sha(original) },
+			intendedHashes: { "wiki/topics/a.md": sha(intended) },
+			backupPaths: { "wiki/topics/a.md": backupPath },
+			intendedPaths: { "wiki/topics/a.md": intendedPath },
+			stagePaths: { "wiki/topics/a.md": stagePath },
+		});
+		await store.transition(operationId, "applying", {});
+		const oldEvidence = Buffer.from("already preserved evidence\n");
+		const oldEvidencePath = await store.preserveConflictVariant({ operationId, kind: "current", sourcePath: "wiki/topics/a.md", bytes: oldEvidence });
+		const oldVariant = { kind: "current" as const, relative_path: oldEvidencePath, sha256: sha(oldEvidence) };
+		await store.transition(operationId, "conflicted", {
+			conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "0".repeat(64), preserved_variants: [oldVariant] }],
+		});
+		await store.release(operationId);
+
+		const currentObserved = [
+			{ source_path: "wiki/topics/a.md", current_state: "present" as const, current_sha256: sha(current) },
+			{ source_path: "wiki/topics/renamed.md", current_state: "missing" as const },
+		];
+		const invalidSets = [
+			{ name: "missing", observed: [currentObserved[0]!] },
+			{ name: "extra", observed: [...currentObserved, { source_path: "wiki/topics/extra.md", current_state: "missing" as const }] },
+			{ name: "duplicate", observed: [currentObserved[0]!, currentObserved[0]!, currentObserved[1]!] },
+			{ name: "stale", observed: [{ ...currentObserved[0]!, current_sha256: "f".repeat(64) }, currentObserved[1]!] },
+		];
+		const service = createGraphRenameService({ now: () => now, journalStore: () => store, triggerRebuild: () => ({ ok: true, status: "started" }) });
+
+		for (const invalid of invalidSets) {
+			for (let attempt = 0; attempt < 2; attempt++) {
+				const before = await summarizeDirectory(kb);
+				const result = await service.resolveGraphRenameRecovery(kb, {
+					operation_id: operationId,
+					action: "finish_rollback",
+					observed_conflicts: invalid.observed,
+				});
+				assert.equal(result.status, "required", `${invalid.name} attempt ${attempt + 1}`);
+				if (result.status !== "required") assert.fail("mismatched conflicts must stay required");
+				assert.deepEqual(observedConflicts(result), currentObserved, `${invalid.name} must return the current complete set`);
+				assert.deepEqual(result.operation.conflicts[0]!.preserved_variants, [oldVariant], `${invalid.name} must retain old variants without creating new ones`);
+				assert.deepEqual(result.retained_evidence_receipts, [{ operation_id: receiptOperationId, retained_evidence: [{ relative_path: receiptEvidencePath, sha256: sha(receiptBytes), expires_at: "2026-08-19T00:00:00.000Z" }] }]);
+				assert.deepEqual(await summarizeDirectory(kb), before, `${invalid.name} attempt ${attempt + 1} changed persistent state`);
+			}
+		}
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
 });
 
 test("recovery retains current and unchosen original evidence before finishing commit", async () => {
