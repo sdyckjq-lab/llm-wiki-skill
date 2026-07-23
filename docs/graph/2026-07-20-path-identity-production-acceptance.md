@@ -8,14 +8,14 @@ Scope: Tasks 1–6, including path identity, readable graph warnings, derived wa
 
 ## Acceptance status
 
-The current code and test head passes the granular non-browser checks listed below in a tracked-only clean macOS copy. Full production acceptance is **not complete**: this sandbox cannot run the aggregate quality runner or the strengthened real-browser journey, and the current pull request still needs its normal-environment `browser-main-flows` job plus the required Ubuntu, macOS, and Windows portability jobs for both Stage 2 path portability and Stage 3 equivalent-rename portability. The V3 design document remains unchanged until those jobs are green.
+The current code and test head passes the final tracked-only contract, interface, graph-engine, build, type, lint, boundary, privacy, and formatting checks listed below. The full server suite reaches 333/334; its only failure is the current sandbox's file-watcher limit and repeats as the same environment error when rerun alone. Full production acceptance is **not complete**: the strengthened real-browser journey remains blocked here, and the current pull request still needs its normal-environment `browser-main-flows` job plus the required Ubuntu, macOS, and Windows portability jobs for both Stage 2 path portability and Stage 3 equivalent-rename portability. The V3 design document remains unchanged until those jobs are green.
 
 ## Tested fixed points
 
-- Tasks 1–6 code and test implementation head: `37cf64689dc920fd5ca66090dc6edb4354b50dee` (`test: prove graph rename browser idempotency [task 6]`).
+- Tasks 1–6 code and test implementation head: `37265cf8ee2f89d013e66bde8e5d0684c847a469` (`test: cover recovery receipt cardinalities [task 6]`).
 - Task execution baseline: `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97`, preserved locally as `refs/llm-wiki/task-base` while acceptance work is in progress.
 - The current-head matrix below records commands that completed in a tracked-only clean macOS copy. Documentation changes are recorded separately, so this report does not contain or predict its own future commit hash.
-- The implementation range under acceptance is `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97..37cf64689dc920fd5ca66090dc6edb4354b50dee`.
+- The implementation range under acceptance is `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97..37265cf8ee2f89d013e66bde8e5d0684c847a469`.
 
 ## Earlier Tasks 1–4 pull-request evidence
 
@@ -25,33 +25,27 @@ The current code and test head passes the granular non-browser checks listed bel
 
 These links remain evidence for the Tasks 1–4 core release. They do not replace the current Tasks 1–6 pull-request matrix, which must rerun the browser journey and both portability suites at the implementation head above.
 
-## Current-head tracked-only acceptance matrix
+## Final tracked-only acceptance matrix
 
-| Exact command | Result at `37cf6468` |
+| Command/evidence | Result at `37265cf8` |
 |---|---|
-| C1 — `node --test workbench/scripts/check-repository-privacy.test.mjs`; `npm run check:privacy` | PASS — the repository privacy tests and tracked-file scan passed. |
-| C2 — `npm run build -w @llm-wiki/workbench-contracts`; `npm run build -w @llm-wiki/graph-engine`; `npm run build -w @llm-wiki-agent/server`; `npm run build -w @llm-wiki-agent/web` | PASS — all four production builds completed. |
-| C3 — `npm run test:boundaries`; `node --test-concurrency=1 --test workbench/scripts/run-quality-and-tests.test.mjs workbench/scripts/run-browser-main-flows-ci.test.mjs`; `npm run check:boundaries` | PASS — negative controls, runner contracts, and repository boundaries passed. |
-| C4 — `node --import tsx --test tests/browser/graph-renderer-trial-shared.test.ts tests/browser/capture-issue-159-hover-baseline.test.ts tests/browser/compare-issue-159-hover-baseline.test.ts` | PASS — browser trial contracts passed without starting the main-flow servers. |
-| C5 — `node --test tests/js/unicode-normalization.test.js tests/js/unicode-case-folding.test.js tests/js/wiki-file-discovery.test.js tests/js/wikilink-parser.test.js tests/js/wiki-link-index.test.js tests/js/graph-warning-bundle.test.js tests/js/wiki-link-performance.test.js`; `bash tests/graph-path-identity-build.regression-1.sh`; `bash tests/graph-warning-exit-codes.regression-1.sh` | PASS — Unicode 17, file discovery, parsing, indexing, warnings, performance, and both graph path regressions passed. |
-| C6 — `bash tests/install-wiki-link-runtime.regression-1.sh` | PASS — the newly added real installed-runtime regression passed. |
-| C7 — `npm run test -w @llm-wiki/workbench-contracts`; `npm run check:route-registry` | PASS — the full shared-contract suite and route registry passed. |
-| C8 — `node --import tsx --test workbench/server/src/graph-renames.test.ts workbench/server/src/graph-rename-routes.test.ts workbench/server/src/graph-rename-files.test.ts` | PASS — the focused rename service, route, and file suites passed. |
-| C9 — `node --import tsx --test workbench/web/test/graph-renames-api.test.ts`; `npm run test:dom -w @llm-wiki-agent/web` | PASS — the rename API test passed and all 170 web DOM tests passed. |
-| C10 — `npm run test -w @llm-wiki/graph-engine` | PASS — the full shared graph-engine suite passed. |
-| C11 — `npm run typecheck -w @llm-wiki/workbench-contracts`; `npm run typecheck -w @llm-wiki/graph-engine`; `npm run typecheck -w @llm-wiki-agent/server`; `npm run typecheck -w @llm-wiki-agent/web` | PASS — all four type checks passed. |
-| C12 — `npm run lint -w @llm-wiki-agent/web` | PASS — web lint passed. |
-| C13 — `git diff --check` | PASS — no whitespace errors. |
+| F1 — focused rename server, route, journal, and contract checks | PASS — 82/82. |
+| F2 — `npm run test -w @llm-wiki/workbench-contracts` | PASS — 72/72. |
+| F3 — full web interface DOM suite | PASS — 176/176. |
+| F4 — no-port web unit suite | PASS — 212/212. |
+| F5 — `npm run test -w @llm-wiki/graph-engine` | PASS — 809/809. |
+| F6 — all repository type checks; web lint; frontend and backend production builds; boundary checks; repository privacy checks; `git diff --check` | PASS. |
+| F7 — full server suite | 333/334 — the only failure is the sandbox file-watcher limit; the isolated rerun fails with the same environment error. No product assertion failed. |
 
-The execution threads also recorded PASS at this head for the E-focused suite (26/26), the F no-port helper suite (2/2), the F backend-rename suite (29/29), and the production-server artifact check proving that browser-test markers are absent.
+The current-head focused evidence also covers four repaired behaviors: a conflict mismatch leaves zero persistent side effects; a failed refresh retains recovery evidence and remains retryable; the rebuild journey deterministically fails twice before a manual retry succeeds; and recovery receipts cover all four states with zero, one, and multiple receipts.
 
 ## Current sandbox limits and historical browser evidence
 
 | Command/evidence | Current status |
 |---|---|
-| `npm run quality-and-tests` | **NOT RUN TO COMPLETION at `37cf6468`** — this sandbox forbids the runner from reading the system process table. The granular checks above were run separately in the tracked-only clean copy and must not be represented as an aggregate-runner PASS. |
-| `npm run test:browser:main-flows -w @llm-wiki-agent/web` | **BLOCKED at `37cf6468`** — the sandbox rejects listening on `127.0.0.1:5180` with `EPERM`, and the runner also cannot read the process table. The strengthened journey awaits the pull request's GitHub `browser-main-flows` job in a normal environment. |
-| Earlier local run at `e39fa2076b403b7bea0e06f138dc1c435b7cea88` | Historical PASS — the then-current real frontend/backend browser journeys passed. This predates the later implementation and test fixes and is **not** final proof for `37cf6468`. |
+| Full server suite | **ENVIRONMENT-LIMITED at `37265cf8`** — 333/334 pass. The remaining watcher test exceeds this sandbox's file-monitor allowance and repeats the same environment failure when run alone. |
+| `npm run test:browser:main-flows -w @llm-wiki-agent/web` | **BLOCKED at `37265cf8`** — the sandbox rejects listening on `127.0.0.1:5180` with `EPERM`, and the runner cannot read the process table. The strengthened journey awaits the pull request's GitHub `browser-main-flows` job in a normal environment and is not claimed as passing locally. |
+| Earlier local run at `e39fa2076b403b7bea0e06f138dc1c435b7cea88` | Historical PASS — the then-current real frontend/backend browser journeys passed. This predates the later implementation and test fixes and is **not** final proof for `37265cf8`. |
 
 ## Exact tracked-document checks
 
@@ -96,25 +90,25 @@ NODE
 
 ## V3 §9.2 production acceptance rows
 
-The rows below follow V3 §9.2 in order. A current-head PASS names only evidence that completed at `37cf6468`; neither the aggregate quality runner nor the strengthened real-browser journey is counted as passing at this head. No local result waives either pending three-platform row.
+The rows below follow V3 §9.2 in order. A current-head PASS names only F1–F6 evidence completed at `37265cf8`; F7 is reported as environment-limited, not as a full PASS. The earlier Tasks 1–4 links remain historical evidence for unchanged path-identity behavior, while the strengthened real-browser journey is not counted as passing at this head. No local result waives either pending three-platform row.
 
 | Stage | Acceptance row | Exact current-head command/evidence | Result and current status |
 |---|---|---|---|
-| Stage 2 | 文件发现 | C5 | PASS at current head. File discovery coverage passed, and graph, lint, and rename inventories remain distinct. |
-| Stage 2 | 生成与解析 | C5 | PASS at current head. Actual relative-path identity and link parsing/indexing coverage passed. |
-| Stage 2 | 精确位置 | C5 | PASS at current head. Parser and index tests cover exact source locations and byte ranges. |
-| Stage 3 | 预览失效 | C8, C9 | Automated server/API/DOM coverage passes at current head. The strengthened real-browser stale-preview journey remains pending in GitHub `browser-main-flows`. |
-| Stage 1 | 引擎兜底 | C5, C10 | PASS at current head. Shared engine behavior and graph path fallbacks passed. |
-| Stage 2 | 告警存储 | C5, C9 | PASS at current head. Warning bundle, strict exit behavior, and displayed warning-state coverage passed. |
-| Stage 2 | 工作台告警 | C9 | Automated API/DOM coverage passes at current head. The final readable-graph browser journey remains pending in GitHub `browser-main-flows`. |
-| Stage 3 | 工作台改名 | C8, C9 | Automated server/API/DOM coverage passes at current head, including the later recovery and idempotency fixes. The current-head real-browser journey remains pending. |
-| Stage 2 | 离线 HTML | C5 | PASS at current head for generated graph identity and warning exit behavior. No current-head Chromium offline run is claimed by this report. |
-| Stage 2 | 首次迁移 | C9 | Automated DOM coverage passes at current head. The final end-to-end migration proof remains part of the pending GitHub browser journey. |
-| Stage 2 | CLI / CI | C3, C5, C6 | PASS at current head for CLI behavior, installed runtime, negative controls, and runner contracts. The aggregate runner itself is blocked by this sandbox and is not marked PASS. |
-| Stage 2 | 路径可移植性 | C5; `.github/workflows/path-portability.yml` | Unicode 17 and local path-identity checks pass at current head. Current Ubuntu/macOS/Windows PR jobs are pending, so this row is not complete. |
-| Stage 3 | 等价改名可移植性 | Focused F backend-rename evidence (29/29); `.github/workflows/path-portability.yml` | Focused backend rename coverage passes at current head. Current Ubuntu/macOS/Windows equivalent-rename jobs are pending, so this row is not complete. |
-| Stage 2 | 性能 | C5 | PASS at current head. The bounded scan/index performance test passed. |
-| Stage 3 | 主动改名 | C8, C9; E-focused 26/26; F helper 2/2; F backend rename 29/29 | Automated current-head coverage passes for apply, rollback/recovery, conflict handling, retained evidence, rebuild retry, and idempotency. The strengthened browser journey and three-platform acceptance remain pending. |
+| Stage 2 | 文件发现 | Earlier Tasks 1–4 path evidence; F6 | The path implementation did not change after the preceding acceptance run, and current builds/types pass. No fresh row-specific command is claimed in this final batch. |
+| Stage 2 | 生成与解析 | Earlier Tasks 1–4 path evidence; F2, F5, F6 | Shared contracts, graph engine, builds, and types pass at current head. The earlier path-specific evidence remains historical, not a fresh rerun. |
+| Stage 2 | 精确位置 | Earlier Tasks 1–4 path evidence; F6 | Current builds and types pass. No fresh exact-location-focused command is claimed in this final batch. |
+| Stage 3 | 预览失效 | F1, F3, F4 | PASS at current head for automated server and interface coverage. A conflict mismatch is asserted to leave zero persistent side effects; the strengthened real-browser stale-preview journey remains pending. |
+| Stage 1 | 引擎兜底 | F5 | PASS at current head — 809/809 shared graph-engine checks pass. |
+| Stage 2 | 告警存储 | F2, F3, F4 | PASS at current head for contracts and interface behavior. |
+| Stage 2 | 工作台告警 | F3, F4 | PASS at current head for automated interface coverage. The final readable-graph browser journey remains pending in GitHub `browser-main-flows`. |
+| Stage 3 | 工作台改名 | F1, F2, F3, F4 | PASS at current head for focused server, contract, and interface coverage, including retained evidence after failed refresh and retry. The current-head real-browser journey remains pending. |
+| Stage 2 | 离线 HTML | Earlier Tasks 1–4 evidence; F5, F6 | Shared engine, builds, and types pass at current head. No current-head Chromium offline run is claimed by this report. |
+| Stage 2 | 首次迁移 | F3, F4 | PASS at current head for automated interface coverage. The final end-to-end migration proof remains part of the pending GitHub browser journey. |
+| Stage 2 | CLI / CI | F6 | PASS at current head for builds, types, lint, boundaries, privacy, and formatting. |
+| Stage 2 | 路径可移植性 | Earlier Tasks 1–4 evidence; `.github/workflows/path-portability.yml` | Current Ubuntu/macOS/Windows PR jobs are pending, so this row is not complete. No current three-platform result is claimed. |
+| Stage 3 | 等价改名可移植性 | F1; `.github/workflows/path-portability.yml` | Focused rename coverage passes at current head. Current Ubuntu/macOS/Windows equivalent-rename jobs are pending, so this row is not complete. |
+| Stage 2 | 性能 | Earlier Tasks 1–4 evidence; F5, F6 | Current graph-engine, build, and type checks pass. No fresh path-performance-focused command is claimed in this final batch. |
+| Stage 3 | 主动改名 | F1, F2, F3, F4 | PASS at current head for automated conflict, recovery, rebuild-retry, receipt-cardinality, and interface coverage. The strengthened browser journey and three-platform acceptance remain pending. |
 
 ## Documentation coverage map
 
@@ -133,4 +127,4 @@ No diagram drift was found. The existing product diagram stays at the frontend �
 
 ## Release boundary
 
-v3.6.89 has current-head granular non-browser evidence while keeping rename optional: path-safe graphs and readable warnings remain useful when the user never invokes rename. This report intentionally stops short of full production acceptance until the strengthened GitHub browser journey passes at `37cf6468`, the Ubuntu, macOS, and Windows jobs pass both portability suites, and the V3 §9.2 status is updated with those links.
+v3.6.89 has final tracked-only non-browser evidence at `37265cf8` while keeping rename optional: path-safe graphs and readable warnings remain useful when the user never invokes rename. This report intentionally stops short of full production acceptance until the strengthened GitHub browser journey passes at this implementation head, the Ubuntu, macOS, and Windows jobs pass both portability suites, and the V3 §9.2 status is updated with those links.
