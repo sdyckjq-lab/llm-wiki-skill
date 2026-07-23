@@ -25,6 +25,8 @@ type PaperVisualCase = {
 	drawer?: "wiki";
 	sidebar?: "expanded" | "collapsed";
 	v2Focus?: "sidebar" | "composer" | "drawer" | "graph";
+	rename?: "preview" | "stale" | "conflict" | "blocked" | "rebuild-restored";
+	reducedMotion?: "reduce";
 };
 
 const baseUrl = process.env.PAPER_UI_BASE_URL ?? "http://localhost:5180";
@@ -36,6 +38,7 @@ const v2PrototypeUrl = process.env.PAPER_V2_PROTOTYPE_URL;
 const staticFallbackUrl = "http://paper-ui.local/";
 const distDir = resolve(process.cwd(), "dist");
 const visualKbPath = "/visual/ai-learning";
+const visualRenameOperationId = "11111111-1111-4111-8111-111111111111";
 const evaluateNameHelper = "globalThis.__name = (fn) => fn;";
 const paperApiReadPaths = ["/api/artifacts", "/api/config", "/api/models"] as const;
 type PaperApiReadPath = (typeof paperApiReadPaths)[number];
@@ -52,6 +55,53 @@ const referenceCache = new Map<number, Promise<string>>();
 const explicitBaseUrl = Boolean(process.env.PAPER_UI_BASE_URL);
 
 const cases: PaperVisualCase[] = [
+	{
+		name: "rename-preview-light-1440",
+		description: "long Unicode rename preview with many editable and read-only references",
+		prefs: defaultPrefs,
+		view: "graph",
+		rename: "preview",
+	},
+	{
+		name: "rename-preview-dark-320",
+		description: "long Unicode rename preview at 320px with reduced motion",
+		prefs: { ...defaultPrefs, theme: "dark" },
+		view: "graph",
+		viewport: { width: 320, height: 720 },
+		rename: "preview",
+		reducedMotion: "reduce",
+		sidebar: "collapsed",
+	},
+	{
+		name: "rename-stale-light-320",
+		description: "stale rename preview at 320px",
+		prefs: defaultPrefs,
+		view: "graph",
+		viewport: { width: 320, height: 720 },
+		rename: "stale",
+		sidebar: "collapsed",
+	},
+	{
+		name: "rename-conflict-dark-1440",
+		description: "complete present and missing recovery conflict set",
+		prefs: { ...defaultPrefs, theme: "dark" },
+		view: "graph",
+		rename: "conflict",
+	},
+	{
+		name: "rename-blocked-light-320",
+		description: "non-destructive blocked recovery at 320px",
+		prefs: defaultPrefs,
+		viewport: { width: 320, height: 720 },
+		rename: "blocked",
+	},
+	{
+		name: "rename-rebuild-restored-dark-1440",
+		description: "rebuild-required state restored after restart",
+		prefs: { ...defaultPrefs, theme: "dark" },
+		view: "graph",
+		rename: "rebuild-restored",
+	},
 	...(["light", "dark"] as const).flatMap((theme) =>
 		(["clean", "grid", "laid"] as const).map((paper) => ({
 			name: `${theme}-${paper}-1440`,
@@ -243,6 +293,7 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 	const context = await browser.newContext({
 		deviceScaleFactor: 1,
 		viewport,
+		reducedMotion: visualCase.reducedMotion,
 	});
 	await context.addInitScript(evaluateNameHelper);
 	await context.addInitScript((prefs) => {
@@ -264,9 +315,9 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 		sidebarCollapsedStorageKey: SIDEBAR_COLLAPSED_STORAGE_KEY,
 	});
 	if (useStaticFallback) {
-		await installStaticFallbackRoutes(context, apiReads);
+		await installStaticFallbackRoutes(context, apiReads, visualCase);
 	} else {
-		await installVisualApiRoutes(context, new URL(url).origin, apiReads);
+		await installVisualApiRoutes(context, new URL(url).origin, apiReads, visualCase);
 	}
 	if (visualCase.fonts === "blocked") {
 		await context.route(/fonts\.(googleapis|gstatic)\.com/, (route: Route) => route.abort());
@@ -286,6 +337,10 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 			await document.fonts?.ready;
 		});
 		await waitForStableVisualState(page, visualCase);
+		if (visualCase.rename) {
+			await prepareRenameVisualState(page, visualCase);
+			await waitForStableVisualState(page, visualCase);
+		}
 		if (visualCase.apiReadProbe) {
 			await verifyPaperApiReads(page, apiReads);
 		}
@@ -327,6 +382,8 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 			const graphStage = document.querySelector(".graph-screen .graph-stage");
 			const graphLegend = document.querySelector(".graph-shell-legend");
 			const graphSearch = document.querySelector(".graph-stage .graph-search, .graph-stage [aria-label='搜索图谱']");
+			const renameDialog = document.querySelector(".graph-rename-dialog");
+			const renamePrimaryAction = renameDialog?.querySelector("button:last-of-type");
 			const topbarBox = topbar?.getBoundingClientRect();
 			const kbNameBox = kbName?.getBoundingClientRect();
 			const graphScreenBox = graphScreen?.getBoundingClientRect();
@@ -405,6 +462,9 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 				graphSearchRect: graphSearch ? rectOf(graphSearch) : null,
 				graphLegendText: graphLegend?.textContent?.replace(/\s+/g, " ").trim() ?? null,
 				graphSearchVisible: Boolean(graphSearch),
+				renameDialogRect: renameDialog ? rectOf(renameDialog) : null,
+				renameDialogText: renameDialog?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+				renamePrimaryActionRect: renamePrimaryAction ? rectOf(renamePrimaryAction) : null,
 				appLevelGraphToolbarCount: document.querySelectorAll(".graph-screen > .graph-toolbar").length,
 				appLevelGraphLegendCount: document.querySelectorAll(".graph-screen > .graph-legend").length,
 			};
@@ -423,6 +483,32 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 	} finally {
 		await context.close();
 	}
+}
+
+async function prepareRenameVisualState(page: Page, visualCase: PaperVisualCase) {
+	if (visualCase.rename === "preview" || visualCase.rename === "stale") {
+		const target = page.locator('.sigma-global-node-hit-target[data-id="wiki/topics/rename-visual.md"]');
+		await target.waitFor({ state: "attached", timeout: 10_000 });
+		await target.evaluate((button) => (button as HTMLButtonElement).click());
+		await page.getByRole("button", { name: "打开详情" }).click();
+		await page.getByRole("button", { name: "安全改名" }).click();
+		const dialog = page.getByRole("dialog", { name: "安全改名" });
+		await dialog.getByRole("textbox", { name: "新文件名" }).fill("新的超长中文 Unicode 页面 Ω≈ç√∫˜µ≤≥÷ 研究笔记");
+		await dialog.getByRole("button", { name: "生成预览" }).click();
+		await dialog.getByRole("heading", { name: "确认影响" }).waitFor();
+		if (visualCase.rename === "stale") {
+			await dialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+			await dialog.getByRole("button", { name: "确认并改名" }).click();
+			await dialog.getByRole("heading", { name: "预览已失效" }).waitFor();
+		}
+		return;
+	}
+	const expectedHeading = visualCase.rename === "conflict"
+		? "需要处理改名冲突"
+		: visualCase.rename === "blocked"
+			? "无法自动处理这项恢复"
+			: "内容已保存，图谱尚未更新";
+	await page.getByRole("dialog", { name: "安全改名" }).getByRole("heading", { name: expectedHeading }).waitFor();
 }
 
 async function verifyPaperApiReads(page: Page, apiReads: Set<PaperApiReadRequest>) {
@@ -509,19 +595,20 @@ async function installVisualApiRoutes(
 	context: BrowserContext,
 	origin: string,
 	apiReads: Set<PaperApiReadRequest>,
+	visualCase: PaperVisualCase,
 ) {
 	await context.route(`${origin}/api/**`, async (route) => {
 		const request = route.request();
-		await fulfillMockApi(route, new URL(request.url()), request.method(), apiReads);
+		await fulfillMockApi(route, new URL(request.url()), request.method(), apiReads, visualCase);
 	});
 }
 
-async function installStaticFallbackRoutes(context: BrowserContext, apiReads: Set<PaperApiReadRequest>) {
+async function installStaticFallbackRoutes(context: BrowserContext, apiReads: Set<PaperApiReadRequest>, visualCase: PaperVisualCase) {
 	await context.route("http://paper-ui.local/**", async (route) => {
 		const request = route.request();
 		const url = new URL(request.url());
 		if (url.pathname.startsWith("/api/")) {
-			await fulfillMockApi(route, url, request.method(), apiReads);
+			await fulfillMockApi(route, url, request.method(), apiReads, visualCase);
 			return;
 		}
 		const path = url.pathname === "/" ? "/index.html" : url.pathname;
@@ -564,7 +651,7 @@ function isPaperApiReadPath(pathname: string): pathname is PaperApiReadPath {
 	return paperApiReadPaths.includes(pathname as PaperApiReadPath);
 }
 
-async function fulfillMockApi(route: Route, url: URL, method: string, apiReads: Set<PaperApiReadRequest>) {
+async function fulfillMockApi(route: Route, url: URL, method: string, apiReads: Set<PaperApiReadRequest>, visualCase: PaperVisualCase) {
 	const pathname = url.pathname;
 	const json = (body: unknown, status = 200) => route.fulfill({
 		status,
@@ -669,7 +756,8 @@ async function fulfillMockApi(route: Route, url: URL, method: string, apiReads: 
 		return;
 	}
 	if (pathname === "/api/page") {
-		if (url.searchParams.get("path") !== "wiki/concepts/mamba.md") {
+		const pagePath = url.searchParams.get("path");
+		if (pagePath !== "wiki/concepts/mamba.md" && pagePath !== "wiki/topics/rename-visual.md") {
 			await json({
 				ok: false,
 				code: "NOT_FOUND",
@@ -680,7 +768,7 @@ async function fulfillMockApi(route: Route, url: URL, method: string, apiReads: 
 		await json({
 			ok: true,
 			data: {
-				content: [
+				content: pagePath === "wiki/topics/rename-visual.md" ? "# 改名视觉测试\n\n正式图谱页面。" : [
 					"# Mamba",
 					"",
 					"Mamba 是选择性状态空间模型，把序列压缩成固定大小的隐状态，实现线性复杂度的长序列建模。",
@@ -719,7 +807,131 @@ async function fulfillMockApi(route: Route, url: URL, method: string, apiReads: 
 		await json({ ok: true, data: { status: "started" } });
 		return;
 	}
+	if (pathname === "/api/graph/renames/recovery") {
+		await json({ ok: true, data: visualRenameRecovery(visualCase.rename) });
+		return;
+	}
+	if (pathname === "/api/graph/renames/preview") {
+		await json({ ok: true, data: visualRenamePreview() });
+		return;
+	}
+	if (pathname === "/api/graph/renames/apply") {
+		await json({
+			ok: true,
+			data: {
+				outcome: "preview_stale",
+				operation_id: visualRenameOperationId,
+				reason: "知识库内容已在预览后变化，请重新生成预览。",
+			},
+		});
+		return;
+	}
 	await json({ ok: false, error: `Unhandled visual mock route: ${method} ${pathname}` }, 404);
+}
+
+function visualRenameRecovery(rename: PaperVisualCase["rename"]) {
+	const operation = {
+		operation_id: visualRenameOperationId,
+		source_path: "wiki/topics/rename-visual.md",
+		target_path: "wiki/topics/rename-visual-renamed.md",
+		retained_evidence: [],
+	};
+	if (rename === "conflict") {
+		return {
+			status: "required",
+			operation: {
+				...operation,
+				state: "conflicted",
+				graph_rebuild: "not_started",
+				conflicts: [{
+					source_path: "wiki/synthesis/外部当前版本.md",
+					current_state: "present",
+					current_sha256: "d".repeat(64),
+					preserved_variants: ["current", "original", "intended"].map((kind, index) => ({
+						kind,
+						relative_path: `.wiki-tmp/rename-ops/${visualRenameOperationId}/evidence/${kind}-${index}.bin`,
+						sha256: String(index + 1).repeat(64),
+					})),
+				}, {
+					source_path: "wiki/synthesis/被外部删除.md",
+					current_state: "missing",
+					preserved_variants: [],
+				}],
+			},
+			retained_evidence_receipts: [],
+		};
+	}
+	if (rename === "blocked") {
+		return {
+			status: "blocked",
+			reason: "unsafe_current_type",
+			operation_id: visualRenameOperationId,
+			retained_evidence_receipts: [],
+		};
+	}
+	if (rename === "rebuild-restored") {
+		return {
+			status: "rebuild_required",
+			operation: {
+				...operation,
+				state: "committed",
+				graph_rebuild: "failed",
+				conflicts: [],
+			},
+			retained_evidence_receipts: [],
+		};
+	}
+	return { status: "clear", retained_evidence_receipts: [] };
+}
+
+function visualRenamePreview() {
+	const targetPath = "wiki/concepts/新的超长中文 Unicode 页面 Ω≈ç√∫˜µ≤≥÷ 研究笔记.md";
+	const editableFiles = ["wiki/synthesis/长篇总览.md", "wiki/topics/多次引用.md"].map((sourcePath, fileIndex) => ({
+		source_path: sourcePath,
+		file_sha256: String(fileIndex + 2).repeat(64),
+		read_only: false,
+		occurrences: Array.from({ length: 4 }, (_, occurrenceIndex) => ({
+			occurrence_id: `visual-editable-${fileIndex}-${occurrenceIndex}`,
+			source_path: sourcePath,
+			file_sha256: String(fileIndex + 2).repeat(64),
+			start_byte: occurrenceIndex * 24,
+			end_byte: occurrenceIndex * 24 + 9,
+			raw_link: "[[mamba]]",
+			replacement_raw_link: `[[${targetPath}]]`,
+			resolution_kind: "unique_basename",
+		})),
+	}));
+	return {
+		operation_id: visualRenameOperationId,
+		expires_at: "2026-08-21T00:00:00.000Z",
+		preview_digest: "a".repeat(64),
+		source_path: "wiki/topics/rename-visual.md",
+		target_path: targetPath,
+		equivalent_portable_name: false,
+		file_set_sha256: "b".repeat(64),
+		editable_files: editableFiles,
+		read_only_references: ["raw/导入摘录.md", "wiki/legacy/旧格式引用.md"].map((sourcePath, index) => ({
+			occurrence_id: `visual-readonly-${index}`,
+			source_path: sourcePath,
+			file_sha256: "c".repeat(64),
+			start_byte: index * 12,
+			end_byte: index * 12 + 9,
+			raw_link: "[[mamba]]",
+			resolution_kind: "unique_basename",
+		})),
+		ambiguous_choices: [],
+		layout_change: {
+			from_key: "wiki/topics/rename-visual.md",
+			to_key: targetPath,
+			present: true,
+		},
+		summary: {
+			editable_files: 2,
+			editable_occurrences: 8,
+			read_only_occurrences: 2,
+			ambiguous_occurrences: 0,
+		},
+	};
 }
 
 async function waitForStableVisualState(page: Page, visualCase: PaperVisualCase) {
@@ -754,6 +966,32 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 	if (typeof state.viewportWidth === "number" && typeof state.documentWidth === "number" && state.documentWidth > state.viewportWidth + 1) {
 		throw new Error(`${visualCase.name}: page overflowed horizontally (${state.documentWidth} > ${state.viewportWidth})`);
 	}
+	if (visualCase.rename) {
+		const dialog = asRect(state.renameDialogRect);
+		const action = asRect(state.renamePrimaryActionRect);
+		if (!dialog || !action) throw new Error(`${visualCase.name}: missing rename dialog or primary action geometry`);
+		if (dialog.left < -1 || dialog.right > Number(state.viewportWidth) + 1) {
+			throw new Error(`${visualCase.name}: rename dialog escaped the viewport`);
+		}
+		if (action.top < dialog.top || action.bottom > dialog.bottom + 1) {
+			throw new Error(`${visualCase.name}: rename primary action is not visible inside the dialog`);
+		}
+		const text = stringOrNull(state.renameDialogText);
+		if (visualCase.rename === "preview") {
+			assertTextIncludes(text, "新的超长中文 Unicode 页面", visualCase.name);
+			assertTextIncludes(text, "只读引用", visualCase.name);
+			assertTextIncludes(text, "8 处可编辑引用", visualCase.name);
+		} else if (visualCase.rename === "stale") {
+			assertTextIncludes(text, "预览已失效", visualCase.name);
+		} else if (visualCase.rename === "conflict") {
+			assertTextIncludes(text, "当前文件存在", visualCase.name);
+			assertTextIncludes(text, "已被外部删除", visualCase.name);
+		} else if (visualCase.rename === "blocked") {
+			assertTextIncludes(text, "没有改写任何文件", visualCase.name);
+		} else {
+			assertTextIncludes(text, "内容已保存，图谱尚未更新", visualCase.name);
+		}
+	}
 
 	const kbNameRect = asRect(state.kbNameRect);
 	if (!kbNameRect || kbNameRect.width < 40) {
@@ -761,7 +999,7 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 	}
 
 	const topbarRect = asRect(state.topbarRect);
-	if (!topbarRect || topbarRect.height < (visualCase.viewport?.width === 768 ? 52 : 58)) {
+	if (!topbarRect || topbarRect.height < ((visualCase.viewport?.width ?? 1440) <= 768 ? 52 : 58)) {
 		throw new Error(`${visualCase.name}: topbar height drifted`);
 	}
 
@@ -934,7 +1172,7 @@ function visualGraphData() {
 		meta: {
 			build_date: "2026-06-20T00:00:00.000Z",
 			wiki_title: "示例知识库",
-			total_nodes: 4,
+			total_nodes: 5,
 			total_edges: 3,
 		},
 		nodes: [
@@ -942,6 +1180,7 @@ function visualGraphData() {
 			{ id: "wiki/concepts/mamba.md", label: "Mamba", title: "Mamba", type: "concept", community: "sequence", path: "wiki/concepts/mamba.md", source_path: "wiki/concepts/mamba.md", content: "状态空间模型" },
 			{ id: "wiki/concepts/attention.md", label: "注意力机制", title: "注意力机制", type: "topic", community: "attention", path: "wiki/concepts/attention.md", source_path: "wiki/concepts/attention.md", content: "Transformer 的核心模块" },
 			{ id: "wiki/concepts/state-space.md", label: "状态空间模型", title: "状态空间模型", type: "topic", community: "ssm", path: "wiki/concepts/state-space.md", source_path: "wiki/concepts/state-space.md", content: "Mamba 的模型家族" },
+			{ id: "wiki/topics/rename-visual.md", label: "改名视觉测试", title: "改名视觉测试", type: "topic", community: "sequence", path: "wiki/topics/rename-visual.md", source_path: "wiki/topics/rename-visual.md", content: "正式图谱页面" },
 		],
 		edges: [
 			{ id: "transformer-attention", from: "wiki/concepts/transformer.md", to: "wiki/concepts/attention.md", type: "RELATED", confidence: "EXTRACTED", relation_type: "依赖", weight: 1 },

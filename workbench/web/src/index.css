@@ -4106,6 +4106,16 @@
     font-weight: 720;
   }
 
+  .graph-rename-step [data-slot="dialog-footer"] {
+    position: sticky;
+    bottom: -2px;
+    z-index: 1;
+    margin-top: 12px;
+    border-top: 1px solid var(--app-border);
+    background: var(--app-surface);
+    padding: 10px 2px 2px;
+  }
+
   .graph-rename-choice-list,
   .graph-rename-ambiguity,
   .graph-rename-recovery-action {
