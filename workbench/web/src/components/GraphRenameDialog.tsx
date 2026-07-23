@@ -61,6 +61,7 @@ type Mode =
 	| "review-preview"
 	| "applying"
 	| "committed"
+	| "rolled-back"
 	| "stale"
 	| "rebuild-required"
 	| "recovery-required"
@@ -175,6 +176,10 @@ function GraphRenameDialogState({
 				setMode("recovery-required");
 				return;
 			}
+			if (result.operation.state === "rolled_back") {
+				setMode("rolled-back");
+				return;
+			}
 			if (result.operation.state === "committed" && result.operation.graph_rebuild === "succeeded") {
 				setMode("committed");
 				return;
@@ -243,7 +248,7 @@ function GraphRenameDialogState({
 		}
 	};
 
-	const dismissible = !["applying", "rebuild-required", "recovery-required", "recovery-resolving"].includes(mode);
+	const dismissible = !["applying", "rolled-back", "rebuild-required", "recovery-required", "recovery-resolving"].includes(mode);
 	const requestOpenChange = (nextOpen: boolean) => {
 		if (!nextOpen && !dismissible) return;
 		onOpenChange(nextOpen);
@@ -385,6 +390,19 @@ function GraphRenameDialogState({
 							<Button type="button" onClick={() => {
 								_onOperationTerminal?.();
 								requestOpenChange(false);
+							}}>完成</Button>
+						</DialogFooter>
+					</section>
+				) : mode === "rolled-back" && operation ? (
+					<section className="graph-rename-step graph-rename-terminal" role="status" aria-live="polite">
+						<h3>已恢复原状</h3>
+						<p>这次改名没有保留，原页面和链接已经安全恢复。</p>
+						<p><code>{operation.source_path}</code></p>
+						<DialogFooter>
+							<Button type="button" onClick={() => {
+								_onOperationTerminal?.();
+								onOpenChange(false);
+								queueMicrotask(() => returnFocusRef.current?.focus());
 							}}>完成</Button>
 						</DialogFooter>
 					</section>

@@ -375,6 +375,64 @@ describe("GraphRenameDialog", () => {
 		assert.equal(retries, 1);
 	});
 
+	it("holds a rolled-back apply in an acknowledged restored terminal before rechecking", async () => {
+		const preview = { ...previewFixture, ambiguous_choices: [], summary: { ...previewFixture.summary, ambiguous_occurrences: 0 } };
+		let applyCalls = 0;
+		let terminalNotifications = 0;
+		const openChanges: boolean[] = [];
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				onOpenChange={(open) => openChanges.push(open)}
+				onOperationTerminal={() => { terminalNotifications++; }}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => {
+						applyCalls++;
+						return {
+							outcome: "operation",
+							operation: {
+								operation_id: preview.operation_id,
+								state: "rolled_back",
+								source_path: preview.source_path,
+								target_path: preview.target_path,
+								graph_rebuild: "succeeded",
+								conflicts: [],
+								retained_evidence: [],
+							},
+						};
+					},
+				}}
+			/>,
+		);
+
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+
+		await waitFor(() => assert.notEqual(screen.queryByText("已恢复原状"), null));
+		assert.equal(applyCalls, 1);
+		assert.equal(screen.queryByRole("button", { name: "确认并改名" }), null);
+		assert.equal(terminalNotifications, 0);
+		assert.deepEqual(openChanges, []);
+		await pressKey(document, "Escape");
+		const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+		assert.ok(overlay);
+		await click(overlay);
+		assert.deepEqual(openChanges, []);
+		assert.notEqual(screen.queryByText("已恢复原状"), null);
+
+		await click(screen.getByRole("button", { name: "完成" }));
+		assert.equal(applyCalls, 1);
+		assert.equal(terminalNotifications, 1);
+		assert.deepEqual(openChanges, [false]);
+	});
+
 	it("keeps the only rebuild retry visible through Escape and backdrop dismissal attempts", async () => {
 		const openChanges: boolean[] = [];
 		render(
