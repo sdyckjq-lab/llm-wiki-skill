@@ -158,8 +158,17 @@ describe("validatePortableMarkdownFilename", () => {
     ]);
 
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "CON", inventory).ok, false);
+    assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "   ", inventory).ok, false);
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", ".md", inventory).ok, false);
-    assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", " leading", inventory).ok, false);
+    assert.deepEqual(
+      validatePortableMarkdownFilename("wiki/topics/foo.md", " leading", inventory),
+      {
+        ok: true,
+        normalized_name: " leading.md",
+        target_path: "wiki/topics/ leading.md",
+        requires_transit: false
+      }
+    );
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad#name", inventory).ok, false);
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad.", inventory).ok, false);
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad ", inventory).ok, false);
