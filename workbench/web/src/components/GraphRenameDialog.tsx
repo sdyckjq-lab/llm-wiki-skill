@@ -576,7 +576,8 @@ function RetainedEvidenceList({
 
 function validateRenameFilename(input: string): string | null {
 	const result = validateGraphRenameFilenameSyntax(input);
-	return result.ok ? null : filenameErrorMessage(result.reason);
+	if (result.ok === false) return filenameErrorMessage(result.reason);
+	return null;
 }
 
 function filenameErrorMessage(reason: GraphRenameFilenameSyntaxReason): string {
