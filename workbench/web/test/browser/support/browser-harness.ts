@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Browser, BrowserContext, BrowserServer } from "playwright";
@@ -245,6 +245,33 @@ export async function waitForFile(path: string, timeoutMs = OPERATION_TIMEOUT_MS
 	await waitUntil(() => stat(path).then(() => true, () => false), timeoutMs, `file did not appear: ${path}`);
 }
 
+export async function waitForRenameJournalState(
+	kbPath: string,
+	operationId: string,
+	expected: { state: string; graphRebuild?: string },
+): Promise<void> {
+	const manifestPath = join(kbPath, ".wiki-tmp", "rename-ops", operationId, "manifest.json");
+	await waitUntil(async () => {
+		try {
+			const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { state?: unknown; graph_rebuild?: unknown };
+			return manifest.state === expected.state
+				&& (expected.graphRebuild === undefined || manifest.graph_rebuild === expected.graphRebuild);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
+			throw error;
+		}
+	}, OPERATION_TIMEOUT_MS, `rename journal did not reach ${expected.state}`);
+}
+
+export async function hashKnowledgeFiles(kbPath: string): Promise<Record<string, string>> {
+	const files = await collectKnowledgeFiles(kbPath);
+	const hashes = await Promise.all(files.map(async (file) => [
+		relative(kbPath, file).split(sep).join("/"),
+		createHash("sha256").update(await readFile(file)).digest("hex"),
+	] as const));
+	return Object.fromEntries(hashes);
+}
+
 export async function waitForExit(child: ChildProcess, timeoutMs: number, output: () => string): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
 	if (child.exitCode !== null || child.signalCode !== null) return { code: child.exitCode, signal: child.signalCode };
 	return new Promise((resolvePromise, reject) => {
@@ -317,4 +344,16 @@ async function collectFiles(path: string): Promise<string[]> {
 		else files.push(entryPath);
 	}
 	return files;
+}
+
+async function collectKnowledgeFiles(path: string): Promise<string[]> {
+	const entries = await readdir(path, { withFileTypes: true });
+	const files: string[] = [];
+	for (const entry of entries) {
+		if (entry.name === ".wiki-tmp") continue;
+		const entryPath = join(path, entry.name);
+		if (entry.isDirectory()) files.push(...await collectKnowledgeFiles(entryPath));
+		else if (entry.isFile() && entry.name.endsWith(".md")) files.push(entryPath);
+	}
+	return files.sort();
 }

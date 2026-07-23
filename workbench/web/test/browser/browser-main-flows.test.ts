@@ -32,6 +32,7 @@ import {
 	closeBrowserResources,
 	createConversation,
 	createKnowledgeBase as createBaseKnowledgeBase,
+	hashKnowledgeFiles,
 	isolatedEnvironment,
 	platformSandboxEnvironment,
 	prepareSandboxDirectories,
@@ -41,6 +42,7 @@ import {
 	type RunningProcess,
 	waitForFile,
 	waitForExit,
+	waitForRenameJournalState,
 	waitUntil,
 } from "./support/browser-harness";
 
@@ -721,6 +723,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const kbPath = join(home, "llm-wiki", "rename-notes");
 	const equivalentKbPath = join(home, "llm-wiki", "equivalent-notes");
 	const crashRollbackKbPath = join(home, "llm-wiki", "crash-rollback-notes");
+	const crashCommitKbPath = join(home, "llm-wiki", "crash-commit-notes");
+	const rebuildFailureKbPath = join(home, "llm-wiki", "rebuild-failure-notes");
 	const serverNetworkProbe = join(home, "rename-server-network-probe.txt");
 	const viteNetworkProbe = join(home, "rename-vite-network-probe.txt");
 	const backendPort = await availablePort();
@@ -745,6 +749,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await createRenameKnowledgeBase(kbPath);
 	await createEquivalentRenameKnowledgeBase(equivalentKbPath);
 	await createCrashRenameKnowledgeBase(crashRollbackKbPath);
+	await createSinglePageRenameKnowledgeBase(crashCommitKbPath, "Crash Commit Notes", "commit");
+	await createSinglePageRenameKnowledgeBase(rebuildFailureKbPath, "Rebuild Failure Notes", "rebuild");
 	await mkdir(appDir, { recursive: true });
 	const authDir = join(home, ".pi", "agent");
 	await mkdir(authDir, { recursive: true });
@@ -754,7 +760,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await chmod(join(authDir, "auth.json"), 0o600);
 	await writeFile(join(appDir, "config.json"), `${JSON.stringify({
 		version: 1,
-		externalKnowledgeBases: [kbPath, equivalentKbPath, crashRollbackKbPath],
+		externalKnowledgeBases: [kbPath, equivalentKbPath, crashRollbackKbPath, crashCommitKbPath, rebuildFailureKbPath],
 		lastUsedKbPath: kbPath,
 		modelRoles: { main: { provider: "browser-test-provider", modelId: "browser-test-model" } },
 	}, null, 2)}\n`);
@@ -962,6 +968,102 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await page.getByRole("tab", { name: "图谱" }).click();
 	await openGraphRenameForSource(page, "wiki/entities/crash.md");
 	await page.getByRole("dialog", { name: "安全改名" }).getByRole("textbox", { name: "新文件名" }).waitFor();
+	await page.keyboard.press("Escape");
+
+	// A separate crash fixture can finish the intended commit while retaining the external version.
+	await page.getByText("crash-commit-notes", { exact: true }).click();
+	await page.getByLabel("当前知识库").getByText("crash-commit-notes").waitFor();
+	await page.locator("[data-graph-status='ready']").waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await openGraphRenameForSource(page, "wiki/entities/commit.md");
+	const commitDialog = page.getByRole("dialog", { name: "安全改名" });
+	await commitDialog.getByRole("textbox", { name: "新文件名" }).fill("commit-renamed");
+	await commitDialog.getByRole("button", { name: "生成预览" }).click();
+	await commitDialog.getByRole("heading", { name: "确认影响" }).waitFor();
+	await commitDialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	await writeFile(join(appDir, "browser-rename-crash-after-write"), "crash\n");
+	const commitCrashServer = resources.server;
+	assert.ok(commitCrashServer);
+	await commitDialog.getByRole("button", { name: "确认并改名" }).click();
+	const commitCrash = await waitForExit(commitCrashServer.child, OPERATION_TIMEOUT_MS, commitCrashServer.output);
+	assert.equal(commitCrash.code, 86, commitCrashServer.output());
+	resources.server = undefined;
+	const commitReference = join(crashCommitKbPath, "wiki", "synthesis", "commit-reference.md");
+	const externalCommitVersion = "# External commit version\n\n[[wiki/entities/commit.md]]\n";
+	await writeFile(commitReference, externalCommitVersion);
+	resources.server = await startBackend(home, backendPort, crashCommitKbPath, serverNetworkProbe);
+	await page.reload({ waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
+	const commitRecoveryDialog = page.getByRole("dialog", { name: "安全改名" });
+	await commitRecoveryDialog.getByRole("heading", { name: "需要处理改名冲突" }).waitFor();
+	const commitRecoverySnapshot = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(crashCommitKbPath)}`)).text) as {
+		data: { operation: { operation_id: string } };
+	};
+	const commitOperationId = commitRecoverySnapshot.data.operation.operation_id;
+	await waitForRenameJournalState(crashCommitKbPath, commitOperationId, { state: "conflicted" });
+	await commitRecoveryDialog.getByRole("radio", { name: "完成提交" }).check();
+	await commitRecoveryDialog.getByRole("button", { name: "确认恢复" }).click();
+	await waitUntil(async () => {
+		const response = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(crashCommitKbPath)}`)).text) as {
+			data?: { status?: string };
+		};
+		return response.data?.status === "clear";
+	}, OPERATION_TIMEOUT_MS, "commit recovery did not publish");
+	await assert.rejects(readFile(join(crashCommitKbPath, "wiki", "entities", "commit.md")));
+	assert.equal(await readFile(join(crashCommitKbPath, "wiki", "entities", "commit-renamed.md"), "utf8"), "# Commit source\n");
+	assert.equal(await readFile(commitReference, "utf8"), "# Commit reference\n\n[[wiki/entities/commit-renamed.md]]\n");
+	const commitReceiptSnapshot = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(crashCommitKbPath)}`)).text) as {
+		data: { retained_evidence_receipts: Array<{ operation_id: string; retained_evidence: Array<{ relative_path: string }> }> };
+	};
+	const commitReceipt = commitReceiptSnapshot.data.retained_evidence_receipts.find((receipt) => receipt.operation_id === commitOperationId);
+	assert.ok(commitReceipt);
+	const externalEvidence = commitReceipt.retained_evidence.find((item) => item.relative_path.includes("current"));
+	assert.ok(externalEvidence);
+	assert.equal(await readFile(join(crashCommitKbPath, ...externalEvidence.relative_path.split("/")), "utf8"), externalCommitVersion);
+
+	// A failed post-commit rebuild survives restart; retry changes only the derived graph.
+	await page.getByText("rebuild-failure-notes", { exact: true }).click();
+	await page.getByLabel("当前知识库").getByText("rebuild-failure-notes").waitFor();
+	await page.locator("[data-graph-status='ready']").waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await openGraphRenameForSource(page, "wiki/entities/rebuild.md");
+	const rebuildDialog = page.getByRole("dialog", { name: "安全改名" });
+	await rebuildDialog.getByRole("textbox", { name: "新文件名" }).fill("rebuild-renamed");
+	await rebuildDialog.getByRole("button", { name: "生成预览" }).click();
+	await rebuildDialog.getByRole("heading", { name: "确认影响" }).waitFor();
+	await rebuildDialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	await writeFile(join(appDir, "browser-rename-rebuild-fail-once"), "fail\n");
+	const rebuildApplyResponse = page.waitForResponse((response) => (
+		new URL(response.url()).pathname === "/api/graph/renames/apply"
+		&& response.request().method() === "POST"
+	));
+	await rebuildDialog.getByRole("button", { name: "确认并改名" }).click();
+	const rebuildApply = await rebuildApplyResponse;
+	assert.equal(rebuildApply.status(), 200);
+	const rebuildOperation = await rebuildApply.json() as { data: { operation: { operation_id: string } } };
+	await rebuildDialog.getByRole("heading", { name: "内容已保存，图谱尚未更新" }).waitFor();
+	await waitForRenameJournalState(rebuildFailureKbPath, rebuildOperation.data.operation.operation_id, { state: "committed", graphRebuild: "failed" });
+	const rebuiltSource = join(rebuildFailureKbPath, "wiki", "entities", "rebuild.md");
+	const rebuiltTarget = join(rebuildFailureKbPath, "wiki", "entities", "rebuild-renamed.md");
+	const rebuiltReference = join(rebuildFailureKbPath, "wiki", "synthesis", "rebuild-reference.md");
+	await assert.rejects(readFile(rebuiltSource));
+	assert.equal(await readFile(rebuiltTarget, "utf8"), "# Rebuild source\n");
+	assert.equal(await readFile(rebuiltReference, "utf8"), "# Rebuild reference\n\n[[wiki/entities/rebuild-renamed.md]]\n");
+	const knowledgeHashesBeforeRetry = await hashKnowledgeFiles(rebuildFailureKbPath);
+	await page.goto("about:blank");
+	resources.server = await restartBackend(resources.server!, home, backendPort, rebuildFailureKbPath, serverNetworkProbe);
+	await page.goto(webOrigin, { waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
+	const restoredRebuildDialog = page.getByRole("dialog", { name: "安全改名" });
+	await restoredRebuildDialog.getByRole("heading", { name: "内容已保存，图谱尚未更新" }).waitFor();
+	await restoredRebuildDialog.getByRole("button", { name: "重试更新图谱" }).click();
+	await waitUntil(async () => {
+		const response = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(rebuildFailureKbPath)}`)).text) as {
+			data?: { status?: string };
+		};
+		return response.data?.status === "clear";
+	}, OPERATION_TIMEOUT_MS, "rebuild retry did not publish the renamed graph");
+	await openGraphRenameForSource(page, "wiki/entities/rebuild-renamed.md");
+	await page.getByRole("dialog", { name: "安全改名" }).getByRole("textbox", { name: "新文件名" }).waitFor();
+	assert.deepEqual(await hashKnowledgeFiles(rebuildFailureKbPath), knowledgeHashesBeforeRetry);
+	assert.equal(await readFile(rebuiltTarget, "utf8"), "# Rebuild source\n");
+	assert.equal(await readFile(rebuiltReference, "utf8"), "# Rebuild reference\n\n[[wiki/entities/rebuild-renamed.md]]\n");
 	assert.equal((await page.locator("body").textContent())?.includes(home), false);
 	assert.equal(
 		blockedExternalRequests.every((origin) => origin === "https://fonts.googleapis.com" || origin === "https://fonts.gstatic.com"),
@@ -1181,6 +1283,36 @@ async function createCrashRenameKnowledgeBase(path: string): Promise<void> {
 			nodes: [
 				{ id: "wiki/entities/crash.md", label: "Crash source", type: "entity", community: null, content: "Crash source", source_path: "wiki/entities/crash.md" },
 				{ id: "wiki/synthesis/crash-reference.md", label: "Crash reference", type: "synthesis", community: null, content: "Crash reference", source_path: "wiki/synthesis/crash-reference.md" },
+			],
+			edges: [],
+		},
+		groups: [],
+		candidateSets: [],
+	});
+	await writeFile(join(path, "wiki", "graph-data.json"), `${JSON.stringify(pair.graphData, null, 2)}\n`);
+	await writeFile(join(path, "wiki", "graph-warnings.json"), `${JSON.stringify(pair.warningBundle, null, 2)}\n`);
+}
+
+async function createSinglePageRenameKnowledgeBase(path: string, title: string, stem: "commit" | "rebuild"): Promise<void> {
+	await mkdir(join(path, "wiki", "entities"), { recursive: true });
+	await mkdir(join(path, "wiki", "synthesis"), { recursive: true });
+	const label = stem === "commit" ? "Commit" : "Rebuild";
+	await writeFile(join(path, ".wiki-schema.md"), `# ${title} schema\n`);
+	await writeFile(join(path, "wiki", "entities", `${stem}.md`), `# ${label} source\n`);
+	await writeFile(join(path, "wiki", "synthesis", `${stem}-reference.md`), `# ${label} reference\n\n[[wiki/entities/${stem}.md]]\n`);
+	const pair = assembleGraphArtifactPair({
+		graphData: {
+			meta: {
+				build_date: "2026-07-22T00:00:00Z",
+				wiki_title: title,
+				total_nodes: 2,
+				total_edges: 0,
+				initial_view: [`wiki/entities/${stem}.md`, `wiki/synthesis/${stem}-reference.md`],
+				degraded: false,
+			},
+			nodes: [
+				{ id: `wiki/entities/${stem}.md`, label: `${label} source`, type: "entity", community: null, content: `${label} source`, source_path: `wiki/entities/${stem}.md` },
+				{ id: `wiki/synthesis/${stem}-reference.md`, label: `${label} reference`, type: "synthesis", community: null, content: `${label} reference`, source_path: `wiki/synthesis/${stem}-reference.md` },
 			],
 			edges: [],
 		},
