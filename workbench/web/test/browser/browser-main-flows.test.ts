@@ -712,6 +712,147 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 	}
 });
 
+test("graph rename journeys cross the real warning, dialog, and backend seams", { timeout: 120_000 }, async (t) => {
+	await assertPortAvailable(WEB_PORT);
+	const sandbox = await mkdtemp(join(tmpdir(), "llm-wiki-browser-main-flows-rename-"));
+	const home = join(sandbox, "home");
+	const appDir = join(home, ".llm-wiki-agent");
+	const kbPath = join(home, "llm-wiki", "rename-notes");
+	const serverNetworkProbe = join(home, "rename-server-network-probe.txt");
+	const viteNetworkProbe = join(home, "rename-vite-network-probe.txt");
+	const backendPort = await availablePort();
+	const webOrigin = `http://127.0.0.1:${WEB_PORT}`;
+	const resources: {
+		server?: RunningProcess;
+		vite?: RunningProcess;
+		browser?: Browser;
+		context?: BrowserContext;
+	} = {};
+
+	t.after(async () => {
+		const errors: unknown[] = [];
+		await closeBrowserResources({ context: resources.context, browser: resources.browser }).catch((error) => errors.push(error));
+		if (resources.vite) await stopProcess(resources.vite, [0, 143]).catch((error) => errors.push(error));
+		if (resources.server) await stopProcess(resources.server, [0, 86, 143]).catch((error) => errors.push(error));
+		await rm(sandbox, { recursive: true, force: true }).catch((error) => errors.push(error));
+		if (errors.length > 0) throw new AggregateError(errors, "graph rename browser cleanup failed");
+	});
+
+	await prepareSandboxDirectories(home);
+	await createRenameKnowledgeBase(kbPath);
+	await mkdir(appDir, { recursive: true });
+	const authDir = join(home, ".pi", "agent");
+	await mkdir(authDir, { recursive: true });
+	await writeFile(join(authDir, "auth.json"), `${JSON.stringify({
+		anthropic: { type: "api_key", key: "fictional-browser-credential" },
+	}, null, 2)}\n`);
+	await chmod(join(authDir, "auth.json"), 0o600);
+	await writeFile(join(appDir, "config.json"), `${JSON.stringify({
+		version: 1,
+		externalKnowledgeBases: [kbPath],
+		lastUsedKbPath: kbPath,
+		modelRoles: { main: { provider: "browser-test-provider", modelId: "browser-test-model" } },
+	}, null, 2)}\n`);
+
+	resources.server = await startBackend(home, backendPort, kbPath, serverNetworkProbe);
+	resources.vite = await startNetworkGuardedProcess(
+		process.execPath,
+		[VITE_ENTRY, "--host", "127.0.0.1", "--port", String(WEB_PORT), "--strictPort"],
+		WEB_ROOT,
+		{
+			HOME: home,
+			LANG: "C.UTF-8",
+			PATH: process.env.PATH ?? "/usr/bin:/bin",
+			TMPDIR: join(home, "tmp"),
+			LLM_WIKI_AGENT_API_ORIGIN: `http://127.0.0.1:${backendPort}`,
+			LLM_WIKI_AGENT_DISABLE_HMR: "1",
+			...platformSandboxEnvironment(home),
+		},
+		(output) => output.includes("Local:"),
+		"rename Vite frontend",
+		viteNetworkProbe,
+	);
+
+	resources.browser = await chromium.launch({ headless: true, env: isolatedEnvironment(home, 0, kbPath) });
+	resources.context = await resources.browser.newContext({ serviceWorkers: "block" });
+	const blockedExternalRequests: string[] = [];
+	await blockExternalBrowserTraffic(resources.context, blockedExternalRequests);
+	const page = await resources.context.newPage();
+	let renameApplyRequests = 0;
+	page.on("request", (request) => {
+		const url = new URL(request.url());
+		if (url.pathname === "/api/graph/renames/apply" && request.method() === "POST") renameApplyRequests += 1;
+	});
+	const startupRecovery = page.waitForResponse((response) => (
+		new URL(response.url()).pathname === "/api/graph/renames/recovery"
+		&& response.request().method() === "GET"
+	));
+	await page.goto(webOrigin, { waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
+	assert.equal((await startupRecovery).status(), 200);
+	await page.getByLabel("当前知识库").getByText("rename-notes").waitFor({ timeout: START_TIMEOUT_MS });
+	const startupDialogs = await page.getByRole("dialog").allTextContents();
+	assert.deepEqual(startupDialogs, [], `unexpected startup dialog: ${JSON.stringify(startupDialogs)}`);
+	await page.getByRole("tab", { name: "图谱" }).click();
+	await page.locator("[data-graph-status='ready']").waitFor({ timeout: START_TIMEOUT_MS });
+	const warningBanner = page.getByRole("region", { name: "图谱告警" });
+	await warningBanner.getByRole("button", { name: "查看详情" }).click();
+	await warningBanner.getByRole("button", { name: "解决此告警" }).click();
+	await page.getByRole("heading", { name: "先选择要改名的页面" }).waitFor();
+	await page.getByRole("radio", { name: "wiki/entities/foo.md" }).check();
+	await page.getByRole("button", { name: "下一步" }).click();
+	await page.getByRole("textbox", { name: "新文件名" }).fill("已改名 页面");
+	await page.getByRole("button", { name: "生成预览" }).click();
+	await page.getByRole("heading", { name: "确认影响" }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await page.getByText("wiki/entities/已改名 页面.md", { exact: true }).waitFor();
+	await page.getByRole("note", { name: "只读引用" }).waitFor();
+	const ambiguity = page.getByRole("group", { name: /歧义引用 1/ });
+	await ambiguity.waitFor();
+	await ambiguity.getByRole("radio", { name: "wiki/entities/foo.md" }).check();
+	await page.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	const pauseFlag = join(appDir, "browser-rename-pause-before-commit");
+	const pausedFlag = join(appDir, "browser-rename-paused");
+	const resumeFlag = join(appDir, "browser-rename-resume");
+	await writeFile(pauseFlag, "pause\n");
+	await page.getByRole("button", { name: "确认并改名" }).evaluate((button) => {
+		(button as HTMLButtonElement).click();
+		(button as HTMLButtonElement).click();
+	});
+	await waitForFile(pausedFlag);
+	assert.equal(renameApplyRequests, 1, "two immediate clicks must share one apply request");
+	await rm(pauseFlag, { force: true });
+	await writeFile(resumeFlag, "resume\n");
+	const targetPath = join(kbPath, "wiki", "entities", "已改名 页面.md");
+	await waitUntil(
+		() => readFile(targetPath).then(() => true, () => false),
+		OPERATION_TIMEOUT_MS,
+		"rename target did not appear after the paused operation resumed",
+	);
+	assert.equal(await readFile(targetPath, "utf8"), "# Entity Foo\n\nEntity source page.\n");
+	assert.equal(
+		await readFile(join(kbPath, "wiki", "synthesis", "rename-links.md"), "utf8"),
+		"# Rename links\n\n[[wiki/entities/已改名 页面.md]]\n[[wiki/entities/已改名 页面.md]]\n",
+	);
+	assert.equal(
+		await readFile(join(kbPath, "raw", "rename-reference.md"), "utf8"),
+		"# Read only\n\n[[wiki/entities/foo.md]]\n",
+	);
+	const layout = JSON.parse(await readFile(join(kbPath, ".wiki-graph-layout.json"), "utf8")) as { pins: Record<string, unknown> };
+	assert.equal(Object.hasOwn(layout.pins, "wiki/entities/foo.md"), false);
+	assert.equal(Object.hasOwn(layout.pins, "wiki/entities/已改名 页面.md"), true);
+	await waitUntil(async () => {
+		const response = JSON.parse((await browserJson(page!, `/api/graph/renames/recovery?kb=${encodeURIComponent(kbPath)}`)).text) as {
+			data?: { status?: string };
+		};
+		return response.data?.status === "clear";
+	}, OPERATION_TIMEOUT_MS, "rename did not reach published clear recovery state");
+	assert.deepEqual((await readdir(join(kbPath, "wiki", "entities"))).sort(), ["已改名 页面.md"]);
+	assert.equal((await page.locator("body").textContent())?.includes(home), false);
+	assert.equal(
+		blockedExternalRequests.every((origin) => origin === "https://fonts.googleapis.com" || origin === "https://fonts.gstatic.com"),
+		true,
+	);
+});
+
 async function assertSharedGraphHostFailures(context: BrowserContext, webOrigin: string): Promise<void> {
 	for (const failure of [
 		{ mode: "shared-create-failure", message: "共享图谱首次创建失败" },
@@ -785,6 +926,72 @@ async function createKnowledgeBase(path: string, title: string, sharedText: stri
 	});
 	await writeFile(join(path, "wiki/graph-data.json"), `${JSON.stringify(pair.graphData, null, 2)}\n`);
 	await writeFile(join(path, "wiki/graph-warnings.json"), `${JSON.stringify(pair.warningBundle, null, 2)}\n`);
+}
+
+async function createRenameKnowledgeBase(path: string): Promise<void> {
+	await mkdir(join(path, "wiki", "entities"), { recursive: true });
+	await mkdir(join(path, "wiki", "topics"), { recursive: true });
+	await mkdir(join(path, "wiki", "synthesis"), { recursive: true });
+	await mkdir(join(path, "raw"), { recursive: true });
+	await writeFile(join(path, ".wiki-schema.md"), "# Rename browser schema\n");
+	await writeFile(join(path, "wiki", "entities", "foo.md"), "# Entity Foo\n\nEntity source page.\n");
+	await writeFile(join(path, "wiki", "topics", "foo.md"), "# Topic Foo\n\nOther ambiguous page.\n");
+	const linkSource = "# Rename links\n\n[[wiki/entities/foo.md]]\n[[foo]]\n";
+	await writeFile(join(path, "wiki", "synthesis", "rename-links.md"), linkSource);
+	await writeFile(join(path, "raw", "rename-reference.md"), "# Read only\n\n[[wiki/entities/foo.md]]\n");
+	await writeFile(join(path, ".wiki-graph-layout.json"), `${JSON.stringify({
+		version: 2,
+		pins: { "wiki/entities/foo.md": { x: 24, y: 36, coordinateSpace: "world" } },
+		updatedAt: "2026-07-22T00:00:00.000Z",
+	}, null, 2)}\n`);
+	const graphData = {
+		meta: {
+			build_date: "2026-07-22T00:00:00Z",
+			wiki_title: "Rename Notes",
+			total_nodes: 3,
+			total_edges: 0,
+			initial_view: ["wiki/entities/foo.md", "wiki/topics/foo.md", "wiki/synthesis/rename-links.md"],
+			degraded: true,
+		},
+		nodes: [
+			{ id: "wiki/entities/foo.md", label: "Entity Foo", type: "entity", community: null, content: "Entity source page.", source_path: "wiki/entities/foo.md" },
+			{ id: "wiki/topics/foo.md", label: "Topic Foo", type: "topic", community: null, content: "Other ambiguous page.", source_path: "wiki/topics/foo.md" },
+			{ id: "wiki/synthesis/rename-links.md", label: "Rename links", type: "synthesis", community: null, content: "Rename links.", source_path: "wiki/synthesis/rename-links.md" },
+		],
+		edges: [],
+	};
+	const rawLink = "[[foo]]";
+	const pair = assembleGraphArtifactPair({
+		graphData,
+		candidateSets: [{
+			candidate_set_id: "rename-foo-candidates",
+			candidate_count: 2,
+			candidates: ["wiki/entities/foo.md", "wiki/topics/foo.md"],
+		}],
+		groups: [{
+			warning_id: "rename-ambiguous-foo",
+			code: "ambiguous_wikilink",
+			severity: "error",
+			message: "Ambiguous foo link",
+			target_key: "foo",
+			candidate_set_id: "rename-foo-candidates",
+			occurrence_count: 1,
+			occurrences: [{
+				occurrence_id: "rename-foo-occurrence",
+				source_path: "wiki/synthesis/rename-links.md",
+				line: 4,
+				column: 1,
+				start_byte: Buffer.byteLength("# Rename links\n\n[[wiki/entities/foo.md]]\n"),
+				end_byte: Buffer.byteLength(linkSource) - 1,
+				raw_link: rawLink,
+				file_sha256: createHash("sha256").update(linkSource).digest("hex"),
+				link_kind: "page_wikilink",
+				read_only: false,
+			}],
+		}],
+	});
+	await writeFile(join(path, "wiki", "graph-data.json"), `${JSON.stringify(pair.graphData, null, 2)}\n`);
+	await writeFile(join(path, "wiki", "graph-warnings.json"), `${JSON.stringify(pair.warningBundle, null, 2)}\n`);
 }
 
 function browserWarningFixture() {
