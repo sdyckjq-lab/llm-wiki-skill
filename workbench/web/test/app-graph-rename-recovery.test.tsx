@@ -4,6 +4,7 @@ import React from "react";
 import { act, renderHook } from "@testing-library/react";
 
 import { useGraphRenameRecovery } from "../src/lib/use-graph-rename-recovery";
+import { subscribeGraphEvents, type EventSourceLike } from "../src/lib/api/events";
 import { GraphRenameEvidenceNotice } from "../src/components/GraphRenameEvidenceNotice";
 import { click, render, screen, waitFor } from "./render";
 
@@ -83,6 +84,86 @@ describe("App graph rename recovery ownership", () => {
 		assert.deepEqual(result.current.visibleReceipts, []);
 	});
 
+	it("keeps dismissed evidence hidden when a graph event triggers App's recovery recheck", async () => {
+		const source = new FakeGraphEventSource();
+		let recoveryReads = 0;
+		const getRecovery = async () => {
+			recoveryReads += 1;
+			return clearRecovery([receipt]);
+		};
+		const { result } = renderHook(() => {
+			const recovery = useGraphRenameRecovery({
+				kbPath: "/kb/current",
+				getRecovery,
+			});
+			const recheck = recovery.recheck;
+			React.useEffect(() => subscribeGraphEvents({
+				kbPath: "/kb/current",
+				onEvent: () => { void recheck(); },
+				eventSourceFactory: () => source,
+				connectivityTarget: new EventTarget(),
+			}), [recheck]);
+			return recovery;
+		});
+
+		await waitFor(() => assert.deepEqual(result.current.visibleReceipts, [receipt]));
+		act(() => result.current.dismissReceipt(receipt.operation_id));
+		assert.deepEqual(result.current.visibleReceipts, []);
+
+		act(() => {
+			source.emit({
+				schemaVersion: 1,
+				streamId: "graph-stream",
+				seq: 1,
+				type: "graph_stream_ready",
+				connectedAt: "2026-08-01T00:00:00.000Z",
+			});
+			source.emit({
+				schemaVersion: 1,
+				streamId: "graph-stream",
+				seq: 2,
+				type: "graph_updated",
+				diff: null,
+				rebuiltAt: "2026-08-01T00:01:00.000Z",
+				stats: { nodeCount: 1, edgeCount: 0 },
+				warning_summary: null,
+				warning_details_status: "unavailable",
+			});
+		});
+
+		await waitFor(() => assert.equal(recoveryReads, 2));
+		assert.deepEqual(result.current.visibleReceipts, []);
+	});
+
+	it("shows retained evidence again after switching knowledge bases and returning", async () => {
+		const getRecovery = async () => clearRecovery([receipt]);
+		const { result, rerender } = renderHook(
+			({ kbPath }) => useGraphRenameRecovery({ kbPath, getRecovery }),
+			{ initialProps: { kbPath: "/kb/first" } },
+		);
+
+		await waitFor(() => assert.deepEqual(result.current.visibleReceipts, [receipt]));
+		act(() => result.current.dismissReceipt(receipt.operation_id));
+		assert.deepEqual(result.current.visibleReceipts, []);
+
+		rerender({ kbPath: "/kb/second" });
+		await waitFor(() => assert.equal(result.current.status?.status, "clear"));
+		rerender({ kbPath: "/kb/first" });
+		await waitFor(() => assert.deepEqual(result.current.visibleReceipts, [receipt]));
+	});
+
+	it("shows retained evidence again in a new App instance", async () => {
+		const getRecovery = async () => clearRecovery([receipt]);
+		const first = renderHook(() => useGraphRenameRecovery({ kbPath: "/kb/current", getRecovery }));
+		await waitFor(() => assert.deepEqual(first.result.current.visibleReceipts, [receipt]));
+		act(() => first.result.current.dismissReceipt(receipt.operation_id));
+		assert.deepEqual(first.result.current.visibleReceipts, []);
+		first.unmount();
+
+		const restarted = renderHook(() => useGraphRenameRecovery({ kbPath: "/kb/current", getRecovery }));
+		await waitFor(() => assert.deepEqual(restarted.result.current.visibleReceipts, [receipt]));
+	});
+
 	it("keeps rename blocked through repeated rebuild failures until the server reports clear", async () => {
 		const rebuildRequired = {
 			status: "rebuild_required" as const,
@@ -135,4 +216,13 @@ function deferred<T>() {
 		resolve = next;
 	});
 	return { promise, resolve };
+}
+
+class FakeGraphEventSource implements EventSourceLike {
+	onmessage: ((event: MessageEvent<string>) => void) | null = null;
+	onerror: ((event: Event) => void) | null = null;
+	close() {}
+	emit(value: unknown) {
+		this.onmessage?.({ data: JSON.stringify(value) } as MessageEvent<string>);
+	}
 }

@@ -12,7 +12,7 @@ interface Snapshot {
 }
 
 interface DismissedReceipts {
-	kbPath: string;
+	selection: object;
 	operationIds: Set<string>;
 }
 
@@ -21,6 +21,7 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 	const [error, setError] = useState<string | null>(null);
 	const [dismissed, setDismissed] = useState<DismissedReceipts | null>(null);
 	const requestIdRef = useRef(0);
+	const selection = useMemo(() => ({ kbPath }), [kbPath]);
 
 	const readRecovery = useCallback((path: string): Promise<void> => {
 		const requestId = ++requestIdRef.current;
@@ -33,7 +34,6 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 			.then((data) => {
 				if (requestId !== requestIdRef.current) return;
 				setSnapshot({ kbPath: path, data });
-				setDismissed({ kbPath: path, operationIds: new Set() });
 			})
 			.catch((cause: unknown) => {
 				if (requestId !== requestIdRef.current) return;
@@ -58,20 +58,20 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 	const renameBlocked = Boolean(kbPath) && (current === null || current.status !== "clear");
 	const visibleReceipts = useMemo(() => {
 		if (!current) return [];
-		const hidden = dismissed?.kbPath === kbPath ? dismissed.operationIds : new Set<string>();
+		const hidden = dismissed?.selection === selection ? dismissed.operationIds : new Set<string>();
 		return current.retained_evidence_receipts.filter((receipt) => !hidden.has(receipt.operation_id));
-	}, [current, dismissed, kbPath]);
+	}, [current, dismissed, selection]);
 
 	const dismissReceipt = useCallback((operationId: string) => {
 		if (!kbPath) return;
 		setDismissed((currentDismissed) => {
-			const operationIds = currentDismissed?.kbPath === kbPath
+			const operationIds = currentDismissed?.selection === selection
 				? new Set(currentDismissed.operationIds)
 				: new Set<string>();
 			operationIds.add(operationId);
-			return { kbPath, operationIds };
+			return { selection, operationIds };
 		});
-	}, [kbPath]);
+	}, [kbPath, selection]);
 
 	const acceptRecovery = useCallback((data: GraphRenameRecoveryData) => {
 		if (!kbPath) return;
