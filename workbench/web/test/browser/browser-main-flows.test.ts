@@ -318,7 +318,7 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		assert.match(warningApiText, /wiki\/synthesis\/browser-warning-source\.md/);
 		assert.match(warningApiText, /wiki\/entities\/foo\.md/);
 		assert.equal((await warningBanner.textContent())?.includes(home), false, "warning UI must show only relative paths");
-		assert.equal(await warningBanner.getByText("解决此告警", { exact: true }).count(), 0);
+		assert.equal(await warningBanner.getByText("解决此告警", { exact: true }).count(), 1, "only the editable ambiguity should expose rename resolution");
 		await page.evaluate((selectedKb) => {
 			const receipts: Array<{ type: string; seq: number; [key: string]: unknown }> = [];
 			const source = new EventSource(`/api/events?kb=${encodeURIComponent(selectedKb)}`);

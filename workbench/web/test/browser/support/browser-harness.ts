@@ -332,6 +332,7 @@ export async function assertProductionBuildExcludesBrowserFakes(): Promise<void>
 		const content = await readFile(file, "utf8");
 		assert.equal(content.includes(FAKE_MODEL_MARKER), false);
 		assert.equal(content.includes("LLM_WIKI_BROWSER_"), false);
+		assert.equal(content.includes("browser-rename-"), false);
 	}
 }
 
