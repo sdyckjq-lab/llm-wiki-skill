@@ -19,6 +19,7 @@ WITH_OPTIONAL_ADAPTERS=0
 # - 入口与说明文件：README / CLAUDE / AGENTS / CHANGELOG
 # - 安装入口：install.sh / setup.sh
 # - 实际执行内容：SKILL.md / scripts / templates / deps
+# - scripts 运行时引用的唯一共享规则文件（只携带所需文件，不打包整个 packages）
 # - 平台薄入口：platforms（README、CLAUDE、AGENTS 都会引用）
 MANAGED_ITEMS=(
   "SKILL.md"
@@ -34,6 +35,7 @@ MANAGED_ITEMS=(
   "templates"
   "deps"
   "platforms"
+  "packages/workbench-contracts/src/graph-rename-filename.js"
 )
 
 DEP_SKILLS=()
@@ -211,6 +213,8 @@ run_cmd() {
 copy_item() {
   local source_path="$1"
   local target_path="$2"
+
+  run_cmd mkdir -p "$(dirname "$target_path")"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     printf '[dry-run] copy %s -> %s\n' "$source_path" "$target_path"
