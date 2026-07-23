@@ -341,6 +341,39 @@ describe("GraphRenameDialog", () => {
 		assert.equal(retries, 1);
 	});
 
+	it("keeps the only rebuild retry visible through Escape and backdrop dismissal attempts", async () => {
+		const openChanges: boolean[] = [];
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				recovery={{
+					status: "rebuild_required",
+					operation: {
+						...conflictedOperation,
+						state: "committed",
+						graph_rebuild: "failed",
+						conflicts: [],
+					},
+					retained_evidence_receipts: [],
+				}}
+				onOpenChange={(open) => openChanges.push(open)}
+				api={unusedApi}
+			/>,
+		);
+
+		assert.notEqual(screen.queryByRole("button", { name: "重试更新图谱" }), null);
+		await pressKey(document, "Escape");
+		assert.deepEqual(openChanges, []);
+		assert.notEqual(screen.queryByRole("button", { name: "重试更新图谱" }), null);
+
+		const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+		assert.ok(overlay);
+		await click(overlay);
+		assert.deepEqual(openChanges, []);
+		assert.notEqual(screen.queryByRole("button", { name: "重试更新图谱" }), null);
+	});
+
 	it("moves a conflicted apply directly into the complete non-dismissible recovery state", async () => {
 		const openChanges: boolean[] = [];
 		const preview = { ...previewFixture, ambiguous_choices: [] };

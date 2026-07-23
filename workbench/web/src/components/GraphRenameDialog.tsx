@@ -241,7 +241,7 @@ function GraphRenameDialogState({
 		}
 	};
 
-	const dismissible = !["applying", "recovery-required", "recovery-resolving"].includes(mode);
+	const dismissible = !["applying", "rebuild-required", "recovery-required", "recovery-resolving"].includes(mode);
 	const requestOpenChange = (nextOpen: boolean) => {
 		if (!nextOpen && !dismissible) return;
 		onOpenChange(nextOpen);

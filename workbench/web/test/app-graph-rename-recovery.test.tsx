@@ -83,6 +83,30 @@ describe("App graph rename recovery ownership", () => {
 		assert.deepEqual(result.current.visibleReceipts, []);
 	});
 
+	it("keeps rename blocked through repeated rebuild failures until the server reports clear", async () => {
+		const rebuildRequired = {
+			status: "rebuild_required" as const,
+			operation: { ...operation, state: "committed" as const, graph_rebuild: "failed" as const },
+			retained_evidence_receipts: [],
+		};
+		const states = [rebuildRequired, rebuildRequired, clearRecovery()];
+		let index = 0;
+		const getRecovery = async () => states[Math.min(index++, states.length - 1)]!;
+		const { result } = renderHook(() => useGraphRenameRecovery({
+			kbPath: "/kb/current",
+			getRecovery,
+		}));
+
+		await waitFor(() => assert.equal(result.current.status?.status, "rebuild_required"));
+		assert.equal(result.current.renameBlocked, true);
+		await act(async () => { await result.current.recheck(); });
+		assert.equal(result.current.status?.status, "rebuild_required");
+		assert.equal(result.current.renameBlocked, true);
+		await act(async () => { await result.current.recheck(); });
+		assert.equal(result.current.status?.status, "clear");
+		assert.equal(result.current.renameBlocked, false);
+	});
+
 	it("shows retained evidence separately with hashes and exact automatic-deletion dates", async () => {
 		const dismissed: string[] = [];
 		render(<GraphRenameEvidenceNotice receipts={[receipt]} onDismiss={(operationId) => dismissed.push(operationId)} />);

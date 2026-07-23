@@ -4285,12 +4285,12 @@
 
   .graph-rename-evidence-notice {
     position: fixed;
-    top: 74px;
+    bottom: 16px;
     right: 16px;
     z-index: 44;
     display: grid;
     width: min(440px, calc(100vw - 32px));
-    max-height: calc(100dvh - 92px);
+    max-height: min(420px, calc(100dvh - 92px));
     gap: 10px;
     overflow: auto;
     border: 1px solid color-mix(in srgb, var(--app-accent) 48%, var(--app-border));
@@ -4299,7 +4299,11 @@
     background: color-mix(in srgb, var(--app-surface) 96%, var(--app-accent-soft));
     padding: 12px;
     box-shadow: var(--shadow-lg);
-    pointer-events: none;
+    pointer-events: auto;
+  }
+
+  .app-body[data-graph-drawer-overlay="true"] ~ .graph-rename-evidence-notice {
+    z-index: 29;
   }
 
   .graph-rename-evidence-notice header p,
@@ -4391,10 +4395,10 @@
     }
 
     .graph-rename-evidence-notice {
-      top: 66px;
+      bottom: 6px;
       right: 6px;
       width: calc(100vw - 12px);
-      max-height: calc(100dvh - 72px);
+      max-height: min(320px, 45dvh);
     }
   }
 

@@ -25,7 +25,7 @@ type PaperVisualCase = {
 	drawer?: "wiki";
 	sidebar?: "expanded" | "collapsed";
 	v2Focus?: "sidebar" | "composer" | "drawer" | "graph";
-	rename?: "preview" | "stale" | "conflict" | "blocked" | "rebuild-restored";
+	rename?: "preview" | "stale" | "conflict" | "blocked" | "rebuild-restored" | "evidence-overflow";
 	reducedMotion?: "reduce";
 };
 
@@ -101,6 +101,15 @@ const cases: PaperVisualCase[] = [
 		prefs: { ...defaultPrefs, theme: "dark" },
 		view: "graph",
 		rename: "rebuild-restored",
+	},
+	{
+		name: "rename-evidence-overflow-320",
+		description: "multiple retained evidence receipts remain scrollable without blocking a fresh rename",
+		prefs: defaultPrefs,
+		view: "graph",
+		viewport: { width: 320, height: 720 },
+		sidebar: "collapsed",
+		rename: "evidence-overflow",
 	},
 	...(["light", "dark"] as const).flatMap((theme) =>
 		(["clean", "grid", "laid"] as const).map((paper) => ({
@@ -486,6 +495,34 @@ async function captureCase(browser: Browser, visualCase: PaperVisualCase, url: s
 }
 
 async function prepareRenameVisualState(page: Page, visualCase: PaperVisualCase) {
+	if (visualCase.rename === "evidence-overflow") {
+		const notice = page.getByRole("region", { name: "保留的改名冲突证据" });
+		await notice.waitFor();
+		const before = await notice.evaluate((element) => ({
+			scrollTop: element.scrollTop,
+			scrollHeight: element.scrollHeight,
+			clientHeight: element.clientHeight,
+			left: element.getBoundingClientRect().left,
+			top: element.getBoundingClientRect().top,
+			width: element.getBoundingClientRect().width,
+			height: element.getBoundingClientRect().height,
+		}));
+		if (before.scrollHeight <= before.clientHeight) throw new Error("retained evidence fixture did not overflow");
+		await page.mouse.move(before.left + before.width / 2, before.top + before.height / 2);
+		await page.mouse.wheel(0, before.scrollHeight);
+		await page.waitForFunction(
+			"(() => { const notice = document.querySelector('.graph-rename-evidence-notice'); return notice && notice.scrollTop + notice.clientHeight >= notice.scrollHeight - 1; })()",
+			undefined,
+			{ timeout: 5_000 },
+		);
+
+		const target = page.locator('.sigma-global-node-hit-target[data-id="wiki/topics/rename-visual.md"]');
+		await target.evaluate((button) => (button as HTMLButtonElement).click());
+		await page.getByRole("button", { name: "打开详情" }).click();
+		await page.getByRole("button", { name: "安全改名" }).click();
+		await page.getByRole("dialog", { name: "安全改名" }).getByRole("heading", { name: "输入新文件名" }).waitFor();
+		return;
+	}
 	if (visualCase.rename === "preview" || visualCase.rename === "stale") {
 		const target = page.locator('.sigma-global-node-hit-target[data-id="wiki/topics/rename-visual.md"]');
 		await target.waitFor({ state: "attached", timeout: 10_000 });
@@ -881,6 +918,24 @@ function visualRenameRecovery(rename: PaperVisualCase["rename"]) {
 			retained_evidence_receipts: [],
 		};
 	}
+	if (rename === "evidence-overflow") {
+		const operationIds = [
+			"11111111-1111-4111-8111-111111111111",
+			"22222222-2222-4222-8222-222222222222",
+			"33333333-3333-4333-8333-333333333333",
+		];
+		return {
+			status: "clear",
+			retained_evidence_receipts: operationIds.map((operationId, receiptIndex) => ({
+				operation_id: operationId,
+				retained_evidence: Array.from({ length: 6 }, (_, evidenceIndex) => ({
+					relative_path: `.wiki-tmp/rename-ops/${operationId}/evidence/current-${evidenceIndex}.bin`,
+					sha256: "abcdef"[(receiptIndex + evidenceIndex) % 6]!.repeat(64),
+					expires_at: "2026-08-21T00:00:00.000Z",
+				})),
+			})),
+		};
+	}
 	return { status: "clear", retained_evidence_receipts: [] };
 }
 
@@ -988,8 +1043,10 @@ function assertState(visualCase: PaperVisualCase, state: Record<string, unknown>
 			assertTextIncludes(text, "已被外部删除", visualCase.name);
 		} else if (visualCase.rename === "blocked") {
 			assertTextIncludes(text, "没有改写任何文件", visualCase.name);
-		} else {
+		} else if (visualCase.rename === "rebuild-restored") {
 			assertTextIncludes(text, "内容已保存，图谱尚未更新", visualCase.name);
+		} else {
+			assertTextIncludes(text, "输入新文件名", visualCase.name);
 		}
 	}
 
