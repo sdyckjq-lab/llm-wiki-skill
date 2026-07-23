@@ -38,3 +38,31 @@ test("rename route rejects query/body knowledge-base disagreement", async () => 
 	const response = await app.request(`/api/graph/renames/preview?kb=${encodeURIComponent("/tmp/other")}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kbPath: KB, source_path: preview.source_path, new_name: "b" }) });
 	assert.equal(response.status, 404);
 });
+
+test("rename preview route enforces the shared portable filename syntax", async () => {
+	const previewNames: string[] = [];
+	const renameService = service();
+	renameService.previewGraphRename = async (_kbPath, _sourcePath, newName) => {
+		previewNames.push(newName);
+		return preview;
+	};
+	const app = createApp({ graphRenameService: renameService });
+	const headers = { "Content-Type": "application/json" };
+	for (const newName of ["", ".md", " leading", "trailing ", "trailing.", "CON.notes", "bad/name", "标题#锚点"]) {
+		const response = await app.request("/api/graph/renames/preview", {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ kbPath: KB, source_path: preview.source_path, new_name: newName }),
+		});
+		assert.equal(response.status, 400, newName || "<empty>");
+	}
+	for (const newName of ["中文 页面", "ordinary space.md"]) {
+		const response = await app.request("/api/graph/renames/preview", {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ kbPath: KB, source_path: preview.source_path, new_name: newName }),
+		});
+		assert.equal(response.status, 200, newName);
+	}
+	assert.deepEqual(previewNames, ["中文 页面", "ordinary space.md"]);
+});

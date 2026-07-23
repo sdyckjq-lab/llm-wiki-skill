@@ -4,14 +4,42 @@ import test from "node:test";
 import {
 	GraphRenameApplyBodySchema,
 	GraphRenameApplyDataSchema,
+	GraphRenameFilenameSchema,
 	GraphRenamePreviewDataSchema,
 	GraphRenameRecoveryBodySchema,
 	GraphRenameRecoveryDataSchema,
+	validateGraphRenameFilenameSyntax,
 } from "../src/index.js";
 
 const uuid = "11111111-1111-4111-8111-111111111111";
 const sha = "a".repeat(64);
 const iso = "2026-08-01T00:00:00.000Z";
+
+test("rename filename syntax is portable while allowing ordinary Unicode names", () => {
+	const cases = [
+		{ name: "", accepted: false, reason: "empty_name" },
+		{ name: ".md", accepted: false, reason: "empty_name" },
+		{ name: " 前导空格", accepted: false, reason: "leading_or_trailing_space" },
+		{ name: "末尾空格 ", accepted: false, reason: "leading_or_trailing_space" },
+		{ name: "末尾句点.", accepted: false, reason: "trailing_dot_or_space" },
+		{ name: "CON.notes", accepted: false, reason: "windows_reserved_name" },
+		{ name: "bad/name", accepted: false, reason: "illegal_character" },
+		{ name: "标题#锚点", accepted: false, reason: "obsidian_breaking_token" },
+		{ name: "中文 页面", accepted: true, normalizedName: "中文 页面.md" },
+		{ name: "ordinary space.md", accepted: true, normalizedName: "ordinary space.md" },
+	] as const;
+
+	for (const example of cases) {
+		const result = validateGraphRenameFilenameSyntax(example.name);
+		assert.equal(result.ok, example.accepted, example.name || "<empty>");
+		assert.equal(GraphRenameFilenameSchema.safeParse(example.name).success, example.accepted, example.name || "<empty>");
+		if (result.ok && "normalizedName" in example) {
+			assert.equal(result.normalized_name, example.normalizedName);
+		} else if (!result.ok && "reason" in example) {
+			assert.equal(result.reason, example.reason);
+		}
+	}
+});
 
 test("rename contracts reject unsafe operation and confirmation input", () => {
 	assert.equal(GraphRenameApplyBodySchema.safeParse({

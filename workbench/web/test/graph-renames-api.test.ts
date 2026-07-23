@@ -66,6 +66,28 @@ describe("graph rename API", () => {
 		});
 	});
 
+	it("rejects invalid rename filenames before preview or apply reaches the transport", async () => {
+		const calls = stubFetch({ ok: true, data: preview });
+		for (const newName of [".md", " leading-space"]) {
+			await assert.rejects(() => previewGraphRename(
+				"/registered/知识库",
+				"wiki/topics/旧页面.md",
+				newName,
+			));
+		}
+
+		await assert.rejects(() => applyGraphRename("/registered/知识库", {
+			operation_id: preview.operation_id,
+			expires_at: preview.expires_at,
+			source_path: preview.source_path,
+			new_name: ".md",
+			preview_digest: preview.preview_digest,
+			resolutions: [],
+			confirmed: true,
+		}));
+		assert.equal(calls.length, 0);
+	});
+
 	it("applies only a server-issued preview and accepts operation or stale outcomes", async () => {
 		const request = {
 			operation_id: preview.operation_id,

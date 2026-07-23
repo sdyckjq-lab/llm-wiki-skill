@@ -11,9 +11,11 @@
     "rootDir": "src",
     "outDir": "dist",
     "noEmitOnError": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"allowJs": true,
+		"checkJs": true,
+		"verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"]
+	"include": ["src/**/*.ts", "src/**/*.js"]
 }

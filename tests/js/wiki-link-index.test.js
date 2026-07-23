@@ -158,6 +158,8 @@ describe("validatePortableMarkdownFilename", () => {
     ]);
 
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "CON", inventory).ok, false);
+    assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", ".md", inventory).ok, false);
+    assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", " leading", inventory).ok, false);
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad#name", inventory).ok, false);
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad.", inventory).ok, false);
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad ", inventory).ok, false);
@@ -170,7 +172,7 @@ describe("validatePortableMarkdownFilename", () => {
     assert.equal(validatePortableMarkdownFilename("wiki/topics/foo.md", "bad\u0085name", inventory).ok, false);
     assert.equal(
       validatePortableMarkdownFilename("wiki/topics/foo.md", "Bar.MD", inventory).normalized_name,
-      "Bar.MD"
+      "Bar.md"
     );
   });
 });

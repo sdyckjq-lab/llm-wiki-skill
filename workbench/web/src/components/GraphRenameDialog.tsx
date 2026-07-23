@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
-import type {
-	GraphRenameApplyBody,
-	GraphRenameApplyData,
-	GraphRenameOperationData,
-	GraphRenamePreviewData,
-	GraphRenameRecoveryBody,
-	GraphRenameRecoveryData,
+import {
+	validateGraphRenameFilenameSyntax,
+	type GraphRenameFilenameSyntaxReason,
+	type GraphRenameApplyBody,
+	type GraphRenameApplyData,
+	type GraphRenameOperationData,
+	type GraphRenamePreviewData,
+	type GraphRenameRecoveryBody,
+	type GraphRenameRecoveryData,
 } from "@llm-wiki/workbench-contracts";
 
 import { Button } from "./ui/button";
@@ -555,21 +557,14 @@ function RetainedEvidenceList({
 }
 
 function validateRenameFilename(input: string): string | null {
-	const value = input;
-	if (!value || value === "." || value === "..") return "请输入新文件名";
-	const invalidFilenameCharacters = new Set('<>:"/\\|?*');
-	if ([...value].some((character) => {
-		const code = character.codePointAt(0) ?? 0;
-		return code === 0 || code < 32 || code === 127 || invalidFilenameCharacters.has(character);
-	})) return "这个名称不能作为文件名";
-	if (/[ .]$/u.test(value)) return "文件名不能以空格或句点结尾";
-	if (["#", "|", "^"].some((character) => value.includes(character)) || value.includes("[[") || value.includes("]]" ) || value.includes("%%")) {
-		return "这个名称会破坏页面链接，不能使用";
-	}
-	const withoutMarkdownExtension = value.replace(/\.md$/i, "");
-	const deviceStem = withoutMarkdownExtension.split(".", 1)[0]?.toUpperCase() ?? "";
-	if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/.test(deviceStem)) {
-		return "这个名称不能作为文件名";
-	}
-	return null;
+	const result = validateGraphRenameFilenameSyntax(input);
+	return result.ok ? null : filenameErrorMessage(result.reason);
+}
+
+function filenameErrorMessage(reason: GraphRenameFilenameSyntaxReason): string {
+	if (reason === "empty_name") return "请输入新文件名";
+	if (reason === "leading_or_trailing_space") return "文件名不能以空格开头或结尾";
+	if (reason === "trailing_dot_or_space") return "文件名不能以空格或句点结尾";
+	if (reason === "obsidian_breaking_token") return "这个名称会破坏页面链接，不能使用";
+	return "这个名称不能作为文件名";
 }

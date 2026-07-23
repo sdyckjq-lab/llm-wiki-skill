@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, open, readFile, readdir, realpath, unlink } from "
 import path from "node:path";
 
 import type { GraphLayoutFile } from "@llm-wiki/graph-engine";
+import { normalizeGraphRenameFilename } from "@llm-wiki/workbench-contracts";
 
 import type { RenameFileState } from "./graph-rename-journal.js";
 import {
@@ -24,8 +25,6 @@ const { loadUnicode17CaseFolder } = require("../../../scripts/lib/unicode-case-f
 };
 
 const FORMAL_GRAPH_DIRECTORIES = new Set(["entities", "topics", "sources", "comparisons", "synthesis", "queries"]);
-const CONTROL_OR_UNSAFE = /[\u0000-\u001f\u007f-\u009f<>:"/\\|?*]/;
-const RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 export interface ResolvedRenamePaths {
 	kbRealPath: string;
@@ -103,20 +102,7 @@ function portableKey(value: string): string {
 }
 
 function targetName(newName: string): string {
-	if (!newName || newName !== newName.trim() || newName.includes("/") || newName.includes("\\") || newName.includes("\0")) {
-		throw renameError("INVALID_REQUEST", "target name must be one filename");
-	}
-	const withoutOneSuffix = /\.md$/i.test(newName) ? newName.slice(0, -3) : newName;
-	const storedName = `${withoutOneSuffix}.md`;
-	const deviceStem = withoutOneSuffix.split(".", 1)[0] ?? "";
-	if (!withoutOneSuffix || withoutOneSuffix === "." || withoutOneSuffix === "..") throw renameError("INVALID_REQUEST", "target name is empty");
-	if (CONTROL_OR_UNSAFE.test(storedName)) throw renameError("INVALID_REQUEST", "target name contains an illegal character");
-	if (/[ .]$/.test(withoutOneSuffix)) throw renameError("INVALID_REQUEST", "target name cannot end with dot or space");
-	if (/[#|^]/.test(storedName) || storedName.includes("[[") || storedName.includes("]]" ) || storedName.includes("%%")) {
-		throw renameError("INVALID_REQUEST", "target name breaks wikilink syntax");
-	}
-	if (RESERVED_STEM.test(deviceStem)) throw renameError("INVALID_REQUEST", "target name is reserved on Windows");
-	return storedName;
+	return normalizeGraphRenameFilename(newName);
 }
 
 async function assertNoSymlinkPath(root: string, candidate: string, allowMissingLeaf: boolean): Promise<void> {

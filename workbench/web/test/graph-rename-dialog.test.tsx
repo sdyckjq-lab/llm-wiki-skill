@@ -152,6 +152,40 @@ describe("GraphRenameDialog", () => {
 		assert.equal(screen.getByRole("button", { name: "生成预览" }).hasAttribute("disabled"), false);
 	});
 
+	it("gives immediate filename feedback that matches the portable rename boundary", async () => {
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath="wiki/topics/同名.md"
+				onOpenChange={() => {}}
+				api={unusedApi}
+			/>,
+		);
+		const input = screen.getByRole("textbox", { name: "新文件名" });
+		const invalidNames = [
+			".md",
+			" 前导空格",
+			"末尾空格 ",
+			"末尾句点.",
+			"CON.notes",
+			"bad/name",
+			"标题#锚点",
+			"",
+		];
+		for (const newName of invalidNames) {
+			await changeText(input, newName);
+			assert.notEqual(screen.queryByRole("alert"), null, newName || "<empty>");
+			assert.equal(screen.getByRole("button", { name: "生成预览" }).hasAttribute("disabled"), true, newName || "<empty>");
+		}
+
+		for (const newName of ["中文 页面", "ordinary space.md"]) {
+			await changeText(input, newName);
+			assert.equal(screen.queryByRole("alert"), null, newName);
+			assert.equal(screen.getByRole("button", { name: "生成预览" }).hasAttribute("disabled"), false, newName);
+		}
+	});
+
 	it("shows the complete server preview and requires every ambiguity plus explicit confirmation", async () => {
 		const previewCalls: unknown[][] = [];
 		render(

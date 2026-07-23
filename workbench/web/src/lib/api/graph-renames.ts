@@ -1,5 +1,7 @@
 import {
+	GraphRenameApplyBodySchema,
 	GraphRenameApplyDataSchema,
+	GraphRenamePreviewBodySchema,
 	GraphRenamePreviewDataSchema,
 	GraphRenameRecoveryDataSchema,
 	type GraphRenameApplyBody,
@@ -16,10 +18,11 @@ export async function previewGraphRename(
 	sourcePath: string,
 	newName: string,
 ): Promise<GraphRenamePreviewData> {
+	const body = GraphRenamePreviewBodySchema.parse({ source_path: sourcePath, new_name: newName });
 	return request({ method: "POST", path: "/api/graph/renames/preview" }, {
 		responseSchema: GraphRenamePreviewDataSchema,
 		query: { kb: kbPath },
-		body: { source_path: sourcePath, new_name: newName },
+		body,
 	});
 }
 
@@ -27,10 +30,11 @@ export async function applyGraphRename(
 	kbPath: string,
 	input: GraphRenameApplyBody,
 ): Promise<GraphRenameApplyData> {
+	const body = GraphRenameApplyBodySchema.parse(input);
 	return request({ method: "POST", path: "/api/graph/renames/apply" }, {
 		responseSchema: GraphRenameApplyDataSchema,
 		query: { kb: kbPath },
-		body: input,
+		body,
 	});
 }
 

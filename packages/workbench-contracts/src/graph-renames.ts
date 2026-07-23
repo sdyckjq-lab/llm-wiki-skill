@@ -1,12 +1,29 @@
 import { z } from "zod";
 
 import { KnowledgeBaseRelativePathSchema } from "./graph-warnings.js";
+import { validateGraphRenameFilenameSyntax } from "./graph-rename-filename.js";
+
+export {
+	normalizeGraphRenameFilename,
+	validateGraphRenameFilenameSyntax,
+} from "./graph-rename-filename.js";
+export type {
+	GraphRenameFilenameSyntaxReason,
+	GraphRenameFilenameSyntaxResult,
+} from "./graph-rename-filename.js";
 
 const UuidSchema = z.string().uuid();
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const IsoDateSchema = z.string().datetime({ offset: true });
 
 const RelativePath = KnowledgeBaseRelativePathSchema;
+
+export const GraphRenameFilenameSchema = z.string().superRefine((value, context) => {
+	const result = validateGraphRenameFilenameSyntax(value);
+	if (!result.ok) {
+		context.addIssue({ code: "custom", message: result.reason });
+	}
+});
 
 const PreviewOccurrenceSchema = z.object({
 	occurrence_id: z.string().min(1),
@@ -31,7 +48,7 @@ export type GraphRenamePreviewFile = z.infer<typeof GraphRenamePreviewFileSchema
 export const GraphRenamePreviewBodySchema = z.object({
 	kbPath: z.string().trim().min(1).optional(),
 	source_path: RelativePath,
-	new_name: z.string().min(1),
+	new_name: GraphRenameFilenameSchema,
 }).strict();
 export type GraphRenamePreviewBody = z.infer<typeof GraphRenamePreviewBodySchema>;
 
@@ -65,7 +82,7 @@ export const GraphRenameApplyBodySchema = z.object({
 	operation_id: UuidSchema,
 	expires_at: IsoDateSchema,
 	source_path: RelativePath,
-	new_name: z.string().min(1),
+	new_name: GraphRenameFilenameSchema,
 	preview_digest: Sha256Schema,
 	resolutions: z.array(z.object({ occurrence_id: z.string().min(1), target_path: RelativePath }).strict())
 		.refine((items) => new Set(items.map((item) => item.occurrence_id)).size === items.length, "duplicate resolution IDs"),

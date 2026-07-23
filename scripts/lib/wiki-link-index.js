@@ -6,6 +6,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { loadUnicode17CaseFolder } = require("./unicode-case-folding");
 const {
+  validateGraphRenameFilenameSyntax
+} = require("../../packages/workbench-contracts/src/graph-rename-filename.js");
+const {
   discoverKnowledgeBaseFiles,
   normalizeRelativePosixPath
 } = require("./wiki-file-discovery");
@@ -416,27 +419,9 @@ function validatePortableMarkdownFilename(sourcePath, newName, inventoryOrTarget
   const targets = Array.isArray(inventoryOrTargets)
     ? inventoryOrTargets
     : inventoryOrTargets.targets;
-  const rawName = String(newName || "");
-  const trimmed = rawName.trim();
-  let normalizedName = /\.md$/i.test(rawName) ? rawName : `${rawName}.md`;
-  normalizedName = normalizeRelativePosixPath(normalizedName);
-  const stem = normalizedName.slice(0, -3);
-
-  if (!trimmed || trimmed === "." || trimmed === "..") {
-    return { ok: false, reason: "empty_name" };
-  }
-  if (/[\u0000-\u001f\u007f-\u009f<>:"/\\|?*]/.test(normalizedName)) {
-    return { ok: false, reason: "illegal_character" };
-  }
-  if (/[ .]$/.test(rawName)) {
-    return { ok: false, reason: "trailing_dot_or_space" };
-  }
-  if (/[#|^]/.test(normalizedName) || normalizedName.includes("[[") || normalizedName.includes("]]") || normalizedName.includes("%%")) {
-    return { ok: false, reason: "obsidian_breaking_token" };
-  }
-  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(stem)) {
-    return { ok: false, reason: "windows_reserved_name" };
-  }
+  const syntax = validateGraphRenameFilenameSyntax(String(newName ?? ""));
+  if (!syntax.ok) return syntax;
+  const normalizedName = syntax.normalized_name;
 
   const sourceDir = path.posix.dirname(sourcePath);
   const targetPath = sourceDir === "." ? normalizedName : `${sourceDir}/${normalizedName}`;
