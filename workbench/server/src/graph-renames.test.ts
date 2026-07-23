@@ -45,6 +45,19 @@ test("preview is read-only and apply renames the page with one rebuild request",
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("a fresh knowledge base without temporary operation directories has clear recovery", async () => {
+	const kb = await makeKnowledgeBase();
+	try {
+		const service = createGraphRenameService();
+		assert.deepEqual(await service.getGraphRenameRecovery(kb), {
+			status: "clear",
+			retained_evidence_receipts: [],
+		});
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
 test("rename rewrites a deterministic bare link to the canonical full page path", async () => {
 	const kb = await makeKnowledgeBase();
 	try {

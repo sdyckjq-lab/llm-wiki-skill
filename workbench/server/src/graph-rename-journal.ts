@@ -526,6 +526,15 @@ export class GraphRenameJournalStore {
 			await ensureSafeDirectory(this.kbPath, this.operationsRoot);
 			return;
 		}
+		const temporaryRoot = path.dirname(this.operationsRoot);
+		const temporaryRootInfo = await lstat(temporaryRoot).catch((error: NodeJS.ErrnoException) => {
+			if (error.code === "ENOENT") return null;
+			throw error;
+		});
+		if (!temporaryRootInfo) return;
+		if (temporaryRootInfo.isSymbolicLink() || !temporaryRootInfo.isDirectory()) {
+			throw conflictError("rename journal parent is unsafe");
+		}
 		const safe = await assertSafePath(this.kbPath, this.operationsRoot, true);
 		const info = await lstat(safe).catch((error: NodeJS.ErrnoException) => {
 			if (error.code === "ENOENT") return null;
