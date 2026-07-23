@@ -1001,19 +1001,20 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await waitForRenameJournalState(crashCommitKbPath, commitOperationId, { state: "conflicted" });
 	await commitRecoveryDialog.getByRole("radio", { name: "完成提交" }).check();
 	await commitRecoveryDialog.getByRole("button", { name: "确认恢复" }).click();
+	let commitReceipt: { operation_id: string; retained_evidence: Array<{ relative_path: string }> } | undefined;
 	await waitUntil(async () => {
 		const response = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(crashCommitKbPath)}`)).text) as {
-			data?: { status?: string };
+			data?: {
+				status?: string;
+				retained_evidence_receipts?: Array<{ operation_id: string; retained_evidence: Array<{ relative_path: string }> }>;
+			};
 		};
-		return response.data?.status === "clear";
-	}, OPERATION_TIMEOUT_MS, "commit recovery did not publish");
+		commitReceipt = response.data?.retained_evidence_receipts?.find((receipt) => receipt.operation_id === commitOperationId);
+		return response.data?.status === "clear" && commitReceipt !== undefined;
+	}, OPERATION_TIMEOUT_MS, "commit recovery did not publish its retained evidence receipt");
 	await assert.rejects(readFile(join(crashCommitKbPath, "wiki", "entities", "commit.md")));
 	assert.equal(await readFile(join(crashCommitKbPath, "wiki", "entities", "commit-renamed.md"), "utf8"), "# Commit source\n");
 	assert.equal(await readFile(commitReference, "utf8"), "# Commit reference\n\n[[wiki/entities/commit-renamed.md]]\n");
-	const commitReceiptSnapshot = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(crashCommitKbPath)}`)).text) as {
-		data: { retained_evidence_receipts: Array<{ operation_id: string; retained_evidence: Array<{ relative_path: string }> }> };
-	};
-	const commitReceipt = commitReceiptSnapshot.data.retained_evidence_receipts.find((receipt) => receipt.operation_id === commitOperationId);
 	assert.ok(commitReceipt);
 	const externalEvidence = commitReceipt.retained_evidence.find((item) => item.relative_path.includes("current"));
 	assert.ok(externalEvidence);
