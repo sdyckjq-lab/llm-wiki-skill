@@ -303,7 +303,6 @@ function App() {
 			return;
 		}
 		if (recovery.status === "clear") {
-			setRenameDialog((current) => current?.recovery?.status === "rebuild_required" ? null : current);
 			return;
 		}
 		setRenameDialog({ kbPath, recovery });
@@ -1031,17 +1030,18 @@ function App() {
 						kbPath={renameDialog.kbPath}
 						sourcePath={renameDialog.sourcePath}
 						candidatePaths={renameDialog.candidatePaths}
-						recovery={renameDialog.recovery}
+						recovery={renameRecoveryStatus ?? renameDialog.recovery}
 						onOpenChange={(nextOpen) => {
 							if (!nextOpen) setRenameDialog(null);
 						}}
-						onRecoveryChange={graphRenameRecovery.acceptRecovery}
+						onRecoveryChange={graphRenameRecovery.refreshAfterMutation}
 						onOperationTerminal={() => {
 							setRenameDialog(null);
 							void graphRenameRecovery.recheck();
 						}}
 						onRetryGraph={async () => {
 							await rebuildGraph(renameDialog.kbPath);
+							await graphRenameRecovery.recheck();
 						}}
 					/>
 				)}

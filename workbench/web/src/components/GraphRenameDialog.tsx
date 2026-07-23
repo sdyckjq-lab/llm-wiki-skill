@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	validateGraphRenameFilenameSyntax,
 	type GraphRenameFilenameSyntaxReason,
@@ -48,7 +48,7 @@ interface Props {
 	candidatePaths?: string[];
 	recovery?: GraphRenameRecoveryData | null;
 	onOpenChange: (open: boolean) => void;
-	onRecoveryChange?: (recovery: GraphRenameRecoveryData) => void;
+	onRecoveryChange?: () => Promise<GraphRenameRecoveryData | null>;
 	onOperationTerminal?: () => void;
 	onRetryGraph?: () => Promise<void> | void;
 	api?: GraphRenameDialogApi;
@@ -72,16 +72,10 @@ type Mode =
 export function GraphRenameDialog({
 	...props
 }: Props) {
-	const recoveryIdentity = props.recovery?.status === "clear"
-		? props.recovery.retained_evidence_receipts.map((receipt) => receipt.operation_id).join(",")
-		: props.recovery?.status === "blocked"
-			? `${props.recovery.operation_id ?? "none"}:${props.recovery.reason}`
-			: props.recovery?.operation.operation_id ?? "none";
 	const identity = [
+		props.kbPath,
 		props.sourcePath ?? "warning",
 		props.candidatePaths?.join("\0") ?? "",
-		props.recovery?.status ?? "rename",
-		recoveryIdentity,
 	].join("|");
 	return <GraphRenameDialogState key={identity} {...props} />;
 }
@@ -109,6 +103,7 @@ function GraphRenameDialogState({
 	const [operation, setOperation] = useState<GraphRenameOperationData | null>(() => (
 		recovery && "operation" in recovery ? recovery.operation : null
 	));
+	const operationRef = useRef(operation);
 	const [activeRecovery, setActiveRecovery] = useState<GraphRenameRecoveryData | null>(recovery);
 	const [recoveryAction, setRecoveryAction] = useState<"finish_commit" | "finish_rollback" | null>(null);
 	const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
@@ -122,6 +117,76 @@ function GraphRenameDialogState({
 	const filenameError = mode === "edit-name" ? validateRenameFilename(newName) : null;
 	const previewReady = preview !== null
 		&& preview.ambiguous_choices.every((choice) => Boolean(resolutions[choice.occurrence_id]));
+
+	useEffect(() => {
+		if (!recovery) return;
+		let cancelled = false;
+		queueMicrotask(() => {
+			if (cancelled) return;
+			setActiveRecovery(recovery);
+			setRecoveryAction(null);
+			if (recovery.status === "required") {
+				operationRef.current = recovery.operation;
+				setOperation(recovery.operation);
+				setMode("recovery-required");
+				return;
+			}
+			if (recovery.status === "rebuild_required") {
+				operationRef.current = recovery.operation;
+				setOperation(recovery.operation);
+				setMode("rebuild-required");
+				return;
+			}
+			if (recovery.status === "blocked") {
+				setMode("recovery-blocked");
+				return;
+			}
+			setMode((currentMode) => {
+				const currentOperation = operationRef.current;
+				if (
+					currentMode === "rebuild-required"
+					|| (currentMode === "applying" && currentOperation?.state === "committed")
+				) return "committed";
+				if (
+					["recovery-required", "recovery-resolving", "recovery-blocked"].includes(currentMode)
+					|| (currentMode === "applying" && currentOperation?.state === "conflicted")
+				) {
+					return "recovery-terminal";
+				}
+				return currentMode;
+			});
+		});
+		return () => { cancelled = true; };
+	}, [recovery]);
+
+	const showAuthoritativeRecovery = (
+		result: GraphRenameRecoveryData,
+		completedOperation: GraphRenameOperationData | null,
+	) => {
+		setActiveRecovery(result);
+		setRecoveryAction(null);
+		if (result.status === "required") {
+			operationRef.current = result.operation;
+			setOperation(result.operation);
+			setMode("recovery-required");
+		} else if (result.status === "rebuild_required") {
+			operationRef.current = result.operation;
+			setOperation(result.operation);
+			setMode("rebuild-required");
+		} else if (result.status === "blocked") {
+			setMode("recovery-blocked");
+		} else if (completedOperation?.state === "committed") {
+			setMode("committed");
+		} else {
+			setMode("recovery-terminal");
+		}
+	};
+
+	const readAuthoritativeRecovery = async () => (
+		_onRecoveryChange
+			? _onRecoveryChange()
+			: api.getGraphRenameRecovery(kbPath)
+	);
 
 	const loadPreview = async () => {
 		if (!selectedSource || validateRenameFilename(newName)) return;
@@ -163,17 +228,21 @@ function GraphRenameDialogState({
 				setMode("stale");
 				return;
 			}
+			operationRef.current = result.operation;
 			setOperation(result.operation);
 			if (result.operation.state === "conflicted") {
-				const recoveryData: GraphRenameRecoveryData = {
-					status: "required",
-					operation: result.operation,
-					retained_evidence_receipts: [],
-				};
-				setActiveRecovery(recoveryData);
-				_onRecoveryChange?.(recoveryData);
-				setRecoveryAction(null);
-				setMode("recovery-required");
+				try {
+					const recoveryData = await readAuthoritativeRecovery();
+					if (recoveryData) showAuthoritativeRecovery(recoveryData, result.operation);
+				} catch (cause) {
+					setActiveRecovery({
+						status: "required",
+						operation: result.operation,
+						retained_evidence_receipts: [],
+					});
+					setRecoveryMessage(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试");
+					setMode("recovery-required");
+				}
 				return;
 			}
 			if (result.operation.state === "rolled_back") {
@@ -185,12 +254,13 @@ function GraphRenameDialogState({
 				return;
 			}
 			if (result.operation.state === "committed") {
-				_onRecoveryChange?.({
-					status: "rebuild_required",
-					operation: result.operation,
-					retained_evidence_receipts: [],
-				});
-				setMode("rebuild-required");
+				try {
+					const recoveryData = await readAuthoritativeRecovery();
+					if (recoveryData) showAuthoritativeRecovery(recoveryData, result.operation);
+				} catch (cause) {
+					setError(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试更新图谱");
+					setMode("rebuild-required");
+				}
 				return;
 			}
 			setError("改名尚未完成，请按恢复提示继续处理");
@@ -225,20 +295,11 @@ function GraphRenameDialogState({
 						}
 				)),
 			});
-			setActiveRecovery(result);
-			_onRecoveryChange?.(result);
-			setRecoveryAction(null);
-			if (result.status === "required") {
-				setOperation(result.operation);
+			const authoritative = _onRecoveryChange ? await _onRecoveryChange() : result;
+			if (!authoritative) return;
+			showAuthoritativeRecovery(authoritative, "operation" in authoritative ? authoritative.operation : operation);
+			if (authoritative.status === "required") {
 				setRecoveryMessage("冲突集合已变化，已刷新为当前完整状态。请重新核对后确认。");
-				setMode("recovery-required");
-			} else if (result.status === "rebuild_required") {
-				setOperation(result.operation);
-				setMode("rebuild-required");
-			} else if (result.status === "blocked") {
-				setMode("recovery-blocked");
-			} else {
-				setMode("recovery-terminal");
 			}
 		} catch (cause) {
 			setRecoveryMessage(cause instanceof Error ? cause.message : "恢复失败，请重新核对后重试");
@@ -533,7 +594,7 @@ function initialMode(recovery: GraphRenameRecoveryData | null, sourcePath: strin
 	if (recovery?.status === "required") return "recovery-required";
 	if (recovery?.status === "rebuild_required") return "rebuild-required";
 	if (recovery?.status === "blocked") return "recovery-blocked";
-	if (recovery?.status === "clear") return "recovery-terminal";
+	if (recovery?.status === "clear" && !sourcePath) return "recovery-terminal";
 	return sourcePath ? "edit-name" : "choose-source";
 }
 

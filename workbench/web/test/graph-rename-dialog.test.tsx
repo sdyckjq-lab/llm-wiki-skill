@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
-import { fireEvent } from "@testing-library/react";
-import type { GraphRenameRecoveryBody } from "@llm-wiki/workbench-contracts";
+import { act, fireEvent } from "@testing-library/react";
+import type {
+	GraphRenameApplyData,
+	GraphRenameRecoveryBody,
+	GraphRenameRecoveryData,
+} from "@llm-wiki/workbench-contracts";
 
 import { GraphRenameDialog } from "../src/components/GraphRenameDialog";
 import { changeText, click, pressKey, render, screen, waitFor } from "./render";
@@ -377,6 +381,209 @@ describe("GraphRenameDialog", () => {
 		assert.equal(screen.queryByRole("button", { name: /恢复原状|完成提交/ }), null);
 		await click(screen.getByRole("button", { name: "重试更新图谱" }));
 		assert.equal(retries, 1);
+	});
+
+	it("uses the complete server recovery after a conflicted apply", async () => {
+		const preview = { ...previewFixture, ambiguous_choices: [], summary: { ...previewFixture.summary, ambiguous_occurrences: 0 } };
+		const serverRecovery = {
+			...requiredRecovery,
+			operation: {
+				...conflictedOperation,
+				conflicts: [{
+					source_path: "wiki/topics/服务端完整冲突.md",
+					current_state: "missing" as const,
+					preserved_variants: [],
+				}],
+			},
+			retained_evidence_receipts: [{
+				operation_id: "00000000-0000-4000-8000-000000000000",
+				retained_evidence: [{
+					relative_path: ".wiki-tmp/rename-ops/00000000-0000-4000-8000-000000000000/evidence/current.md",
+					sha256: "9".repeat(64),
+					expires_at: "2026-08-20T00:00:00.000Z",
+				}],
+			}, {
+				operation_id: preview.operation_id,
+				retained_evidence: [{
+					relative_path: `.wiki-tmp/rename-ops/${preview.operation_id}/evidence/current.md`,
+					sha256: "8".repeat(64),
+					expires_at: "2026-08-21T00:00:00.000Z",
+				}],
+			}],
+		};
+		let recoveryReads = 0;
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				onOpenChange={() => {}}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => ({ outcome: "operation", operation: conflictedOperation }),
+					getGraphRenameRecovery: async () => {
+						recoveryReads++;
+						return serverRecovery;
+					},
+				}}
+			/>,
+		);
+
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+
+		await waitFor(() => assert.match(screen.getByRole("dialog", { name: "安全改名" }).textContent ?? "", /服务端完整冲突\.md/));
+		assert.equal(recoveryReads, 1);
+		assert.equal(screen.queryByText("wiki/synthesis/当前冲突.md"), null);
+	});
+
+	it("keeps the newest clear server state when an older failed rebuild response arrives later", async () => {
+		const preview = { ...previewFixture, ambiguous_choices: [], summary: { ...previewFixture.summary, ambiguous_occurrences: 0 } };
+		const applyResult = deferred<GraphRenameApplyData>();
+		let refreshes = 0;
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				onOpenChange={() => {}}
+				onRecoveryChange={async () => {
+					refreshes++;
+					return { status: "clear", retained_evidence_receipts: [] };
+				}}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => applyResult.promise,
+				}}
+			/>,
+		);
+
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+
+		applyResult.resolve({
+			outcome: "operation",
+			operation: {
+				...conflictedOperation,
+				state: "committed",
+				graph_rebuild: "failed",
+				conflicts: [],
+			},
+		});
+		await waitFor(() => assert.notEqual(screen.queryByText("页面已安全改名"), null));
+		assert.equal(refreshes, 1);
+		assert.equal(screen.queryByText("内容已保存，图谱尚未更新"), null);
+	});
+
+	it("finishes from a newer graph-event read when it supersedes the operation refresh", async () => {
+		const preview = { ...previewFixture, ambiguous_choices: [], summary: { ...previewFixture.summary, ambiguous_occurrences: 0 } };
+		const applyResult = deferred<GraphRenameApplyData>();
+		const operationRefresh = deferred<GraphRenameRecoveryData | null>();
+		let publishGraphEvent!: () => void;
+		let refreshes = 0;
+
+		function RaceHarness() {
+			const [recovery, setRecovery] = React.useState<GraphRenameRecoveryData>({
+				status: "clear",
+				retained_evidence_receipts: [],
+			});
+			publishGraphEvent = () => setRecovery({ status: "clear", retained_evidence_receipts: [] });
+			return <GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				recovery={recovery}
+				onOpenChange={() => {}}
+				onRecoveryChange={() => {
+					refreshes++;
+					return operationRefresh.promise;
+				}}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => applyResult.promise,
+				}}
+			/>;
+		}
+
+		render(<RaceHarness />);
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+
+		applyResult.resolve({
+			outcome: "operation",
+			operation: {
+				...conflictedOperation,
+				state: "committed",
+				graph_rebuild: "failed",
+				conflicts: [],
+			},
+		});
+		await waitFor(() => assert.equal(refreshes, 1));
+		act(() => publishGraphEvent());
+		operationRefresh.resolve(null);
+
+		await waitFor(() => assert.notEqual(screen.queryByText("页面已安全改名"), null));
+		assert.equal(screen.queryByText("正在安全写入"), null);
+		assert.equal(screen.queryByText("内容已保存，图谱尚未更新"), null);
+	});
+
+	it("restores a failed rebuild after remount and keeps the completed content terminal after retry", async () => {
+		const rebuildRequired = {
+			status: "rebuild_required" as const,
+			operation: {
+				...conflictedOperation,
+				state: "committed" as const,
+				graph_rebuild: "failed" as const,
+				conflicts: [],
+			},
+			retained_evidence_receipts: [],
+		};
+		let graphRetries = 0;
+		const first = render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				recovery={rebuildRequired}
+				onOpenChange={() => {}}
+				api={unusedApi}
+			/>,
+		);
+		assert.notEqual(screen.queryByRole("button", { name: "重试更新图谱" }), null);
+		first.unmount();
+
+		function RetryHarness() {
+			const [recovery, setRecovery] = React.useState<GraphRenameRecoveryData>(rebuildRequired);
+			return <GraphRenameDialog
+				open
+				kbPath={kbPath}
+				recovery={recovery}
+				onOpenChange={() => {}}
+				onRetryGraph={async () => {
+					graphRetries++;
+					setRecovery({ status: "clear", retained_evidence_receipts: [] });
+				}}
+				api={unusedApi}
+			/>;
+		}
+
+		render(<RetryHarness />);
+		await click(screen.getByRole("button", { name: "重试更新图谱" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("页面已安全改名"), null));
+		assert.equal(graphRetries, 1);
+		assert.equal(screen.queryByText("内容已保存，图谱尚未更新"), null);
+		assert.equal(screen.queryByRole("button", { name: /恢复原状|完成提交/ }), null);
 	});
 
 	it("holds a rolled-back apply in an acknowledged restored terminal before rechecking", async () => {

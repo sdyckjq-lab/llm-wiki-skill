@@ -23,23 +23,26 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 	const requestIdRef = useRef(0);
 	const selection = useMemo(() => ({ kbPath }), [kbPath]);
 
-	const readRecovery = useCallback((path: string): Promise<void> => {
+	const readRecovery = useCallback(async (
+		path: string,
+		rejectLatestError = false,
+	): Promise<GraphRenameRecoveryData | null> => {
 		const requestId = ++requestIdRef.current;
-		const response = getRecovery(path);
-		return Promise.resolve()
-			.then(() => {
-				if (requestId === requestIdRef.current) setError(null);
-				return response;
-			})
-			.then((data) => {
-				if (requestId !== requestIdRef.current) return;
-				setSnapshot({ kbPath: path, data });
-			})
-			.catch((cause: unknown) => {
-				if (requestId !== requestIdRef.current) return;
-				setSnapshot(null);
-				setError(cause instanceof Error ? cause.message : "改名恢复状态读取失败");
-			});
+		try {
+			const response = getRecovery(path);
+			await Promise.resolve();
+			if (requestId === requestIdRef.current) setError(null);
+			const data = await response;
+			if (requestId !== requestIdRef.current) return null;
+			setSnapshot({ kbPath: path, data });
+			return data;
+		} catch (cause: unknown) {
+			if (requestId !== requestIdRef.current) return null;
+			setSnapshot(null);
+			setError(cause instanceof Error ? cause.message : "改名恢复状态读取失败");
+			if (rejectLatestError) throw cause;
+			return null;
+		}
 	}, [getRecovery]);
 
 	useEffect(() => {
@@ -47,7 +50,7 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 			requestIdRef.current += 1;
 			return;
 		}
-		void readRecovery(kbPath);
+		void Promise.resolve().then(() => readRecovery(kbPath));
 		return () => {
 			requestIdRef.current += 1;
 		};
@@ -73,15 +76,13 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 		});
 	}, [kbPath, selection]);
 
-	const acceptRecovery = useCallback((data: GraphRenameRecoveryData) => {
-		if (!kbPath) return;
-		setSnapshot({ kbPath, data });
-		setError(null);
-	}, [kbPath]);
-
 	const recheck = useCallback(async () => {
-		if (!kbPath) return;
-		await readRecovery(kbPath);
+		if (!kbPath) return null;
+		return readRecovery(kbPath);
+	}, [kbPath, readRecovery]);
+	const refreshAfterMutation = useCallback(async () => {
+		if (!kbPath) return null;
+		return readRecovery(kbPath, true);
 	}, [kbPath, readRecovery]);
 
 	return {
@@ -91,7 +92,7 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 		renameBlocked,
 		visibleReceipts,
 		dismissReceipt,
-		acceptRecovery,
+		refreshAfterMutation,
 		recheck,
 	};
 }

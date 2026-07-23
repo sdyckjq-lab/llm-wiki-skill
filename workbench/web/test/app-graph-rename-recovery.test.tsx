@@ -27,6 +27,15 @@ const receipt = {
 	}],
 };
 
+const newerReceipt = {
+	operation_id: "22222222-2222-4222-8222-222222222222",
+	retained_evidence: [{
+		relative_path: ".wiki-tmp/rename-ops/22222222-2222-4222-8222-222222222222/evidence/current.md",
+		sha256: "b".repeat(64),
+		expires_at: "2026-08-22T00:00:00.000Z",
+	}],
+};
+
 describe("App graph rename recovery ownership", () => {
 	it("checks initial and selected knowledge bases while ignoring a previous late response", async () => {
 		const first = deferred<ReturnType<typeof requiredRecovery>>();
@@ -79,9 +88,34 @@ describe("App graph rename recovery ownership", () => {
 		assert.deepEqual(result.current.visibleReceipts, [receipt]);
 		act(() => result.current.dismissReceipt(receipt.operation_id));
 		assert.deepEqual(result.current.visibleReceipts, []);
-		act(() => result.current.acceptRecovery(clearRecovery([receipt])));
+		await act(async () => { await result.current.refreshAfterMutation(); });
 		assert.equal(result.current.renameBlocked, false);
 		assert.deepEqual(result.current.visibleReceipts, []);
+	});
+
+	it("refreshes from the server instead of letting a late incomplete operation state erase receipts", async () => {
+		const states = [
+			clearRecovery([receipt]),
+			clearRecovery([receipt, newerReceipt]),
+			clearRecovery([receipt, newerReceipt]),
+		];
+		let index = 0;
+		const getRecovery = async () => states[Math.min(index++, states.length - 1)]!;
+		const { result } = renderHook(() => useGraphRenameRecovery({
+			kbPath: "/kb/current",
+			getRecovery,
+		}));
+
+		await waitFor(() => assert.deepEqual(result.current.visibleReceipts, [receipt]));
+		await act(async () => { await result.current.recheck(); });
+		assert.deepEqual(result.current.visibleReceipts, [receipt, newerReceipt]);
+
+		await act(async () => {
+			await result.current.refreshAfterMutation();
+		});
+		assert.equal(result.current.status?.status, "clear");
+		assert.equal(result.current.renameBlocked, false);
+		assert.deepEqual(result.current.visibleReceipts, [receipt, newerReceipt]);
 	});
 
 	it("keeps dismissed evidence hidden when a graph event triggers App's recovery recheck", async () => {
