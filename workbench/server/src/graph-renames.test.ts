@@ -77,6 +77,40 @@ test("a fresh knowledge base without temporary operation directories has clear r
 	}
 });
 
+test("a blocked recovery record takes precedence over a live conflicted journal", async () => {
+	const kb = await makeKnowledgeBase();
+	const conflictedOperationId = "10101010-1010-4010-8010-101010101010";
+	const blockedOperationId = "20202020-2020-4020-8020-202020202020";
+	try {
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({
+			operationId: conflictedOperationId,
+			immutableDigest: "1".repeat(64),
+			sourcePath: "wiki/topics/a.md",
+			targetPath: "wiki/topics/renamed.md",
+		});
+		await store.writePrepared({
+			operationId: conflictedOperationId,
+			immutableDigest: "1".repeat(64),
+			sourcePath: "wiki/topics/a.md",
+			targetPath: "wiki/topics/renamed.md",
+		});
+		await store.transition(conflictedOperationId, "applying", {});
+		await store.transition(conflictedOperationId, "conflicted", { conflicts: [] });
+		await store.release(conflictedOperationId);
+		await store.writeBlocked(blockedOperationId, "invalid_journal");
+
+		assert.deepEqual(await createGraphRenameService().getGraphRenameRecovery(kb), {
+			status: "blocked",
+			reason: "invalid_journal",
+			operation_id: blockedOperationId,
+			retained_evidence_receipts: [],
+		});
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
 test("rename rewrites a deterministic bare link to the canonical full page path", async () => {
 	const kb = await makeKnowledgeBase();
 	try {
@@ -493,9 +527,63 @@ test("mismatched recovery conflict sets return current state with zero persisten
 				assert.deepEqual(observedConflicts(result), currentObserved, `${invalid.name} must return the current complete set`);
 				assert.deepEqual(result.operation.conflicts[0]!.preserved_variants, [oldVariant], `${invalid.name} must retain old variants without creating new ones`);
 				assert.deepEqual(result.retained_evidence_receipts, [{ operation_id: receiptOperationId, retained_evidence: [{ relative_path: receiptEvidencePath, sha256: sha(receiptBytes), expires_at: "2026-08-19T00:00:00.000Z" }] }]);
+				const reread = await service.getGraphRenameRecovery(kb);
+				assert.equal(reread.status, "required", `${invalid.name} GET must remain required`);
+				assert.deepEqual(observedConflicts(reread), currentObserved, `${invalid.name} GET must not fall back to journal conflicts`);
+				if (reread.status !== "required") assert.fail("mismatched conflicts must remain required on GET");
+				assert.deepEqual(reread.operation.conflicts[0]!.preserved_variants, [oldVariant]);
+				assert.deepEqual(reread.retained_evidence_receipts, result.retained_evidence_receipts);
 				assert.deepEqual(await summarizeDirectory(kb), before, `${invalid.name} attempt ${attempt + 1} changed persistent state`);
 			}
 		}
+
+		const target = path.join(kb, "wiki", "topics", "renamed.md");
+		let latestObserved = currentObserved;
+		await writeFile(target, "external target\n");
+		let beforeRefresh = await summarizeDirectory(kb);
+		let refreshed = await service.resolveGraphRenameRecovery(kb, {
+			operation_id: operationId,
+			action: "finish_rollback",
+			observed_conflicts: latestObserved,
+		});
+		assert.equal(refreshed.status, "required");
+		latestObserved = observedConflicts(refreshed);
+		assert.equal(latestObserved.find((item) => item.source_path === "wiki/topics/renamed.md")?.current_state, "present");
+		assert.deepEqual(observedConflicts(await service.getGraphRenameRecovery(kb)), latestObserved);
+		assert.deepEqual(await summarizeDirectory(kb), beforeRefresh, "external target refresh changed persistent state");
+
+		await rm(source);
+		beforeRefresh = await summarizeDirectory(kb);
+		refreshed = await service.resolveGraphRenameRecovery(kb, {
+			operation_id: operationId,
+			action: "finish_rollback",
+			observed_conflicts: latestObserved,
+		});
+		assert.equal(refreshed.status, "required");
+		latestObserved = observedConflicts(refreshed);
+		assert.equal(latestObserved.find((item) => item.source_path === "wiki/topics/a.md")?.current_state, "missing");
+		assert.deepEqual(observedConflicts(await service.getGraphRenameRecovery(kb)), latestObserved);
+		assert.deepEqual(await summarizeDirectory(kb), beforeRefresh, "external source deletion refresh changed persistent state");
+
+		await rm(target);
+		beforeRefresh = await summarizeDirectory(kb);
+		refreshed = await service.resolveGraphRenameRecovery(kb, {
+			operation_id: operationId,
+			action: "finish_rollback",
+			observed_conflicts: latestObserved,
+		});
+		assert.equal(refreshed.status, "required");
+		latestObserved = observedConflicts(refreshed);
+		assert.deepEqual(observedConflicts(await service.getGraphRenameRecovery(kb)), latestObserved);
+		assert.deepEqual(await summarizeDirectory(kb), beforeRefresh, "external target deletion refresh changed persistent state");
+
+		const finished = await service.resolveGraphRenameRecovery(kb, {
+			operation_id: operationId,
+			action: "finish_rollback",
+			observed_conflicts: latestObserved,
+		});
+		assert.equal(finished.status, "rebuild_required");
+		assert.deepEqual(await readFile(source), original);
 	} finally {
 		await rm(kb, { recursive: true, force: true });
 	}
@@ -838,6 +926,12 @@ test("recovery blocks when any source-name path is a directory", async () => {
 		await store.transition(operationId, "conflicted", { conflicts: [] });
 		await store.release(operationId);
 		const service = createGraphRenameService();
+		assert.deepEqual(await service.getGraphRenameRecovery(kb), {
+			status: "blocked",
+			reason: "unsafe_current_type",
+			operation_id: operationId,
+			retained_evidence_receipts: [],
+		});
 		const result = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
 		assert.deepEqual(result, { status: "blocked", reason: "unsafe_current_type", operation_id: operationId, retained_evidence_receipts: [] });
 	} finally {

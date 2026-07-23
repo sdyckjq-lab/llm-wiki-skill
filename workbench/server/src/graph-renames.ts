@@ -152,7 +152,15 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 			const realKbPath = await realKnowledgeBasePath(kbPath);
 			const store = trackedStoreFor(realKbPath);
 			await pruneRenameOperationData(store, now);
-			return recoveryData(await collectRecovery(store, now));
+			const collected = await collectRecovery(store, now);
+			if (!collected.blocked && collected.primary?.kind === "journal" && collected.primary.state === "conflicted") {
+				return currentConflictRecoveryData(
+					collected.primary,
+					await recomputeRecoveryConflicts(realKbPath, collected.primary),
+					collected.receipts,
+				);
+			}
+			return recoveryData(collected);
 		},
 		resolveGraphRenameRecovery: async (kbPath, body) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
@@ -525,6 +533,34 @@ function recoveryData(input: Awaited<ReturnType<typeof collectRecovery>>): Graph
 	return GraphRenameRecoveryDataSchema.parse({ status: "required", operation: operationData(input.primary), retained_evidence_receipts });
 }
 
+function currentConflictRecoveryData(
+	record: GraphRenameJournal,
+	current: Awaited<ReturnType<typeof recomputeRecoveryConflicts>>,
+	receipts: GraphRenameReceipt[],
+): GraphRenameRecoveryData {
+	const retained_evidence_receipts = receipts.map((receipt) => ({
+		operation_id: receipt.operation_id,
+		retained_evidence: receipt.retained_evidence,
+	}));
+	if (current.blocked) {
+		return GraphRenameRecoveryDataSchema.parse({
+			status: "blocked",
+			reason: "unsafe_current_type",
+			operation_id: record.operation_id,
+			retained_evidence_receipts,
+		});
+	}
+	const conflicts = current.conflicts.map((conflict) => ({
+		...conflict,
+		preserved_variants: record.conflicts.find((stored) => stored.source_path === conflict.source_path)?.preserved_variants ?? [],
+	}));
+	return GraphRenameRecoveryDataSchema.parse({
+		status: "required",
+		operation: operationData({ ...record, conflicts }),
+		retained_evidence_receipts,
+	});
+}
+
 async function resolveRecovery(
 	kbPath: string,
 	body: GraphRenameRecoveryBody,
@@ -542,20 +578,15 @@ async function resolveRecovery(
 		await store.acquireExisting(body.operation_id);
 		lockHeld = true;
 		const current = await recomputeRecoveryConflicts(kbPath, record);
-		if (current.blocked) return GraphRenameRecoveryDataSchema.parse({ status: "blocked", reason: "unsafe_current_type", operation_id: record.operation_id, retained_evidence_receipts: [] });
+		if (current.blocked) {
+			const { receipts } = await collectRecovery(store, now);
+			return currentConflictRecoveryData(record, current, receipts);
+		}
 		const expected = current.conflicts.map((conflict) => `${conflict.source_path}\0${conflict.current_state}\0${conflict.current_sha256 ?? ""}`).sort();
 		const observed = body.observed_conflicts.map((conflict) => `${conflict.source_path}\0${conflict.current_state}\0${"current_sha256" in conflict ? conflict.current_sha256 : ""}`).sort();
 		if (expected.length !== observed.length || expected.some((value, index) => value !== observed[index])) {
-			const conflicts = current.conflicts.map((conflict) => ({
-				...conflict,
-				preserved_variants: record.conflicts.find((stored) => stored.source_path === conflict.source_path)?.preserved_variants ?? [],
-			}));
 			const { receipts } = await collectRecovery(store, now);
-			return GraphRenameRecoveryDataSchema.parse({
-				status: "required",
-				operation: operationData({ ...record, conflicts }),
-				retained_evidence_receipts: receipts.map((receipt) => ({ operation_id: receipt.operation_id, retained_evidence: receipt.retained_evidence })),
-			});
+			return currentConflictRecoveryData(record, current, receipts);
 		}
 
 		const captured = await captureRecoveryEvidence(kbPath, store, record, current.conflicts, body.action, now());

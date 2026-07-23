@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { createApp } from "./app.js";
+import { GraphRenameJournalStore } from "./graph-rename-journal.js";
+import { createGraphRenameService } from "./graph-renames.js";
 import type { GraphRenameRouteService } from "./routes/graph-renames.js";
 
 const KB = "/tmp/registered-kb";
@@ -73,6 +79,57 @@ test("rename recovery route passes duplicate observations to the service for a c
 	assert.equal(observedBodies.length, 1);
 	assert.deepEqual((observedBodies[0] as any).observed_conflicts, [duplicate, duplicate]);
 	assert.deepEqual((await response.json() as any).data.operation.conflicts, refreshedOperation.conflicts);
+});
+
+test("rename recovery GET returns the live conflict set without rewriting the journal", async () => {
+	const kb = await mkdtemp(path.join(tmpdir(), "llm-wiki-rename-route-live-"));
+	const operationId = "33333333-3333-4333-8333-333333333333";
+	try {
+		await mkdir(path.join(kb, "wiki", "topics"), { recursive: true });
+		const current = Buffer.from("external rewrite\n");
+		await writeFile(path.join(kb, "wiki", "topics", "a.md"), current);
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "3".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({
+			operationId,
+			immutableDigest: "3".repeat(64),
+			sourcePath: "wiki/topics/a.md",
+			targetPath: "wiki/topics/renamed.md",
+		});
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "conflicted", {
+			conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: "0".repeat(64), preserved_variants: [] }],
+		});
+		await store.release(operationId);
+
+		const liveService = createGraphRenameService({ journalStore: () => store });
+		const app = createApp({
+			graphRenameService: {
+				...liveService,
+				getActiveKnowledgeBasePath: () => kb,
+				assertRegisteredKnowledgeBase: async () => kb,
+			},
+		});
+		const response = await app.request(`/api/graph/renames/recovery?kb=${encodeURIComponent(kb)}`);
+		assert.equal(response.status, 200);
+		const data = (await response.json() as any).data;
+		assert.equal(data.status, "required");
+		assert.deepEqual(data.operation.conflicts.map((conflict: any) => (
+			conflict.current_state === "present"
+				? { source_path: conflict.source_path, current_state: conflict.current_state, current_sha256: conflict.current_sha256 }
+				: { source_path: conflict.source_path, current_state: conflict.current_state }
+		)), [{
+			source_path: "wiki/topics/a.md",
+			current_state: "present",
+			current_sha256: createHash("sha256").update(current).digest("hex"),
+		}, {
+			source_path: "wiki/topics/renamed.md",
+			current_state: "missing",
+		}]);
+		assert.equal((await store.read(operationId) as any).conflicts[0].current_sha256, "0".repeat(64));
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
 });
 
 test("rename preview route enforces the shared portable filename syntax", async () => {

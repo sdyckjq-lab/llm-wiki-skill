@@ -838,6 +838,55 @@ describe("GraphRenameDialog", () => {
 		assert.match(dialog.textContent ?? "", /2026-08-21T00:00:00\.000Z/);
 	});
 
+	it("continues recovery with the same live conflict set returned by the follow-up GET", async () => {
+		const refreshed = {
+			...requiredRecovery,
+			operation: {
+				...conflictedOperation,
+				conflicts: [{
+					source_path: "wiki/topics/服务端新增冲突.md",
+					current_state: "present" as const,
+					current_sha256: "7".repeat(64),
+					preserved_variants: [],
+				}],
+			},
+		};
+		const clear = { status: "clear" as const, retained_evidence_receipts: [] };
+		const observed: GraphRenameRecoveryBody[] = [];
+		let attempt = 0;
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				recovery={requiredRecovery}
+				onOpenChange={() => {}}
+				onRecoveryChange={async () => attempt === 1 ? refreshed : clear}
+				api={{
+					...unusedApi,
+					resolveGraphRenameRecovery: async (_path, request) => {
+						observed.push(request);
+						attempt++;
+						return attempt === 1 ? refreshed : clear;
+					},
+				}}
+			/>,
+		);
+
+		await click(screen.getByRole("radio", { name: "恢复原状" }));
+		await click(screen.getByRole("button", { name: "确认恢复" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("wiki/topics/服务端新增冲突.md"), null));
+		assert.equal(screen.queryByText("wiki/synthesis/当前冲突.md"), null);
+
+		await click(screen.getByRole("radio", { name: "完成提交" }));
+		await click(screen.getByRole("button", { name: "确认恢复" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("恢复处理完成"), null));
+		assert.deepEqual(observed[1]?.observed_conflicts, [{
+			source_path: "wiki/topics/服务端新增冲突.md",
+			current_state: "present",
+			current_sha256: "7".repeat(64),
+		}]);
+	});
+
 	it("replaces duplicate displayed observations with the server's refreshed complete set", async () => {
 		const duplicateRecovery = {
 			...requiredRecovery,
