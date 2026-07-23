@@ -166,7 +166,7 @@ describe("GraphRenameDialog", () => {
 		const input = screen.getByRole("textbox", { name: "新文件名" });
 		const invalidNames = [
 			".md",
-			" 前导空格",
+			"   ",
 			"末尾空格 ",
 			"末尾句点.",
 			"CON.notes",
@@ -180,11 +180,14 @@ describe("GraphRenameDialog", () => {
 			assert.equal(screen.getByRole("button", { name: "生成预览" }).hasAttribute("disabled"), true, newName || "<empty>");
 		}
 
-		for (const newName of ["中文 页面", "ordinary space.md"]) {
+		for (const newName of [" 前导空格", "中文 页面", "ordinary space.md"]) {
 			await changeText(input, newName);
 			assert.equal(screen.queryByRole("alert"), null, newName);
 			assert.equal(screen.getByRole("button", { name: "生成预览" }).hasAttribute("disabled"), false, newName);
 		}
+
+		await changeText(input, "末尾空格 ");
+		assert.match(screen.getByRole("alert").textContent ?? "", /不能以空格或句点结尾/);
 	});
 
 	it("shows the complete server preview and requires every ambiguity plus explicit confirmation", async () => {

@@ -18,9 +18,10 @@ const iso = "2026-08-01T00:00:00.000Z";
 test("rename filename syntax is portable while allowing ordinary Unicode names", () => {
 	const cases = [
 		{ name: "", accepted: false, reason: "empty_name" },
+		{ name: "   ", accepted: false, reason: "empty_name" },
 		{ name: ".md", accepted: false, reason: "empty_name" },
-		{ name: " 前导空格", accepted: false, reason: "leading_or_trailing_space" },
-		{ name: "末尾空格 ", accepted: false, reason: "leading_or_trailing_space" },
+		{ name: " 前导空格", accepted: true, normalizedName: " 前导空格.md" },
+		{ name: "末尾空格 ", accepted: false, reason: "trailing_dot_or_space" },
 		{ name: "末尾句点.", accepted: false, reason: "trailing_dot_or_space" },
 		{ name: "CON.notes", accepted: false, reason: "windows_reserved_name" },
 		{ name: "bad/name", accepted: false, reason: "illegal_character" },

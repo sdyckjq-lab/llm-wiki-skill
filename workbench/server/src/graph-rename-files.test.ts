@@ -27,6 +27,14 @@ test("rename path resolution accepts ordinary Unicode and rejects escapes, symli
 	try {
 		const result = await resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "新 页面" });
 		assert.equal(result.targetRelativePath, "wiki/topics/新 页面.md");
+		const leadingSpace = await resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: " 前导空格" });
+		assert.equal(leadingSpace.targetRelativePath, "wiki/topics/ 前导空格.md");
+		for (const [newName, reason] of [["   ", "empty_name"], ["末尾空格 ", "trailing_dot_or_space"], ["末尾句点.", "trailing_dot_or_space"]] as const) {
+			await assert.rejects(
+				resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName }),
+				(error: any) => error.code === "INVALID_REQUEST" && error.reason === reason,
+			);
+		}
 		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "../页面.md", newName: "新" }));
 		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "CON" }));
 		await assert.rejects(resolveKnowledgeBaseRenamePath({ kbPath: root, sourcePath: "wiki/topics/页面.md", newName: "bad/name" }));

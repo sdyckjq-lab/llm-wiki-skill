@@ -582,7 +582,6 @@ function validateRenameFilename(input: string): string | null {
 
 function filenameErrorMessage(reason: GraphRenameFilenameSyntaxReason): string {
 	if (reason === "empty_name") return "请输入新文件名";
-	if (reason === "leading_or_trailing_space") return "文件名不能以空格开头或结尾";
 	if (reason === "trailing_dot_or_space") return "文件名不能以空格或句点结尾";
 	if (reason === "obsidian_breaking_token") return "这个名称会破坏页面链接，不能使用";
 	return "这个名称不能作为文件名";

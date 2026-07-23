@@ -2,7 +2,7 @@ const CONTROL_OR_UNSAFE = /[\u0000-\u001f\u007f-\u009f<>:"/\\|?*]/u;
 const RESERVED_STEM = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu;
 
 /**
- * @typedef {"empty_name" | "leading_or_trailing_space" | "illegal_character" | "trailing_dot_or_space" | "obsidian_breaking_token" | "windows_reserved_name"} GraphRenameFilenameSyntaxReason
+ * @typedef {"empty_name" | "illegal_character" | "trailing_dot_or_space" | "obsidian_breaking_token" | "windows_reserved_name"} GraphRenameFilenameSyntaxReason
  */
 
 /**
@@ -15,13 +15,12 @@ const RESERVED_STEM = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu;
  */
 export function validateGraphRenameFilenameSyntax(input) {
 	const rawName = String(input ?? "");
-	if (!rawName) return { ok: false, reason: "empty_name" };
-	if (rawName !== rawName.trim()) return { ok: false, reason: "leading_or_trailing_space" };
+	if (!rawName || !rawName.trim()) return { ok: false, reason: "empty_name" };
 
 	const withoutMarkdownExtension = /\.md$/iu.test(rawName)
 		? rawName.slice(0, -3)
 		: rawName;
-	if (!withoutMarkdownExtension || withoutMarkdownExtension === "." || withoutMarkdownExtension === "..") {
+	if (!withoutMarkdownExtension.trim() || withoutMarkdownExtension === "." || withoutMarkdownExtension === "..") {
 		return { ok: false, reason: "empty_name" };
 	}
 

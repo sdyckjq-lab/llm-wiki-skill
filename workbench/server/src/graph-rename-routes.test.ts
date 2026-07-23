@@ -84,7 +84,7 @@ test("rename preview route enforces the shared portable filename syntax", async 
 	};
 	const app = createApp({ graphRenameService: renameService });
 	const headers = { "Content-Type": "application/json" };
-	for (const newName of ["", ".md", " leading", "trailing ", "trailing.", "CON.notes", "bad/name", "标题#锚点"]) {
+	for (const newName of ["", "   ", ".md", "trailing ", "trailing.", "CON.notes", "bad/name", "标题#锚点"]) {
 		const response = await app.request("/api/graph/renames/preview", {
 			method: "POST",
 			headers,
@@ -92,7 +92,7 @@ test("rename preview route enforces the shared portable filename syntax", async 
 		});
 		assert.equal(response.status, 400, newName || "<empty>");
 	}
-	for (const newName of ["中文 页面", "ordinary space.md"]) {
+	for (const newName of [" leading", "中文 页面", "ordinary space.md"]) {
 		const response = await app.request("/api/graph/renames/preview", {
 			method: "POST",
 			headers,
@@ -100,5 +100,5 @@ test("rename preview route enforces the shared portable filename syntax", async 
 		});
 		assert.equal(response.status, 200, newName);
 	}
-	assert.deepEqual(previewNames, ["中文 页面", "ordinary space.md"]);
+	assert.deepEqual(previewNames, [" leading", "中文 页面", "ordinary space.md"]);
 });
