@@ -8,6 +8,7 @@ import {
 	graphReaderMetaItems,
 	type GraphReaderActionId,
 } from "../lib/graph-reader";
+import { isFormalGraphRenamePagePath } from "../lib/graph-rename-paths";
 
 interface Props {
 	payload: GraphOpenPagePayload;
@@ -22,7 +23,7 @@ interface Props {
 
 export function GraphReader({ payload, content, loading, error, onOpenPage, onWikiLinkSeen, onAction, onRenamePage }: Props) {
 	const metaItems = graphReaderMetaItems(payload);
-	const canRename = isFormalGraphPagePath(payload.node.sourcePath);
+	const canRename = isFormalGraphRenamePagePath(payload.node.sourcePath);
 	return (
 		<React.Fragment>
 		<article className="graph-reader-drawer">
@@ -60,8 +61,4 @@ export function GraphReader({ payload, content, loading, error, onOpenPage, onWi
 		</article>
 		</React.Fragment>
 	);
-}
-
-function isFormalGraphPagePath(path: string): boolean {
-	return /^wiki\/(entities|topics|sources|comparisons|synthesis|queries)\/.+\.md$/.test(path);
 }

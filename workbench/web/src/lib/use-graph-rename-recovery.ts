@@ -22,20 +22,24 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 	const [dismissed, setDismissed] = useState<DismissedReceipts | null>(null);
 	const requestIdRef = useRef(0);
 
-	const readRecovery = useCallback(async (path: string): Promise<void> => {
+	const readRecovery = useCallback((path: string): Promise<void> => {
 		const requestId = ++requestIdRef.current;
-		await Promise.resolve();
-		if (requestId === requestIdRef.current) setError(null);
-		try {
-			const data = await getRecovery(path);
-			if (requestId !== requestIdRef.current) return;
-			setSnapshot({ kbPath: path, data });
-			setDismissed({ kbPath: path, operationIds: new Set() });
-		} catch (cause) {
-			if (requestId !== requestIdRef.current) return;
-			setSnapshot(null);
-			setError(cause instanceof Error ? cause.message : "改名恢复状态读取失败");
-		}
+		const response = getRecovery(path);
+		return Promise.resolve()
+			.then(() => {
+				if (requestId === requestIdRef.current) setError(null);
+				return response;
+			})
+			.then((data) => {
+				if (requestId !== requestIdRef.current) return;
+				setSnapshot({ kbPath: path, data });
+				setDismissed({ kbPath: path, operationIds: new Set() });
+			})
+			.catch((cause: unknown) => {
+				if (requestId !== requestIdRef.current) return;
+				setSnapshot(null);
+				setError(cause instanceof Error ? cause.message : "改名恢复状态读取失败");
+			});
 	}, [getRecovery]);
 
 	useEffect(() => {
@@ -43,26 +47,11 @@ export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 			requestIdRef.current += 1;
 			return;
 		}
-		const requestId = ++requestIdRef.current;
-		void Promise.resolve()
-			.then(() => {
-				if (requestId === requestIdRef.current) setError(null);
-				return getRecovery(kbPath);
-			})
-			.then((data) => {
-				if (requestId !== requestIdRef.current) return;
-				setSnapshot({ kbPath, data });
-				setDismissed({ kbPath, operationIds: new Set() });
-			})
-			.catch((cause: unknown) => {
-				if (requestId !== requestIdRef.current) return;
-				setSnapshot(null);
-				setError(cause instanceof Error ? cause.message : "改名恢复状态读取失败");
-			});
+		void readRecovery(kbPath);
 		return () => {
 			requestIdRef.current += 1;
 		};
-	}, [getRecovery, kbPath]);
+	}, [kbPath, readRecovery]);
 
 	const current = snapshot?.kbPath === kbPath ? snapshot.data : null;
 	const loading = Boolean(kbPath) && snapshot?.kbPath !== kbPath && error === null;

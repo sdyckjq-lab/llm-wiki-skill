@@ -10,6 +10,7 @@ import {
 	type GraphWarningPublicGroupContract,
 	type GraphWarningStateContract,
 } from "@llm-wiki/workbench-contracts";
+import { isFormalGraphRenamePagePath } from "../lib/graph-rename-paths";
 
 const WARNING_LABELS: Record<GraphWarningCodeContract, string> = {
 	duplicate_node_id: "节点 ID 重复",
@@ -311,9 +312,7 @@ function editableResolutionCandidates(
 	candidateSet: GraphWarningPublicCandidateSetContract,
 ): GraphWarningPublicCandidateSetContract | null {
 	if (group.code !== "ambiguous_wikilink" && group.code !== "portable_path_collision") return null;
-	const candidates = candidateSet.candidates.filter((candidate) => (
-		/^wiki\/(entities|topics|sources|comparisons|synthesis|queries)\/.+\.md$/.test(candidate)
-	));
+	const candidates = candidateSet.candidates.filter(isFormalGraphRenamePagePath);
 	if (candidates.length === 0) return null;
 	return { ...candidateSet, candidate_count: candidates.length, candidates };
 }
