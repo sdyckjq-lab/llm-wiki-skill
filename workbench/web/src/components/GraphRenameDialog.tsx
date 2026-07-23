@@ -66,6 +66,7 @@ type Mode =
 	| "rebuild-required"
 	| "recovery-required"
 	| "recovery-resolving"
+	| "recovery-read-failed"
 	| "recovery-blocked"
 	| "recovery-terminal";
 
@@ -145,10 +146,11 @@ function GraphRenameDialogState({
 				const currentOperation = operationRef.current;
 				if (
 					currentMode === "rebuild-required"
+					|| (currentMode === "recovery-read-failed" && currentOperation?.state === "committed")
 					|| (currentMode === "applying" && currentOperation?.state === "committed")
 				) return "committed";
 				if (
-					["recovery-required", "recovery-resolving", "recovery-blocked"].includes(currentMode)
+					["recovery-required", "recovery-resolving", "recovery-read-failed", "recovery-blocked"].includes(currentMode)
 					|| (currentMode === "applying" && currentOperation?.state === "conflicted")
 				) {
 					return "recovery-terminal";
@@ -187,6 +189,26 @@ function GraphRenameDialogState({
 			? _onRecoveryChange()
 			: api.getGraphRenameRecovery(kbPath)
 	);
+
+	const retryAuthoritativeRecovery = async () => {
+		if (applyInFlightRef.current) return;
+		applyInFlightRef.current = true;
+		setRecoveryMessage(null);
+		try {
+			const recoveryData = await readAuthoritativeRecovery();
+			if (recoveryData) {
+				showAuthoritativeRecovery(recoveryData, operationRef.current);
+				return;
+			}
+			setRecoveryMessage("恢复状态正在重新同步，请稍后重试。");
+			setMode("recovery-read-failed");
+		} catch (cause) {
+			setRecoveryMessage(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试");
+			setMode("recovery-read-failed");
+		} finally {
+			applyInFlightRef.current = false;
+		}
+	};
 
 	const loadPreview = async () => {
 		if (!selectedSource || validateRenameFilename(newName)) return;
@@ -235,13 +257,8 @@ function GraphRenameDialogState({
 					const recoveryData = await readAuthoritativeRecovery();
 					if (recoveryData) showAuthoritativeRecovery(recoveryData, result.operation);
 				} catch (cause) {
-					setActiveRecovery({
-						status: "required",
-						operation: result.operation,
-						retained_evidence_receipts: [],
-					});
 					setRecoveryMessage(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试");
-					setMode("recovery-required");
+					setMode("recovery-read-failed");
 				}
 				return;
 			}
@@ -258,8 +275,8 @@ function GraphRenameDialogState({
 					const recoveryData = await readAuthoritativeRecovery();
 					if (recoveryData) showAuthoritativeRecovery(recoveryData, result.operation);
 				} catch (cause) {
-					setError(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试更新图谱");
-					setMode("rebuild-required");
+					setRecoveryMessage(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试更新图谱");
+					setMode("recovery-read-failed");
 				}
 				return;
 			}
@@ -296,7 +313,11 @@ function GraphRenameDialogState({
 				)),
 			});
 			const authoritative = _onRecoveryChange ? await _onRecoveryChange() : result;
-			if (!authoritative) return;
+			if (!authoritative) {
+				setRecoveryMessage("恢复状态正在重新同步，请稍后重试。");
+				setMode("recovery-required");
+				return;
+			}
 			showAuthoritativeRecovery(authoritative, "operation" in authoritative ? authoritative.operation : operation);
 			if (authoritative.status === "required") {
 				setRecoveryMessage("冲突集合已变化，已刷新为当前完整状态。请重新核对后确认。");
@@ -309,7 +330,7 @@ function GraphRenameDialogState({
 		}
 	};
 
-	const dismissible = !["applying", "rolled-back", "rebuild-required", "recovery-required", "recovery-resolving"].includes(mode);
+	const dismissible = !["applying", "rolled-back", "rebuild-required", "recovery-required", "recovery-resolving", "recovery-read-failed"].includes(mode);
 	const requestOpenChange = (nextOpen: boolean) => {
 		if (!nextOpen && !dismissible) return;
 		onOpenChange(nextOpen);
@@ -437,6 +458,15 @@ function GraphRenameDialogState({
 					<section className="graph-rename-step" role="status" aria-live="polite" aria-busy="true">
 						<h3>正在安全恢复</h3>
 						<p>正在重新核对完整冲突集合，请不要关闭。</p>
+					</section>
+				) : mode === "recovery-read-failed" ? (
+					<section className="graph-rename-step graph-rename-recovery" role="alert">
+						<h3>恢复状态暂时无法读取</h3>
+						<p>为避免覆盖服务器上的最新状态，新的改名仍保持禁用。请重新读取后继续。</p>
+						{recoveryMessage && <p className="graph-rename-error">{recoveryMessage}</p>}
+						<DialogFooter>
+							<Button type="button" onClick={() => void retryAuthoritativeRecovery()}>重新读取恢复状态</Button>
+						</DialogFooter>
 					</section>
 				) : mode === "applying" ? (
 					<section className="graph-rename-step" role="status" aria-live="polite" aria-busy="true">

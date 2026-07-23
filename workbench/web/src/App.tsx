@@ -1022,7 +1022,9 @@ function App() {
 				</div>
 				<GraphRenameEvidenceNotice
 					receipts={graphRenameRecovery.visibleReceipts}
+					error={graphRenameRecovery.error}
 					onDismiss={graphRenameRecovery.dismissReceipt}
+					onRetry={graphRenameRecovery.recheck}
 				/>
 				{renameDialog && (
 					<GraphRenameDialog

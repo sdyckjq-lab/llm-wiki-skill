@@ -5,13 +5,23 @@ type Receipt = Extract<GraphRenameRecoveryData, { status: "clear" }>["retained_e
 
 interface Props {
 	receipts: Receipt[];
+	error?: string | null;
 	onDismiss: (operationId: string) => void;
+	onRetry?: () => Promise<unknown> | unknown;
 }
 
-export function GraphRenameEvidenceNotice({ receipts, onDismiss }: Props) {
-	if (receipts.length === 0) return null;
+export function GraphRenameEvidenceNotice({ receipts, error = null, onDismiss, onRetry }: Props) {
+	if (receipts.length === 0 && !error) return null;
 	return (
 		<section className="graph-rename-evidence-notice" role="region" aria-label="保留的改名冲突证据">
+			{error && (
+				<div role="alert">
+					<strong>改名恢复状态暂时无法读取</strong>
+					<p>{error}</p>
+					{onRetry && <button type="button" onClick={() => void onRetry()}>重新读取改名恢复状态</button>}
+				</div>
+			)}
+			{receipts.length > 0 && <>
 			<header>
 				<div>
 					<strong>改名冲突证据仍在保留期内</strong>
@@ -35,6 +45,7 @@ export function GraphRenameEvidenceNotice({ receipts, onDismiss }: Props) {
 					))}</ul>
 				</article>
 			))}
+			</>}
 		</section>
 	);
 }

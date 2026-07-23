@@ -7,8 +7,19 @@ interface Options {
 }
 
 interface Snapshot {
-	kbPath: string;
+	selection: object;
 	data: GraphRenameRecoveryData;
+}
+
+interface RequestResult {
+	selection: object;
+	requestId: number;
+}
+
+interface RecoveryError {
+	selection: object;
+	requestId: number;
+	message: string;
 }
 
 interface DismissedReceipts {
@@ -18,47 +29,70 @@ interface DismissedReceipts {
 
 export function useGraphRenameRecovery({ kbPath, getRecovery }: Options) {
 	const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const [failure, setFailure] = useState<RecoveryError | null>(null);
 	const [dismissed, setDismissed] = useState<DismissedReceipts | null>(null);
 	const requestIdRef = useRef(0);
 	const selection = useMemo(() => ({ kbPath }), [kbPath]);
+	const selectionRef = useRef<object | null>(selection);
+	const latestSuccessRef = useRef<RequestResult | null>(null);
+	useEffect(() => {
+		selectionRef.current = selection;
+		return () => {
+			if (selectionRef.current === selection) selectionRef.current = null;
+		};
+	}, [selection]);
 
 	const readRecovery = useCallback(async (
 		path: string,
 		rejectLatestError = false,
 	): Promise<GraphRenameRecoveryData | null> => {
 		const requestId = ++requestIdRef.current;
+		const requestSelection = selection;
 		try {
 			const response = getRecovery(path);
 			await Promise.resolve();
-			if (requestId === requestIdRef.current) setError(null);
 			const data = await response;
-			if (requestId !== requestIdRef.current) return null;
-			setSnapshot({ kbPath: path, data });
+			if (selectionRef.current !== requestSelection) return null;
+			const latestSuccess = latestSuccessRef.current;
+			if (
+				latestSuccess?.selection === requestSelection
+				&& latestSuccess.requestId > requestId
+			) return null;
+			latestSuccessRef.current = { selection: requestSelection, requestId };
+			setSnapshot({ selection: requestSelection, data });
+			setFailure((currentFailure) => (
+				currentFailure?.selection === requestSelection ? null : currentFailure
+			));
 			return data;
 		} catch (cause: unknown) {
-			if (requestId !== requestIdRef.current) return null;
-			setSnapshot(null);
-			setError(cause instanceof Error ? cause.message : "改名恢复状态读取失败");
+			if (selectionRef.current !== requestSelection) return null;
+			const latestSuccess = latestSuccessRef.current;
+			if (
+				latestSuccess?.selection === requestSelection
+				&& latestSuccess.requestId > requestId
+			) return null;
+			const message = cause instanceof Error ? cause.message : "改名恢复状态读取失败";
+			setFailure((currentFailure) => {
+				if (
+					currentFailure?.selection === requestSelection
+					&& currentFailure.requestId > requestId
+				) return currentFailure;
+				return { selection: requestSelection, requestId, message };
+			});
 			if (rejectLatestError) throw cause;
 			return null;
 		}
-	}, [getRecovery]);
+	}, [getRecovery, selection]);
 
 	useEffect(() => {
-		if (!kbPath) {
-			requestIdRef.current += 1;
-			return;
-		}
+		if (!kbPath) return;
 		void Promise.resolve().then(() => readRecovery(kbPath));
-		return () => {
-			requestIdRef.current += 1;
-		};
 	}, [kbPath, readRecovery]);
 
-	const current = snapshot?.kbPath === kbPath ? snapshot.data : null;
-	const loading = Boolean(kbPath) && snapshot?.kbPath !== kbPath && error === null;
-	const renameBlocked = Boolean(kbPath) && (current === null || current.status !== "clear");
+	const current = snapshot?.selection === selection ? snapshot.data : null;
+	const error = failure?.selection === selection ? failure.message : null;
+	const loading = Boolean(kbPath) && current === null && error === null;
+	const renameBlocked = Boolean(kbPath) && (error !== null || current === null || current.status !== "clear");
 	const visibleReceipts = useMemo(() => {
 		if (!current) return [];
 		const hidden = dismissed?.selection === selection ? dismissed.operationIds : new Set<string>();

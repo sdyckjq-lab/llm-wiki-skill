@@ -64,6 +64,111 @@ describe("App graph rename recovery ownership", () => {
 		assert.deepEqual(result.current.visibleReceipts, [receipt]);
 	});
 
+	it("accepts an older operation read when a newer graph-event read fails", async () => {
+		const operationRead = deferred<ReturnType<typeof requiredRecovery>>();
+		const graphEventRead = deferred<ReturnType<typeof clearRecovery>>();
+		const responses = [Promise.resolve(clearRecovery([receipt])), operationRead.promise, graphEventRead.promise];
+		let index = 0;
+		const getRecovery = () => responses[index++]!;
+		const { result } = renderHook(() => useGraphRenameRecovery({
+			kbPath: "/kb/current",
+			getRecovery,
+		}));
+		await waitFor(() => assert.deepEqual(result.current.visibleReceipts, [receipt]));
+
+		let operationPromise!: Promise<ReturnType<typeof requiredRecovery> | null>;
+		act(() => { operationPromise = result.current.refreshAfterMutation() as typeof operationPromise; });
+		let graphEventPromise!: Promise<ReturnType<typeof clearRecovery> | null>;
+		act(() => { graphEventPromise = result.current.recheck() as typeof graphEventPromise; });
+		graphEventRead.reject(new Error("图谱事件复查失败"));
+		await act(async () => { await graphEventPromise; });
+		assert.equal(result.current.error, "图谱事件复查失败");
+		assert.deepEqual(result.current.visibleReceipts, [receipt]);
+		assert.equal(result.current.renameBlocked, true);
+
+		operationRead.resolve(requiredRecovery());
+		await act(async () => { await operationPromise; });
+		assert.equal(result.current.status?.status, "required");
+		assert.equal(result.current.error, null);
+	});
+
+	it("keeps a newer successful graph-event read when the older operation read later fails", async () => {
+		const operationRead = deferred<ReturnType<typeof requiredRecovery>>();
+		const graphEventRead = deferred<ReturnType<typeof clearRecovery>>();
+		const responses = [Promise.resolve(requiredRecovery()), operationRead.promise, graphEventRead.promise];
+		let index = 0;
+		const getRecovery = () => responses[index++]!;
+		const { result } = renderHook(() => useGraphRenameRecovery({
+			kbPath: "/kb/current",
+			getRecovery,
+		}));
+		await waitFor(() => assert.equal(result.current.status?.status, "required"));
+
+		let operationPromise!: Promise<ReturnType<typeof requiredRecovery> | null>;
+		act(() => { operationPromise = result.current.refreshAfterMutation() as typeof operationPromise; });
+		let graphEventPromise!: Promise<ReturnType<typeof clearRecovery> | null>;
+		act(() => { graphEventPromise = result.current.recheck() as typeof graphEventPromise; });
+		graphEventRead.resolve(clearRecovery([receipt, newerReceipt]));
+		await act(async () => { await graphEventPromise; });
+		operationRead.reject(new Error("较早操作读取失败"));
+		await act(async () => { await operationPromise; });
+
+		assert.equal(result.current.status?.status, "clear");
+		assert.equal(result.current.error, null);
+		assert.deepEqual(result.current.visibleReceipts, [receipt, newerReceipt]);
+		assert.equal(result.current.renameBlocked, false);
+	});
+
+	it("recovers when the operation read fails before the newer graph-event read succeeds", async () => {
+		const operationRead = deferred<ReturnType<typeof requiredRecovery>>();
+		const graphEventRead = deferred<ReturnType<typeof clearRecovery>>();
+		const responses = [Promise.resolve(requiredRecovery()), operationRead.promise, graphEventRead.promise];
+		let index = 0;
+		const getRecovery = () => responses[index++]!;
+		const { result } = renderHook(() => useGraphRenameRecovery({ kbPath: "/kb/current", getRecovery }));
+		await waitFor(() => assert.equal(result.current.status?.status, "required"));
+
+		let operationPromise!: Promise<ReturnType<typeof requiredRecovery> | null>;
+		act(() => { operationPromise = result.current.refreshAfterMutation() as typeof operationPromise; });
+		let graphEventPromise!: Promise<ReturnType<typeof clearRecovery> | null>;
+		act(() => { graphEventPromise = result.current.recheck() as typeof graphEventPromise; });
+		operationRead.reject(new Error("操作后的恢复读取失败"));
+		await act(async () => { await assert.rejects(operationPromise, /操作后的恢复读取失败/); });
+		assert.equal(result.current.status?.status, "required");
+		assert.equal(result.current.error, "操作后的恢复读取失败");
+
+		graphEventRead.resolve(clearRecovery([newerReceipt]));
+		await act(async () => { await graphEventPromise; });
+		assert.equal(result.current.status?.status, "clear");
+		assert.equal(result.current.error, null);
+		assert.deepEqual(result.current.visibleReceipts, [newerReceipt]);
+	});
+
+	it("does not let an older successful operation read overwrite a newer successful graph-event read", async () => {
+		const operationRead = deferred<ReturnType<typeof requiredRecovery>>();
+		const graphEventRead = deferred<ReturnType<typeof clearRecovery>>();
+		const responses = [Promise.resolve(requiredRecovery()), operationRead.promise, graphEventRead.promise];
+		let index = 0;
+		const getRecovery = () => responses[index++]!;
+		const { result } = renderHook(() => useGraphRenameRecovery({
+			kbPath: "/kb/current",
+			getRecovery,
+		}));
+		await waitFor(() => assert.equal(result.current.status?.status, "required"));
+
+		let operationPromise!: Promise<ReturnType<typeof requiredRecovery> | null>;
+		act(() => { operationPromise = result.current.refreshAfterMutation() as typeof operationPromise; });
+		let graphEventPromise!: Promise<ReturnType<typeof clearRecovery> | null>;
+		act(() => { graphEventPromise = result.current.recheck() as typeof graphEventPromise; });
+		graphEventRead.resolve(clearRecovery([newerReceipt]));
+		await act(async () => { await graphEventPromise; });
+		operationRead.resolve(requiredRecovery());
+		await act(async () => { await operationPromise; });
+
+		assert.equal(result.current.status?.status, "clear");
+		assert.deepEqual(result.current.visibleReceipts, [newerReceipt]);
+	});
+
 	it("blocks new rename for required, rebuild-required, and blocked states but not retained evidence", async () => {
 		const states = [
 			requiredRecovery(),
@@ -234,6 +339,21 @@ describe("App graph rename recovery ownership", () => {
 		await click(screen.getByRole("button", { name: "隐藏这条证据提示" }));
 		assert.deepEqual(dismissed, [operation.operation_id]);
 	});
+
+	it("keeps evidence visible and offers an App retry when a background read fails", async () => {
+		let retries = 0;
+		render(<GraphRenameEvidenceNotice
+			receipts={[receipt]}
+			error="恢复状态暂时不可用"
+			onDismiss={() => {}}
+			onRetry={() => { retries++; }}
+		/>);
+
+		assert.notEqual(screen.queryByText("恢复状态暂时不可用"), null);
+		assert.match(screen.getByRole("region", { name: "保留的改名冲突证据" }).textContent ?? "", /evidence\/current\.md/);
+		await click(screen.getByRole("button", { name: "重新读取改名恢复状态" }));
+		assert.equal(retries, 1);
+	});
 });
 
 function requiredRecovery() {
@@ -246,10 +366,12 @@ function clearRecovery(retained_evidence_receipts: typeof receipt[] = []) {
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((next) => {
+	let reject!: (cause: unknown) => void;
+	const promise = new Promise<T>((next, fail) => {
 		resolve = next;
+		reject = fail;
 	});
-	return { promise, resolve };
+	return { promise, resolve, reject };
 }
 
 class FakeGraphEventSource implements EventSourceLike {

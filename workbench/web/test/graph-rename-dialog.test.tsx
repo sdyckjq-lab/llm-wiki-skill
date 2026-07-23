@@ -355,6 +355,19 @@ describe("GraphRenameDialog", () => {
 				api={{
 					...unusedApi,
 					previewGraphRename: async () => preview,
+					getGraphRenameRecovery: async () => ({
+						status: "rebuild_required",
+						operation: {
+							operation_id: preview.operation_id,
+							state: "committed",
+							source_path: preview.source_path,
+							target_path: preview.target_path,
+							graph_rebuild: "failed",
+							conflicts: [],
+							retained_evidence: [],
+						},
+						retained_evidence_receipts: [],
+					}),
 					applyGraphRename: async () => ({
 						outcome: "operation",
 						operation: {
@@ -439,6 +452,49 @@ describe("GraphRenameDialog", () => {
 		await waitFor(() => assert.match(screen.getByRole("dialog", { name: "安全改名" }).textContent ?? "", /服务端完整冲突\.md/));
 		assert.equal(recoveryReads, 1);
 		assert.equal(screen.queryByText("wiki/synthesis/当前冲突.md"), null);
+	});
+
+	it("leaves applying after an authoritative read failure and retries the server state", async () => {
+		const preview = { ...previewFixture, ambiguous_choices: [], summary: { ...previewFixture.summary, ambiguous_occurrences: 0 } };
+		let recoveryReads = 0;
+		const serverRecovery = {
+			...requiredRecovery,
+			operation: {
+				...conflictedOperation,
+				conflicts: [{ source_path: "wiki/topics/重试后的完整冲突.md", current_state: "missing" as const, preserved_variants: [] }],
+			},
+		};
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				onOpenChange={() => {}}
+				onRecoveryChange={async () => {
+					recoveryReads++;
+					if (recoveryReads === 1) throw new Error("服务器恢复读取失败");
+					return serverRecovery;
+				}}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => ({ outcome: "operation", operation: conflictedOperation }),
+				}}
+			/>,
+		);
+
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+
+		await waitFor(() => assert.notEqual(screen.queryByText("恢复状态暂时无法读取"), null));
+		assert.equal(screen.queryByText("正在安全写入"), null);
+		assert.match(screen.getByRole("alert").textContent ?? "", /服务器恢复读取失败/);
+		await click(screen.getByRole("button", { name: "重新读取恢复状态" }));
+		await waitFor(() => assert.match(screen.getByRole("dialog", { name: "安全改名" }).textContent ?? "", /重试后的完整冲突\.md/));
+		assert.equal(recoveryReads, 2);
 	});
 
 	it("keeps the newest clear server state when an older failed rebuild response arrives later", async () => {
@@ -690,6 +746,7 @@ describe("GraphRenameDialog", () => {
 					...unusedApi,
 					previewGraphRename: async () => preview,
 					applyGraphRename: async () => ({ outcome: "operation", operation: conflictedOperation }),
+					getGraphRenameRecovery: async () => requiredRecovery,
 				}}
 			/>,
 		);
