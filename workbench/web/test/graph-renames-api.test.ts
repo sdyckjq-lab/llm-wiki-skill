@@ -68,7 +68,8 @@ describe("graph rename API", () => {
 
 	it("rejects invalid rename filenames before preview or apply reaches the transport", async () => {
 		const calls = stubFetch({ ok: true, data: preview });
-		for (const newName of [".md", " leading-space"]) {
+		const invalidNames = ["", "   ", ".md", "trailing ", "trailing."];
+		for (const newName of invalidNames) {
 			await assert.rejects(() => previewGraphRename(
 				"/registered/知识库",
 				"wiki/topics/旧页面.md",
@@ -76,16 +77,46 @@ describe("graph rename API", () => {
 			));
 		}
 
-		await assert.rejects(() => applyGraphRename("/registered/知识库", {
+		for (const newName of invalidNames) {
+			await assert.rejects(() => applyGraphRename("/registered/知识库", {
+				operation_id: preview.operation_id,
+				expires_at: preview.expires_at,
+				source_path: preview.source_path,
+				new_name: newName,
+				preview_digest: preview.preview_digest,
+				resolutions: [],
+				confirmed: true,
+			}));
+		}
+		assert.equal(calls.length, 0);
+	});
+
+	it("preserves a leading ordinary space through preview and apply transport", async () => {
+		let calls = stubFetch({ ok: true, data: preview });
+		await previewGraphRename("/registered/知识库", preview.source_path, " leading-space");
+		assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
+			source_path: preview.source_path,
+			new_name: " leading-space",
+		});
+
+		calls = stubFetch({
+			ok: true,
+			data: {
+				outcome: "preview_stale",
+				operation_id: preview.operation_id,
+				reason: "preview_changed",
+			},
+		});
+		await applyGraphRename("/registered/知识库", {
 			operation_id: preview.operation_id,
 			expires_at: preview.expires_at,
 			source_path: preview.source_path,
-			new_name: ".md",
+			new_name: " leading-space",
 			preview_digest: preview.preview_digest,
 			resolutions: [],
 			confirmed: true,
-		}));
-		assert.equal(calls.length, 0);
+		});
+		assert.equal(JSON.parse(String(calls[0]?.init?.body)).new_name, " leading-space");
 	});
 
 	it("applies only a server-issued preview and accepts operation or stale outcomes", async () => {
