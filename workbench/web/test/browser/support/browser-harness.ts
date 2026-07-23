@@ -36,6 +36,15 @@ export interface FileHashDiff {
 	unchanged: string[];
 }
 
+export interface RenameTerminalReceiptSummary {
+	operation_id: string;
+	state: unknown;
+	graph_rebuild: unknown;
+	retained_evidence: unknown;
+	data_files: string[];
+	working_copy_fields: string[];
+}
+
 export function graphRebuildOutcomes(events: Array<Record<string, unknown>>): Array<"failed" | "started"> {
 	return events
 		.filter((event) => event.event === "graph_rebuild")
@@ -331,12 +340,60 @@ export async function listRenameOperationIds(kbPath: string): Promise<string[]> 
 	}
 }
 
+export async function summarizeRenameTerminalReceipts(kbPath: string): Promise<RenameTerminalReceiptSummary[]> {
+	const root = join(kbPath, ".wiki-tmp", "rename-ops");
+	let entries;
+	try {
+		entries = await readdir(root, { withFileTypes: true });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+	const summaries: RenameTerminalReceiptSummary[] = [];
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		const directory = join(root, entry.name);
+		let manifest: Record<string, unknown>;
+		try {
+			manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")) as Record<string, unknown>;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) continue;
+			throw error;
+		}
+		if (manifest.kind !== "receipt" || manifest.operation_id !== entry.name) continue;
+		const dataFiles = (await collectFiles(directory))
+			.map((file) => toPortableRelative(directory, file))
+			.filter((file) => file !== "manifest.json")
+			.sort();
+		const workingCopyFields = [
+			"original_hashes",
+			"intended_hashes",
+			"stage_paths",
+			"backup_paths",
+			"intended_paths",
+			"conflicts",
+		].filter((field) => Object.hasOwn(manifest, field));
+		summaries.push({
+			operation_id: entry.name,
+			state: manifest.state,
+			graph_rebuild: manifest.graph_rebuild,
+			retained_evidence: manifest.retained_evidence,
+			data_files: dataFiles,
+			working_copy_fields: workingCopyFields,
+		});
+	}
+	return summaries.sort((left, right) => left.operation_id.localeCompare(right.operation_id));
+}
+
 export async function listRenameResidues(kbPath: string): Promise<string[]> {
 	const files = await collectFiles(kbPath);
+	const receiptManifests = new Set((await summarizeRenameTerminalReceipts(kbPath)).map((receipt) => (
+		`.wiki-tmp/rename-ops/${receipt.operation_id}/manifest.json`
+	)));
 	return files
 		.map((file) => toPortableRelative(kbPath, file))
 		.filter((relativePath) => (
-			relativePath.startsWith(".wiki-tmp/rename-ops/")
+			(relativePath.startsWith(".wiki-tmp/rename-ops/") && !receiptManifests.has(relativePath))
 			|| relativePath.split("/").at(-1)?.startsWith(".llm-wiki-rename-")
 			|| /\.(?:stage|bak|backup)$/.test(relativePath)
 		))

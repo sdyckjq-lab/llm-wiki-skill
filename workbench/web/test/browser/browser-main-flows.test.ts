@@ -42,6 +42,7 @@ import {
 	prepareSandboxDirectories,
 	listRenameOperationIds,
 	listRenameResidues,
+	summarizeRenameTerminalReceipts,
 	sanitizeBrowserOutput,
 	startNetworkGuardedProcess,
 	stopProcess,
@@ -104,15 +105,32 @@ test("browser rename summaries expose every changed path and incomplete wikilink
 test("browser rename filesystem helpers expose journals, residues, and the complete durable file set", async () => {
 	const root = await mkdtemp(join(tmpdir(), "llm-wiki-browser-rename-helper-"));
 	try {
+		const receiptOperationId = "11111111-1111-4111-8111-111111111111";
 		await mkdir(join(root, ".wiki-tmp", "rename-ops", "operation-one", "stages"), { recursive: true });
+		await mkdir(join(root, ".wiki-tmp", "rename-ops", receiptOperationId), { recursive: true });
 		await mkdir(join(root, "wiki", "entities"), { recursive: true });
 		await writeFile(join(root, ".wiki-graph-layout.json"), "layout\n");
 		await writeFile(join(root, "wiki", "entities", "page.md"), "# Page\n");
 		await writeFile(join(root, "wiki", "entities", ".llm-wiki-rename-operation-one-0.md"), "transit\n");
 		await writeFile(join(root, "wiki", "entities", "ordinary.bak"), "backup\n");
 		await writeFile(join(root, ".wiki-tmp", "rename-ops", "operation-one", "stages", "page.stage"), "stage\n");
+		await writeFile(join(root, ".wiki-tmp", "rename-ops", receiptOperationId, "manifest.json"), `${JSON.stringify({
+			kind: "receipt",
+			operation_id: receiptOperationId,
+			state: "committed",
+			graph_rebuild: "succeeded",
+			retained_evidence: [],
+		})}\n`);
 
-		assert.deepEqual(await listRenameOperationIds(root), ["operation-one"]);
+		assert.deepEqual(await listRenameOperationIds(root), [receiptOperationId, "operation-one"]);
+		assert.deepEqual(await summarizeRenameTerminalReceipts(root), [{
+			operation_id: receiptOperationId,
+			state: "committed",
+			graph_rebuild: "succeeded",
+			retained_evidence: [],
+			data_files: [],
+			working_copy_fields: [],
+		}]);
 		assert.deepEqual(await listRenameResidues(root), [
 			".wiki-tmp/rename-ops/operation-one/stages/page.stage",
 			"wiki/entities/.llm-wiki-rename-operation-one-0.md",
@@ -958,8 +976,16 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		{ event: "source_rename_step", state: "target" },
 		{ event: "graph_rebuild", outcome: "started" },
 	], "one apply must rename and rebuild exactly once without a transit rename");
-	assert.deepEqual(await listRenameOperationIds(kbPath), [], "successful publication must compact the only journal");
-	assert.deepEqual(await listRenameResidues(kbPath), [], "successful publication must remove stages, backups, transit names, and journals");
+	assert.deepEqual(await listRenameOperationIds(kbPath), [applyOperationId], "successful publication must retain exactly one terminal receipt");
+	assert.deepEqual(await summarizeRenameTerminalReceipts(kbPath), [{
+		operation_id: applyOperationId,
+		state: "committed",
+		graph_rebuild: "succeeded",
+		retained_evidence: [],
+		data_files: [],
+		working_copy_fields: [],
+	}], "successful publication must retain only a byte-free terminal receipt");
+	assert.deepEqual(await listRenameResidues(kbPath), [], "successful publication must remove stages, backups, transit names, and evidence");
 	const durableHashesAfterApply = await hashKnowledgeBaseFiles(kbPath);
 	assert.deepEqual(diffFileHashes(durableHashesBeforeApply, durableHashesAfterApply), {
 		added: ["wiki/entities/已改名 页面.md"],
@@ -1228,6 +1254,17 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		{ event: "graph_rebuild", outcome: "failed" },
 		{ event: "graph_rebuild", outcome: "started" },
 	]);
+	const rebuildOperationId = rebuildOperation.data.operation.operation_id;
+	assert.deepEqual(await listRenameOperationIds(rebuildFailureKbPath), [rebuildOperationId]);
+	assert.deepEqual(await summarizeRenameTerminalReceipts(rebuildFailureKbPath), [{
+		operation_id: rebuildOperationId,
+		state: "committed",
+		graph_rebuild: "succeeded",
+		retained_evidence: [],
+		data_files: [],
+		working_copy_fields: [],
+	}]);
+	assert.deepEqual(await listRenameResidues(rebuildFailureKbPath), []);
 	await openGraphRenameForSource(page, "wiki/entities/rebuild-renamed.md");
 	await page.getByRole("dialog", { name: "安全改名" }).getByRole("textbox", { name: "新文件名" }).waitFor();
 	assert.deepEqual(await hashKnowledgeFiles(rebuildFailureKbPath), knowledgeHashesBeforeRetry);
