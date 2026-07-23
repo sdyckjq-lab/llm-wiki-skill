@@ -40,6 +40,7 @@ import {
 	stopProcess,
 	type RunningProcess,
 	waitForFile,
+	waitForExit,
 	waitUntil,
 } from "./support/browser-harness";
 
@@ -719,6 +720,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const appDir = join(home, ".llm-wiki-agent");
 	const kbPath = join(home, "llm-wiki", "rename-notes");
 	const equivalentKbPath = join(home, "llm-wiki", "equivalent-notes");
+	const crashRollbackKbPath = join(home, "llm-wiki", "crash-rollback-notes");
 	const serverNetworkProbe = join(home, "rename-server-network-probe.txt");
 	const viteNetworkProbe = join(home, "rename-vite-network-probe.txt");
 	const backendPort = await availablePort();
@@ -742,6 +744,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await prepareSandboxDirectories(home);
 	await createRenameKnowledgeBase(kbPath);
 	await createEquivalentRenameKnowledgeBase(equivalentKbPath);
+	await createCrashRenameKnowledgeBase(crashRollbackKbPath);
 	await mkdir(appDir, { recursive: true });
 	const authDir = join(home, ".pi", "agent");
 	await mkdir(authDir, { recursive: true });
@@ -751,7 +754,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await chmod(join(authDir, "auth.json"), 0o600);
 	await writeFile(join(appDir, "config.json"), `${JSON.stringify({
 		version: 1,
-		externalKnowledgeBases: [kbPath, equivalentKbPath],
+		externalKnowledgeBases: [kbPath, equivalentKbPath, crashRollbackKbPath],
 		lastUsedKbPath: kbPath,
 		modelRoles: { main: { provider: "browser-test-provider", modelId: "browser-test-model" } },
 	}, null, 2)}\n`);
@@ -896,6 +899,69 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const equivalentLayout = JSON.parse(await readFile(join(equivalentKbPath, ".wiki-graph-layout.json"), "utf8")) as { pins: Record<string, unknown> };
 	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/CaseName.md"), false);
 	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/casename.md"), true);
+
+	// Crash recovery: a changed conflict set refreshes before a confirmed rollback preserves evidence.
+	await page.getByText("crash-rollback-notes", { exact: true }).click();
+	await page.getByLabel("当前知识库").getByText("crash-rollback-notes").waitFor();
+	await page.locator("[data-graph-status='ready']").waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await openGraphRenameForSource(page, "wiki/entities/crash.md");
+	const crashDialog = page.getByRole("dialog", { name: "安全改名" });
+	await crashDialog.getByRole("textbox", { name: "新文件名" }).fill("crash-renamed");
+	await crashDialog.getByRole("button", { name: "生成预览" }).click();
+	await crashDialog.getByRole("heading", { name: "确认影响" }).waitFor();
+	await crashDialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	await writeFile(join(appDir, "browser-rename-crash-after-write"), "crash\n");
+	const crashedServer = resources.server;
+	assert.ok(crashedServer);
+	await crashDialog.getByRole("button", { name: "确认并改名" }).click();
+	const crashed = await waitForExit(crashedServer.child, OPERATION_TIMEOUT_MS, crashedServer.output);
+	assert.equal(crashed.code, 86, crashedServer.output());
+	resources.server = undefined;
+	const crashReference = join(crashRollbackKbPath, "wiki", "synthesis", "crash-reference.md");
+	await writeFile(crashReference, "# External version after crash\n\n[[wiki/entities/crash.md]]\n");
+	resources.server = await startBackend(home, backendPort, crashRollbackKbPath, serverNetworkProbe);
+	const startupConflictResponse = page.waitForResponse((response) => (
+		new URL(response.url()).pathname === "/api/graph/renames/recovery"
+		&& response.request().method() === "GET"
+	));
+	await page.reload({ waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
+	assert.equal((await startupConflictResponse).status(), 200);
+	const recoveryDialog = page.getByRole("dialog", { name: "安全改名" });
+	await recoveryDialog.getByRole("heading", { name: "需要处理改名冲突" }).waitFor();
+	await recoveryDialog.getByText("wiki/synthesis/crash-reference.md", { exact: true }).waitFor();
+	const crashSource = join(crashRollbackKbPath, "wiki", "entities", "crash.md");
+	const crashTarget = join(crashRollbackKbPath, "wiki", "entities", "crash-renamed.md");
+	await writeFile(crashTarget, "# Additional external target conflict\n");
+	await rm(crashSource, { force: true });
+	await recoveryDialog.getByRole("radio", { name: "恢复原状" }).check();
+	await recoveryDialog.getByRole("button", { name: "确认恢复" }).click();
+	await recoveryDialog.getByText("冲突集合已变化，已刷新为当前完整状态。请重新核对后确认。", { exact: true }).waitFor();
+	await recoveryDialog.getByText("wiki/entities/crash.md", { exact: true }).waitFor();
+	await recoveryDialog.getByText("wiki/entities/crash-renamed.md", { exact: true }).waitFor();
+	assert.match(await recoveryDialog.textContent() ?? "", /crash\.md已被外部删除/);
+	assert.match(await recoveryDialog.textContent() ?? "", /crash-renamed\.md当前文件存在/);
+	await recoveryDialog.getByRole("radio", { name: "恢复原状" }).check();
+	await recoveryDialog.getByRole("button", { name: "确认恢复" }).click();
+	await waitUntil(async () => {
+		const response = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(crashRollbackKbPath)}`)).text) as {
+			data?: { status?: string };
+		};
+		return response.data?.status === "clear";
+	}, OPERATION_TIMEOUT_MS, "rollback recovery did not publish");
+	assert.equal(await readFile(crashSource, "utf8"), "# Crash source\n");
+	assert.equal(await readFile(crashReference, "utf8"), "# Crash reference\n\n[[wiki/entities/crash.md]]\n");
+	await assert.rejects(readFile(crashTarget));
+	const evidenceNotice = page.getByRole("region", { name: "保留的改名冲突证据" });
+	await evidenceNotice.waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	assert.match(await evidenceNotice.textContent() ?? "", /摘要 [a-f0-9]{64}/);
+	assert.match(await evidenceNotice.textContent() ?? "", /自动删除时间/);
+	await page.goto("about:blank");
+	resources.server = await restartBackend(resources.server!, home, backendPort, crashRollbackKbPath, serverNetworkProbe);
+	await page.goto(webOrigin, { waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
+	await page.getByRole("region", { name: "保留的改名冲突证据" }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await page.getByRole("tab", { name: "图谱" }).click();
+	await openGraphRenameForSource(page, "wiki/entities/crash.md");
+	await page.getByRole("dialog", { name: "安全改名" }).getByRole("textbox", { name: "新文件名" }).waitFor();
 	assert.equal((await page.locator("body").textContent())?.includes(home), false);
 	assert.equal(
 		blockedExternalRequests.every((origin) => origin === "https://fonts.googleapis.com" || origin === "https://fonts.gstatic.com"),
@@ -1087,6 +1153,35 @@ async function createEquivalentRenameKnowledgeBase(path: string): Promise<void> 
 				content: "Case page",
 				source_path: "wiki/topics/CaseName.md",
 			}],
+			edges: [],
+		},
+		groups: [],
+		candidateSets: [],
+	});
+	await writeFile(join(path, "wiki", "graph-data.json"), `${JSON.stringify(pair.graphData, null, 2)}\n`);
+	await writeFile(join(path, "wiki", "graph-warnings.json"), `${JSON.stringify(pair.warningBundle, null, 2)}\n`);
+}
+
+async function createCrashRenameKnowledgeBase(path: string): Promise<void> {
+	await mkdir(join(path, "wiki", "entities"), { recursive: true });
+	await mkdir(join(path, "wiki", "synthesis"), { recursive: true });
+	await writeFile(join(path, ".wiki-schema.md"), "# Crash recovery schema\n");
+	await writeFile(join(path, "wiki", "entities", "crash.md"), "# Crash source\n");
+	await writeFile(join(path, "wiki", "synthesis", "crash-reference.md"), "# Crash reference\n\n[[wiki/entities/crash.md]]\n");
+	const pair = assembleGraphArtifactPair({
+		graphData: {
+			meta: {
+				build_date: "2026-07-22T00:00:00Z",
+				wiki_title: "Crash Rollback Notes",
+				total_nodes: 2,
+				total_edges: 0,
+				initial_view: ["wiki/entities/crash.md", "wiki/synthesis/crash-reference.md"],
+				degraded: false,
+			},
+			nodes: [
+				{ id: "wiki/entities/crash.md", label: "Crash source", type: "entity", community: null, content: "Crash source", source_path: "wiki/entities/crash.md" },
+				{ id: "wiki/synthesis/crash-reference.md", label: "Crash reference", type: "synthesis", community: null, content: "Crash reference", source_path: "wiki/synthesis/crash-reference.md" },
+			],
 			edges: [],
 		},
 		groups: [],

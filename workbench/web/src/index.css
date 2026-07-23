@@ -4289,6 +4289,7 @@
     background: color-mix(in srgb, var(--app-surface) 96%, var(--app-accent-soft));
     padding: 12px;
     box-shadow: var(--shadow-lg);
+    pointer-events: none;
   }
 
   .graph-rename-evidence-notice header p,
@@ -4331,6 +4332,7 @@
     place-items: center;
     border-radius: 999px;
     color: var(--app-muted);
+    pointer-events: auto;
   }
 
   .graph-rename-evidence-operation svg {
