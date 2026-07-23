@@ -322,7 +322,7 @@
 ├── log.md              # 操作日志
 ├── .wiki-schema.md     # 配置（识别"这是个知识库"的标志文件）
 ├── .wiki-cache.json    # 素材去重缓存
-├── .wiki-tmp/          # Skill 运行时临时目录（agent 不读不写，Skill 的 .gitignore 已排除）
+├── .wiki-tmp/          # 隔离临时目录；普通 agent 与图谱扫描/监听忽略，安全改名后端仅受控使用 rename-ops/
 └── .gitignore          # init 时生成，至少排除 .wiki-tmp/
 ```
 
@@ -376,11 +376,13 @@
 - ❌ `.DS_Store`（macOS）
 - ❌ `*.base`（Obsidian Bases）
 - ❌ `*.canvas`（Obsidian Canvas）
-- ❌ `.wiki-tmp/`（Skill 自用的临时目录）
+- ❌ `.wiki-tmp/`（普通 agent、图谱扫描和监听均忽略；唯一例外是工作台安全改名后端受控管理 `.wiki-tmp/rename-ops/`）
 - ❌ `node_modules/`、`.git/`、`venv/` 等所有 dev 类目录
 - ❌ 任何非 markdown、非 Skill 约定内的文件
 
 用户用 Obsidian 编辑 markdown、画 Canvas、做 Base，agent 都不会碰。
+
+这项例外只让安全改名后端管理自己的操作记录、过程文件和冲突证据，不扩大其他模块对 `.wiki-tmp/` 的访问权限，也不改变上述隔离边界。
 
 #### 6.4.1 图谱告警、派生数据与安全改名
 
