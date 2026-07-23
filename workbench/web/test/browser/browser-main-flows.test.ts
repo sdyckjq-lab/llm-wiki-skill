@@ -718,6 +718,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const home = join(sandbox, "home");
 	const appDir = join(home, ".llm-wiki-agent");
 	const kbPath = join(home, "llm-wiki", "rename-notes");
+	const equivalentKbPath = join(home, "llm-wiki", "equivalent-notes");
 	const serverNetworkProbe = join(home, "rename-server-network-probe.txt");
 	const viteNetworkProbe = join(home, "rename-vite-network-probe.txt");
 	const backendPort = await availablePort();
@@ -740,6 +741,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 
 	await prepareSandboxDirectories(home);
 	await createRenameKnowledgeBase(kbPath);
+	await createEquivalentRenameKnowledgeBase(equivalentKbPath);
 	await mkdir(appDir, { recursive: true });
 	const authDir = join(home, ".pi", "agent");
 	await mkdir(authDir, { recursive: true });
@@ -749,7 +751,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await chmod(join(authDir, "auth.json"), 0o600);
 	await writeFile(join(appDir, "config.json"), `${JSON.stringify({
 		version: 1,
-		externalKnowledgeBases: [kbPath],
+		externalKnowledgeBases: [kbPath, equivalentKbPath],
 		lastUsedKbPath: kbPath,
 		modelRoles: { main: { provider: "browser-test-provider", modelId: "browser-test-model" } },
 	}, null, 2)}\n`);
@@ -845,7 +847,55 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		};
 		return response.data?.status === "clear";
 	}, OPERATION_TIMEOUT_MS, "rename did not reach published clear recovery state");
-	assert.deepEqual((await readdir(join(kbPath, "wiki", "entities"))).sort(), ["已改名 页面.md"]);
+	const renamedEntityEntries = (await readdir(join(kbPath, "wiki", "entities"))).sort();
+	assert.deepEqual(renamedEntityEntries.filter((name) => !name.startsWith(".")), ["stale.md", "已改名 页面.md"]);
+	assert.equal(renamedEntityEntries.some((name) => name.endsWith(".stage")), false);
+
+	// Preview invalidation: an external edit after preview prevents every planned write.
+	await openGraphRenameForSource(page, "wiki/entities/stale.md");
+	const staleDialog = page.getByRole("dialog", { name: "安全改名" });
+	await staleDialog.getByRole("textbox", { name: "新文件名" }).fill("stale-renamed");
+	await staleDialog.getByRole("button", { name: "生成预览" }).click();
+	await staleDialog.getByRole("heading", { name: "确认影响" }).waitFor();
+	const staleReferencePath = join(kbPath, "wiki", "synthesis", "stale-reference.md");
+	await writeFile(staleReferencePath, "# Externally changed after preview\n\n[[wiki/entities/stale.md]]\n");
+	await staleDialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	await staleDialog.getByRole("button", { name: "确认并改名" }).click();
+	await staleDialog.getByRole("heading", { name: "预览已失效" }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	assert.equal(await readFile(join(kbPath, "wiki", "entities", "stale.md"), "utf8"), "# Stale page\n");
+	await assert.rejects(readFile(join(kbPath, "wiki", "entities", "stale-renamed.md")));
+	assert.equal(await readFile(staleReferencePath, "utf8"), "# Externally changed after preview\n\n[[wiki/entities/stale.md]]\n");
+	await staleDialog.getByRole("button", { name: "取消" }).click();
+
+	// Portable-equivalent rename: a case-only target completes through transit and migrates its pin.
+	await page.getByText("equivalent-notes", { exact: true }).click();
+	await page.getByLabel("当前知识库").getByText("equivalent-notes").waitFor();
+	await page.locator("[data-graph-status='ready']").waitFor({ timeout: OPERATION_TIMEOUT_MS });
+	await openGraphRenameForSource(page, "wiki/topics/CaseName.md");
+	const equivalentDialog = page.getByRole("dialog", { name: "安全改名" });
+	await equivalentDialog.getByRole("textbox", { name: "新文件名" }).fill("casename");
+	await equivalentDialog.getByRole("button", { name: "生成预览" }).click();
+	await equivalentDialog.getByRole("heading", { name: "确认影响" }).waitFor();
+	await equivalentDialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	const equivalentApplyResponse = page.waitForResponse((response) => (
+		new URL(response.url()).pathname === "/api/graph/renames/apply"
+		&& response.request().method() === "POST"
+	));
+	await equivalentDialog.getByRole("button", { name: "确认并改名" }).click();
+	assert.equal((await equivalentApplyResponse).status(), 200);
+	await waitUntil(async () => {
+		const response = JSON.parse((await browserJson(page, `/api/graph/renames/recovery?kb=${encodeURIComponent(equivalentKbPath)}`)).text) as {
+			data?: { status?: string };
+		};
+		return response.data?.status === "clear";
+	}, OPERATION_TIMEOUT_MS, "equivalent rename did not publish");
+	const equivalentEntries = await readdir(join(equivalentKbPath, "wiki", "topics"));
+	assert.deepEqual(equivalentEntries.filter((name) => !name.startsWith(".")), ["casename.md"]);
+	assert.equal(equivalentEntries.some((name) => name.startsWith(".llm-wiki-rename-")), false);
+	assert.equal(await readFile(join(equivalentKbPath, "wiki", "topics", "casename.md"), "utf8"), "# Case page\n\n[[wiki/topics/casename.md]]\n");
+	const equivalentLayout = JSON.parse(await readFile(join(equivalentKbPath, ".wiki-graph-layout.json"), "utf8")) as { pins: Record<string, unknown> };
+	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/CaseName.md"), false);
+	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/casename.md"), true);
 	assert.equal((await page.locator("body").textContent())?.includes(home), false);
 	assert.equal(
 		blockedExternalRequests.every((origin) => origin === "https://fonts.googleapis.com" || origin === "https://fonts.gstatic.com"),
@@ -935,28 +985,44 @@ async function createRenameKnowledgeBase(path: string): Promise<void> {
 	await mkdir(join(path, "raw"), { recursive: true });
 	await writeFile(join(path, ".wiki-schema.md"), "# Rename browser schema\n");
 	await writeFile(join(path, "wiki", "entities", "foo.md"), "# Entity Foo\n\nEntity source page.\n");
+	await writeFile(join(path, "wiki", "entities", "stale.md"), "# Stale page\n");
 	await writeFile(join(path, "wiki", "topics", "foo.md"), "# Topic Foo\n\nOther ambiguous page.\n");
+	await writeFile(join(path, "wiki", "topics", "CaseName.md"), "# Case page\n\n[[wiki/topics/CaseName.md]]\n");
 	const linkSource = "# Rename links\n\n[[wiki/entities/foo.md]]\n[[foo]]\n";
 	await writeFile(join(path, "wiki", "synthesis", "rename-links.md"), linkSource);
+	await writeFile(join(path, "wiki", "synthesis", "stale-reference.md"), "# Stale reference\n\n[[wiki/entities/stale.md]]\n");
 	await writeFile(join(path, "raw", "rename-reference.md"), "# Read only\n\n[[wiki/entities/foo.md]]\n");
 	await writeFile(join(path, ".wiki-graph-layout.json"), `${JSON.stringify({
 		version: 2,
-		pins: { "wiki/entities/foo.md": { x: 24, y: 36, coordinateSpace: "world" } },
+		pins: {
+			"wiki/entities/foo.md": { x: 24, y: 36, coordinateSpace: "world" },
+			"wiki/topics/CaseName.md": { x: 40, y: 52, coordinateSpace: "world" },
+		},
 		updatedAt: "2026-07-22T00:00:00.000Z",
 	}, null, 2)}\n`);
 	const graphData = {
 		meta: {
 			build_date: "2026-07-22T00:00:00Z",
 			wiki_title: "Rename Notes",
-			total_nodes: 3,
+			total_nodes: 6,
 			total_edges: 0,
-			initial_view: ["wiki/entities/foo.md", "wiki/topics/foo.md", "wiki/synthesis/rename-links.md"],
+			initial_view: [
+				"wiki/entities/foo.md",
+				"wiki/entities/stale.md",
+				"wiki/topics/foo.md",
+				"wiki/topics/CaseName.md",
+				"wiki/synthesis/rename-links.md",
+				"wiki/synthesis/stale-reference.md",
+			],
 			degraded: true,
 		},
 		nodes: [
 			{ id: "wiki/entities/foo.md", label: "Entity Foo", type: "entity", community: null, content: "Entity source page.", source_path: "wiki/entities/foo.md" },
+			{ id: "wiki/entities/stale.md", label: "Stale page", type: "entity", community: null, content: "Stale page.", source_path: "wiki/entities/stale.md" },
 			{ id: "wiki/topics/foo.md", label: "Topic Foo", type: "topic", community: null, content: "Other ambiguous page.", source_path: "wiki/topics/foo.md" },
+			{ id: "wiki/topics/CaseName.md", label: "Case page", type: "topic", community: null, content: "Case page.", source_path: "wiki/topics/CaseName.md" },
 			{ id: "wiki/synthesis/rename-links.md", label: "Rename links", type: "synthesis", community: null, content: "Rename links.", source_path: "wiki/synthesis/rename-links.md" },
+			{ id: "wiki/synthesis/stale-reference.md", label: "Stale reference", type: "synthesis", community: null, content: "Stale reference.", source_path: "wiki/synthesis/stale-reference.md" },
 		],
 		edges: [],
 	};
@@ -989,6 +1055,42 @@ async function createRenameKnowledgeBase(path: string): Promise<void> {
 				read_only: false,
 			}],
 		}],
+	});
+	await writeFile(join(path, "wiki", "graph-data.json"), `${JSON.stringify(pair.graphData, null, 2)}\n`);
+	await writeFile(join(path, "wiki", "graph-warnings.json"), `${JSON.stringify(pair.warningBundle, null, 2)}\n`);
+}
+
+async function createEquivalentRenameKnowledgeBase(path: string): Promise<void> {
+	await mkdir(join(path, "wiki", "topics"), { recursive: true });
+	await writeFile(join(path, ".wiki-schema.md"), "# Equivalent rename schema\n");
+	await writeFile(join(path, "wiki", "topics", "CaseName.md"), "# Case page\n\n[[wiki/topics/CaseName.md]]\n");
+	await writeFile(join(path, ".wiki-graph-layout.json"), `${JSON.stringify({
+		version: 2,
+		pins: { "wiki/topics/CaseName.md": { x: 20, y: 30, coordinateSpace: "world" } },
+		updatedAt: "2026-07-22T00:00:00.000Z",
+	}, null, 2)}\n`);
+	const pair = assembleGraphArtifactPair({
+		graphData: {
+			meta: {
+				build_date: "2026-07-22T00:00:00Z",
+				wiki_title: "Equivalent Notes",
+				total_nodes: 1,
+				total_edges: 0,
+				initial_view: ["wiki/topics/CaseName.md"],
+				degraded: false,
+			},
+			nodes: [{
+				id: "wiki/topics/CaseName.md",
+				label: "Case page",
+				type: "topic",
+				community: null,
+				content: "Case page",
+				source_path: "wiki/topics/CaseName.md",
+			}],
+			edges: [],
+		},
+		groups: [],
+		candidateSets: [],
 	});
 	await writeFile(join(path, "wiki", "graph-data.json"), `${JSON.stringify(pair.graphData, null, 2)}\n`);
 	await writeFile(join(path, "wiki", "graph-warnings.json"), `${JSON.stringify(pair.warningBundle, null, 2)}\n`);
@@ -1164,4 +1266,16 @@ async function assertBrowserJson(page: Page, path: string, expectedStatus: numbe
 
 async function browserJson(page: Page, path: string): Promise<{ status: number; text: string }> {
 	return page.evaluate((url) => fetch(url, { signal: AbortSignal.timeout(8_000) }).then(async (response) => ({ status: response.status, text: await response.text() })), path);
+}
+
+async function openGraphRenameForSource(page: Page, sourcePath: string): Promise<void> {
+	await openGraphRenameForNode(page, sourcePath);
+}
+
+async function openGraphRenameForNode(page: Page, nodeId: string): Promise<void> {
+	const target = page.locator(`.sigma-global-node-hit-target[data-id="${nodeId}"]`);
+	await target.waitFor({ state: "attached", timeout: OPERATION_TIMEOUT_MS });
+	await target.evaluate((button) => (button as HTMLButtonElement).click());
+	await page.getByRole("button", { name: "打开详情" }).click();
+	await page.getByRole("button", { name: "安全改名" }).click();
 }
