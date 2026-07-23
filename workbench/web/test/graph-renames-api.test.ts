@@ -182,6 +182,14 @@ describe("graph rename API", () => {
 				expires_at: "2026-08-21T00:00:00.000Z",
 			}],
 		};
+		const newerEvidence: typeof evidence = {
+			operation_id: "22222222-2222-4222-8222-222222222222",
+			retained_evidence: [{
+				relative_path: ".wiki-tmp/rename-ops/22222222-2222-4222-8222-222222222222/evidence/original-2.md",
+				sha256: "f".repeat(64),
+				expires_at: "2026-08-22T00:00:00.000Z",
+			}],
+		};
 		const operation = {
 			operation_id: preview.operation_id,
 			state: "conflicted" as const,
@@ -204,30 +212,35 @@ describe("graph rename API", () => {
 			}],
 			retained_evidence: [],
 		};
-		const recoveryStates = [{
-			status: "clear" as const,
-			retained_evidence_receipts: [evidence],
-		}, {
-			status: "required" as const,
-			operation,
-			retained_evidence_receipts: [],
-		}, {
-			status: "rebuild_required" as const,
-			operation: { ...operation, state: "committed" as const, graph_rebuild: "failed" as const },
-			retained_evidence_receipts: [evidence],
-		}, {
-			status: "blocked" as const,
-			reason: "unsafe_current_type" as const,
-			operation_id: preview.operation_id,
-			retained_evidence_receipts: [evidence],
-		}];
-
-		for (const recovery of recoveryStates) {
-			const calls = stubFetch({ ok: true, data: recovery });
-			assert.deepEqual(await getGraphRenameRecovery("/registered/kb"), recovery);
-			assert.equal(calls[0]?.url, "/api/graph/renames/recovery?kb=%2Fregistered%2Fkb");
-			assert.equal(calls[0]?.init?.method, "GET");
-		}
+		const receiptSets: Array<Array<typeof evidence>> = [
+			[],
+			[evidence],
+			[evidence, newerEvidence],
+		];
+		const recoveryFactories = [
+			(retained_evidence_receipts: Array<typeof evidence>) => ({
+				status: "clear" as const,
+				retained_evidence_receipts,
+			}),
+			(retained_evidence_receipts: Array<typeof evidence>) => ({
+				status: "required" as const,
+				operation,
+				retained_evidence_receipts,
+			}),
+			(retained_evidence_receipts: Array<typeof evidence>) => ({
+				status: "rebuild_required" as const,
+				operation: { ...operation, state: "committed" as const, graph_rebuild: "failed" as const },
+				retained_evidence_receipts,
+			}),
+			(retained_evidence_receipts: Array<typeof evidence>) => ({
+				status: "blocked" as const,
+				reason: "unsafe_current_type" as const,
+				operation_id: preview.operation_id,
+				retained_evidence_receipts,
+			}),
+		];
+		const recoveryStates = recoveryFactories.flatMap((createRecovery) => receiptSets.map(createRecovery));
+		assert.equal(recoveryStates.length, 12, "four statuses must each cover zero, one, and many receipts");
 
 		const resolution = {
 			operation_id: preview.operation_id,
@@ -241,11 +254,18 @@ describe("graph rename API", () => {
 				current_state: "missing" as const,
 			}],
 		};
-		const calls = stubFetch({ ok: true, data: recoveryStates[0] });
-		assert.deepEqual(await resolveGraphRenameRecovery("/registered/kb", resolution), recoveryStates[0]);
-		assert.equal(calls[0]?.url, "/api/graph/renames/recovery?kb=%2Fregistered%2Fkb");
-		assert.equal(calls[0]?.init?.method, "POST");
-		assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), resolution);
+		for (const recovery of recoveryStates) {
+			const getCalls = stubFetch({ ok: true, data: recovery });
+			assert.deepEqual(await getGraphRenameRecovery("/registered/kb"), recovery);
+			assert.equal(getCalls[0]?.url, "/api/graph/renames/recovery?kb=%2Fregistered%2Fkb");
+			assert.equal(getCalls[0]?.init?.method, "GET");
+
+			const resolveCalls = stubFetch({ ok: true, data: recovery });
+			assert.deepEqual(await resolveGraphRenameRecovery("/registered/kb", resolution), recovery);
+			assert.equal(resolveCalls[0]?.url, "/api/graph/renames/recovery?kb=%2Fregistered%2Fkb");
+			assert.equal(resolveCalls[0]?.init?.method, "POST");
+			assert.deepEqual(JSON.parse(String(resolveCalls[0]?.init?.body)), resolution);
+		}
 	});
 
 	it("rejects invalid preview, operation, recovery, and evidence envelopes", async () => {
