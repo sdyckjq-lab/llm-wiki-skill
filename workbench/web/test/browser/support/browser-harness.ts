@@ -36,6 +36,15 @@ export interface FileHashDiff {
 	unchanged: string[];
 }
 
+export function graphRebuildOutcomes(events: Array<Record<string, unknown>>): Array<"failed" | "started"> {
+	return events
+		.filter((event) => event.event === "graph_rebuild")
+		.map((event) => {
+			if (event.outcome === "failed" || event.outcome === "started") return event.outcome;
+			throw new Error("graph rebuild event is missing a result");
+		});
+}
+
 export function diffFileHashes(before: Record<string, string>, after: Record<string, string>): FileHashDiff {
 	const paths = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
 	const result: FileHashDiff = { added: [], removed: [], changed: [], unchanged: [] };

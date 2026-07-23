@@ -33,6 +33,7 @@ import {
 	createConversation,
 	createKnowledgeBase as createBaseKnowledgeBase,
 	diffFileHashes,
+	graphRebuildOutcomes,
 	hashKnowledgeBaseFiles,
 	hashKnowledgeFiles,
 	incompleteWikilinkTargets,
@@ -88,6 +89,16 @@ test("browser rename summaries expose every changed path and incomplete wikilink
 		"[[short-name]]",
 		"[[wiki/incomplete.md]]",
 	].join("\n")), ["short-name", "wiki/incomplete.md"]);
+	assert.deepEqual(graphRebuildOutcomes([
+		{ event: "source_rename_started" },
+		{ event: "graph_rebuild", outcome: "failed" },
+		{ event: "graph_rebuild", outcome: "failed" },
+		{ event: "graph_rebuild", outcome: "started" },
+	]), ["failed", "failed", "started"]);
+	assert.throws(
+		() => graphRebuildOutcomes([{ event: "graph_rebuild" }]),
+		/missing a result/,
+	);
 });
 
 test("browser rename filesystem helpers expose journals, residues, and the complete durable file set", async () => {
@@ -945,7 +956,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	assert.deepEqual(renameEvents, [
 		{ event: "source_rename_started" },
 		{ event: "source_rename_step", state: "target" },
-		{ event: "graph_rebuild" },
+		{ event: "graph_rebuild", outcome: "started" },
 	], "one apply must rename and rebuild exactly once without a transit rename");
 	assert.deepEqual(await listRenameOperationIds(kbPath), [], "successful publication must compact the only journal");
 	assert.deepEqual(await listRenameResidues(kbPath), [], "successful publication must remove stages, backups, transit names, and journals");
@@ -1169,6 +1180,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await rebuildDialog.getByRole("button", { name: "生成预览" }).click();
 	await rebuildDialog.getByRole("heading", { name: "确认影响" }).waitFor();
 	await rebuildDialog.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	await rm(renameEventsFile, { force: true });
 	await writeFile(join(appDir, "browser-rename-rebuild-fail-once"), "fail\n");
 	const rebuildApplyResponse = page.waitForResponse((response) => (
 		new URL(response.url()).pathname === "/api/graph/renames/apply"
@@ -1187,8 +1199,15 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	assert.equal(await readFile(rebuiltTarget, "utf8"), "# Rebuild source\n");
 	assert.equal(await readFile(rebuiltReference, "utf8"), "# Rebuild reference\n\n[[wiki/entities/rebuild-renamed.md]]\n");
 	const knowledgeHashesBeforeRetry = await hashKnowledgeFiles(rebuildFailureKbPath);
+	assert.deepEqual(graphRebuildOutcomes(await readRenameEvents(renameEventsFile)), ["failed"]);
+	await writeFile(join(appDir, "browser-rename-rebuild-fail-once"), "fail\n");
 	await page.goto("about:blank");
 	resources.server = await restartBackend(resources.server!, home, backendPort, rebuildFailureKbPath, serverNetworkProbe);
+	await waitUntil(async () => (
+		graphRebuildOutcomes(await readRenameEvents(renameEventsFile)).length === 2
+	), OPERATION_TIMEOUT_MS, "startup did not make its deterministic failed rebuild attempt");
+	assert.deepEqual(graphRebuildOutcomes(await readRenameEvents(renameEventsFile)), ["failed", "failed"]);
+	assert.deepEqual(await hashKnowledgeFiles(rebuildFailureKbPath), knowledgeHashesBeforeRetry);
 	await page.goto(webOrigin, { waitUntil: "domcontentloaded", timeout: START_TIMEOUT_MS });
 	const restoredRebuildDialog = page.getByRole("dialog", { name: "安全改名" });
 	await restoredRebuildDialog.getByRole("heading", { name: "内容已保存，图谱尚未更新" }).waitFor();
@@ -1199,6 +1218,16 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		};
 		return response.data?.status === "clear";
 	}, OPERATION_TIMEOUT_MS, "rebuild retry did not publish the renamed graph");
+	await waitUntil(async () => (
+		graphRebuildOutcomes(await readRenameEvents(renameEventsFile)).length === 3
+	), OPERATION_TIMEOUT_MS, "manual retry did not record its successful rebuild attempt");
+	assert.deepEqual(await readRenameEvents(renameEventsFile), [
+		{ event: "source_rename_started" },
+		{ event: "source_rename_step", state: "target" },
+		{ event: "graph_rebuild", outcome: "failed" },
+		{ event: "graph_rebuild", outcome: "failed" },
+		{ event: "graph_rebuild", outcome: "started" },
+	]);
 	await openGraphRenameForSource(page, "wiki/entities/rebuild-renamed.md");
 	await page.getByRole("dialog", { name: "安全改名" }).getByRole("textbox", { name: "新文件名" }).waitFor();
 	assert.deepEqual(await hashKnowledgeFiles(rebuildFailureKbPath), knowledgeHashesBeforeRetry);
@@ -1211,6 +1240,14 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	);
 	await assertProductionBuildExcludesBrowserFakes();
 });
+
+async function readRenameEvents(path: string): Promise<Array<Record<string, unknown>>> {
+	return (await readFile(path, "utf8"))
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => JSON.parse(line) as Record<string, unknown>);
+}
 
 async function assertSharedGraphHostFailures(context: BrowserContext, webOrigin: string): Promise<void> {
 	for (const failure of [

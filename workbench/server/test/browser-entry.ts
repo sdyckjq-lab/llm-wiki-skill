@@ -93,19 +93,30 @@ const browserGraphRenameService = {
 		beforeSourceRename: () => recordRenameEvent({ event: "source_rename_started" }),
 		afterSourceRenameStep: (state) => recordRenameEvent({ event: "source_rename_step", state }),
 		triggerRebuild: (kbPath) => {
-			recordRenameEvent({ event: "graph_rebuild" });
 			if (existsSync(renameRebuildFailOnceFlag)) {
 				unlinkSync(renameRebuildFailOnceFlag);
+				recordRenameEvent({ event: "graph_rebuild", outcome: "failed" });
 				throw new Error("browser-controlled graph rebuild failure");
 			}
-			return triggerGraphRebuild(kbPath);
+			try {
+				const result = triggerGraphRebuild(kbPath);
+				recordRenameEvent({ event: "graph_rebuild", outcome: "started" });
+				return result;
+			} catch (error) {
+				recordRenameEvent({ event: "graph_rebuild", outcome: "failed" });
+				throw error;
+			}
 		},
 	}),
 	getActiveKnowledgeBasePath: defaultGraphRenameRouteService.getActiveKnowledgeBasePath,
 };
 Object.assign(defaultGraphRenameRouteService, browserGraphRenameService);
 
-function recordRenameEvent(event: { event: string; state?: "old" | "transit" | "target" }): void {
+function recordRenameEvent(event: {
+	event: string;
+	state?: "old" | "transit" | "target";
+	outcome?: "failed" | "started";
+}): void {
 	appendFileSync(renameEventsFile, `${JSON.stringify(event)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
