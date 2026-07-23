@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { appendFileSync, existsSync, unlinkSync } from "node:fs";
 import { appendFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -33,6 +33,7 @@ const renamePausedFlag = path.join(browserAppDir, "browser-rename-paused");
 const renameResumeFlag = path.join(browserAppDir, "browser-rename-resume");
 const renameCrashAfterWriteFlag = path.join(browserAppDir, "browser-rename-crash-after-write");
 const renameRebuildFailOnceFlag = path.join(browserAppDir, "browser-rename-rebuild-fail-once");
+const renameEventsFile = path.join(browserAppDir, "browser-rename-events.jsonl");
 const selectedDirectory = process.env.LLM_WIKI_BROWSER_SELECTED_DIRECTORY;
 if (!selectedDirectory) {
 	throw new Error("browser test entry requires LLM_WIKI_BROWSER_SELECTED_DIRECTORY");
@@ -89,7 +90,10 @@ const browserGraphRenameService = {
 			unlinkSync(renameCrashAfterWriteFlag);
 			process.exit(86);
 		},
+		beforeSourceRename: () => recordRenameEvent({ event: "source_rename_started" }),
+		afterSourceRenameStep: (state) => recordRenameEvent({ event: "source_rename_step", state }),
 		triggerRebuild: (kbPath) => {
+			recordRenameEvent({ event: "graph_rebuild" });
 			if (existsSync(renameRebuildFailOnceFlag)) {
 				unlinkSync(renameRebuildFailOnceFlag);
 				throw new Error("browser-controlled graph rebuild failure");
@@ -100,6 +104,10 @@ const browserGraphRenameService = {
 	getActiveKnowledgeBasePath: defaultGraphRenameRouteService.getActiveKnowledgeBasePath,
 };
 Object.assign(defaultGraphRenameRouteService, browserGraphRenameService);
+
+function recordRenameEvent(event: { event: string; state?: "old" | "transit" | "target" }): void {
+	appendFileSync(renameEventsFile, `${JSON.stringify(event)}\n`, { encoding: "utf8", mode: 0o600 });
+}
 
 const runningServer = await startWorkbenchServer({
 	createApplication: (token) => createRuntimeApplication(token, {

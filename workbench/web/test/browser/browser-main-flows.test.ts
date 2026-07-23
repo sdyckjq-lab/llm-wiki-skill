@@ -32,10 +32,15 @@ import {
 	closeBrowserResources,
 	createConversation,
 	createKnowledgeBase as createBaseKnowledgeBase,
+	diffFileHashes,
+	hashKnowledgeBaseFiles,
 	hashKnowledgeFiles,
+	incompleteWikilinkTargets,
 	isolatedEnvironment,
 	platformSandboxEnvironment,
 	prepareSandboxDirectories,
+	listRenameOperationIds,
+	listRenameResidues,
 	sanitizeBrowserOutput,
 	startNetworkGuardedProcess,
 	stopProcess,
@@ -58,6 +63,60 @@ const FORBIDDEN_PARENT_ENV = [
 	"PI_CONFIG_DIR",
 	"XDG_CONFIG_HOME",
 ] as const;
+
+test("browser rename summaries expose every changed path and incomplete wikilink", () => {
+	assert.deepEqual(diffFileHashes(
+		{
+			"wiki/entities/source.md": "source-hash",
+			"wiki/synthesis/changed.md": "before-hash",
+			"wiki/topics/untouched.md": "same-hash",
+		},
+		{
+			"wiki/entities/target.md": "source-hash",
+			"wiki/synthesis/changed.md": "after-hash",
+			"wiki/topics/untouched.md": "same-hash",
+		},
+	), {
+		added: ["wiki/entities/target.md"],
+		removed: ["wiki/entities/source.md"],
+		changed: ["wiki/synthesis/changed.md"],
+		unchanged: ["wiki/topics/untouched.md"],
+	});
+	assert.deepEqual(incompleteWikilinkTargets([
+		"[[wiki/entities/complete.md]]",
+		"[[wiki/topics/complete.md#section|标题]]",
+		"[[short-name]]",
+		"[[wiki/incomplete.md]]",
+	].join("\n")), ["short-name", "wiki/incomplete.md"]);
+});
+
+test("browser rename filesystem helpers expose journals, residues, and the complete durable file set", async () => {
+	const root = await mkdtemp(join(tmpdir(), "llm-wiki-browser-rename-helper-"));
+	try {
+		await mkdir(join(root, ".wiki-tmp", "rename-ops", "operation-one", "stages"), { recursive: true });
+		await mkdir(join(root, "wiki", "entities"), { recursive: true });
+		await writeFile(join(root, ".wiki-graph-layout.json"), "layout\n");
+		await writeFile(join(root, "wiki", "entities", "page.md"), "# Page\n");
+		await writeFile(join(root, "wiki", "entities", ".llm-wiki-rename-operation-one-0.md"), "transit\n");
+		await writeFile(join(root, "wiki", "entities", "ordinary.bak"), "backup\n");
+		await writeFile(join(root, ".wiki-tmp", "rename-ops", "operation-one", "stages", "page.stage"), "stage\n");
+
+		assert.deepEqual(await listRenameOperationIds(root), ["operation-one"]);
+		assert.deepEqual(await listRenameResidues(root), [
+			".wiki-tmp/rename-ops/operation-one/stages/page.stage",
+			"wiki/entities/.llm-wiki-rename-operation-one-0.md",
+			"wiki/entities/ordinary.bak",
+		]);
+		assert.deepEqual(Object.keys(await hashKnowledgeBaseFiles(root)), [
+			".wiki-graph-layout.json",
+			"wiki/entities/.llm-wiki-rename-operation-one-0.md",
+			"wiki/entities/ordinary.bak",
+			"wiki/entities/page.md",
+		]);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
 
 test("seven browser main flows cross the real frontend and backend", { timeout: 210_000 }, async (t) => {
 	for (const name of FORBIDDEN_PARENT_ENV) assert.equal(process.env[name], undefined, `${name} was not cleared`);
@@ -720,6 +779,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const sandbox = await mkdtemp(join(tmpdir(), "llm-wiki-browser-main-flows-rename-"));
 	const home = join(sandbox, "home");
 	const appDir = join(home, ".llm-wiki-agent");
+	const renameEventsFile = join(appDir, "browser-rename-events.jsonl");
 	const kbPath = join(home, "llm-wiki", "rename-notes");
 	const equivalentKbPath = join(home, "llm-wiki", "equivalent-notes");
 	const crashRollbackKbPath = join(home, "llm-wiki", "crash-rollback-notes");
@@ -741,6 +801,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		await closeBrowserResources({ context: resources.context, browser: resources.browser }).catch((error) => errors.push(error));
 		if (resources.vite) await stopProcess(resources.vite, [0, 143]).catch((error) => errors.push(error));
 		if (resources.server) await stopProcess(resources.server, [0, 86, 143]).catch((error) => errors.push(error));
+		await assertPortAvailable(WEB_PORT).catch((error) => errors.push(error));
+		await assertPortAvailable(backendPort).catch((error) => errors.push(error));
 		await rm(sandbox, { recursive: true, force: true }).catch((error) => errors.push(error));
 		if (errors.length > 0) throw new AggregateError(errors, "graph rename browser cleanup failed");
 	});
@@ -790,9 +852,14 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await blockExternalBrowserTraffic(resources.context, blockedExternalRequests);
 	const page = await resources.context.newPage();
 	let renameApplyRequests = 0;
+	const renameApplyOperationIds: string[] = [];
 	page.on("request", (request) => {
 		const url = new URL(request.url());
-		if (url.pathname === "/api/graph/renames/apply" && request.method() === "POST") renameApplyRequests += 1;
+		if (url.pathname === "/api/graph/renames/apply" && request.method() === "POST") {
+			renameApplyRequests += 1;
+			const body = request.postDataJSON() as { operation_id?: unknown };
+			if (typeof body.operation_id === "string") renameApplyOperationIds.push(body.operation_id);
+		}
 	});
 	const startupRecovery = page.waitForResponse((response) => (
 		new URL(response.url()).pathname === "/api/graph/renames/recovery"
@@ -812,7 +879,14 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await page.getByRole("radio", { name: "wiki/entities/foo.md" }).check();
 	await page.getByRole("button", { name: "下一步" }).click();
 	await page.getByRole("textbox", { name: "新文件名" }).fill("已改名 页面");
+	const previewResponse = page.waitForResponse((response) => (
+		new URL(response.url()).pathname === "/api/graph/renames/preview"
+		&& response.request().method() === "POST"
+	));
 	await page.getByRole("button", { name: "生成预览" }).click();
+	const previewEnvelope = await (await previewResponse).json() as {
+		data: { source_path: string; target_path: string; editable_files: Array<{ source_path: string }> };
+	};
 	await page.getByRole("heading", { name: "确认影响" }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
 	await page.getByText("wiki/entities/已改名 页面.md", { exact: true }).waitFor();
 	await page.getByRole("note", { name: "只读引用" }).waitFor();
@@ -820,6 +894,9 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	await ambiguity.waitFor();
 	await ambiguity.getByRole("radio", { name: "wiki/entities/foo.md" }).check();
 	await page.getByRole("checkbox", { name: /我已核对完整预览/ }).check();
+	const durableHashesBeforeApply = await hashKnowledgeBaseFiles(kbPath);
+	const knowledgeHashesBeforeApply = await hashKnowledgeFiles(kbPath);
+	await rm(renameEventsFile, { force: true });
 	const pauseFlag = join(appDir, "browser-rename-pause-before-commit");
 	const pausedFlag = join(appDir, "browser-rename-paused");
 	const resumeFlag = join(appDir, "browser-rename-resume");
@@ -830,6 +907,10 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	});
 	await waitForFile(pausedFlag);
 	assert.equal(renameApplyRequests, 1, "two immediate clicks must share one apply request");
+	assert.equal(renameApplyOperationIds.length, 1, "double click must carry one operation ID");
+	const applyOperationId = renameApplyOperationIds[0]!;
+	assert.deepEqual(await listRenameOperationIds(kbPath), [applyOperationId], "one apply must create one journal directory");
+	await waitForRenameJournalState(kbPath, applyOperationId, { state: "applying" });
 	await rm(pauseFlag, { force: true });
 	await writeFile(resumeFlag, "resume\n");
 	const targetPath = join(kbPath, "wiki", "entities", "已改名 页面.md");
@@ -856,6 +937,64 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		};
 		return response.data?.status === "clear";
 	}, OPERATION_TIMEOUT_MS, "rename did not reach published clear recovery state");
+	const renameEvents = (await readFile(renameEventsFile, "utf8"))
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => JSON.parse(line) as unknown);
+	assert.deepEqual(renameEvents, [
+		{ event: "source_rename_started" },
+		{ event: "source_rename_step", state: "target" },
+		{ event: "graph_rebuild" },
+	], "one apply must rename and rebuild exactly once without a transit rename");
+	assert.deepEqual(await listRenameOperationIds(kbPath), [], "successful publication must compact the only journal");
+	assert.deepEqual(await listRenameResidues(kbPath), [], "successful publication must remove stages, backups, transit names, and journals");
+	const durableHashesAfterApply = await hashKnowledgeBaseFiles(kbPath);
+	assert.deepEqual(diffFileHashes(durableHashesBeforeApply, durableHashesAfterApply), {
+		added: ["wiki/entities/已改名 页面.md"],
+		removed: ["wiki/entities/foo.md"],
+		changed: [
+			".wiki-graph-layout.json",
+			"wiki/graph-data.json",
+			"wiki/graph-warnings.json",
+			"wiki/synthesis/rename-links.md",
+		],
+		unchanged: [
+			".wiki-schema.md",
+			"raw/rename-reference.md",
+			"wiki/entities/stale.md",
+			"wiki/synthesis/stale-reference.md",
+			"wiki/topics/CaseName.md",
+			"wiki/topics/foo.md",
+		],
+	}, "the complete durable filesystem summary must match the previewed rename");
+	const knowledgeHashesAfterApply = await hashKnowledgeFiles(kbPath);
+	const knowledgeDiff = diffFileHashes(knowledgeHashesBeforeApply, knowledgeHashesAfterApply);
+	assert.deepEqual(knowledgeDiff, {
+		added: ["wiki/entities/已改名 页面.md"],
+		removed: ["wiki/entities/foo.md"],
+		changed: ["wiki/synthesis/rename-links.md"],
+		unchanged: [
+			".wiki-schema.md",
+			"raw/rename-reference.md",
+			"wiki/entities/stale.md",
+			"wiki/synthesis/stale-reference.md",
+			"wiki/topics/CaseName.md",
+			"wiki/topics/foo.md",
+		],
+	});
+	assert.deepEqual(knowledgeDiff.removed, [previewEnvelope.data.source_path]);
+	assert.deepEqual(knowledgeDiff.added, [previewEnvelope.data.target_path]);
+	assert.deepEqual(
+		knowledgeDiff.changed,
+		previewEnvelope.data.editable_files.map((file) => file.source_path).sort(),
+		"every previewed editable Markdown file and only those files must change",
+	);
+	for (const relativePath of [...knowledgeDiff.added, ...knowledgeDiff.changed]) {
+		const markdown = await readFile(join(kbPath, ...relativePath.split("/")), "utf8");
+		assert.deepEqual(incompleteWikilinkTargets(markdown), [], `${relativePath} contains an incomplete wikilink target`);
+	}
+	await assert.rejects(readFile(join(kbPath, "wiki", "entities", "foo.md")));
 	const renamedEntityEntries = (await readdir(join(kbPath, "wiki", "entities"))).sort();
 	assert.deepEqual(renamedEntityEntries.filter((name) => !name.startsWith(".")), ["stale.md", "已改名 页面.md"]);
 	assert.equal(renamedEntityEntries.some((name) => name.endsWith(".stage")), false);
@@ -1070,6 +1209,7 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		blockedExternalRequests.every((origin) => origin === "https://fonts.googleapis.com" || origin === "https://fonts.gstatic.com"),
 		true,
 	);
+	await assertProductionBuildExcludesBrowserFakes();
 });
 
 async function assertSharedGraphHostFailures(context: BrowserContext, webOrigin: string): Promise<void> {
