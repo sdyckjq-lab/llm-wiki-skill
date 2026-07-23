@@ -8,14 +8,14 @@ Scope: Tasks 1–6, including path identity, readable graph warnings, derived wa
 
 ## Acceptance status
 
-The current code and test head passes the final tracked-only contract, interface, graph-engine, build, type, lint, boundary, privacy, and formatting checks listed below. The full server suite reaches 333/334; its only failure is the current sandbox's file-watcher limit and repeats as the same environment error when rerun alone. Full production acceptance is **not complete**: the strengthened real-browser journey remains blocked here, and the current pull request still needs its normal-environment `browser-main-flows` job plus the required Ubuntu, macOS, and Windows portability jobs for both Stage 2 path portability and Stage 3 equivalent-rename portability. The V3 design document remains unchanged until those jobs are green.
+The current code and test head passes the focused server, contract, recovery-interface, API, no-port web, build, type, lint, boundary, privacy, and formatting commands listed below. The complete server suite and `npm run quality-and-tests` were not completed at this head, and the strengthened real-browser journey remains blocked here. Full production acceptance is **not complete**: the current pull request still needs its normal-environment `browser-main-flows` job plus the required Ubuntu, macOS, and Windows portability jobs for both Stage 2 path portability and Stage 3 equivalent-rename portability. The V3 design document remains unchanged until those jobs are green.
 
 ## Tested fixed points
 
-- Tasks 1–6 code and test implementation head: `37265cf8ee2f89d013e66bde8e5d0684c847a469` (`test: cover recovery receipt cardinalities [task 6]`).
+- Tasks 1–6 code and test implementation head: `0d1bbc7b390e3b8231a0a7de51e0cbd98b0f1faa` (`test: retain byte-free graph rename receipts [task 6]`).
 - Task execution baseline: `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97`, preserved locally as `refs/llm-wiki/task-base` while acceptance work is in progress.
 - The current-head matrix below records commands that completed in a tracked-only clean macOS copy. Documentation changes are recorded separately, so this report does not contain or predict its own future commit hash.
-- The implementation range under acceptance is `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97..37265cf8ee2f89d013e66bde8e5d0684c847a469`.
+- The implementation range under acceptance is `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97..0d1bbc7b390e3b8231a0a7de51e0cbd98b0f1faa`.
 
 ## Earlier Tasks 1–4 pull-request evidence
 
@@ -27,25 +27,30 @@ These links remain evidence for the Tasks 1–4 core release. They do not replac
 
 ## Final tracked-only acceptance matrix
 
-| Command/evidence | Result at `37265cf8` |
+| Exact command | Result at `0d1bbc7b` |
 |---|---|
-| F1 — focused rename server, route, journal, and contract checks | PASS — 82/82. |
-| F2 — `npm run test -w @llm-wiki/workbench-contracts` | PASS — 72/72. |
-| F3 — full web interface DOM suite | PASS — 176/176. |
-| F4 — no-port web unit suite | PASS — 212/212. |
-| F5 — `npm run test -w @llm-wiki/graph-engine` | PASS — 809/809. |
-| F6 — all repository type checks; web lint; frontend and backend production builds; boundary checks; repository privacy checks; `git diff --check` | PASS. |
-| F7 — full server suite | 333/334 — the only failure is the sandbox file-watcher limit; the isolated rerun fails with the same environment error. No product assertion failed. |
+| `node --import tsx --test workbench/server/src/graph-renames.test.ts workbench/server/src/graph-rename-routes.test.ts workbench/server/src/graph-rename-journal.test.ts workbench/server/src/graph-rename-files.test.ts` | PASS at `0d1bbc7b` — 76/76 focused server, route, journal, and file checks. |
+| `npm run test -w @llm-wiki/workbench-contracts` | PASS at `0d1bbc7b` — 72/72 contract checks. |
+| `node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test workbench/web/test/app-graph-rename-recovery.test.tsx workbench/web/test/graph-rename-dialog.test.tsx` | PASS at `0d1bbc7b` — 33/33 focused recovery-interface checks. |
+| `node --import tsx --test workbench/web/test/graph-renames-api.test.ts` | PASS at `0d1bbc7b` — 7/7 graph-rename API checks. |
+| `node --import tsx --test --test-name-pattern='^browser rename' workbench/web/test/browser/browser-main-flows.test.ts` | PASS at `0d1bbc7b` — 2/2 no-port browser filesystem/helper checks; the real browser journey is excluded by the name filter. |
+| `npm run test:unit -w @llm-wiki-agent/web` | PASS at `0d1bbc7b` — 212/212 no-port web unit checks. |
+| `npm run test:dom -w @llm-wiki-agent/web` | PASS at `0d1bbc7b` — 177/177 web DOM checks. |
+| `npm run typecheck -w @llm-wiki-agent/server`; `npm run typecheck -w @llm-wiki-agent/web` | PASS at `0d1bbc7b`. |
+| `npm run build -w @llm-wiki-agent/server`; `npm run build -w @llm-wiki-agent/web` | PASS at `0d1bbc7b` — production backend and frontend builds completed. |
+| `npm run lint -w @llm-wiki-agent/web`; `npm run check:boundaries`; `npm run check:privacy`; `git diff --check` | PASS at `0d1bbc7b`. |
+| `node --import tsx --input-type=module -e "const { assertProductionBuildExcludesBrowserFakes } = await import('./workbench/web/test/browser/support/browser-harness.ts'); await assertProductionBuildExcludesBrowserFakes();"` | PASS at `0d1bbc7b` after the production backend build — no browser test file or marker is present in `workbench/server/dist`. |
 
-The current-head focused evidence also covers four repaired behaviors: a conflict mismatch leaves zero persistent side effects; a failed refresh retains recovery evidence and remains retryable; the rebuild journey deterministically fails twice before a manual retry succeeds; and recovery receipts cover all four states with zero, one, and multiple receipts.
+The current-head focused evidence also covers two final behavior groups. First, both the follow-up recovery GET and resolve requests return the same live complete conflict set, perform zero writes when the submitted observations are stale, and keep `blocked` status dominant. Second, a successful ordinary rename and a manually completed rebuild leave only a byte-free terminal receipt; Markdown content, backups, stages, transit files, and evidence files are removed.
 
 ## Current sandbox limits and historical browser evidence
 
 | Command/evidence | Current status |
 |---|---|
-| Full server suite | **ENVIRONMENT-LIMITED at `37265cf8`** — 333/334 pass. The remaining watcher test exceeds this sandbox's file-monitor allowance and repeats the same environment failure when run alone. |
-| `npm run test:browser:main-flows -w @llm-wiki-agent/web` | **BLOCKED at `37265cf8`** — the sandbox rejects listening on `127.0.0.1:5180` with `EPERM`, and the runner cannot read the process table. The strengthened journey awaits the pull request's GitHub `browser-main-flows` job in a normal environment and is not claimed as passing locally. |
-| Earlier local run at `e39fa2076b403b7bea0e06f138dc1c435b7cea88` | Historical PASS — the then-current real frontend/backend browser journeys passed. This predates the later implementation and test fixes and is **not** final proof for `37265cf8`. |
+| `node --import tsx --test "workbench/server/src/**/*.test.ts" workbench/server/test/runtime-app.test.ts` | **NOT RERUN TO COMPLETION at `0d1bbc7b`** — the earlier 333/334 result belongs to `37265cf8` and is not current proof; its one failure was the sandbox file-watcher limit. |
+| `npm run quality-and-tests` | **NOT RUN TO COMPLETION at `0d1bbc7b`** — this sandbox prevents the runner from reading the system process table. No old aggregate result is counted as current proof. |
+| `npm run test:browser:main-flows -w @llm-wiki-agent/web` | **BLOCKED at `0d1bbc7b`** — the sandbox rejects listening on `127.0.0.1:5180` with `EPERM`, and the runner cannot read the process table. The strengthened journey awaits the pull request's GitHub `browser-main-flows` job in a normal environment and is not claimed as passing locally. |
+| Earlier local run at `e39fa2076b403b7bea0e06f138dc1c435b7cea88` | Historical PASS — the then-current real frontend/backend browser journeys passed. This predates the later implementation and test fixes and is **not** final proof for `0d1bbc7b`. |
 
 ## Exact tracked-document checks
 
@@ -90,25 +95,25 @@ NODE
 
 ## V3 §9.2 production acceptance rows
 
-The rows below follow V3 §9.2 in order. A current-head PASS names only F1–F6 evidence completed at `37265cf8`; F7 is reported as environment-limited, not as a full PASS. The earlier Tasks 1–4 links remain historical evidence for unchanged path-identity behavior, while the strengthened real-browser journey is not counted as passing at this head. No local result waives either pending three-platform row.
+The rows below follow V3 §9.2 in order. Every row names a directly executable command. A current-head PASS applies only where the command completed at `0d1bbc7b`; earlier Tasks 1–4 results remain historical evidence, while commands not rerun at this head are labeled that way. The strengthened real-browser journey is not counted as passing, and no local result waives either pending three-platform row.
 
 | Stage | Acceptance row | Exact current-head command/evidence | Result and current status |
 |---|---|---|---|
-| Stage 2 | 文件发现 | Earlier Tasks 1–4 path evidence; F6 | The path implementation did not change after the preceding acceptance run, and current builds/types pass. No fresh row-specific command is claimed in this final batch. |
-| Stage 2 | 生成与解析 | Earlier Tasks 1–4 path evidence; F2, F5, F6 | Shared contracts, graph engine, builds, and types pass at current head. The earlier path-specific evidence remains historical, not a fresh rerun. |
-| Stage 2 | 精确位置 | Earlier Tasks 1–4 path evidence; F6 | Current builds and types pass. No fresh exact-location-focused command is claimed in this final batch. |
-| Stage 3 | 预览失效 | F1, F3, F4 | PASS at current head for automated server and interface coverage. A conflict mismatch is asserted to leave zero persistent side effects; the strengthened real-browser stale-preview journey remains pending. |
-| Stage 1 | 引擎兜底 | F5 | PASS at current head — 809/809 shared graph-engine checks pass. |
-| Stage 2 | 告警存储 | F2, F3, F4 | PASS at current head for contracts and interface behavior. |
-| Stage 2 | 工作台告警 | F3, F4 | PASS at current head for automated interface coverage. The final readable-graph browser journey remains pending in GitHub `browser-main-flows`. |
-| Stage 3 | 工作台改名 | F1, F2, F3, F4 | PASS at current head for focused server, contract, and interface coverage, including retained evidence after failed refresh and retry. The current-head real-browser journey remains pending. |
-| Stage 2 | 离线 HTML | Earlier Tasks 1–4 evidence; F5, F6 | Shared engine, builds, and types pass at current head. No current-head Chromium offline run is claimed by this report. |
-| Stage 2 | 首次迁移 | F3, F4 | PASS at current head for automated interface coverage. The final end-to-end migration proof remains part of the pending GitHub browser journey. |
-| Stage 2 | CLI / CI | F6 | PASS at current head for builds, types, lint, boundaries, privacy, and formatting. |
-| Stage 2 | 路径可移植性 | Earlier Tasks 1–4 evidence; `.github/workflows/path-portability.yml` | Current Ubuntu/macOS/Windows PR jobs are pending, so this row is not complete. No current three-platform result is claimed. |
-| Stage 3 | 等价改名可移植性 | F1; `.github/workflows/path-portability.yml` | Focused rename coverage passes at current head. Current Ubuntu/macOS/Windows equivalent-rename jobs are pending, so this row is not complete. |
-| Stage 2 | 性能 | Earlier Tasks 1–4 evidence; F5, F6 | Current graph-engine, build, and type checks pass. No fresh path-performance-focused command is claimed in this final batch. |
-| Stage 3 | 主动改名 | F1, F2, F3, F4 | PASS at current head for automated conflict, recovery, rebuild-retry, receipt-cardinality, and interface coverage. The strengthened browser journey and three-platform acceptance remain pending. |
+| Stage 2 | 文件发现 | `node --test tests/js/unicode-normalization.test.js tests/js/unicode-case-folding.test.js tests/js/wiki-file-discovery.test.js tests/js/wikilink-parser.test.js tests/js/wiki-link-index.test.js tests/js/wiki-link-cli.test.js` | Earlier Tasks 1–4 PASS; **not rerun at `0d1bbc7b`**. The current three-platform workflow remains pending. |
+| Stage 2 | 生成与解析 | `bash tests/graph-path-identity-build.regression-1.sh` | Earlier tracked-only PASS; **not rerun at `0d1bbc7b`**. No fresh current-head result is claimed. |
+| Stage 2 | 精确位置 | `node --test tests/js/wikilink-parser.test.js tests/js/wiki-link-index.test.js` | Earlier tracked-only PASS; **not rerun at `0d1bbc7b`**. Current server/web types and builds pass separately. |
+| Stage 3 | 预览失效 | `node --import tsx --test workbench/server/src/graph-renames.test.ts workbench/server/src/graph-rename-routes.test.ts workbench/server/src/graph-rename-journal.test.ts workbench/server/src/graph-rename-files.test.ts`; `node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test workbench/web/test/app-graph-rename-recovery.test.tsx workbench/web/test/graph-rename-dialog.test.tsx`; `node --import tsx --test workbench/web/test/graph-renames-api.test.ts` | PASS at `0d1bbc7b` — 76/76 server, 33/33 recovery UI, and 7/7 API checks. Stale conflict observations return the same live complete set with zero writes and `blocked` priority. The real-browser command remains blocked. |
+| Stage 1 | 引擎兜底 | `npm run test -w @llm-wiki/graph-engine` | Earlier tracked-only PASS; **not rerun at `0d1bbc7b`**. No current-head engine-suite PASS is claimed. |
+| Stage 2 | 告警存储 | `npm run test -w @llm-wiki/workbench-contracts`; `npm run test:dom -w @llm-wiki-agent/web` | PASS at `0d1bbc7b` — 72/72 contracts and 177/177 DOM checks. |
+| Stage 2 | 工作台告警 | `npm run test:unit -w @llm-wiki-agent/web`; `npm run test:dom -w @llm-wiki-agent/web`; `npm run test:browser:main-flows -w @llm-wiki-agent/web` | Unit 212/212 and DOM 177/177 PASS at `0d1bbc7b`; the real-browser command is **BLOCKED** by `127.0.0.1:5180` `EPERM` and process-table restrictions, so GitHub `browser-main-flows` remains pending. |
+| Stage 3 | 工作台改名 | `node --import tsx --test workbench/server/src/graph-renames.test.ts workbench/server/src/graph-rename-routes.test.ts workbench/server/src/graph-rename-journal.test.ts workbench/server/src/graph-rename-files.test.ts`; `node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test workbench/web/test/app-graph-rename-recovery.test.tsx workbench/web/test/graph-rename-dialog.test.tsx`; `node --import tsx --test workbench/web/test/graph-renames-api.test.ts`; `npm run test:browser:main-flows -w @llm-wiki-agent/web` | Focused commands PASS at `0d1bbc7b` with 76/76, 33/33, and 7/7. The real-browser command remains blocked and pending in GitHub. |
+| Stage 2 | 离线 HTML | `bash tests/regression.sh`; `bash tests/graph-offline-warnings.regression-1.sh` | Earlier tracked-only PASS; **not rerun at `0d1bbc7b`**. No current-head Chromium offline PASS is claimed. |
+| Stage 2 | 首次迁移 | `npm run test:dom -w @llm-wiki-agent/web`; `npm run test:browser:main-flows -w @llm-wiki-agent/web` | DOM 177/177 PASS at `0d1bbc7b`; the end-to-end browser proof is blocked locally and pending in GitHub. |
+| Stage 2 | CLI / CI | `npm run build -w @llm-wiki-agent/server`; `npm run build -w @llm-wiki-agent/web`; `npm run check:boundaries`; `npm run check:privacy`; `npm run quality-and-tests` | Builds, boundaries, and privacy PASS at `0d1bbc7b`. `npm run quality-and-tests` is **not complete** because this sandbox forbids process-table reads; no aggregate PASS is claimed. |
+| Stage 2 | 路径可移植性 | `node --test tests/js/unicode-normalization.test.js tests/js/unicode-case-folding.test.js tests/js/wiki-file-discovery.test.js tests/js/wikilink-parser.test.js tests/js/wiki-link-index.test.js tests/js/wiki-link-cli.test.js` in `.github/workflows/path-portability.yml` | Ubuntu/macOS/Windows jobs are **pending at `0d1bbc7b`**. Earlier Tasks 1–4 links are historical only, so this row is not complete. |
+| Stage 3 | 等价改名可移植性 | `node --import tsx --test workbench/server/src/graph-rename-portability.test.ts` in `.github/workflows/path-portability.yml` | Ubuntu/macOS/Windows jobs are **pending at `0d1bbc7b`**. No current three-platform PASS is claimed. |
+| Stage 2 | 性能 | `node --test tests/js/wiki-link-performance.test.js` | Earlier tracked-only PASS; **not rerun at `0d1bbc7b`**. No fresh current-head performance result is claimed. |
+| Stage 3 | 主动改名 | `node --import tsx --test workbench/server/src/graph-renames.test.ts workbench/server/src/graph-rename-routes.test.ts workbench/server/src/graph-rename-journal.test.ts workbench/server/src/graph-rename-files.test.ts`; `node --test-concurrency=1 --import tsx --import ./workbench/web/test/setup-dom.ts --test workbench/web/test/app-graph-rename-recovery.test.tsx workbench/web/test/graph-rename-dialog.test.tsx`; `node --import tsx --test workbench/web/test/graph-renames-api.test.ts`; `node --import tsx --test --test-name-pattern='^browser rename' workbench/web/test/browser/browser-main-flows.test.ts`; `npm run test:browser:main-flows -w @llm-wiki-agent/web` | Focused current-head commands PASS with 76/76, 33/33, 7/7, and 2/2. Successful ordinary rename and manual rebuild leave only a byte-free terminal receipt and remove content copies, backups, stages, transit files, and evidence. The real browser and three-platform proof remain pending. |
 
 ## Documentation coverage map
 
@@ -127,4 +132,4 @@ No diagram drift was found. The existing product diagram stays at the frontend �
 
 ## Release boundary
 
-v3.6.89 has final tracked-only non-browser evidence at `37265cf8` while keeping rename optional: path-safe graphs and readable warnings remain useful when the user never invokes rename. This report intentionally stops short of full production acceptance until the strengthened GitHub browser journey passes at this implementation head, the Ubuntu, macOS, and Windows jobs pass both portability suites, and the V3 §9.2 status is updated with those links.
+v3.6.89 has final focused tracked-only evidence at `0d1bbc7b` while keeping rename optional: path-safe graphs and readable warnings remain useful when the user never invokes rename. This report intentionally stops short of full production acceptance until the strengthened GitHub browser journey passes at this implementation head, the Ubuntu, macOS, and Windows jobs pass both portability suites, and the V3 §9.2 status is updated with those links.
