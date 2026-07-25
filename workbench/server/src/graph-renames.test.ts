@@ -113,7 +113,7 @@ test("a blocked recovery record takes precedence over a live conflicted journal"
 
 test("resolve recovery returns a repository block with every receipt and zero persistent changes", async () => {
 	const kb = await makeKnowledgeBase();
-	const now = new Date("2026-07-25T00:00:00.000Z");
+	let now = new Date("2026-07-23T00:00:00.000Z");
 	const operationId = "30303030-3030-4030-8030-303030303030";
 	const blockedOperationId = "40404040-4040-4040-8040-404040404040";
 	const receiptOperationIds = [
@@ -122,6 +122,8 @@ test("resolve recovery returns a repository block with every receipt and zero pe
 	];
 	try {
 		const store = new GraphRenameJournalStore(kb, { now: () => now });
+		let expiredEvidencePath = "";
+		let expiredEvidence = Buffer.alloc(0);
 		for (const [index, receiptOperationId] of receiptOperationIds.entries()) {
 			await store.acquire({
 				operationId: receiptOperationId,
@@ -138,13 +140,17 @@ test("resolve recovery returns a repository block with every receipt and zero pe
 				sourcePath: `wiki/topics/old-${index}.md`,
 				bytes: evidence,
 			});
+			if (index === 0) {
+				expiredEvidencePath = relativePath;
+				expiredEvidence = evidence;
+			}
 			await store.compactTerminal({
 				operationId: receiptOperationId,
 				now,
 				resolvedConflictEvidence: [{
 					relative_path: relativePath,
 					sha256: createHash("sha256").update(evidence).digest("hex"),
-					expires_at: "2026-08-24T00:00:00.000Z",
+					expires_at: index === 0 ? "2026-07-24T00:00:00.000Z" : "2026-08-24T00:00:00.000Z",
 				}],
 			});
 			await store.release(receiptOperationId);
@@ -160,8 +166,10 @@ test("resolve recovery returns a repository block with every receipt and zero pe
 		await store.transition(operationId, "conflicted", { conflicts: [] });
 		await store.release(operationId);
 		await store.writeBlocked(blockedOperationId, "invalid_journal");
+		now = new Date("2026-07-25T00:00:00.000Z");
 
 		const before = await summarizeDirectory(kb);
+		assert.deepEqual(await readFile(path.join(kb, ...expiredEvidencePath.split("/"))), expiredEvidence);
 		const result = await createGraphRenameService({ now: () => now, journalStore: () => store })
 			.resolveGraphRenameRecovery(kb, {
 				operation_id: operationId,
@@ -173,8 +181,9 @@ test("resolve recovery returns a repository block with every receipt and zero pe
 		if (result.status !== "blocked") assert.fail("repository block must stop recovery resolution");
 		assert.equal(result.reason, "invalid_journal");
 		assert.equal(result.operation_id, blockedOperationId);
-		assert.deepEqual(result.retained_evidence_receipts.map((receipt) => receipt.operation_id), receiptOperationIds);
+		assert.deepEqual(result.retained_evidence_receipts.map((receipt) => receipt.operation_id), [receiptOperationIds[1]]);
 		assert.deepEqual(await summarizeDirectory(kb), before);
+		assert.deepEqual(await readFile(path.join(kb, ...expiredEvidencePath.split("/"))), expiredEvidence);
 	} finally {
 		await rm(kb, { recursive: true, force: true });
 	}
