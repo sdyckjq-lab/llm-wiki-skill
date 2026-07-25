@@ -569,6 +569,8 @@ async function resolveRecovery(
 	trigger: (kbPath: string) => { ok: true; status: "started" | "queued" },
 	options: GraphRenameServiceOptions,
 ): Promise<GraphRenameRecoveryData> {
+	const repositoryRecovery = await collectRecovery(store, now);
+	if (repositoryRecovery.blocked) return recoveryData(repositoryRecovery);
 	const record = await store.read(body.operation_id);
 	if (!record || record.kind === "blocked") return GraphRenameRecoveryDataSchema.parse({ status: "blocked", reason: "invalid_journal", operation_id: body.operation_id, retained_evidence_receipts: [] });
 	if (record.kind === "receipt") return recoveryData(await collectRecovery(store, now));

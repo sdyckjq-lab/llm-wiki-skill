@@ -111,6 +111,75 @@ test("a blocked recovery record takes precedence over a live conflicted journal"
 	}
 });
 
+test("resolve recovery returns a repository block with every receipt and zero persistent changes", async () => {
+	const kb = await makeKnowledgeBase();
+	const now = new Date("2026-07-25T00:00:00.000Z");
+	const operationId = "30303030-3030-4030-8030-303030303030";
+	const blockedOperationId = "40404040-4040-4040-8040-404040404040";
+	const receiptOperationIds = [
+		"50505050-5050-4050-8050-505050505050",
+		"60606060-6060-4060-8060-606060606060",
+	];
+	try {
+		const store = new GraphRenameJournalStore(kb, { now: () => now });
+		for (const [index, receiptOperationId] of receiptOperationIds.entries()) {
+			await store.acquire({
+				operationId: receiptOperationId,
+				immutableDigest: String(index + 5).repeat(64),
+				sourcePath: `wiki/topics/old-${index}.md`,
+				targetPath: `wiki/topics/new-${index}.md`,
+			});
+			await store.transition(receiptOperationId, "applying", {});
+			await store.transition(receiptOperationId, "rolled_back", { graphRebuild: "succeeded" });
+			const evidence = Buffer.from(`receipt-${index}\n`);
+			const relativePath = await store.preserveConflictVariant({
+				operationId: receiptOperationId,
+				kind: "current",
+				sourcePath: `wiki/topics/old-${index}.md`,
+				bytes: evidence,
+			});
+			await store.compactTerminal({
+				operationId: receiptOperationId,
+				now,
+				resolvedConflictEvidence: [{
+					relative_path: relativePath,
+					sha256: createHash("sha256").update(evidence).digest("hex"),
+					expires_at: "2026-08-24T00:00:00.000Z",
+				}],
+			});
+			await store.release(receiptOperationId);
+		}
+
+		await store.acquire({
+			operationId,
+			immutableDigest: "3".repeat(64),
+			sourcePath: "wiki/topics/a.md",
+			targetPath: "wiki/topics/renamed.md",
+		});
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "conflicted", { conflicts: [] });
+		await store.release(operationId);
+		await store.writeBlocked(blockedOperationId, "invalid_journal");
+
+		const before = await summarizeDirectory(kb);
+		const result = await createGraphRenameService({ now: () => now, journalStore: () => store })
+			.resolveGraphRenameRecovery(kb, {
+				operation_id: operationId,
+				action: "finish_rollback",
+				observed_conflicts: [],
+			});
+
+		assert.equal(result.status, "blocked");
+		if (result.status !== "blocked") assert.fail("repository block must stop recovery resolution");
+		assert.equal(result.reason, "invalid_journal");
+		assert.equal(result.operation_id, blockedOperationId);
+		assert.deepEqual(result.retained_evidence_receipts.map((receipt) => receipt.operation_id), receiptOperationIds);
+		assert.deepEqual(await summarizeDirectory(kb), before);
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
 test("rename rewrites a deterministic bare link to the canonical full page path", async () => {
 	const kb = await makeKnowledgeBase();
 	try {
