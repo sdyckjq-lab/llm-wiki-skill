@@ -378,6 +378,45 @@ test("startup recovery prunes expired retained evidence before exposing receipts
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("recovery GET only filters expired receipts and a later write performs cleanup", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "abababab-abab-4aba-8aba-abababababab";
+	const now = new Date("2026-08-22T00:00:00.000Z");
+	try {
+		const store = new GraphRenameJournalStore(kb, { now: () => now });
+		await store.acquire({ operationId, immutableDigest: "a".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "rolled_back", { graphRebuild: "succeeded" });
+		const evidence = Buffer.from("expired evidence\n");
+		const evidencePath = await store.preserveConflictVariant({ operationId, kind: "current", sourcePath: "wiki/topics/a.md", bytes: evidence });
+		await store.compactTerminal({
+			operationId,
+			now: new Date("2026-08-01T00:00:00.000Z"),
+			resolvedConflictEvidence: [{
+				relative_path: evidencePath,
+				sha256: createHash("sha256").update(evidence).digest("hex"),
+				expires_at: "2026-07-21T00:00:00.000Z",
+			}],
+		});
+		await store.release(operationId);
+
+		const service = createGraphRenameService({ now: () => now, journalStore: () => store });
+		const beforeGet = await summarizeDirectory(kb);
+		assert.deepEqual(await service.getGraphRenameRecovery(kb), { status: "clear", retained_evidence_receipts: [] });
+		assert.deepEqual(await summarizeDirectory(kb), beforeGet);
+
+		assert.deepEqual(await service.resolveGraphRenameRecovery(kb, {
+			operation_id: operationId,
+			action: "finish_rollback",
+			observed_conflicts: [],
+		}), { status: "clear", retained_evidence_receipts: [] });
+		await assert.rejects(readFile(path.join(kb, ...evidencePath.split("/"))));
+		await assert.rejects(readdir(path.dirname(path.join(kb, ...evidencePath.split("/")))));
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
 test("startup recovery accepts a target rename recorded immediately before commit", async () => {
 	const kb = await makeKnowledgeBase();
 	const operationId = "88888888-8888-4888-8888-888888888888";

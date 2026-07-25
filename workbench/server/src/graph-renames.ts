@@ -151,7 +151,6 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		getGraphRenameRecovery: async (kbPath) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
 			const store = trackedStoreFor(realKbPath);
-			await pruneRenameOperationData(store, now);
 			const collected = await collectRecovery(store, now);
 			if (!collected.blocked && collected.primary?.kind === "journal" && collected.primary.state === "conflicted") {
 				return currentConflictRecoveryData(
@@ -569,6 +568,7 @@ async function resolveRecovery(
 	trigger: (kbPath: string) => { ok: true; status: "started" | "queued" },
 	options: GraphRenameServiceOptions,
 ): Promise<GraphRenameRecoveryData> {
+	await pruneRenameOperationData(store, now);
 	const repositoryRecovery = await collectRecovery(store, now);
 	if (repositoryRecovery.blocked) return recoveryData(repositoryRecovery);
 	const record = await store.read(body.operation_id);
