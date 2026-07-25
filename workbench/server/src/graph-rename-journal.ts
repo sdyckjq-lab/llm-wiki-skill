@@ -402,6 +402,8 @@ export class GraphRenameJournalStore {
 		const current = await this.readRequiredJournal(input.operationId);
 		if (!isTerminalState(current.state)) throw new Error("cannot compact non-terminal journal");
 		await this.removeWorkingCopies(current);
+		const retainedEvidence = input.resolvedConflictEvidence ?? current.retained_evidence;
+		await this.removeUnretainedEvidence(current.operation_id, retainedEvidence);
 		const receipt: GraphRenameReceipt = {
 			kind: "receipt",
 			operation_id: current.operation_id,
@@ -413,7 +415,7 @@ export class GraphRenameJournalStore {
 			graph_rebuild: current.graph_rebuild,
 			created_at: current.created_at,
 			updated_at: input.now.toISOString(),
-			retained_evidence: input.resolvedConflictEvidence ?? current.retained_evidence,
+			retained_evidence: retainedEvidence,
 			final_hashes: { ...(current.state === "rolled_back" ? current.original_hashes : current.intended_hashes) },
 			rename_state: current.rename_state,
 		};
@@ -440,6 +442,7 @@ export class GraphRenameJournalStore {
 			await this.removeOwnedFile(item.relative_path, item.sha256);
 		}
 		if (evidence.length !== record.retained_evidence.length) await this.writeManifest({ ...record, retained_evidence: evidence });
+		if (evidence.length === 0) await this.removeKnownEmptyDataDirectories(record.operation_id);
 		if (evidence.length === 0 && input.now.getTime() >= terminalAt + input.receiptRetentionMs) {
 			await this.assertSafeOperationDirectory(record.operation_id, false);
 			await this.removeManifestAndEmptyOperationDirectory(record.operation_id);
@@ -585,6 +588,22 @@ export class GraphRenameJournalStore {
 		for (const [key, relative] of Object.entries(record.stage_paths)) await this.removeOwnedFile(relative, record.intended_hashes[key]);
 		for (const [key, relative] of Object.entries(record.backup_paths)) await this.removeOwnedFile(relative, record.original_hashes[key]);
 		for (const [key, relative] of Object.entries(record.intended_paths)) await this.removeOwnedFile(relative, record.intended_hashes[key]);
+	}
+
+	private async removeUnretainedEvidence(operationId: string, retainedEvidence: PreservedEvidence[]): Promise<void> {
+		const evidenceDirectory = path.join(this.operationsRoot, operationId, "evidence");
+		const entries = await readdir(evidenceDirectory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+			if (error.code === "ENOENT") return [];
+			throw error;
+		});
+		const retainedPaths = new Set(retainedEvidence.map((item) => item.relative_path));
+		for (const entry of entries) {
+			const match = /^(?:current|original|intended)-([a-f0-9]{64})\.bin$/.exec(entry.name);
+			if (!entry.isFile() || entry.isSymbolicLink() || !match) throw conflictError("evidence directory contains an unmanaged path");
+			const relativePath = path.posix.join(".wiki-tmp", "rename-ops", operationId, "evidence", entry.name);
+			if (!retainedPaths.has(relativePath)) await this.removeOwnedFile(relativePath, match[1]);
+		}
+		await rmdir(evidenceDirectory).catch(() => undefined);
 	}
 
 	private async recordOwnedPathIfKnown(operationId: string, relativePath: string, bytes: Buffer): Promise<void> {

@@ -372,6 +372,7 @@ test("startup recovery prunes expired retained evidence before exposing receipts
 		const service = createGraphRenameService({ now: () => now, journalStore: () => store });
 		await service.recoverGraphRenameOperations(kb);
 		await assert.rejects(readFile(path.join(kb, ...evidencePath.split("/"))));
+		await assert.rejects(readdir(path.dirname(path.join(kb, ...evidencePath.split("/")))));
 		const receipt = await store.read(operationId) as any;
 		assert.deepEqual(receipt.retained_evidence, []);
 	} finally { await rm(kb, { recursive: true, force: true }); }
@@ -676,7 +677,16 @@ test("recovery retains current and unchosen original evidence before finishing c
 		await store.writeOwnedFile(intendedPath, intended);
 		await store.writePrepared({ operationId, immutableDigest: "d".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md", originalHashes: { "wiki/topics/a.md": sha(original) }, intendedHashes: { "wiki/topics/a.md": sha(intended) }, backupPaths: { "wiki/topics/a.md": backupPath }, intendedPaths: { "wiki/topics/a.md": intendedPath } });
 		await store.transition(operationId, "applying", {});
-		await store.transition(operationId, "conflicted", { conflicts: [{ source_path: "wiki/topics/a.md", current_state: "present", current_sha256: sha(current), preserved_variants: [] }] });
+		const obsolete = Buffer.from("obsolete-conflict-evidence\n");
+		const obsoletePath = await store.preserveConflictVariant({ operationId, kind: "current", sourcePath: "wiki/topics/a.md", bytes: obsolete });
+		await store.transition(operationId, "conflicted", {
+			conflicts: [{
+				source_path: "wiki/topics/a.md",
+				current_state: "present",
+				current_sha256: sha(current),
+				preserved_variants: [{ kind: "current", relative_path: obsoletePath, sha256: sha(obsolete) }],
+			}],
+		});
 		await store.release(operationId);
 		const service = createGraphRenameService({ triggerRebuild: () => ({ ok: true, status: "started" }) });
 		const refreshed = await service.resolveGraphRenameRecovery(kb, { operation_id: operationId, action: "finish_commit", observed_conflicts: [] });
@@ -687,6 +697,18 @@ test("recovery retains current and unchosen original evidence before finishing c
 		const evidenceBytes = await Promise.all(evidence.map((item) => readFile(path.join(kb, ...item.relative_path.split("/")))));
 		assert.deepEqual(evidenceBytes.map((bytes) => bytes.toString()).sort(), [original.toString(), current.toString()].sort());
 		assert.deepEqual(await readFile(path.join(kb, "wiki", "topics", "renamed.md")), intended);
+		await writeFile(path.join(kb, "wiki", "graph-data.json"), JSON.stringify({
+			meta: { build_date: "2026-07-25T00:00:00.000Z", wiki_title: "Test", total_nodes: 1, total_edges: 0 },
+			nodes: [{ id: "wiki/topics/renamed.md", source_path: "wiki/topics/renamed.md", label: "Renamed", type: "topic" }],
+			edges: [],
+		}));
+		await service.recoverGraphRenameOperations(kb);
+		const receipt = await store.read(operationId);
+		assert.equal(receipt?.kind, "receipt");
+		if (!receipt || receipt.kind !== "receipt") assert.fail("published recovery must compact to a receipt");
+		assert.deepEqual(receipt.retained_evidence.map((item) => item.relative_path).sort(), evidence.map((item) => item.relative_path).sort());
+		await assert.rejects(readFile(path.join(kb, ...obsoletePath.split("/"))));
+		assert.deepEqual((await readdir(path.dirname(path.join(kb, ...obsoletePath.split("/"))))).sort(), evidence.map((item) => path.basename(item.relative_path)).sort());
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
