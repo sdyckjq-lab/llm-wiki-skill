@@ -1,25 +1,33 @@
 import { readGraphData } from "./graph.js";
 import { type GraphRenameJournal, type GraphRenameJournalStore } from "./graph-rename-journal.js";
 
+const GRAPH_PUBLICATION_RETRY_DELAYS_MS = [0, 10, 25, 50, 100, 250, 500, 1_000] as const;
+
 export function isPendingGraphPublication(record: GraphRenameJournal): boolean {
 	return (record.state === "committed" || record.state === "rolled_back") && record.graph_rebuild !== "succeeded";
 }
 
 export async function markGraphRenamePublished(kbPath: string, store: GraphRenameJournalStore, now: () => Date): Promise<void> {
-	for (const candidate of await store.listForStartup()) {
-		if (candidate.kind !== "journal" || !isPendingGraphPublication(candidate)) continue;
-		let locked = false;
-		try {
-			const record = await store.acquireExisting(candidate.operation_id);
-			locked = true;
-			if (!await isRenamePublished(kbPath, record)) continue;
-			await store.transition(record.operation_id, record.state, { graphRebuild: "succeeded" });
-			await store.compactTerminal({ operationId: record.operation_id, now: now() });
-		} catch (error) {
-			if ((error as { code?: unknown }).code !== "BUSY") throw error;
-		} finally {
-			if (locked) await store.release(candidate.operation_id);
+	for (const delay of GRAPH_PUBLICATION_RETRY_DELAYS_MS) {
+		let busy = false;
+		for (const candidate of await store.listForStartup()) {
+			if (candidate.kind !== "journal" || !isPendingGraphPublication(candidate)) continue;
+			let locked = false;
+			try {
+				const record = await store.acquireExisting(candidate.operation_id);
+				locked = true;
+				if (!await isRenamePublished(kbPath, record)) continue;
+				await store.transition(record.operation_id, record.state, { graphRebuild: "succeeded" });
+				await store.compactTerminal({ operationId: record.operation_id, now: now() });
+			} catch (error) {
+				if ((error as { code?: unknown }).code !== "BUSY") throw error;
+				busy = true;
+			} finally {
+				if (locked) await store.release(candidate.operation_id);
+			}
 		}
+		if (!busy || delay === GRAPH_PUBLICATION_RETRY_DELAYS_MS.at(-1)) return;
+		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 }
 

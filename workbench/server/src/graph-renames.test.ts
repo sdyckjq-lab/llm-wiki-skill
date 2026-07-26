@@ -7,6 +7,7 @@ import test from "node:test";
 
 import { createGraphRenameService } from "./graph-renames.js";
 import { GraphRenameJournalStore } from "./graph-rename-journal.js";
+import { markGraphRenamePublished } from "./graph-rename-publication.js";
 import { publishGraphRebuildResult } from "./graph.js";
 
 async function makeKnowledgeBase() {
@@ -349,6 +350,69 @@ test("prepared failure removes operation-owned files created before manifest upd
 		const preview = await service.previewGraphRename(kb, "wiki/topics/a.md", "renamed.md");
 		await assert.rejects(service.applyGraphRename(kb, { operation_id: preview.operation_id, expires_at: preview.expires_at, source_path: preview.source_path, new_name: "renamed.md", preview_digest: preview.preview_digest, resolutions: [], confirmed: true }));
 		assert.deepEqual(await readdir(path.join(kb, ".wiki-tmp")).catch(() => [] as string[]), []);
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("startup recovery removes a journal that crashed during preparation", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "12121212-1212-4121-8121-121212121212";
+	try {
+		const store = new GraphRenameJournalStore(kb);
+		const original = await readFile(path.join(kb, "wiki", "topics", "a.md"));
+		const digest = createHash("sha256").update(original).digest("hex");
+		await store.acquire({ operationId, immutableDigest: "1".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({
+			operationId,
+			immutableDigest: "1".repeat(64),
+			sourcePath: "wiki/topics/a.md",
+			targetPath: "wiki/topics/renamed.md",
+			originalHashes: { "wiki/topics/a.md": digest },
+			intendedHashes: { "wiki/topics/a.md": digest },
+		});
+		await store.release(operationId);
+
+		const service = createGraphRenameService({ journalStore: () => store });
+		assert.deepEqual(await service.recoverGraphRenameOperations(kb), { needsRebuild: false });
+		assert.deepEqual(await store.listForStartup(), []);
+		await assert.rejects(readdir(path.join(kb, ".wiki-tmp", "rename-ops", operationId)));
+		assert.equal(await readFile(path.join(kb, "wiki", "topics", "a.md"), "utf8"), "# A\n\n[[wiki/topics/a.md]]\n");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("graph publication retries after a busy rename lock", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "13131313-1313-4131-8131-131313131313";
+	try {
+		await writeFile(path.join(kb, "wiki", "graph-data.json"), JSON.stringify({
+			meta: { total_nodes: 1, total_edges: 0 },
+			nodes: [{ id: "wiki/topics/renamed.md", source_path: "wiki/topics/renamed.md" }],
+			edges: [],
+		}));
+		const record = {
+			kind: "journal" as const,
+			operation_id: operationId,
+			state: "committed" as const,
+			graph_rebuild: "started" as const,
+			source_path: "wiki/topics/a.md",
+			target_path: "wiki/topics/renamed.md",
+		};
+		let acquireAttempts = 0;
+		let compacted = false;
+		const store = {
+			listForStartup: async () => [record],
+			acquireExisting: async () => {
+				acquireAttempts += 1;
+				if (acquireAttempts === 1) throw Object.assign(new Error("busy"), { code: "BUSY" });
+				return record;
+			},
+			transition: async () => undefined,
+			compactTerminal: async () => { compacted = true; },
+			release: async () => undefined,
+		} as unknown as GraphRenameJournalStore;
+
+		await markGraphRenamePublished(kb, store, () => new Date());
+		assert.equal(acquireAttempts, 2);
+		assert.equal(compacted, true);
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 

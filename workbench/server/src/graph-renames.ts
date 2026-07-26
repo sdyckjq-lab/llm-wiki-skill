@@ -183,8 +183,7 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 				}
 				try {
 				if (record.state === "prepared") {
-					await store.transition(record.operation_id, "rolled_back", { renameState: "old", graphRebuild: "succeeded" });
-					await store.compactTerminal({ operationId: record.operation_id, now: now() });
+					await store.abortPrepared(record.operation_id);
 				} else if (record.state === "applying") {
 					const state = await inspectJournalContent(realKbPath, record);
 					if (state === "blocked") {
