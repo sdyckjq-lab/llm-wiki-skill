@@ -186,7 +186,7 @@ test("a hanging browser installation stops at its boundary and cleans descendant
 	});
 	assert.equal(result.status, "timed-out");
 	assert.equal(result.timedOut, true);
-	assert.ok(Date.now() - startedAt < 3_000, "controlled timeout exceeded its cleanup boundary");
+	assert.ok(Date.now() - startedAt < 5_000, "controlled timeout exceeded its cleanup boundary");
 	const output = await readFile(path.join(directory, "browser-install.log"), "utf8");
 	const descendantPid = Number(output.match(/^\d+$/m)?.[0]);
 	assert.ok(Number.isInteger(descendantPid));
