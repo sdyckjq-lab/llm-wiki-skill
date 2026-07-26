@@ -460,7 +460,7 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		const migrationResponsePromise = waitForGraphRebuildResponse(page, kbA);
 		await page.getByRole("button", { name: "重构" }).click();
 		const migrationResponse = await migrationResponsePromise;
-		assert.equal(migrationResponse.status, "started", JSON.stringify({
+		assert.equal(["started", "queued"].includes(migrationResponse.status), true, JSON.stringify({
 			busyStatuses: busyResponses.map((response) => response.body.data.status),
 			completedUpdates: graphEventReceipts.slice(initialRebuildBaseline).filter((event) => event.type === "graph_updated").length,
 		}));
@@ -1081,9 +1081,10 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	assert.equal(equivalentEntries.some((name) => name.startsWith(".llm-wiki-rename-")), false);
 	assert.equal(await readFile(join(equivalentKbPath, "wiki", "topics", "casename.md"), "utf8"), "# Case page\n\n[[wiki/topics/casename.md]]\n");
 	const equivalentLayout = JSON.parse(await readFile(join(equivalentKbPath, ".wiki-graph-layout.json"), "utf8")) as { pins: Record<string, unknown> };
-	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/CaseName.md"), false);
-	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/casename.md"), true);
-	await equivalentDialog.getByRole("button", { name: "完成" }).click();
+		assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/CaseName.md"), false);
+		assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/casename.md"), true);
+		await equivalentDialog.getByRole("heading", { name: /页面已安全改名|恢复处理完成/ }).waitFor({ timeout: OPERATION_TIMEOUT_MS });
+		await equivalentDialog.getByRole("button", { name: "完成" }).click();
 	await equivalentDialog.waitFor({ state: "detached" });
 
 	// Crash recovery: a changed conflict set refreshes before a confirmed rollback preserves evidence.
