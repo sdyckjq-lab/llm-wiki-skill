@@ -77,6 +77,39 @@ graph_browser_playwright_node_path() {
     npx --yes -p playwright -c 'node -e "const path=require(\"path\"); console.log(path.dirname(process.env.PATH.split(\":\")[0]))"'
 }
 
+# 工作台把缺少 meta.warning_summary 的 graph-data.json 判定为过期产物，会在后台强制重建，
+# 把夹具换成真实构建结果（节点 id 变成页面路径、坐标丢失）。用真实成对产物写入夹具，
+# 浏览器断言才能一直落在同一份图谱上（#291）。
+make_graph_fixture_warning_aware() {
+    local kb_root="$1"
+
+    node - "$REPO_ROOT" "$kb_root" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const [repoRoot, kbRoot] = process.argv.slice(2);
+const { assembleGraphArtifactPair, commitGraphArtifactPair } = require(path.join(repoRoot, "scripts/lib/graph-warning-bundle"));
+const graphPath = path.join(kbRoot, "wiki/graph-data.json");
+const graphData = JSON.parse(fs.readFileSync(graphPath, "utf8"));
+if (graphData.meta) delete graphData.meta.warning_summary;
+(async () => {
+  const pair = assembleGraphArtifactPair({ graphData, groups: [], candidateSets: [] });
+  await commitGraphArtifactPair({
+    kbRoot,
+    graphPath,
+    warningPath: path.join(kbRoot, "wiki/graph-warnings.json"),
+    pair
+  });
+})().catch((error) => { console.error(error); process.exit(1); });
+NODE
+}
+
+graph_fixture_build_id() {
+    local kb_root="$1"
+
+    node -e 'const data = require(process.argv[1]); process.stdout.write(String(data.meta.warning_summary.build_id));' \
+        "$kb_root/wiki/graph-data.json"
+}
+
 build_graph_html_fixture_with_layout() {
     local tmp_dir="$1"
 

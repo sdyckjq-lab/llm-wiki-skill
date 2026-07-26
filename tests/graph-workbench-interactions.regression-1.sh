@@ -195,6 +195,8 @@ cat > "$workbench_kb/wiki/entities/$id.md" <<EOF
 这是节点$id 的正文。
 EOF
 done
+make_graph_fixture_warning_aware "$workbench_kb"
+fixture_build_id="$(graph_fixture_build_id "$workbench_kb")"
 cat > "$tmp_dir/home/.llm-wiki-agent/config.json" <<JSON
 {
   "version": 1,
@@ -242,6 +244,10 @@ GRAPH_WORKBENCH_CHROME_EXECUTABLE="$chrome_executable" \
 NODE_PATH="$playwright_node_path" \
 node "$REPO_ROOT/tests/browser/graph-workbench-interactions.mjs" \
     || { dump_dev_logs; fail "workbench graph interaction browser regression should pass"; }
+
+# 夹具被后台重建换掉时，上面的断言会在一份不同的图谱上通过或失败，问题很难看出来。
+[ "$(graph_fixture_build_id "$workbench_kb")" = "$fixture_build_id" ] \
+    || { dump_dev_logs; fail "workbench should not rebuild the fixture graph during the interaction regression"; }
 
 echo "Artifacts: $artifact_dir"
 echo "PASS: graph workbench interaction regression"
