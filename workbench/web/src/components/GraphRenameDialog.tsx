@@ -94,7 +94,7 @@ function GraphRenameDialogState({
 	api = DEFAULT_API,
 }: Props) {
 	const candidates = useMemo(() => [...new Set(candidatePaths)], [candidatePaths]);
-	const [mode, setMode] = useState<Mode>(() => initialMode(recovery, sourcePath));
+	const [mode, setMode] = useState<Mode>(() => initialMode(recovery, sourcePath, candidates.length));
 	const [selectedSource, setSelectedSource] = useState(sourcePath ?? "");
 	const [newName, setNewName] = useState(() => defaultNewName(sourcePath));
 	const [preview, setPreview] = useState<GraphRenamePreviewData | null>(null);
@@ -108,6 +108,7 @@ function GraphRenameDialogState({
 	const [activeRecovery, setActiveRecovery] = useState<GraphRenameRecoveryData | null>(recovery);
 	const [recoveryAction, setRecoveryAction] = useState<"finish_commit" | "finish_rollback" | null>(null);
 	const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+	const [rebuildRetrying, setRebuildRetrying] = useState(false);
 	const applyInFlightRef = useRef(false);
 	const returnFocusRef = useRef<HTMLElement | null>(
 		typeof document !== "undefined" && document.activeElement instanceof HTMLElement
@@ -207,6 +208,22 @@ function GraphRenameDialogState({
 			setMode("recovery-read-failed");
 		} finally {
 			applyInFlightRef.current = false;
+		}
+	};
+
+	const retryGraph = async () => {
+		if (!_onRetryGraph || applyInFlightRef.current) return;
+		applyInFlightRef.current = true;
+		setRebuildRetrying(true);
+		setRecoveryMessage(null);
+		try {
+			await _onRetryGraph();
+		} catch (cause) {
+			setRecoveryMessage(cause instanceof Error ? cause.message : "图谱更新失败，请重试");
+			setMode("rebuild-required");
+		} finally {
+			applyInFlightRef.current = false;
+			setRebuildRetrying(false);
 		}
 	};
 
@@ -511,8 +528,11 @@ function GraphRenameDialogState({
 						<h3>内容已保存，图谱尚未更新</h3>
 						<p>页面改名已经完成。重试只会更新图谱，不会再次修改知识库内容。</p>
 						<p><code>{operation.target_path}</code></p>
+						{recoveryMessage && <p className="graph-rename-error" role="alert">{recoveryMessage}</p>}
 						<DialogFooter>
-							<Button type="button" onClick={() => void _onRetryGraph?.()}>重试更新图谱</Button>
+							<Button type="button" disabled={rebuildRetrying} onClick={() => void retryGraph()}>
+								{rebuildRetrying ? "正在重试更新图谱" : "重试更新图谱"}
+							</Button>
 						</DialogFooter>
 					</section>
 				) : mode === "recovery-blocked" && activeRecovery?.status === "blocked" ? (
@@ -620,11 +640,11 @@ function defaultNewName(sourcePath: string | undefined): string {
 	return basename.replace(/\.md$/i, "");
 }
 
-function initialMode(recovery: GraphRenameRecoveryData | null, sourcePath: string | undefined): Mode {
+function initialMode(recovery: GraphRenameRecoveryData | null, sourcePath: string | undefined, candidateCount: number): Mode {
 	if (recovery?.status === "required") return "recovery-required";
 	if (recovery?.status === "rebuild_required") return "rebuild-required";
 	if (recovery?.status === "blocked") return "recovery-blocked";
-	if (recovery?.status === "clear" && !sourcePath) return "recovery-terminal";
+	if (recovery?.status === "clear" && !sourcePath && candidateCount === 0) return "recovery-terminal";
 	return sourcePath ? "edit-name" : "choose-source";
 }
 

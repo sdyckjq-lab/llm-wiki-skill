@@ -329,6 +329,16 @@ test("the lock holder refuses to adopt a replacement lock with a changed creatio
 	} finally { await rm(kb, { recursive: true, force: true }); }
 });
 
+test("recovery cannot re-enter a lock already held by the same store", async () => {
+	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-reentry-"));
+	try {
+		const operationId = "67676767-6767-4767-8767-676767676767";
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "6".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/b.md" });
+		await assert.rejects(store.acquireExisting(operationId), (error: any) => error.code === "BUSY");
+	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
 test("release does not unlink a lock whose owner content was replaced", async () => {
 	const kb = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-journal-lock-replacement-"));
 	try {

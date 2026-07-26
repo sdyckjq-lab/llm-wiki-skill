@@ -56,6 +56,7 @@ import { assertRegisteredKnowledgeBase } from "./knowledge-bases.js";
 
 const RENAME_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const publicationStores = new Map<string, { store: GraphRenameJournalStore; now: () => Date }>();
+const pendingGraphPublications = new Set<Promise<void>>();
 let publicationListenerInstalled = false;
 
 export interface GraphRenameServiceOptions {
@@ -167,12 +168,19 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		},
 			recoverGraphRenameOperations: async (kbPath) => {
 			const realKbPath = await realKnowledgeBasePath(kbPath);
+			await Promise.all([...pendingGraphPublications]);
 			const store = trackedStoreFor(realKbPath);
 			await pruneRenameOperationData(store, now);
 			let needsRebuild = false;
 			for (const candidate of await store.listForStartup()) {
 				if (candidate.kind !== "journal") continue;
-				const record = await store.acquireExisting(candidate.operation_id);
+				let record: GraphRenameJournal;
+				try {
+					record = await store.acquireExisting(candidate.operation_id);
+				} catch (error) {
+					if ((error as { code?: unknown }).code === "BUSY") continue;
+					throw error;
+				}
 				try {
 				if (record.state === "prepared") {
 					await store.transition(record.operation_id, "rolled_back", { renameState: "old", graphRebuild: "succeeded" });
@@ -294,8 +302,13 @@ export function createGraphRenameService(options: GraphRenameServiceOptions = {}
 		publicationListenerInstalled = true;
 		subscribeGraphEvents((event) => {
 			if (event.type !== "graph_updated") return;
-			const context = publicationStores.get(event.kbPath);
-			if (context) void markGraphRenamePublished(event.kbPath, context.store, context.now);
+			const publication = (async () => {
+				const kbPath = await realpath(event.kbPath).catch(() => event.kbPath);
+				const context = publicationStores.get(kbPath);
+				if (context) await markGraphRenamePublished(kbPath, context.store, context.now);
+			})().catch(() => {});
+			pendingGraphPublications.add(publication);
+			void publication.finally(() => pendingGraphPublications.delete(publication));
 		});
 	}
 	return service;
@@ -520,7 +533,7 @@ async function collectRecovery(store: GraphRenameJournalStore, now: () => Date):
 	const blocked = records.find((record): record is BlockedRenameJournal => record.kind === "blocked") ?? null;
 	const journals = records.filter((record): record is GraphRenameJournal => record.kind === "journal");
 	const receipts = records.filter((record): record is GraphRenameReceipt => record.kind === "receipt" && record.retained_evidence.some((item) => new Date(item.expires_at).getTime() > now().getTime()));
-	const primary = journals.find((record) => record.state === "prepared" || record.state === "applying" || record.state === "conflicted" || isPendingGraphPublication(record)) ?? null;
+	const primary = journals.find((record) => record.state === "prepared" || record.state === "applying" || record.state === "conflicted" || record.state === "committed" || record.state === "rolled_back") ?? null;
 	return { primary, receipts, blocked };
 }
 

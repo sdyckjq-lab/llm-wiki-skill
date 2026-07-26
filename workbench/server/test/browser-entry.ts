@@ -15,6 +15,7 @@ import { modelRegistry } from "../src/agent.js";
 import { triggerGraphRebuild } from "../src/graph.js";
 import { createGraphRenameService } from "../src/graph-renames.js";
 import { defaultGraphRenameRouteService } from "../src/routes/graph-renames.js";
+import { defaultGraphRouteService } from "../src/routes/graph.js";
 import { createRuntimeApplication } from "../src/runtime-app.js";
 import { startWorkbenchServer } from "../src/startup.js";
 
@@ -111,6 +112,11 @@ const browserGraphRenameService = {
 	getActiveKnowledgeBasePath: defaultGraphRenameRouteService.getActiveKnowledgeBasePath,
 };
 Object.assign(defaultGraphRenameRouteService, browserGraphRenameService);
+defaultGraphRouteService.triggerGraphRebuild = (kbPath) => {
+	const result = triggerGraphRebuild(kbPath);
+	recordRenameEvent({ event: "graph_rebuild", outcome: "started" });
+	return { status: result.status };
+};
 
 function recordRenameEvent(event: {
 	event: string;

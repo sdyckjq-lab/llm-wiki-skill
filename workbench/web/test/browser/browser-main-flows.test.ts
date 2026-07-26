@@ -986,6 +986,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		working_copy_fields: [],
 	}], "successful publication must retain only a byte-free terminal receipt");
 	assert.deepEqual(await listRenameResidues(kbPath), [], "successful publication must remove stages, backups, transit names, and evidence");
+	await page.getByRole("dialog", { name: "安全改名" }).getByRole("button", { name: "完成" }).click();
+	await page.getByRole("dialog", { name: "安全改名" }).waitFor({ state: "detached" });
 	const durableHashesAfterApply = await hashKnowledgeBaseFiles(kbPath);
 	assert.deepEqual(diffFileHashes(durableHashesBeforeApply, durableHashesAfterApply), {
 		added: ["wiki/entities/已改名 页面.md"],
@@ -1081,6 +1083,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const equivalentLayout = JSON.parse(await readFile(join(equivalentKbPath, ".wiki-graph-layout.json"), "utf8")) as { pins: Record<string, unknown> };
 	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/CaseName.md"), false);
 	assert.equal(Object.hasOwn(equivalentLayout.pins, "wiki/topics/casename.md"), true);
+	await equivalentDialog.getByRole("button", { name: "完成" }).click();
+	await equivalentDialog.waitFor({ state: "detached" });
 
 	// Crash recovery: a changed conflict set refreshes before a confirmed rollback preserves evidence.
 	await page.getByText("crash-rollback-notes", { exact: true }).click();
@@ -1195,6 +1199,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 	const externalEvidence = commitReceipt.retained_evidence.find((item) => item.relative_path.includes("current"));
 	assert.ok(externalEvidence);
 	assert.equal(await readFile(join(crashCommitKbPath, ...externalEvidence.relative_path.split("/")), "utf8"), externalCommitVersion);
+	await commitRecoveryDialog.getByRole("button", { name: "完成" }).click();
+	await commitRecoveryDialog.waitFor({ state: "detached" });
 
 	// A failed post-commit rebuild survives restart; retry changes only the derived graph.
 	await page.getByText("rebuild-failure-notes", { exact: true }).click();
@@ -1265,6 +1271,8 @@ test("graph rename journeys cross the real warning, dialog, and backend seams", 
 		working_copy_fields: [],
 	}]);
 	assert.deepEqual(await listRenameResidues(rebuildFailureKbPath), []);
+	await restoredRebuildDialog.getByRole("button", { name: "完成" }).click();
+	await restoredRebuildDialog.waitFor({ state: "detached" });
 	await openGraphRenameForSource(page, "wiki/entities/rebuild-renamed.md");
 	await page.getByRole("dialog", { name: "安全改名" }).getByRole("textbox", { name: "新文件名" }).waitFor();
 	assert.deepEqual(await hashKnowledgeFiles(rebuildFailureKbPath), knowledgeHashesBeforeRetry);

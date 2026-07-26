@@ -157,6 +157,22 @@ describe("GraphRenameDialog", () => {
 		assert.equal(screen.getByRole("button", { name: "生成预览" }).hasAttribute("disabled"), false);
 	});
 
+	it("starts a warning rename when the current recovery state is clear", () => {
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				candidatePaths={["wiki/entities/同名.md", "wiki/topics/同名.md"]}
+				recovery={{ status: "clear", retained_evidence_receipts: [] }}
+				onOpenChange={() => {}}
+				api={unusedApi}
+			/>,
+		);
+
+		assert.notEqual(screen.queryByText("先选择要改名的页面"), null);
+		assert.equal(screen.queryByText("恢复处理完成"), null);
+	});
+
 	it("gives immediate filename feedback that matches the portable rename boundary", async () => {
 		render(
 			<GraphRenameDialog
@@ -394,6 +410,34 @@ describe("GraphRenameDialog", () => {
 		assert.equal(screen.queryByRole("button", { name: /恢复原状|完成提交/ }), null);
 		await click(screen.getByRole("button", { name: "重试更新图谱" }));
 		assert.equal(retries, 1);
+	});
+
+	it("shows a retry error when updating the graph fails again", async () => {
+		const retryFailure = new Error("图谱服务暂时不可用");
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				recovery={{
+					status: "rebuild_required",
+					operation: {
+						...conflictedOperation,
+						state: "committed",
+						graph_rebuild: "failed",
+						conflicts: [],
+					},
+					retained_evidence_receipts: [],
+				}}
+				onOpenChange={() => {}}
+				onRetryGraph={async () => { throw retryFailure; }}
+				api={unusedApi}
+			/>,
+		);
+
+		await click(screen.getByRole("button", { name: "重试更新图谱" }));
+		await waitFor(() => assert.match(screen.getByRole("alert").textContent ?? "", /图谱服务暂时不可用/));
+		assert.notEqual(screen.queryByRole("button", { name: "重试更新图谱" }), null);
+		assert.equal(screen.getByRole("button", { name: "重试更新图谱" }).hasAttribute("disabled"), false);
 	});
 
 	it("uses the complete server recovery after a conflicted apply", async () => {

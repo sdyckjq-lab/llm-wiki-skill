@@ -206,6 +206,7 @@ export class GraphRenameJournalStore {
 	/** Acquire the same per-knowledge-base lock for recovery of an existing journal. */
 	async acquireExisting(operationId: string): Promise<GraphRenameJournal> {
 		if (!safeOperationId(operationId)) throw conflictError("operation ID is invalid");
+		if (this.heldLockTexts.has(operationId)) throw busyError("another rename is in progress");
 		const record = await this.read(operationId);
 		if (!record || record.kind !== "journal") throw conflictError("rename journal is unavailable");
 		await this.acquireLock({
@@ -214,7 +215,7 @@ export class GraphRenameJournalStore {
 			sourcePath: record.source_path,
 			targetPath: record.target_path,
 			...(record.resolution_digest ? { resolutionDigest: record.resolution_digest } : {}),
-		});
+		}, false);
 		return record;
 	}
 
@@ -469,7 +470,7 @@ export class GraphRenameJournalStore {
 		}
 	}
 
-	private async acquireLock(input: AcquireRenameOperation): Promise<void> {
+	private async acquireLock(input: AcquireRenameOperation, allowReentry = true): Promise<void> {
 		const lockPath = path.join(this.operationsRoot, "active.lock");
 		for (;;) {
 			try {
@@ -485,7 +486,7 @@ export class GraphRenameJournalStore {
 				try { lock = lockText ? parseLock(lockText) : (() => { throw new Error("missing lock"); })(); }
 				catch { throw busyError("rename lock is malformed"); }
 				const heldLockText = this.heldLockTexts.get(input.operationId);
-				if (heldLockText === lockText && lock.operation_id === input.operationId && lock.server_instance_id === this.serverInstanceId && lock.owner_pid === process.pid && lock.immutable_digest === input.immutableDigest && (lock.resolution_digest ?? undefined) === (input.resolutionDigest ?? undefined)) {
+				if (allowReentry && heldLockText === lockText && lock.operation_id === input.operationId && lock.server_instance_id === this.serverInstanceId && lock.owner_pid === process.pid && lock.immutable_digest === input.immutableDigest && (lock.resolution_digest ?? undefined) === (input.resolutionDigest ?? undefined)) {
 					const existing = await this.read(input.operationId);
 					if (existing && existing.kind !== "blocked") {
 						this.heldLockTexts.set(input.operationId, lockText!);

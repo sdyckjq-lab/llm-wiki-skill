@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -1098,6 +1098,76 @@ test("failed graph rebuild remains visible and can be retried", async () => {
 		assert.equal((await store.read(operationId) as any).state, "rolled_back");
 		assert.equal((await store.read(operationId) as any).graph_rebuild, "started");
 	} finally { await rm(kb, { recursive: true, force: true }); }
+});
+
+test("recovery stays pending until a succeeded terminal journal is compacted", async () => {
+	const kb = await makeKnowledgeBase();
+	const operationId = "57575757-5757-4575-8575-575757575757";
+	const fixedNow = new Date("2031-04-05T06:07:08.000Z");
+	try {
+		const store = new GraphRenameJournalStore(kb, { now: () => fixedNow });
+		await store.acquire({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "5".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "committed", { renameState: "target", graphRebuild: "succeeded" });
+		await store.release(operationId);
+
+		const service = createGraphRenameService({ journalStore: () => store, now: () => fixedNow });
+		assert.equal((await service.getGraphRenameRecovery(kb)).status, "rebuild_required");
+
+		await store.compactTerminal({ operationId, now: fixedNow });
+		assert.deepEqual(await service.getGraphRenameRecovery(kb), {
+			status: "clear",
+			retained_evidence_receipts: [],
+		});
+		assert.equal((await store.read(operationId) as { kind: string }).kind, "receipt");
+	} finally {
+		await rm(kb, { recursive: true, force: true });
+	}
+});
+
+test("graph publication resolves a knowledge-base alias before compacting its receipt", async () => {
+	const parent = await mkdtemp(path.join(os.tmpdir(), "llm-wiki-renames-alias-"));
+	const kb = path.join(parent, "real-kb");
+	const alias = path.join(parent, "alias-kb");
+	const operationId = "58585858-5858-4585-8585-585858585858";
+	try {
+		await mkdir(path.join(kb, "wiki", "topics"), { recursive: true });
+		await writeFile(path.join(kb, ".wiki-schema.md"), "schema\n");
+		await writeFile(path.join(kb, "wiki", "topics", "renamed.md"), "# Renamed\n");
+		await symlink(kb, alias, "dir");
+		const graph = {
+			meta: { build_date: "2026-07-22T00:00:00.000Z", wiki_title: "Test", total_nodes: 1, total_edges: 0 },
+			nodes: [{ id: "wiki/topics/renamed.md", source_path: "wiki/topics/renamed.md", label: "Renamed", type: "topic" }],
+			edges: [],
+		};
+		await writeFile(path.join(kb, "wiki", "graph-data.json"), JSON.stringify(graph));
+		const store = new GraphRenameJournalStore(kb);
+		await store.acquire({ operationId, immutableDigest: "8".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.writePrepared({ operationId, immutableDigest: "8".repeat(64), sourcePath: "wiki/topics/a.md", targetPath: "wiki/topics/renamed.md" });
+		await store.transition(operationId, "applying", {});
+		await store.transition(operationId, "committed", { renameState: "target", graphRebuild: "started" });
+		await store.release(operationId);
+		await createGraphRenameService({ journalStore: () => store }).getGraphRenameRecovery(alias);
+
+		await publishGraphRebuildResult({
+			kbPath: alias,
+			previous: null,
+			next: graph,
+			rebuiltAt: "2026-07-22T00:00:01.000Z",
+			warningState: { summary: null, details_status: "unavailable", details_unavailable_reason: "legacy_without_summary", engine_groups: [] },
+		});
+
+		let record = await store.read(operationId);
+		for (let attempt = 0; attempt < 50 && record?.kind !== "receipt"; attempt++) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			record = await store.read(operationId);
+		}
+		assert.equal(record?.kind, "receipt");
+		assert.equal(record?.graph_rebuild, "succeeded");
+	} finally {
+		await rm(parent, { recursive: true, force: true });
+	}
 });
 
 test("published rollback keeps rolled_back state while marking graph publication", async () => {
