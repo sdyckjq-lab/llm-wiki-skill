@@ -3,9 +3,7 @@ import assert from "node:assert/strict";
 import GraphologyGraph from "graphology";
 
 import {
-  buildAtlasModel,
   createGraphEngine,
-  deriveAtlasLayout,
   projectGraphInput,
   type GraphData,
   type GraphDiff,
@@ -672,56 +670,22 @@ describe("graph renderer lifecycle", () => {
     engine.destroy();
   });
 
-  it("keeps object-prototype community ids distinct through the public engine", () => {
-    const communityIds = ["ordinary", "__proto__", "constructor", "toString"] as const;
-    const data = {
-      nodes: communityIds.map((community, index) => ({
-        id: `node-${community}`,
-        label: `Node ${index + 1}`,
-        type: "topic" as const,
-        community
-      })),
-      edges: [],
-      learning: {
-        communities: communityIds.map((id, index) => ({
-          id,
-          label: `${String.fromCharCode(65 + index)} Community`,
-          node_count: 1,
-          is_primary: index === 0
-        }))
-      }
-    };
-    const model = buildAtlasModel(data);
-
-    assert.deepEqual(model.communities.map((community) => community.id), communityIds);
-    const layout = deriveAtlasLayout(model);
-    for (const communityId of communityIds) {
-      const nodeId = `node-${communityId}`;
-      assert.equal(Object.hasOwn(model.communityById, communityId), true);
-      assert.equal(model.communityById[communityId]?.id, communityId);
-      assert.deepEqual(
-        model.nodes.filter((node) => node.community === communityId).map((node) => node.id),
-        [nodeId]
-      );
-      assert.deepEqual(
-        layout.nodes.filter((node) => node.community === communityId).map((node) => node.id),
-        [nodeId]
-      );
-      const position = layout.nodePositions[nodeId];
-      assert.ok(position);
-    }
+  it("handles object-prototype community ids through the public engine", () => {
+    const communityIds = OBJECT_PROTOTYPE_COMMUNITY_IDS;
+    const data = objectPrototypeCommunityInput();
 
     const ownerDocument = new FakeDocument();
     const container = ownerDocument.createElement("div");
-    const engine = createGraphEngine(container as unknown as HTMLElement, { data });
+    const engine = createGraphEngine(container as unknown as HTMLElement, { data, theme: "shan-shui" });
     try {
-      for (const communityId of communityIds) {
+      for (const [index, communityId] of communityIds.entries()) {
         const nodeId = `node-${communityId}`;
         engine.select({ kind: "community", id: communityId });
         const summary = engine.summarizeCommunity(communityId);
         assert.equal(summary.kind, "community-summary");
         if (summary.kind === "community-summary") {
           assert.equal(summary.communityId, communityId);
+          assert.equal(summary.label, `${String.fromCharCode(65 + index)} Community`);
           assert.equal(summary.nodeCount, 1);
           assert.deepEqual(summary.coreNodeIds, [nodeId]);
           assert.deepEqual(summary.selection.selectedCommunityIds, [communityId]);
@@ -740,29 +704,65 @@ describe("graph renderer lifecycle", () => {
     }
   });
 
-  it("derives object-prototype communities from node membership without metadata", () => {
-    const communityIds = ["ordinary", "__proto__", "constructor", "toString"] as const;
-    const data = {
-      nodes: communityIds.flatMap((community) => ["a", "b"].map((suffix) => ({
-        id: `node-${community}-${suffix}`,
-        label: `Node ${suffix}`,
-        type: "topic" as const,
-        community
-      }))),
-      edges: []
-    };
-    const model = buildAtlasModel(data);
+  it("mounts object-prototype community ids through Sigma selection and focus flows", async () => {
+    const communityIds = OBJECT_PROTOTYPE_COMMUNITY_IDS;
+    const data = objectPrototypeCommunityInput();
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const runtime = fakeSigmaRouteRuntime();
+    const manager = createGraphFacadeRouteManager(container as unknown as HTMLElement, {
+      state: {
+        ...projectGraphInput(data),
+        pins: {},
+        theme: "shan-shui",
+        focus: null,
+        typeFilters: {},
+        aggregationMarkers: [],
+        selection: null,
+        sourceCommunityId: null,
+        searchQuery: "",
+        searchResultIds: [],
+        temporaryObject: null
+      },
+      factories: {
+        createSigmaGlobal: (input) => createSigmaGlobalFacadeRenderer({ ...input, sigmaRuntime: runtime })
+      }
+    });
 
-    assert.deepEqual(
-      model.communities.map((community) => community.id).sort(),
-      [...communityIds].sort()
-    );
-    for (const communityId of communityIds) {
-      assert.equal(model.communityById[communityId]?.node_count, 2);
+    try {
+      await Promise.resolve();
+
+      assert.equal(runtime.instances.length, 1, "Sigma should mount before the lifecycle assertions run");
+      const sigma = runtime.instances[0];
+      assert.ok(sigma);
+      assert.deepEqual(sigma.getGraph().nodes(), communityIds.map((id) => `node-${id}`));
       assert.deepEqual(
-        model.nodes.filter((node) => node.community === communityId).map((node) => node.id),
-        [`node-${communityId}-a`, `node-${communityId}-b`]
+        sigma.getGraph().getAttribute("communities").map((community: { id: string }) => community.id),
+        communityIds
       );
+      for (const communityId of communityIds) {
+        const nodeId = `node-${communityId}`;
+        assert.equal(sigma.getGraph().getNodeAttribute(nodeId, "communityId"), communityId);
+
+        manager.select({ kind: "community", id: communityId });
+        assert.deepEqual(sigma.getGraph().getAttribute("selection").selectedCommunityIds, [communityId]);
+
+        manager.focusCommunity(communityId);
+        const sigmaRoot = findByClass(container, "sigma-global-renderer")[0];
+        assert.equal(manager.sourceCommunityId, communityId);
+        assert.equal(sigmaRoot?.dataset.sourceCommunityId, communityId);
+        assert.equal(sigmaRoot?.dataset.communityFocusId, communityId);
+        assert.deepEqual(sigma.getGraph().nodes(), [nodeId]);
+
+        manager.resetView();
+        assert.equal(manager.sourceCommunityId, null);
+        assert.equal(sigmaRoot?.dataset.sourceCommunityId, "");
+        assert.equal(sigmaRoot?.dataset.communityFocusId, "");
+        assert.deepEqual(sigma.getGraph().nodes(), communityIds.map((id) => `node-${id}`));
+        assert.deepEqual(sigma.getGraph().getAttribute("selection").selectedCommunityIds, []);
+      }
+    } finally {
+      manager.destroy();
     }
   });
 
@@ -2317,6 +2317,28 @@ describe("graph renderer lifecycle", () => {
     renderer.destroy();
   });
 });
+
+const OBJECT_PROTOTYPE_COMMUNITY_IDS = ["ordinary", "__proto__", "constructor", "toString"] as const;
+
+function objectPrototypeCommunityInput() {
+  return {
+    nodes: OBJECT_PROTOTYPE_COMMUNITY_IDS.map((community, index) => ({
+      id: `node-${community}`,
+      label: `Node ${index + 1}`,
+      type: "topic" as const,
+      community
+    })),
+    edges: [],
+    learning: {
+      communities: OBJECT_PROTOTYPE_COMMUNITY_IDS.map((id, index) => ({
+        id,
+        label: `${String.fromCharCode(65 + index)} Community`,
+        node_count: 1,
+        is_primary: index === 0
+      }))
+    }
+  };
+}
 
 function graphData(ids: string[]): GraphData {
   return graphDataWithCommunities(ids.map((id) => [id, "community-a"]));

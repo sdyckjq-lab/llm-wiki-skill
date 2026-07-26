@@ -4,6 +4,70 @@ import { describe, it } from "node:test";
 import { buildAtlasModel, projectGraphInput } from "../src/model/atlas";
 
 describe("typed graph model", () => {
+  it("indexes object-prototype community metadata without losing labels or order", () => {
+    const communityIds = ["ordinary", "__proto__", "constructor", "toString"] as const;
+    const model = buildAtlasModel({
+      nodes: communityIds.map((community, index) => ({
+        id: `node-${community}`,
+        label: `Node ${index + 1}`,
+        type: "topic",
+        community
+      })),
+      edges: [],
+      learning: {
+        communities: communityIds.map((id, index) => ({
+          id,
+          label: `${String.fromCharCode(65 + index)} Community`,
+          node_count: 1,
+          is_primary: index === 0
+        }))
+      }
+    });
+
+    assert.deepEqual(model.communities.map((community) => community.id), communityIds);
+    for (const [index, communityId] of communityIds.entries()) {
+      assert.equal(Object.hasOwn(model.communityById, communityId), true);
+      assert.equal(model.communityById[communityId]?.id, communityId);
+      assert.equal(
+        model.communityById[communityId]?.label,
+        `${String.fromCharCode(65 + index)} Community`
+      );
+    }
+  });
+
+  it("derives object-prototype communities from node membership without metadata", () => {
+    const communityCases = [
+      { id: "ordinary", topicLabel: "Ordinary Topic", sourceCount: 0 },
+      { id: "__proto__", topicLabel: "Proto Topic", sourceCount: 1 },
+      { id: "constructor", topicLabel: "Constructor Topic", sourceCount: 2 },
+      { id: "toString", topicLabel: "ToString Topic", sourceCount: 3 }
+    ] as const;
+    const model = buildAtlasModel({
+      nodes: communityCases.flatMap(({ id, topicLabel, sourceCount }) => [
+        { id: `topic-${id}`, label: topicLabel, type: "topic", community: id },
+        ...Array.from({ length: sourceCount }, (_, index) => ({
+          id: `source-${id}-${index + 1}`,
+          label: `Source ${id} ${index + 1}`,
+          type: "source",
+          community: id
+        }))
+      ]),
+      edges: []
+    });
+
+    assert.deepEqual(
+      model.communities.map((community) => community.id).sort(),
+      communityCases.map(({ id }) => id).sort()
+    );
+    for (const { id, topicLabel, sourceCount } of communityCases) {
+      assert.equal(Object.hasOwn(model.communityById, id), true);
+      assert.equal(model.communityById[id]?.id, id);
+      assert.equal(model.communityById[id]?.label, topicLabel);
+      assert.equal(model.communityById[id]?.node_count, sourceCount + 1);
+      assert.equal(model.communityById[id]?.source_count, sourceCount);
+    }
+  });
+
   it("preserves sparse node array holes without inventing graph facts", () => {
     const nodes: unknown[] = [];
     nodes.length = 3;
