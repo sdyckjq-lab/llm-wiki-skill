@@ -10,7 +10,7 @@ Based on [Andrej Karpathy](https://karpathy.ai/)'s [llm-wiki methodology](https:
 
 Turn scattered information into a growing, interconnected knowledge base
 
-[![version](https://img.shields.io/badge/v3.6.90-Safe%20Graph%20Rename%20%26%20Recovery-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.91-Safe%20Graph%20Rename%20%26%20Recovery-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -91,7 +91,7 @@ The key difference: knowledge is **compiled once, maintained continuously** — 
 |---|---|---|
 | 🧭 | **Community Close-up Map** | Entering a community now feels like zooming into the same region from the global graph; positions, tiers, labels, and return highlights stay stable, then fade after the global view settles |
 | ⚠️ | **Graph Identity and Warnings** | Same-named pages stay separate by knowledge-base-relative path; ambiguous links, broken links, pending pages, and portable path conflicts are explained while the graph remains readable, with read-only paged details |
-| 📝 | **Safe Graph Rename and Recovery** | Optionally rename a graph page within its current folder from a resolvable warning or the page reader; review the complete impact and every ambiguity first, with clear recovery after external edits, interruption, or a failed graph refresh |
+| 📝 | **Safe Graph Rename and Recovery** | Optionally rename a graph page within its current folder from a resolvable warning or the page reader; review the complete impact and every ambiguity first, with clear recovery after external edits, interruption, or a failed graph refresh, and an automatic final result after a queued refresh completes |
 | 🧩 | **Global Intent Feedback** | Hovering a global node lightly previews first-order real relationships; clicking fixes that emphasis with the summary drawer; selecting a community reveals only a small internal and bridge preview instead of full reading |
 | 🛡️ | **Safe Streaming Chat** | Prompts, tool states, artifacts, and terminal states use one streaming contract; a model failure is shown as a failure rather than a completion, while normal completion, cancellation, reconnect recovery, and follow-up chat remain available |
 | / | **Private Retrieval Logs** | Default retrieval logs retain only the session, knowledge base, trigger state, result information, and stable failure status needed for diagnosis; they do not retain user questions or recoverable derivatives |
@@ -143,7 +143,7 @@ Each platform has its own setup guide:
 - **Claude Companion Upgrade Command** — `/llm-wiki-upgrade` included after installation
 - **Material Deletion** — Cascade-delete with automatic cleanup of associated pages, broken links, and cache
 - **Path-based Graph Identity and Warnings** — Same-named pages remain separate by knowledge-base-relative path; ambiguous links do not guess, while duplicate IDs, broken and pending links, non-canonical paths, and portable collisions are shown in read-only paged details; refreshes and pins continue to follow the correct page
-- **Safe Graph Rename and Recovery** — Start an optional same-folder rename from a resolvable warning or the page reader; the complete preview lists automatic edits, read-only references, pin migration, and every ambiguity before confirmation, while external edits, crashes, and pending graph refreshes have explicit recovery or retry paths
+- **Safe Graph Rename and Recovery** — Start an optional same-folder rename from a resolvable warning or the page reader; the complete preview lists automatic edits, read-only references, pin migration, and every ambiguity before confirmation, while external edits, crashes, and pending graph refreshes have explicit recovery or retry paths, with the final result shown automatically after a queued refresh completes
 - **Sigma Graph Main Route** — Both the global map and community reading now run on Sigma/Graphology; DOM/SVG remains only as fallback, comparison, and abnormal-case safety net
 - **Global Graph Intent Feedback** — In the global view, hovering a node lightly highlights its first-order real relationships and restores on leave without opening drawers or moving the camera; clicking fixes the relationship emphasis and opens the node summary; selecting a community shows only a small internal and cross-community bridge preview instead of entering full community reading
 - **Community Close-up Map** — Entering a community is one continuous transition: the summary drawer exits, the canvas expands smoothly, and the camera continues from the global community close-up into the community reading close-up, landing on the Sigma community reading route without reopening the summary (under reduced motion the drawer just closes, with no large camera push); inside, only that community's nodes and internal relationships stay visible while preserving node positions, community color, edge tiers, local search/filter, Shift multi-select, and return highlights
