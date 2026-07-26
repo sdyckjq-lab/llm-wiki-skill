@@ -1,21 +1,32 @@
 # Path identity and safe rename production acceptance
 
-Date: 2026-07-23
+Date: 2026-07-26
 
-Release: v3.6.89
+Release: v3.6.90
 
 Scope: Tasks 1–6, including path identity, readable graph warnings, derived warning details, optional safe same-directory rename, complete preview confirmation, external-edit and crash recovery, persistent graph rebuild retry, and bounded conflict-evidence retention.
 
 ## Acceptance status
 
-The current code and test head passes the focused server, contract, recovery-interface, API, no-port web, build, type, lint, boundary, privacy, and formatting commands listed below. The complete server suite and `npm run quality-and-tests` were not completed at this head, and the strengthened real-browser journey remains blocked here. Full production acceptance is **not complete**: the current pull request still needs its normal-environment `browser-main-flows` job plus the required Ubuntu, macOS, and Windows portability jobs for both Stage 2 path portability and Stage 3 equivalent-rename portability. The V3 design document remains unchanged until those jobs are green.
+The final local implementation and test head passes the complete `npm run quality-and-tests` check, the strengthened real-browser journey, and the Paper visual checks. Full production acceptance is **locally complete**. The required Ubuntu, macOS, and Windows portability jobs remain pending until the pull request runs them; the V3 design document remains unchanged until those remote jobs are green.
+
+## Final local verification
+
+Final implementation head: `7ea629c7` (`fix: finalize graph rename recovery`).
+
+| Check | Result |
+|---|---|
+| `npm run quality-and-tests` | PASS — all repository privacy, build, boundary, contract, graph, server, web, type, lint, and test checks passed. |
+| `npm run test:browser:main-flows -w @llm-wiki-agent/web` | PASS — the seven main flows, graph-host failure flow, offline host flow, and graph rename/recovery journeys passed. |
+| `npm run visual:paper -w @llm-wiki-agent/web` | PASS — all Paper visual scenarios, including rename preview, conflict, blocked, rebuild retry, and responsive states, completed. |
+| Remote portability matrix | PENDING — Ubuntu, macOS, and Windows still need to run both path portability and equivalent-rename portability jobs from the pull request. |
 
 ## Tested fixed points
 
-- Tasks 1–6 code and test implementation head: `0d1bbc7b390e3b8231a0a7de51e0cbd98b0f1faa` (`test: retain byte-free graph rename receipts [task 6]`).
+- Tasks 1–6 code and test implementation head: `7ea629c7` (`fix: finalize graph rename recovery`).
 - Task execution baseline: `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97`, preserved locally as `refs/llm-wiki/task-base` while acceptance work is in progress.
-- The current-head matrix below records commands that completed in a tracked-only clean macOS copy. Documentation changes are recorded separately, so this report does not contain or predict its own future commit hash.
-- The implementation range under acceptance is `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97..0d1bbc7b390e3b8231a0a7de51e0cbd98b0f1faa`.
+- The historical matrix below records commands that completed in a tracked-only clean macOS copy. The final local verification above supersedes it for the current implementation head.
+- The implementation range under acceptance is `c9cbbb94b5e86a54d7aec6f33f60c072237a8e97..7ea629c7`.
 
 ## Earlier Tasks 1–4 pull-request evidence
 
@@ -25,7 +36,7 @@ The current code and test head passes the focused server, contract, recovery-int
 
 These links remain evidence for the Tasks 1–4 core release. They do not replace the current Tasks 1–6 pull-request matrix, which must rerun the browser journey and both portability suites at the implementation head above.
 
-## Final tracked-only acceptance matrix
+## Previous tracked-only acceptance matrix (historical)
 
 | Exact command | Result at `0d1bbc7b` |
 |---|---|
@@ -43,7 +54,7 @@ These links remain evidence for the Tasks 1–4 core release. They do not replac
 
 The current-head focused evidence also covers two final behavior groups. First, both the follow-up recovery GET and resolve requests return the same live complete conflict set, perform zero writes when the submitted observations are stale, and keep `blocked` status dominant. Second, a successful ordinary rename and a manually completed rebuild leave only a byte-free terminal receipt; Markdown content, backups, stages, transit files, and evidence files are removed.
 
-## Current sandbox limits and historical browser evidence
+## Previous sandbox limits and historical browser evidence
 
 | Command/evidence | Current status |
 |---|---|
@@ -132,4 +143,4 @@ No diagram drift was found. The existing product diagram stays at the frontend �
 
 ## Release boundary
 
-v3.6.89 has final focused tracked-only evidence at `0d1bbc7b` while keeping rename optional: path-safe graphs and readable warnings remain useful when the user never invokes rename. This report intentionally stops short of full production acceptance until the strengthened GitHub browser journey passes at this implementation head, the Ubuntu, macOS, and Windows jobs pass both portability suites, and the V3 §9.2 status is updated with those links.
+v3.6.90 has complete local acceptance at `7ea629c7` while keeping rename optional: path-safe graphs and readable warnings remain useful when the user never invokes rename. The only remaining release gate is the pull request's Ubuntu, macOS, and Windows portability matrix for both path portability and equivalent-rename portability.
