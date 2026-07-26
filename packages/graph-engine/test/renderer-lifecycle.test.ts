@@ -2,7 +2,16 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import GraphologyGraph from "graphology";
 
-import { createGraphEngine, projectGraphInput, type GraphData, type GraphDiff, type GraphVisibilityState, type SelectionInput } from "../src";
+import {
+  buildAtlasModel,
+  createGraphEngine,
+  deriveAtlasLayout,
+  projectGraphInput,
+  type GraphData,
+  type GraphDiff,
+  type GraphVisibilityState,
+  type SelectionInput
+} from "../src";
 import type {
   SigmaGlobalGraphologyGraph,
   SigmaGlobalRendererRuntime,
@@ -661,6 +670,100 @@ describe("graph renderer lifecycle", () => {
     assert.equal(engine.summarizeGlobal().nodeCount, 2001);
 
     engine.destroy();
+  });
+
+  it("keeps object-prototype community ids distinct through the public engine", () => {
+    const communityIds = ["ordinary", "__proto__", "constructor", "toString"] as const;
+    const data = {
+      nodes: communityIds.map((community, index) => ({
+        id: `node-${community}`,
+        label: `Node ${index + 1}`,
+        type: "topic" as const,
+        community
+      })),
+      edges: [],
+      learning: {
+        communities: communityIds.map((id, index) => ({
+          id,
+          label: `${String.fromCharCode(65 + index)} Community`,
+          node_count: 1,
+          is_primary: index === 0
+        }))
+      }
+    };
+    const model = buildAtlasModel(data);
+
+    assert.deepEqual(model.communities.map((community) => community.id), communityIds);
+    const layout = deriveAtlasLayout(model);
+    for (const communityId of communityIds) {
+      const nodeId = `node-${communityId}`;
+      assert.equal(Object.hasOwn(model.communityById, communityId), true);
+      assert.equal(model.communityById[communityId]?.id, communityId);
+      assert.deepEqual(
+        model.nodes.filter((node) => node.community === communityId).map((node) => node.id),
+        [nodeId]
+      );
+      assert.deepEqual(
+        layout.nodes.filter((node) => node.community === communityId).map((node) => node.id),
+        [nodeId]
+      );
+      const position = layout.nodePositions[nodeId];
+      assert.ok(position);
+    }
+
+    const ownerDocument = new FakeDocument();
+    const container = ownerDocument.createElement("div");
+    const engine = createGraphEngine(container as unknown as HTMLElement, { data });
+    try {
+      for (const communityId of communityIds) {
+        const nodeId = `node-${communityId}`;
+        engine.select({ kind: "community", id: communityId });
+        const summary = engine.summarizeCommunity(communityId);
+        assert.equal(summary.kind, "community-summary");
+        if (summary.kind === "community-summary") {
+          assert.equal(summary.communityId, communityId);
+          assert.equal(summary.nodeCount, 1);
+          assert.deepEqual(summary.coreNodeIds, [nodeId]);
+          assert.deepEqual(summary.selection.selectedCommunityIds, [communityId]);
+          assert.deepEqual(summary.selection.selectedNodeIds, [nodeId]);
+          assert.equal(summary.selection.containsCurrentObject, true);
+        }
+        const focus = engine.focusCommunity(communityId);
+        assert.deepEqual(focus.communityIds, [communityId]);
+        assert.deepEqual(focus.nodeIds, [nodeId]);
+        assert.equal(engine.sourceCommunityId, communityId);
+        engine.resetView();
+        assert.equal(engine.sourceCommunityId, null);
+      }
+    } finally {
+      engine.destroy();
+    }
+  });
+
+  it("derives object-prototype communities from node membership without metadata", () => {
+    const communityIds = ["ordinary", "__proto__", "constructor", "toString"] as const;
+    const data = {
+      nodes: communityIds.flatMap((community) => ["a", "b"].map((suffix) => ({
+        id: `node-${community}-${suffix}`,
+        label: `Node ${suffix}`,
+        type: "topic" as const,
+        community
+      }))),
+      edges: []
+    };
+    const model = buildAtlasModel(data);
+
+    assert.deepEqual(
+      model.communities.map((community) => community.id).sort(),
+      [...communityIds].sort()
+    );
+    for (const communityId of communityIds) {
+      assert.equal(model.communityById[communityId]?.node_count, 2);
+      assert.deepEqual(
+        model.nodes.filter((node) => node.community === communityId).map((node) => node.id),
+        [`node-${communityId}-a`, `node-${communityId}-b`]
+      );
+    }
   });
 
   it("renders a static over-limit notice without aggregation containers or DOM full graph", () => {
