@@ -41,6 +41,9 @@ const DEFAULT_API: GraphRenameDialogApi = {
 	resolveGraphRenameRecovery,
 };
 
+const GRAPH_REBUILD_POLL_INTERVAL_MS = 100;
+const GRAPH_REBUILD_POLL_TIMEOUT_MS = 10_000;
+
 interface Props {
 	open: boolean;
 	kbPath: string;
@@ -191,6 +194,28 @@ function GraphRenameDialogState({
 			: api.getGraphRenameRecovery(kbPath)
 	);
 
+	const waitForPendingGraphRebuild = async (
+		initial: GraphRenameRecoveryData,
+	): Promise<GraphRenameRecoveryData | null> => {
+		if (
+			initial.status !== "rebuild_required"
+			|| !["started", "queued"].includes(initial.operation.graph_rebuild)
+		) return initial;
+		let current: GraphRenameRecoveryData = initial;
+		const deadline = Date.now() + GRAPH_REBUILD_POLL_TIMEOUT_MS;
+		while (Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, GRAPH_REBUILD_POLL_INTERVAL_MS));
+			const next = await readAuthoritativeRecovery();
+			if (!next) return current;
+			current = next;
+			if (
+				current.status !== "rebuild_required"
+				|| current.operation.graph_rebuild === "failed"
+			) return current;
+		}
+		return current;
+	};
+
 	const retryAuthoritativeRecovery = async () => {
 		if (applyInFlightRef.current) return;
 		applyInFlightRef.current = true;
@@ -290,7 +315,10 @@ function GraphRenameDialogState({
 			if (result.operation.state === "committed") {
 				try {
 					const recoveryData = await readAuthoritativeRecovery();
-					if (recoveryData) showAuthoritativeRecovery(recoveryData, result.operation);
+					if (recoveryData) {
+						const settledRecovery = await waitForPendingGraphRebuild(recoveryData);
+						if (settledRecovery) showAuthoritativeRecovery(settledRecovery, result.operation);
+					}
 				} catch (cause) {
 					setRecoveryMessage(cause instanceof Error ? cause.message : "恢复状态读取失败，请重试更新图谱");
 					setMode("recovery-read-failed");

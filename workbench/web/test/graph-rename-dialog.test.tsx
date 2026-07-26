@@ -412,6 +412,64 @@ describe("GraphRenameDialog", () => {
 		assert.equal(retries, 1);
 	});
 
+	it("waits for a queued graph rebuild to publish before showing the terminal result", async () => {
+		const preview = { ...previewFixture, ambiguous_choices: [], summary: { ...previewFixture.summary, ambiguous_occurrences: 0 } };
+		let recoveryReads = 0;
+		render(
+			<GraphRenameDialog
+				open
+				kbPath={kbPath}
+				sourcePath={preview.source_path}
+				onOpenChange={() => {}}
+				api={{
+					...unusedApi,
+					previewGraphRename: async () => preview,
+					applyGraphRename: async () => ({
+						outcome: "operation",
+						operation: {
+							operation_id: preview.operation_id,
+							state: "committed",
+							source_path: preview.source_path,
+							target_path: preview.target_path,
+							graph_rebuild: "queued",
+							conflicts: [],
+							retained_evidence: [],
+						},
+					}),
+					getGraphRenameRecovery: async () => {
+						recoveryReads++;
+						if (recoveryReads === 1) {
+							return {
+								status: "rebuild_required",
+								operation: {
+									operation_id: preview.operation_id,
+									state: "committed",
+									source_path: preview.source_path,
+									target_path: preview.target_path,
+									graph_rebuild: "queued",
+									conflicts: [],
+									retained_evidence: [],
+								},
+								retained_evidence_receipts: [],
+							};
+						}
+						return { status: "clear", retained_evidence_receipts: [] };
+					},
+				}}
+			/>,
+		);
+
+		await changeText(screen.getByRole("textbox", { name: "新文件名" }), "新 页面");
+		await click(screen.getByRole("button", { name: "生成预览" }));
+		await waitFor(() => assert.notEqual(screen.queryByText("确认影响"), null));
+		await click(screen.getByRole("checkbox", { name: /我已核对完整预览/ }));
+		await click(screen.getByRole("button", { name: "确认并改名" }));
+
+		await waitFor(() => assert.notEqual(screen.queryByText("页面已安全改名"), null));
+		assert.equal(recoveryReads, 2);
+		assert.equal(screen.queryByText("内容已保存，图谱尚未更新"), null);
+	});
+
 	it("shows a retry error when updating the graph fails again", async () => {
 		const retryFailure = new Error("图谱服务暂时不可用");
 		render(
