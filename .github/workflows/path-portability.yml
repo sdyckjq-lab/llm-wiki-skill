@@ -17,4 +17,5 @@ jobs:
           node-version-file: .nvmrc
       - run: npm ci
       - run: node --test tests/js/unicode-normalization.test.js tests/js/unicode-case-folding.test.js tests/js/wiki-file-discovery.test.js tests/js/wikilink-parser.test.js tests/js/wiki-link-index.test.js tests/js/wiki-link-cli.test.js
+      - run: npm run build -w @llm-wiki/workbench-contracts
       - run: node --import tsx --test workbench/server/src/graph-rename-portability.test.ts
