@@ -499,7 +499,14 @@ test("seven browser main flows cross the real frontend and backend", { timeout: 
 		const tamperBaseline = graphEventReceipts.length;
 		await page.getByRole("tab", { name: "对话" }).click();
 		await page.getByRole("tab", { name: "图谱" }).click();
-		await page.getByText("详情暂不可用，已安排重新构建。摘要和图谱仍可阅读。", { exact: true }).waitFor();
+		// “详情暂不可用”是瞬态：检测到损坏的同一响应会调度后台重建，重建完成的
+		// 权威快照可能先于横幅渲染落地（慢 runner 上稳定复现，#312）。所以只要求
+		// 观察到“瞬态横幅”或“已恢复的查看详情按钮”之一；篡改确实被检测并修复由
+		// 后面的 build_id 不变断言和 tamperBaseline 之后的 graph_updated 事件保证。
+		await page.getByText("详情暂不可用，已安排重新构建。摘要和图谱仍可阅读。", { exact: true })
+			.or(warningBanner.getByRole("button", { name: "查看详情" }))
+			.first()
+			.waitFor();
 		assert.equal(await warningBanner.getByText("wiki/synthesis/browser-warning-source.md", { exact: true }).count(), 0);
 		await page.locator("[data-graph-status='ready']").waitFor();
 		const warningIdentityAfterTamper = await page.evaluate(async (selectedKb) => {
