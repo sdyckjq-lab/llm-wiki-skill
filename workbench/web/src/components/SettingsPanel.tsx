@@ -21,6 +21,7 @@ import { modelRefToValue, valueToModelRef } from "../lib/model-roles";
 
 const PROVIDERS = [
 	{ id: "anthropic", label: "Anthropic" },
+	{ id: "atlas", label: "Atlas Cloud" },
 	{ id: "openai", label: "OpenAI" },
 	{ id: "deepseek", label: "DeepSeek" },
 ];

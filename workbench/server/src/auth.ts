@@ -10,6 +10,7 @@ const AUTH_PATH = path.join(AUTH_DIR, "auth.json");
 
 const ENV_KEYS = [
 	"ANTHROPIC_API_KEY",
+	"ATLASCLOUD_API_KEY",
 	"OPENAI_API_KEY",
 	"DEEPSEEK_API_KEY",
 	"GOOGLE_API_KEY",
@@ -135,8 +136,8 @@ async function testAnthropicLike(
 	if (!res.ok) throw new Error(await parseError(res, key));
 }
 
-async function testOpenAI(key: string): Promise<void> {
-	const res = await fetch("https://api.openai.com/v1/models", {
+export async function testOpenAICompatible(baseUrl: string, key: string): Promise<void> {
+	const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
 		headers: { Authorization: `Bearer ${key}` },
 	});
 	if (!res.ok) throw new Error(await parseError(res, key));
@@ -150,8 +151,10 @@ export async function testAuthConnection(provider: string): Promise<{ ok: boolea
 	try {
 		if (cleanProvider === "anthropic") {
 			await testAnthropicLike("https://api.anthropic.com", key, "claude-haiku-4-5");
+		} else if (cleanProvider === "atlas") {
+			await testOpenAICompatible("https://api.atlascloud.ai/v1", key);
 		} else if (cleanProvider === "openai") {
-			await testOpenAI(key);
+			await testOpenAICompatible("https://api.openai.com/v1", key);
 		} else if (cleanProvider === "deepseek") {
 			await testAnthropicLike("https://api.deepseek.com/anthropic", key, "deepseek-v4-flash");
 		} else {

@@ -34,6 +34,7 @@ const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
 const FAKE_MODEL_MARKER = "browser-foundation-fake-model";
 const FORBIDDEN_PARENT_ENV = [
 	"ANTHROPIC_API_KEY",
+	"ATLASCLOUD_API_KEY",
 	"AWS_ACCESS_KEY_ID",
 	"AWS_SECRET_ACCESS_KEY",
 	"AZURE_OPENAI_API_KEY",

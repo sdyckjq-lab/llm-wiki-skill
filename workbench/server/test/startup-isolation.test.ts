@@ -148,6 +148,7 @@ sleep 30
 		assert.equal(externalProbeConnections, 1);
 		assert.equal(environment.OPENAI_API_KEY, undefined);
 		assert.equal(environment.ANTHROPIC_API_KEY, undefined);
+		assert.equal(environment.ATLASCLOUD_API_KEY, undefined);
 		assert.equal(environment.PI_CONFIG_DIR, undefined);
 		assert.equal(environment.XDG_CONFIG_HOME, undefined);
 		assert.equal(environment.HOME, home);

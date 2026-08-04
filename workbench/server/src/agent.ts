@@ -33,6 +33,7 @@ import type { Model } from "@earendil-works/pi-ai";
 
 import { loadConfig, saveConfig } from "./config.js";
 import type { ModelRef } from "./config.js";
+import { registerAtlasProvider } from "./atlas-provider.js";
 import { ensureKbSessionDir, listConversations } from "./conversations.js";
 import { scanAndRebuildArtifactIndex } from "./artifacts.js";
 import { createArtifactsExtension } from "./extensions/artifacts.js";
@@ -57,6 +58,7 @@ const USER_GLOBAL_SKILLS_DIR = path.join(homedir(), ".claude", "skills");
 
 export const authStorage = AuthStorage.create();
 export const modelRegistry = ModelRegistry.create(authStorage);
+registerAtlasProvider(modelRegistry);
 const settingsManager = SettingsManager.create(REPO_ROOT, getAgentDir());
 
 function registerPendingProviders(loader: DefaultResourceLoader): void {
