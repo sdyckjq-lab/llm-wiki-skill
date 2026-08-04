@@ -43,6 +43,7 @@ if (!selectedDirectory) {
 for (const key of [
 	"OPENAI_API_KEY",
 	"ANTHROPIC_API_KEY",
+	"ATLASCLOUD_API_KEY",
 	"GOOGLE_API_KEY",
 	"GEMINI_API_KEY",
 	"PI_CONFIG_DIR",

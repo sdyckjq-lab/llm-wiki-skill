@@ -57,6 +57,8 @@ describe("SettingsPanel authentication", () => {
 		render(<SettingsPanel open onOpenChange={() => {}} />);
 		const keyInput = await screen.findByPlaceholderText("API key");
 		await screen.findByText(/项目内置 1 个 \/ pi 默认 0 个 \/ 用户全局 0 个/);
+		assert.ok(screen.getByRole("option", { name: "Atlas Cloud" }));
+		await changeText(screen.getByDisplayValue("Anthropic"), "atlas");
 		await changeText(keyInput, "sk-settings-panel-test");
 		await click(screen.getByRole("button", { name: "保存并测试" }));
 
@@ -80,11 +82,11 @@ describe("SettingsPanel authentication", () => {
 			],
 		);
 		assert.deepEqual(requests[4]?.body, {
-			provider: "anthropic",
+			provider: "atlas",
 			type: "api_key",
 			key: "sk-settings-panel-test",
 		});
-		assert.deepEqual(requests[9]?.body, { provider: "anthropic" });
+		assert.deepEqual(requests[9]?.body, { provider: "atlas" });
 	});
 });
 
