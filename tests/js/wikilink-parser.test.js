@@ -50,6 +50,30 @@ describe("parseWikilinks", () => {
     assert.equal(blockAliasLink.display, "别名");
   });
 
+  it("treats a table-escaped pipe as the alias separator", () => {
+    const source = Buffer.from([
+      "| [[wiki/topics/foo\\|别名]] | [[wiki/topics/foo#标题\\|锚点别名]] |",
+      "[[keeps\\backslash]]",
+      ""
+    ].join("\n"), "utf8");
+
+    const parsed = parseWikilinks(source, "wiki/topics/table.md");
+    const aliasLink = findOccurrence(parsed.occurrences, "[[wiki/topics/foo\\|别名]]");
+    const anchorAliasLink = findOccurrence(parsed.occurrences, "[[wiki/topics/foo#标题\\|锚点别名]]");
+    const literalBackslash = findOccurrence(parsed.occurrences, "[[keeps\\backslash]]");
+
+    assert.equal(aliasLink.page_target, "wiki/topics/foo");
+    assert.equal(aliasLink.display, "别名");
+    assert.equal(aliasLink.anchor, null);
+
+    assert.equal(anchorAliasLink.page_target, "wiki/topics/foo");
+    assert.equal(anchorAliasLink.anchor, "标题");
+    assert.equal(anchorAliasLink.display, "锚点别名");
+
+    // A backslash that is not escaping the alias pipe stays part of the target.
+    assert.equal(literalBackslash.page_target, "keeps\\backslash");
+  });
+
   it("distinguishes same-page anchors, explicit self links, and embeds", () => {
     const parsed = parseWikilinks(SOURCE_BUFFER, SOURCE_PATH);
     const samePage = findOccurrence(parsed.occurrences, "[[#本页]]");
@@ -171,6 +195,17 @@ describe("renderWikilinkReplacement", () => {
     assert.equal(
       renderWikilinkReplacement(spaced, "wiki/topics/bar"),
       "[[  wiki/topics/bar  | 别名 ]]"
+    );
+
+    // Renaming a table-escaped link must keep the `\|` escape intact,
+    // otherwise the rewritten link breaks the surrounding markdown table.
+    const tableAlias = parseWikilinks(
+      Buffer.from("[[wiki/topics/foo\\|别名]]\n", "utf8"),
+      "wiki/tmp.md"
+    ).occurrences[0];
+    assert.equal(
+      renderWikilinkReplacement(tableAlias, "wiki/topics/bar"),
+      "[[wiki/topics/bar\\|别名]]"
     );
   });
 });
