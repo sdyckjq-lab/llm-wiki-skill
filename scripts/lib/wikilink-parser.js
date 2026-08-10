@@ -121,9 +121,18 @@ function parseOccurrence(rawLink, sourcePath, fileSha256, line, column, startByt
   }
 
   const inner = rawLink.slice(innerStart, innerEnd);
-  const pipeIndex = inner.indexOf("|");
+  // Markdown tables require the alias pipe to be escaped (`[[Page\|alias]]`).
+  // The backslash belongs to the separator, not to the page name, so fold it
+  // into the separator before splitting; this keeps the target byte range clean
+  // and lets renames preserve the escape.
+  let pipeIndex = inner.indexOf("|");
+  let aliasEscapeLength = 0;
+  if (pipeIndex > 0 && inner[pipeIndex - 1] === "\\") {
+    aliasEscapeLength = 1;
+    pipeIndex -= 1;
+  }
   const targetAndAnchorRaw = pipeIndex >= 0 ? inner.slice(0, pipeIndex) : inner;
-  const displayRaw = pipeIndex >= 0 ? inner.slice(pipeIndex + 1) : null;
+  const displayRaw = pipeIndex >= 0 ? inner.slice(pipeIndex + 1 + aliasEscapeLength) : null;
   const anchorIndex = targetAndAnchorRaw.indexOf("#");
   const targetRaw = anchorIndex >= 0 ? targetAndAnchorRaw.slice(0, anchorIndex) : targetAndAnchorRaw;
   const anchor = anchorIndex >= 0 ? targetAndAnchorRaw.slice(anchorIndex + 1).trim() : null;
