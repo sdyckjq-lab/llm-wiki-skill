@@ -333,4 +333,4 @@ MIT
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=sdyckjq-lab/llm-wiki-skill&type=date)](https://www.star-history.com/?repos=sdyckjq-lab%2Fllm-wiki-skill&type=date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=sdyckjq-lab/llm-wiki-skill&type=date)](https://star-history.dera.page/#sdyckjq-lab/llm-wiki-skill&type=date)
