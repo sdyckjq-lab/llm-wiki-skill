@@ -63,6 +63,18 @@ else
 fi
 echo "[完成] 研究方向文件已生成"
 
+# 生成 AGENTS.md（智能体开机读物；已存在则不覆盖，避免改掉用户自定义内容）
+if [ -f "$WIKI_ROOT/AGENTS.md" ]; then
+    echo "[跳过] AGENTS.md 已存在，保留现有内容"
+else
+    if [ "$LANGUAGE" = "English" ]; then
+        replace_vars "$SKILL_DIR/templates/agents-md-en-template.md" "$WIKI_ROOT/AGENTS.md"
+    else
+        replace_vars "$SKILL_DIR/templates/agents-md-template.md" "$WIKI_ROOT/AGENTS.md"
+    fi
+    echo "[完成] AGENTS.md 已生成（智能体开机读物）"
+fi
+
 cat > "$WIKI_ROOT/.wiki-cache.json" <<'EOF'
 {
   "version": 1,
@@ -89,6 +101,7 @@ echo "   ├── wiki/       （知识库）"
 echo "   ├── index.md    （索引）"
 echo "   ├── log.md      （日志）"
 echo "   ├── purpose.md  （研究方向）"
+echo "   ├── AGENTS.md   （智能体开机读物）"
 echo "   ├── .wiki-cache.json （缓存）"
 echo "   └── .wiki-schema.md （配置）"
 echo ""

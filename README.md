@@ -10,7 +10,7 @@
 
 把碎片化的信息变成持续积累、互相链接的知识库
 
-[![version](https://img.shields.io/badge/v3.6.91-图谱安全改名与恢复-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.6.92-初始化生成智能体开机读物-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
 [![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-多平台-7a96a6?style=flat-square&labelColor=3a3026)]
 
@@ -83,6 +83,7 @@ bash install.sh --platform hermes
 | 🔄 | **智能缓存** | SHA256 去重 + 写入即更新 + 自愈安全网，弱模型也不会漏缓存 |
 | 🧠 | **对话结晶** | 把有价值的对话内容直接沉淀为知识库页面 |
 | 📡 | **自动上下文注入** | SessionStart hook 让 agent 每次会话自动感知知识库 |
+| / | **初始化生成开机读物** | init 在库根生成 `AGENTS.md`：agent 以知识库为工作空间打开时，新会话自动加载、先了解全貌；lint 缺失时建议补建，重新初始化不覆盖已有文件 |
 | 📊 | **多格式分析** | 深度报告、对比表、时间线三种综合分析格式 |
 
 ### 工作台开发预览
