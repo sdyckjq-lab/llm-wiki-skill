@@ -208,7 +208,8 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    ```
 
 5. **补充初始化结果说明**：
-   - `init-wiki.sh` 会同时生成 `purpose.md` 和 `.wiki-cache.json`
+   - `init-wiki.sh` 会同时生成 `purpose.md`、`.wiki-cache.json` 和 `AGENTS.md`（智能体开机读物）
+   - `AGENTS.md` 是给 agent 看的开机文件：以本知识库为工作空间打开时，每次新会话都会自动加载它，先了解全貌再干活。只写慢变事实（身份、必读文件指引、目录职责、铁律、自维护规则），页面数量等快变数据一律指向 `index.md`
    - `purpose.md` 和 `.wiki-schema.md` 同级存放，用来记录研究目标、关键问题和研究范围
    - 提醒用户优先填写核心目标和关键问题；这些内容写在 `purpose.md` 里，后续 ingest 会优先参考这里的方向
 
@@ -235,6 +236,8 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    - 给我一个本地文件路径（PDF、Markdown 等）
    - 直接粘贴文本内容
    - 批量消化：给我一个文件夹路径
+
+   库根已生成 AGENTS.md（智能体开机读物）：以后把本知识库作为工作空间打开，agent 每次新会话都会自动加载它、了解知识库全貌；目录结构或使用规则变化时，记得更新它。
 
    推荐：用 Obsidian 打开这个文件夹，可以实时看到知识库的构建效果。
    ```
@@ -672,6 +675,11 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
    **交叉引用缺失**（检查相关主题的页面之间是否应该互相链接但没链）：
    - 建议添加的交叉引用
 
+   **开机文件检查**（AGENTS.md，兼容老知识库）：
+   - 检查知识库根目录是否有 `AGENTS.md`（智能体开机读物，agent 以本库为工作空间时新会话自动加载）
+   - 缺失 → 基于 `index.md`、`purpose.md` 和实际目录结构生成一份薄的：只写身份、必读文件指引、目录职责、铁律、自维护规则；页面数量等快变数据一律指向 `index.md`，不写入
+   - 已存在 → 抽查目录职责表是否与实际结构一致，过时段落给出更新建议
+
    **置信度报告**（统计 `EXTRACTED` / `INFERRED` / `AMBIGUOUS` / `UNVERIFIED`）：
    - 高亮 `AMBIGUOUS` 条目，提醒用户优先验证
    - 抽查标注为 EXTRACTED 的条目，检查是否能在原始素材里找到对应原文
@@ -700,6 +708,10 @@ bash ${SKILL_DIR}/scripts/adapter-state.sh classify-run <source_id> <exit_code> 
 
    缺失索引：
    - {文件名} 存在但未记录在 index.md 中
+
+   开机文件（AGENTS.md）：
+   - 缺失 → 建议生成一份薄的（身份、必读文件、目录职责、铁律、自维护规则）
+   - 存在但目录职责与实际结构不符 → 建议更新对应段落
 
    置信度报告：
    - EXTRACTED：{N}
