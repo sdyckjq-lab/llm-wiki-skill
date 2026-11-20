@@ -53,12 +53,28 @@ for platform in codex claude; do
   assert_text_contains "$dry_run" "packages/workbench-contracts/src/graph-rename-filename.js"
 
   shared_rule="$target_dir/packages/workbench-contracts/src/graph-rename-filename.js"
+  graph_engine_iife="$target_dir/packages/graph-engine/dist/engine.iife.js"
   [ -f "$shared_rule" ] || fail "$platform install should carry the shared filename rule"
-  [ ! -e "$target_dir/packages/graph-engine" ] || fail "$platform install must not carry graph-engine"
+  [ ! -e "$target_dir/packages/graph-engine/package.json" ] \
+    || fail "$platform install must not carry the graph-engine package metadata"
+  [ ! -e "$target_dir/packages/graph-engine/src" ] \
+    || fail "$platform install must not carry graph-engine sources"
+  [ ! -e "$target_dir/packages/graph-engine/dist/engine.esm.js" ] \
+    || fail "$platform install must not carry the workbench ESM graph-engine bundle"
   [ ! -e "$target_dir/packages/workbench-contracts/package.json" ] \
     || fail "$platform install must not carry the workbench-contracts package"
-  [ "$(find "$target_dir/packages" -type f | wc -l | tr -d ' ')" = "1" ] \
-    || fail "$platform install should carry only the one shared runtime file under packages"
+  if [ -f "$REPO_ROOT/packages/graph-engine/dist/engine.iife.js" ]; then
+    [ -f "$graph_engine_iife" ] || fail "$platform install should carry the built graph-engine IIFE bundle"
+    cmp "$REPO_ROOT/packages/graph-engine/dist/engine.iife.js" "$graph_engine_iife" > /dev/null \
+      || fail "$platform installed graph-engine IIFE should match its built source"
+    [ "$(find "$target_dir/packages" -type f | wc -l | tr -d ' ')" = "2" ] \
+      || fail "$platform install should carry only the two shared runtime files under packages"
+  else
+    [ ! -e "$target_dir/packages/graph-engine" ] \
+      || fail "$platform install should not create graph-engine files when the IIFE bundle is absent"
+    [ "$(find "$target_dir/packages" -type f | wc -l | tr -d ' ')" = "1" ] \
+      || fail "$platform install should carry only the one shared runtime file under packages"
+  fi
   cmp "$REPO_ROOT/packages/workbench-contracts/src/graph-rename-filename.js" "$shared_rule" > /dev/null \
     || fail "$platform installed shared filename rule should match its only source"
 

@@ -1761,6 +1761,131 @@ test_graph_data_wiki_dir_missing_exits() {
     fi
 }
 
+test_install_ships_graph_engine_iife_for_build_graph_html() {
+    local tmp_dir installed_skill kb_root output_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    ensure_graph_engine_dist
+
+    installed_skill="$tmp_dir/installed/llm-wiki"
+    mkdir -p "$tmp_dir/home"
+
+    HOME="$tmp_dir/home" \
+        bash "$REPO_ROOT/install.sh" \
+            --platform claude \
+            --target-dir "$installed_skill" > /dev/null 2>&1 \
+        || fail "install.sh should succeed and ship the built graph-engine IIFE"
+
+    assert_path_exists "$installed_skill/packages/graph-engine/dist/engine.iife.js"
+    cmp "$REPO_ROOT/packages/graph-engine/dist/engine.iife.js" \
+        "$installed_skill/packages/graph-engine/dist/engine.iife.js" > /dev/null \
+        || fail "installed graph-engine IIFE should match the built artifact"
+
+    kb_root="$tmp_dir/wiki-kb"
+    output_dir="$kb_root/wiki"
+    mkdir -p "$output_dir"
+    cp "$REPO_ROOT/$GRAPH_HTML_BASIC/wiki/graph-data.json" "$output_dir/graph-data.json"
+
+    bash "$installed_skill/scripts/build-graph-html.sh" "$kb_root" > /dev/null 2>&1 \
+        || fail "installed build-graph-html.sh should locate shipped engine.iife.js and build HTML"
+
+    assert_single_file_engine_output "$output_dir"
+}
+
+test_install_graph_engine_build_and_degrade_paths() {
+    local tmp_dir mini_repo target_dir output bin_dir
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    mini_repo="$tmp_dir/mini-repo"
+    mkdir -p "$mini_repo/packages/workbench-contracts/src" "$mini_repo/packages/graph-engine" "$tmp_dir/home"
+    cp "$REPO_ROOT/SKILL.md" "$REPO_ROOT/README.md" "$REPO_ROOT/CLAUDE.md" \
+       "$REPO_ROOT/AGENTS.md" "$REPO_ROOT/HERMES.md" "$REPO_ROOT/CHANGELOG.md" \
+       "$REPO_ROOT/install.sh" "$REPO_ROOT/setup.sh" "$REPO_ROOT/install.ps1" \
+       "$REPO_ROOT/package.json" "$REPO_ROOT/package-lock.json" \
+       "$mini_repo/"
+    cp -R "$REPO_ROOT/scripts" "$REPO_ROOT/templates" "$REPO_ROOT/deps" "$REPO_ROOT/platforms" "$mini_repo/"
+    cp "$REPO_ROOT/packages/workbench-contracts/src/graph-rename-filename.js" \
+       "$mini_repo/packages/workbench-contracts/src/graph-rename-filename.js"
+    cp "$REPO_ROOT/packages/graph-engine/package.json" \
+       "$mini_repo/packages/graph-engine/package.json"
+
+    # Case 1: missing node/npm degrades cleanly without crashing copy_item
+    bin_dir="$tmp_dir/bin-no-node"
+    make_path_without_python "$bin_dir"
+    ln -s "$(PATH="/usr/bin:/bin" command -v basename)" "$bin_dir/basename"
+    target_dir="$tmp_dir/target-no-node/llm-wiki"
+    output="$(
+        HOME="$tmp_dir/home" \
+        PATH="$bin_dir" \
+        bash "$mini_repo/install.sh" --platform codex --target-dir "$target_dir" 2>&1
+    )" || fail "install.sh should degrade cleanly when node/npm are unavailable"
+    assert_text_contains "$output" "未找到 node/npm"
+    assert_text_contains "$output" "packages/graph-engine/dist/engine.iife.js：安装源文件缺失，跳过"
+    assert_path_exists "$target_dir/SKILL.md"
+    [ ! -e "$target_dir/packages/graph-engine/dist/engine.iife.js" ] \
+        || fail "should not create engine.iife.js when build was skipped"
+
+    # Case 2: failing build (e.g. offline without cache) degrades cleanly
+    bin_dir="$tmp_dir/bin-fail-npm"
+    mkdir -p "$bin_dir"
+    make_stub "$bin_dir/node" '#!/bin/sh
+exit 0'
+    make_stub "$bin_dir/npm" '#!/bin/sh
+exit 1'
+    target_dir="$tmp_dir/target-fail-npm/llm-wiki"
+    output="$(
+        HOME="$tmp_dir/home" \
+        PATH="$bin_dir:/usr/bin:/bin" \
+        bash "$mini_repo/install.sh" --platform codex --target-dir "$target_dir" 2>&1
+    )" || fail "install.sh should degrade cleanly when graph-engine build fails"
+    assert_text_contains "$output" "图谱引擎构建失败"
+    assert_path_exists "$target_dir/SKILL.md"
+    [ ! -e "$target_dir/packages/graph-engine/dist/engine.iife.js" ] \
+        || fail "should not create engine.iife.js when build failed"
+
+    # Case 3: fresh clone without node_modules runs npm ci for graph-engine then build, and ships artifact
+    bin_dir="$tmp_dir/bin-ok-npm"
+    mkdir -p "$bin_dir"
+    make_stub "$bin_dir/node" '#!/bin/sh
+exit 0'
+    make_stub "$bin_dir/npm" "#!/bin/sh
+printf '%s\n' \"\$*\" >> \"$tmp_dir/npm.log\"
+if [ \"\$1\" = \"run\" ] && [ \"\$2\" = \"build\" ]; then
+  mkdir -p packages/graph-engine/dist
+  printf 'var LlmWikiGraphEngine={};' > packages/graph-engine/dist/engine.iife.js
+fi
+exit 0"
+    target_dir="$tmp_dir/target-fresh-clone/llm-wiki"
+    output="$(
+        HOME="$tmp_dir/home" \
+        PATH="$bin_dir:/usr/bin:/bin" \
+        bash "$mini_repo/install.sh" --platform codex --target-dir "$target_dir" 2>&1
+    )" || fail "install.sh should build and ship graph-engine on fresh clone"
+    assert_text_contains "$output" "图谱引擎已构建"
+    assert_file_contains "$tmp_dir/npm.log" "ci --workspace=@llm-wiki/graph-engine --include-workspace-root=false"
+    assert_file_contains "$tmp_dir/npm.log" "run build -w @llm-wiki/graph-engine"
+    assert_path_exists "$target_dir/packages/graph-engine/dist/engine.iife.js"
+
+    # Case 4: when node_modules/.bin/vite already exists, skips npm ci and only runs build
+    rm -rf "$mini_repo/packages/graph-engine/dist" "$tmp_dir/npm.log"
+    mkdir -p "$mini_repo/node_modules/.bin"
+    make_stub "$mini_repo/node_modules/.bin/vite" '#!/bin/sh
+exit 0'
+    target_dir="$tmp_dir/target-existing-nm/llm-wiki"
+    output="$(
+        HOME="$tmp_dir/home" \
+        PATH="$bin_dir:/usr/bin:/bin" \
+        bash "$mini_repo/install.sh" --platform codex --target-dir "$target_dir" 2>&1
+    )" || fail "install.sh should build directly when node_modules is already present"
+    assert_text_contains "$output" "图谱引擎已构建"
+    assert_file_not_contains "$tmp_dir/npm.log" "ci --workspace"
+    assert_file_not_contains "$tmp_dir/npm.log" "install --workspace"
+    assert_file_contains "$tmp_dir/npm.log" "run build -w @llm-wiki/graph-engine"
+    assert_path_exists "$target_dir/packages/graph-engine/dist/engine.iife.js"
+}
+
 test_graph_data_sample_wiki_matches_expected
 test_graph_data_empty_wiki_matches_expected
 test_graph_data_test_mode_is_stable
@@ -1795,6 +1920,8 @@ test_graph_data_dead_links_are_ignored
 test_graph_data_self_links_are_ignored
 test_graph_data_exits_without_jq
 test_graph_data_wiki_dir_missing_exits
+test_install_ships_graph_engine_iife_for_build_graph_html
+test_install_graph_engine_build_and_degrade_paths
 
 bash "$REPO_ROOT/tests/adapter-state.sh" || fail "adapter-state.sh 测试失败"
 
