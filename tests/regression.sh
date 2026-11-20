@@ -385,6 +385,37 @@ test_init_creates_purpose_and_cache_files() {
     assert_file_contains "$wiki_root/.wiki-cache.json" '"entries": {}'
 }
 
+test_init_creates_agents_md_and_preserves_existing() {
+    local tmp_dir zh_wiki en_wiki rerun_output
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    zh_wiki="$tmp_dir/Chinese Wiki"
+    bash "$REPO_ROOT/scripts/init-wiki.sh" "$zh_wiki" "测试主题" "中文" > /dev/null
+
+    assert_path_exists "$zh_wiki/AGENTS.md"
+    assert_file_contains "$zh_wiki/AGENTS.md" "# AGENTS.md — 测试主题 知识库"
+    assert_file_not_contains "$zh_wiki/AGENTS.md" "{{TOPIC}}"
+    assert_file_not_contains "$zh_wiki/AGENTS.md" "{{DATE}}"
+
+    en_wiki="$tmp_dir/English Wiki"
+    bash "$REPO_ROOT/scripts/init-wiki.sh" "$en_wiki" "Test Topic" "English" > /dev/null
+
+    assert_path_exists "$en_wiki/AGENTS.md"
+    assert_file_contains "$en_wiki/AGENTS.md" "# AGENTS.md — Test Topic Knowledge Base"
+    assert_file_not_contains "$en_wiki/AGENTS.md" "{{TOPIC}}"
+    assert_file_not_contains "$en_wiki/AGENTS.md" "{{DATE}}"
+
+    printf 'custom user agents notes\n' > "$zh_wiki/AGENTS.md"
+    rerun_output="$(
+        bash "$REPO_ROOT/scripts/init-wiki.sh" "$zh_wiki" "新主题" "中文" 2>&1
+    )" || fail "re-running init-wiki.sh should succeed when AGENTS.md already exists"
+
+    assert_text_contains "$rerun_output" "[跳过] AGENTS.md 已存在"
+    assert_file_contains "$zh_wiki/AGENTS.md" "custom user agents notes"
+    assert_file_not_contains "$zh_wiki/AGENTS.md" "新主题"
+}
+
 test_cache_script_handles_miss_hit_and_invalidate() {
     local tmp_dir wiki_root file_path output
     tmp_dir="$(mktemp -d)"
@@ -1365,6 +1396,7 @@ test_install_hermes_copies_bundle
 test_init_fills_language_placeholder
 test_phase1_templates_exist
 test_init_creates_purpose_and_cache_files
+test_init_creates_agents_md_and_preserves_existing
 test_cache_script_handles_miss_hit_and_invalidate
 test_skill_md_phase2_init_mentions_purpose_and_cache
 test_skill_md_phase2_ingest_mentions_two_step_cache_and_confidence
