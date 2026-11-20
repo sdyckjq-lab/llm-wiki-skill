@@ -1,31 +1,10 @@
 # TODOs
 
-## Workbench Test Infrastructure
+> [!NOTE]
+> **维护收尾（v3.7.0）**：本仓库自 `v3.7.0` 起进入**低频维护模式**（Skill 形态稳定收官，仅按需处理严重 Bug；`workbench/` 原样保留作为早期探索的**实验原型**，不再推进 Tauri 桌面端打包）。原活跃的工作台待办事项已统一关闭/封存如下，仅作历史记录保留。
 
-### Make the Paper visual regression portable
+## 已封存的历史工作台待办（Parked / Closed as of v3.7.0）
 
-**What:** Remove the machine-specific prototype path from the existing Paper screenshot runner and give it a portable reference or baseline strategy.
-
-**Why:** The current runner is useful for local visual checks, but another machine or GitHub cannot reproduce its default reference without extra private files.
-
-**Context:** This is separate from #190. The #158 closeout will add a new functional Playwright suite that uses a real frontend, real HTTP, and real backend handling; the current `visual:paper` runner continues to serve visual regression only because it mocks all `/api/**` traffic. Start by deciding whether reference images belong in the repository or the runner should require an explicit reference URL, then remove the local default path and verify the documented workflow on a clean machine.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** A decision on committed visual baselines versus an explicitly supplied reference URL.
-
-## Live Map Reading Workflow: User-Facing Improvements
-
-- **What:** After the internal active-map reading workflow consolidation lands, improve the visible reading experience for node selection, community entry, right-drawer behavior, and sending a map selection back into the conversation.
-- **Why:** The first pass intentionally keeps the UI behavior stable so the structure can be made safer. The second pass should use that cleaner foundation to make the map feel smoother and easier to read.
-- **Context:** This belongs after the internal "active-map reading workflow" refactor and before starting the Prompt Run refactor. Keep it focused on user-facing reading flow polish, not graph data generation or knowledge inventory rules.
-- **Depends on:** The internal active-map reading workflow consolidation passing regression checks for global graph, community reading, right drawer, and selection-to-conversation behavior.
-- **Start with:** Pick one visible pain point from the consolidated workflow, then verify it through the full user path: open map → select/read → use drawer → ask from selection.
-
-## Graph Spatial Continuity: Sigma Community Enter Transition
-
-- **What:** Implement the Sigma spatial transition from a highlighted global community into Sigma community reading; see GitHub #117 and #120.
-- **Why:** The user should feel they are moving deeper into the same knowledge map, not switching from one unrelated view to another.
-- **Context:** This now belongs to the Sigma-first graph route. The transition should coordinate drawer exit, canvas expansion, camera movement, and community-reading appearance without changing final graph semantics.
-- **Depends on:** #118 shared Sigma view-transition basis and the current Sigma community reading route.
-- **Start with:** Reuse the selected global community bounds, the Sigma community-reading target camera, and the shared transition/cancellation contract from #118.
+- **Paper 视觉回归可移植化**（原 P3）：为 `visual:paper` 移除本地默认参考路径并提供可移植基线策略。因 `workbench/` 进入实验原型封存状态，不再投入。
+- **活地图阅读体验第二阶段打磨**：在内部阅读流程重构完成后继续优化节点选择、社区进入、右抽屉与选区回传对话体验。已随工作台收尾封存。
+- **图谱空间连续性（Sigma 社区进入过渡，原 #117 / #120）**：已完成主要过渡落地，后续细化项随工作台原型封存不再展开。

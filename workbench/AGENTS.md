@@ -1,5 +1,8 @@
 # llm-wiki 工作台 Codex 协作规则
 
+> [!NOTE]
+> **维护状态（v3.7.0）**：本仓库已进入**低频维护模式**。Skill 形态已稳定收官，`workbench/` 原样保留作为**实验原型（Experimental Prototype）**，不再规划新阶段功能或 Tauri 桌面端打包。仅在作者明确需要排查或修复原型问题时参考本规则。
+
 ## 第一原则
 
 不要考虑时间成本，code is cheap，我们来自于未来。
