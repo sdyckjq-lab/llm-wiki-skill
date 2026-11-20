@@ -19,7 +19,7 @@ WITH_OPTIONAL_ADAPTERS=0
 # - 入口与说明文件：README / CLAUDE / AGENTS / CHANGELOG
 # - 安装入口：install.sh / setup.sh
 # - 实际执行内容：SKILL.md / scripts / templates / deps
-# - scripts 运行时引用的唯一共享规则文件（只携带所需文件，不打包整个 packages）
+# - scripts 运行时引用的共享文件与图谱引擎 IIFE 产物（只携带所需文件，不打包整个 packages）
 # - 平台薄入口：platforms（README、CLAUDE、AGENTS 都会引用）
 MANAGED_ITEMS=(
   "SKILL.md"
@@ -36,6 +36,7 @@ MANAGED_ITEMS=(
   "deps"
   "platforms"
   "packages/workbench-contracts/src/graph-rename-filename.js"
+  "packages/graph-engine/dist/engine.iife.js"
 )
 
 DEP_SKILLS=()
@@ -256,7 +257,7 @@ install_dependency_skills() {
     dep_target="$skill_root/$dep"
 
     if [ ! -d "$dep_source" ]; then
-      warn "$dep：deps/ 中未找到源文件，跳过"
+      warn "${dep}：deps/ 中未找到源文件，跳过"
       continue
     fi
 
@@ -278,7 +279,7 @@ install_companion_skills() {
     skill_target="$skill_root/$skill_name"
 
     if [ ! -d "$skill_source" ]; then
-      warn "$skill_name：仓库中未找到源文件，跳过"
+      warn "${skill_name}：仓库中未找到源文件，跳过"
       continue
     fi
 
@@ -287,16 +288,87 @@ install_companion_skills() {
   done < <(list_companion_skill_sources "$platform")
 }
 
+# build-graph-html.sh 读取 packages/graph-engine/dist/engine.iife.js，但该产物不入库；
+# 全新 clone 时若缺失则自动构建，缺失 node/npm 或离线失败时优雅降级，不影响核心安装。
+ensure_graph_engine() {
+  local engine="$SCRIPT_DIR/packages/graph-engine/dist/engine.iife.js"
+
+  [ -f "$engine" ] && return 0
+
+  # 已安装目录里的 install.sh 不包含 monorepo 源码与 package.json，无需尝试构建
+  if [ ! -f "$SCRIPT_DIR/package.json" ] || [ ! -f "$SCRIPT_DIR/packages/graph-engine/package.json" ]; then
+    return 0
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '[dry-run] build graph-engine\n'
+    return 0
+  fi
+
+  if [ "${LLM_WIKI_SKIP_GRAPH_ENGINE_BUILD:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if ! command -v npm >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+    warn "未找到 node/npm：跳过图谱引擎构建。"
+    warn "  交互式图谱（build-graph-html.sh）将无法使用；其余功能不受影响。"
+    warn "  安装 node 后重跑本脚本即可补上。"
+    return 0
+  fi
+
+  if [ -x "$SCRIPT_DIR/node_modules/.bin/vite" ] \
+     || [ -x "$SCRIPT_DIR/packages/graph-engine/node_modules/.bin/vite" ]; then
+    info "正在构建图谱引擎..."
+    if ( cd "$SCRIPT_DIR" \
+          && npm run build -w @llm-wiki/graph-engine >/dev/null 2>&1 ) \
+       && [ -f "$engine" ]; then
+      ok "图谱引擎已构建"
+    else
+      warn "图谱引擎构建失败：交互式图谱将无法使用，其余功能不受影响"
+      warn "  可手动重试：npm run build -w @llm-wiki/graph-engine"
+    fi
+    return 0
+  fi
+
+  info "正在安装图谱引擎依赖并构建（首次安装需要，约需 1 分钟）..."
+  if ( cd "$SCRIPT_DIR" \
+        && if [ -f "$SCRIPT_DIR/package-lock.json" ]; then
+             npm ci --workspace=@llm-wiki/graph-engine --include-workspace-root=false \
+               --prefer-offline --fetch-retries=0 --fetch-timeout=15000 \
+               --silent --no-audit --no-fund >/dev/null 2>&1
+           else
+             npm install --workspace=@llm-wiki/graph-engine --include-workspace-root=false \
+               --no-package-lock --prefer-offline --fetch-retries=0 --fetch-timeout=15000 \
+               --silent --no-audit --no-fund >/dev/null 2>&1
+           fi \
+        && npm run build -w @llm-wiki/graph-engine >/dev/null 2>&1 ) \
+     && [ -f "$engine" ]; then
+    ok "图谱引擎已构建"
+  else
+    warn "图谱引擎构建失败：交互式图谱将无法使用，其余功能不受影响"
+    warn "  可手动重试：npm install && npm run build -w @llm-wiki/graph-engine"
+  fi
+}
+
 install_bundle() {
   local target_dir="$1"
   local item source_path target_path
+
+  ensure_graph_engine
 
   for item in "${MANAGED_ITEMS[@]}"; do
     source_path="$SCRIPT_DIR/$item"
     target_path="$target_dir/$item"
 
     if [ ! -e "$source_path" ]; then
-      warn "$item：安装源文件缺失，跳过"
+      if [ "$DRY_RUN" -eq 1 ] \
+         && [ "$item" = "packages/graph-engine/dist/engine.iife.js" ] \
+         && [ -f "$SCRIPT_DIR/package.json" ] \
+         && [ -f "$SCRIPT_DIR/packages/graph-engine/package.json" ]; then
+        printf '[dry-run] copy %s -> %s\n' "$source_path" "$target_path"
+        continue
+      fi
+      warn "${item}：安装源文件缺失，跳过"
       continue
     fi
 
@@ -313,7 +385,7 @@ install_bundle() {
       source_path="$SCRIPT_DIR/$item"
       target_path="$target_dir/$item"
       if [ -e "$source_path" ] && [ ! -e "$target_path" ]; then
-        err "$item：已列入安装清单但未出现在目标目录，拷贝可能失败"
+        err "${item}：已列入安装清单但未出现在目标目录，拷贝可能失败"
         exit 1
       fi
     done

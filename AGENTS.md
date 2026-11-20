@@ -1,16 +1,19 @@
 # AGENTS.md
 
+> [!NOTE]
+> **维护状态（v3.7.0）**：本仓库已进入**低频维护模式**。Skill 形态已稳定收官，仅按需修复严重 Bug；`workbench/` 作为早期探索的**实验原型（Experimental Prototype）**原样保留，不再规划大功能或 Tauri 桌面端打包；历史开发过程稿已归档至 [docs/archive/](docs/archive/)。
+
 ## 🧭 仓库导航（任何人 / AI 进来先读这里）
 
 本仓库是 **llm-wiki monorepo**，含三个区：
 
 | 区 | 位置 | 状态 |
 |---|---|---|
-| **agent 工作台**（开发主线） | `workbench/`（server + web） | 🚧 活跃开发 |
-| **共享图谱引擎** | `packages/graph-engine/` | 🚧 随 agent 演进 |
-| **Skill 形态** | 根目录 `SKILL.md` / `scripts/` / `templates/` / `platforms/` | ❄️ 成熟·维护冻结 |
+| **Skill 形态** | 根目录 `SKILL.md` / `scripts/` / `templates/` / `platforms/` | ❄️ 成熟稳定 · 低频维护 |
+| **共享图谱引擎** | `packages/graph-engine/` | ❄️ 稳定 · 按需修 Bug |
+| **agent 工作台** | `workbench/`（server + web） | 🧪 实验原型（不再推进桌面打包） |
 
-➡️ **开发 agent 工作台（日常主线）**：先读 [workbench/AGENTS.md](workbench/AGENTS.md) 的冷启动表，再按任务打开 [workbench/PRODUCT.md](workbench/PRODUCT.md) 对应章节；不要默认读历史归档。
+➡️ **查看或维护工作台原型**：先读 [workbench/AGENTS.md](workbench/AGENTS.md) 的冷启动表，再按任务打开 [workbench/PRODUCT.md](workbench/PRODUCT.md) 对应章节；不要默认读历史归档。
 
 ➡️ **统一术语、产品边界或 ADR**：先读 [CONTEXT-MAP.md](CONTEXT-MAP.md)，再进入对应 `CONTEXT.md` 和 [docs/adr/](docs/adr/)。
 

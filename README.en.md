@@ -10,18 +10,27 @@ Based on [Andrej Karpathy](https://karpathy.ai/)'s [llm-wiki methodology](https:
 
 Turn scattered information into a growing, interconnected knowledge base
 
-[![version](https://img.shields.io/badge/v3.6.91-Safe%20Graph%20Rename%20%26%20Recovery-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
+[![version](https://img.shields.io/badge/v3.7.0-stable--maintenance-E8D5B5?style=flat-square&labelColor=3a3026&color=E8D5B5)](https://github.com/sdyckjq-lab/llm-wiki-skill/releases)
 [![license](https://img.shields.io/badge/MIT-license-5a6e5c?style=flat-square&labelColor=3a3026)](LICENSE)
-[![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)]
+![platforms](https://img.shields.io/badge/Claude·Codex·OpenClaw·Hermes-multi--platform-7a96a6?style=flat-square&labelColor=3a3026)
 
 </div>
+
+---
+
+> [!NOTE]
+> **Project Status (v3.7.0)**
+>
+> The **Skill package** is feature-complete and stable, having reached its milestone goals. This repository is now in **low-frequency maintenance mode** (no major new features planned; critical bug fixes only as needed).
+>
+> The local agent workbench in `workbench/` is preserved as-is as an **Experimental Prototype** from earlier exploration, and Tauri desktop packaging is discontinued. For everyday use, we recommend pairing the Skill directly with **Claude Code / Claude Cowork / Codex / OpenClaw / Hermes / Cursor + Obsidian** over plain local Markdown files.
 
 ---
 
 ## Preview
 
 <div align="center">
-<img src="assets/graph-demo.gif" width="100%" alt="Knowledge Graph Demo">
+<img src="assets/graph-demo.gif?v=20260428" width="100%" alt="Knowledge Graph Demo">
 </div>
 
 Oriental editorial × digital landscape interactive knowledge graph — double-click the HTML file to explore in your browser. Search, community legend, focus filters, layered node grammar, community close-up maps, hover previews, lightweight summaries before explicit reading, Shift multi-select, canvas zoom/pan, and minimap navigation all run offline.
@@ -32,8 +41,8 @@ Oriental editorial × digital landscape interactive knowledge graph — double-c
 
 This is the llm-wiki monorepo. It contains two entry points that read and write the same knowledge base format:
 
-- **Skill package** (stable): install it into Claude Code / Codex / OpenClaw / Hermes and maintain your knowledge base inside your existing AI CLI.
-- **Agent workbench** (`workbench/`, in development): a local knowledge-base workbench centered on conversation, with the same interactive digital landscape graph. It currently targets developers via `npm run dev`; desktop packaging comes later.
+- **Skill package** (recommended · stable main line): install it into Claude Code / Codex / OpenClaw / Hermes (or pair it with Claude Cowork / Cursor + Obsidian) to maintain your knowledge base inside your existing AI workflow.
+- **Agent workbench** (`workbench/` · experimental prototype): an early local workbench prototype centered on conversation with Paper UI and an interactive digital landscape Living Map (`npm run dev`). Preserved as-is for reference and developer experimentation; desktop packaging is not planned.
 
 The interactive graph engine (`packages/graph-engine/`) is shared by both the Skill offline HTML and the workbench graph view.
 
@@ -74,34 +83,25 @@ The key difference: knowledge is **compiled once, maintained continuously** — 
 
 | | Feature | Description |
 |---|---|---|
-| 🗺️ | **Digital Landscape Graph** | Self-contained HTML with a three-column oriental editorial layout, draggable and zoomable canvas, minimap navigation, and readable side panels |
-| ✨ | **Graph Reading Polish** | Nodes now separate map labels, index slips, and cinnabar annotations; the default view is lighter, hover previews stay available, and clicks show a summary before explicit reading |
+| 🗺️ | **Digital Landscape Graph** | Self-contained HTML with a three-column oriental editorial layout, draggable and zoomable canvas, minimap navigation, and readable side panels — all offline |
+| ✨ | **Graph Reading Polish** | Nodes separate map labels, index slips, and cinnabar annotations; the default view is lighter, hover previews stay available, and clicks show a summary before explicit reading |
 | 🎓 | **Local Reading Flow** | Community legend, focus filters, scoped search, the reader drawer, and the selection drawer stay connected to the visible graph; offline HTML keeps selected facts visible too |
-| 📦 | **Zero-config Init** | One sentence to create a full knowledge base with directory structure and templates |
-| 🔗 | **Structured Wiki** | Auto-generates entity pages, topic pages, source summaries with `[[bidirectional links]]` |
+| 📦 | **Zero-config Init** | One sentence to create a full knowledge base with directory structure, templates, and research direction |
+| 🤖 | **Auto-generated `AGENTS.md`** | `init` creates a bilingual `AGENTS.md` onboarding guide at the wiki root (without overwriting existing files) so any AI agent immediately understands the layout and conventions |
+| 🔗 | **Structured Wiki** | Auto-generates entity pages, topic pages, and source summaries with `[[bidirectional links]]` |
 | 🏷️ | **Confidence Annotation** | EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED — see at a glance what needs verification |
 | 🔄 | **Smart Caching** | SHA256 deduplication + write-through cache + self-healing safety net |
 | 🧠 | **Conversation-to-Wiki** | Turn valuable conversations into knowledge base pages directly |
 | 📡 | **Auto Context Injection** | SessionStart hook makes the agent automatically sense the knowledge base every session |
 | 📊 | **Multi-format Analysis** | Deep reports, comparison tables, and timeline views |
 
-### Workbench Developer Preview
+### Workbench Experimental Prototype (`workbench/`)
 
-| | Feature | Description |
-|---|---|---|
-| 🧭 | **Community Close-up Map** | Entering a community now feels like zooming into the same region from the global graph; positions, tiers, labels, and return highlights stay stable, then fade after the global view settles |
-| ⚠️ | **Graph Identity and Warnings** | Same-named pages stay separate by knowledge-base-relative path; ambiguous links, broken links, pending pages, and portable path conflicts are explained while the graph remains readable, with read-only paged details |
-| 📝 | **Safe Graph Rename and Recovery** | Optionally rename a graph page within its current folder from a resolvable warning or the page reader; review the complete impact and every ambiguity first, with clear recovery after external edits, interruption, or a failed graph refresh, and an automatic final result after a queued refresh completes |
-| 🧩 | **Global Intent Feedback** | Hovering a global node lightly previews first-order real relationships; clicking fixes that emphasis with the summary drawer; selecting a community reveals only a small internal and bridge preview instead of full reading |
-| 🛡️ | **Safe Streaming Chat** | Prompts, tool states, artifacts, and terminal states use one streaming contract; a model failure is shown as a failure rather than a completion, while normal completion, cancellation, reconnect recovery, and follow-up chat remain available |
-| / | **Private Retrieval Logs** | Default retrieval logs retain only the session, knowledge base, trigger state, result information, and stable failure status needed for diagnosis; they do not retain user questions or recoverable derivatives |
-| 🔒 | **Local Workbench Access Protection** | Local settings, conversations, pages, graph events, files, and state changes require both a trusted source and the current startup credential |
-| 🧷 | **Workbench Request Boundaries** | The frontend only sends registered method-and-endpoint combinations; artifact manifests and downloads reject invalid IDs consistently, while file downloads and event streams retain their dedicated handling |
-| / | **Workbench Command List** | The chat `/` menu and settings skill counts use the same protected read path, and the list never shows local skill paths |
-| 📚 | **Workbench Knowledge Base Setup** | The sidebar separately creates a knowledge base in the default directory or adds an existing folder; initializing an existing directory and batch digestion remain independent, while cancellation, duplicate names, in-progress same-name requests, conflicts, and failures do not reveal local paths or internal details |
-| ✅ | **Reliable Workbench Startup** | The server listens locally, failed launches preserve the active credential, restarts rotate it and restore the last knowledge base, and shutdown ends open streams and graph rebuild processes |
-| 🧪 | **Real Workbench Browser Checks** | Automated checks cover seven primary workflows plus isolation, cancellation, disconnects, busy states, and failure recovery through the real frontend and backend; Paper visual checks follow page search into the right reading drawer, confirm that page content is visible, exercise artifact, configuration, and model reads, reject old response shapes, and keep the composer usable without text or send-button overlap when the reading drawer is open on a tablet |
-| 🔎 | **Unified Workbench Quality Check** | Local and GitHub checks now block private paths and known private material clues before running frontend, backend, graph, boundary, type, lint, and build verification; graph interaction settlement is confirmed from the actual viewport commit, so brief load cannot make it finish early |
+`workbench/` preserves an earlier local knowledge-base workbench prototype (Tauri desktop packaging is discontinued):
+
+- **Local launch**: requires Node `>=22.19.0`; run `npm install && npm run dev` from the repository root to start the local frontend and backend.
+- **Core experience**: Paper warm-paper UI, conversation-centered `@` page references and `/` commands, conversation-to-wiki crystallization, batch digestion, and right-drawer artifact previews.
+- **Interactive Living Map**: shares `@llm-wiki/graph-engine` (Sigma primary view) with the Skill offline HTML, supporting community close-up reading, multi-select into chat, graph warning inspection, and safe same-folder rename.
 
 ---
 
@@ -136,31 +136,20 @@ Each platform has its own setup guide:
 <summary><strong>Full Feature List</strong></summary>
 
 - **Research Direction Guidance** — `purpose.md` gives the agent a clear direction for organizing and querying
+- **Agent Onboarding Guide** — `init` auto-generates a bilingual root `AGENTS.md` (without overwriting existing files) and includes it in `lint` checks
 - **Two-step Ingestion** — Analyze first, then generate; long content uses chained thinking
 - **Ingest Format Validation** — Scripts auto-validate analysis results; even weak models won't produce broken data
 - **Smart Material Routing** — Auto-selects the best extraction method based on URL domain
 - **Core-first Install** — Default setup only includes the core pipeline; optional extractors enabled explicitly
 - **Claude Companion Upgrade Command** — `/llm-wiki-upgrade` included after installation
 - **Material Deletion** — Cascade-delete with automatic cleanup of associated pages, broken links, and cache
-- **Path-based Graph Identity and Warnings** — Same-named pages remain separate by knowledge-base-relative path; ambiguous links do not guess, while duplicate IDs, broken and pending links, non-canonical paths, and portable collisions are shown in read-only paged details; refreshes and pins continue to follow the correct page
-- **Safe Graph Rename and Recovery** — Start an optional same-folder rename from a resolvable warning or the page reader; the complete preview lists automatic edits, read-only references, pin migration, and every ambiguity before confirmation, while external edits, crashes, and pending graph refreshes have explicit recovery or retry paths, with the final result shown automatically after a queued refresh completes
-- **Sigma Graph Main Route** — Both the global map and community reading now run on Sigma/Graphology; DOM/SVG remains only as fallback, comparison, and abnormal-case safety net
-- **Global Graph Intent Feedback** — In the global view, hovering a node lightly highlights its first-order real relationships and restores on leave without opening drawers or moving the camera; clicking fixes the relationship emphasis and opens the node summary; selecting a community shows only a small internal and cross-community bridge preview instead of entering full community reading
-- **Community Close-up Map** — Entering a community is one continuous transition: the summary drawer exits, the canvas expands smoothly, and the camera continues from the global community close-up into the community reading close-up, landing on the Sigma community reading route without reopening the summary (under reduced motion the drawer just closes, with no large camera push); inside, only that community's nodes and internal relationships stay visible while preserving node positions, community color, edge tiers, local search/filter, Shift multi-select, and return highlights
-- **Community Node Reading Accommodation** — Clicking a node inside community reading opens the right reader drawer while the canvas and camera make room continuously; widescreen layouts keep the node comfortable in the remaining canvas, while overlay and fullscreen drawers avoid forced camera movement
+- **Offline Interactive Graph** — Self-contained HTML powered by `@llm-wiki/graph-engine`, distinguishing same-named pages by relative path with community close-up reading, scoped search/filters, hover previews, Shift multi-select, and warning summaries
 - **Query Persistence** — Save valuable comprehensive answers back to the knowledge base
 - **Batch Digestion** — Give a folder path, process all files at once
-- **Reliable Workbench Event Streams** — Batch progress and live graph updates now have explicit ordering and lifecycle rules; per-file failures can continue, overall failure or cancellation closes cleanly, and damaged connections stop or reconnect safely
-- **Local Workbench Access Protection** — Local content and state changes require both source and startup-credential checks, so untrusted web pages cannot read or alter them
-- **Workbench Request Boundaries** — The frontend only sends registered method-and-endpoint combinations; artifact manifests and downloads reject invalid IDs consistently, while file downloads and event streams remain on their own isolated paths
-- **Workbench Command List** — The chat `/` menu and settings skill counts use the same protected read path, and the list never shows local skill paths
-- **Workbench Authentication Settings** — Saving an API key and testing its connection use the same protection and clear failure messages; failures do not expose local details, keys, or underlying errors
-- **Reliable Workbench Startup** — Formal launches and automated checks share one restore and shutdown flow; failed launches preserve active credentials, shutdown ends open streams and graph rebuilds, and checks actively block real-user reads, writes outside the disposable home, and external network access
-- **Real Workbench Browser Checks** — A disposable user environment runs seven primary workflows through the real frontend, backend, ports, HTTP, and event stream, including isolation, cancellation, disconnects, busy states, and failure recovery; external model and system folder boundaries are replaced only in tests and never enter ordinary startup or production builds
-- **Knowledge Base Health Check** — Scripts detect orphan pages, broken links, index consistency; plus AI-level contradiction and cross-reference checks
+- **Knowledge Base Health Check** — Scripts detect orphan pages, broken links (including escaped table aliases `[[Page\|Alias]]`), index consistency, and `AGENTS.md` presence; plus AI-level contradiction and cross-reference checks
 - **Ingest Privacy Check** — First-time ingestion reminds you to check for phone numbers, API keys, etc.
 - **Graph Relationship Vocabulary** — Optional manual annotation vocabulary for more precise graph diagrams
-- **Obsidian Compatible** — All content is local markdown, open directly in Obsidian
+- **Obsidian Compatible** — All content is local Markdown, open directly in Obsidian
 
 </details>
 
@@ -200,7 +189,7 @@ bash install.sh --upgrade --platform hermes --target-dir <your-skill-dir>/llm-wi
 
 ### Prerequisites
 
-- Core: your agent can run shell commands and read/write local files
+- Core: your agent can run shell commands and read/write local files; graph builds and source-signal coverage checks require `jq` + `node`
 - Optional: `uv` for WeChat extraction; `bun` or `npm` for web extraction; Chrome debug mode (port 9222) for authenticated sessions
 
 </details>
@@ -227,6 +216,7 @@ your-knowledge-base/
 │   ├── synthesis/          # Synthesis
 │   │   └── sessions/       # Conversation-to-wiki pages
 │   └── queries/            # Saved queries
+├── AGENTS.md               # Agent onboarding guide (auto-generated by init)
 ├── purpose.md              # Research direction
 ├── index.md                # Index
 ├── log.md                  # Operation log
@@ -303,3 +293,9 @@ This project builds on:
 ## License
 
 MIT
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=sdyckjq-lab/llm-wiki-skill&type=date)](https://www.star-history.com/?repos=sdyckjq-lab%2Fllm-wiki-skill&type=date)
